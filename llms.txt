@@ -16,6 +16,10 @@ Identify and read task-related sections below:
 - [CLI](docs/spec/cli.md): Commands (`plan`, `apply`, `show`), options, credential selection, interactive approval, output, and exit codes - Use when modifying `cmd/`, adding commands or options, or changing user-visible output and exit codes
 - [Configuration](docs/spec/configuration.md): YAML configuration structure, types, allowed values, combinations, management scope interpretation, and input validation - Use when modifying configuration parsing or validation, or adding supported repository settings
 
+## Design
+
+- [Domain Model](docs/design/domain.md): Core concepts of reco and the distinctions between them (declaration, selection, and repository identity; management units; current state vs. observation result; reconciliation vs. applicability; logical change vs. update operation) - Use when naming domain types, deciding what a concept means, or checking that code keeps these distinctions
+
 ## Project Overview
 
 - [Constitution](docs/CONSTITUTION.md): Purpose, problem statement, value proposition, design principles, and non-goals of reco - Use when making design decisions, resolving tradeoffs between principles, or judging whether a feature is in scope
