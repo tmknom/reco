@@ -14,10 +14,13 @@
 | YAML 設定仕様 | 設定宣言の構造、型、許容値、入力検証などの外部契約 |
 | ドメインモデル | リポジトリ設定の管理に関する概念とその関係 |
 | アーキテクチャ設計 | システムの論理構成、責務、依存関係、主要な処理の仕組み |
+| GitHub API 仕様 | reco が利用する GitHub REST API の外部契約を、GitHub の公式資料から抜粋・整理したもの |
 
 用語の意味は、ドメインモデルを正本とします。ほかの文書で用語を導入するときは、意味を変えずに要約します。
 
-GitHub API の契約は GitHub の公式資料が正本です。reco の要求・契約・設計における独自の判断と、GitHub が定めた事実を区別します。同じ規則を複数文書で独立して定義せず、必要な箇所から正本を参照します。
+GitHub API の契約は GitHub の公式資料が正本です。開発のたびに公式資料を参照しなくて済むよう、必要な事実は [GitHub API 仕様](../research/github-api.md) に抽出します。GitHub API 仕様は GitHub の公式資料だけを根拠とし、ほかの内部文書に依存せず単独で読めるようにします。ただし、公式資料の記載が不十分で、reco の開発者が実際の動作を確認した事項は、公式資料の記載と区別できる注釈として記載できます。依存の向きは一方向であり、ほかの内部文書が GitHub API の事実を根拠とするときは GitHub API 仕様を参照し、GitHub API 仕様からほかの内部文書は参照しません。GitHub API 仕様に必要な事実がなければ、公式資料で確認して GitHub API 仕様に追記してから参照します。
+
+reco の要求・契約・設計における独自の判断と、GitHub が定めた事実を区別します。GitHub の事実をどう扱うかは参照する側の文書で定め、GitHub API 仕様には書きません。同じ規則を複数文書で独立して定義せず、必要な箇所から正本を参照します。
 
 ## 2. 識別子
 
@@ -43,7 +46,7 @@ Relationships は、記述元（Source）から参照先（Target）への意味
 | `grounding` | Target は、Source の重要な主張・判断・定義を支持する根拠である |
 | `checks` | Source の検証手段は、Target が定める性質を検査対象とする |
 
-Markdown では、関係を持つ定義またはセクションに、`Relationship`・`Target`・`Target Type` の3列からなるテーブルを直接置きます。次の例では「2.2 対象の同一性・認証・信頼境界」が Source、`FR-002` が Target です。
+Markdown では、関係を持つ定義またはセクションに、`Relationship`・`Target`・`Target Type` の3列からなるテーブルを直接置きます。次の例では「2.2 対象の同一性・認証・信頼境界」が Source、`FR-002` と GitHub API 仕様が Target です。
 
 ```markdown
 ### 2.2 対象の同一性・認証・信頼境界
@@ -53,11 +56,15 @@ Markdown では、関係を持つ定義またはセクションに、`Relationsh
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-002` | Functional Requirement |
+| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
 ```
 
 テーブルは原則として Source となるセクションの末尾に配置します。下位見出しのある章全体を Source とする場合は、直前の小節に属するように見えないよう、最初の下位見出しより前の章本文に配置します。
 
-Target には専用の識別子、リポジトリルート基準の相対ファイルパス、または外部資料の URL を用います。外部資料の URL には、根拠とする記述を特定できるよう、提供されていれば版やアンカーを含めます。
+Target には、専用の識別子、内部文書へのリンク、外部資料へのリンクのいずれかを書きます。識別子はコード表記（`FR-001` など）で書きます。内部文書と外部資料は `[タイトル](パス または URL)` 形式の Markdown リンクで書き、パスや URL だけを書きません。
+
+- **内部文書へのリンク**：パスは Source の文書からの相対パスとし、リンクテキストには参照先の文書タイトルを使う
+- **外部資料へのリンク**：URL には、根拠とする記述を特定できるよう、提供されていれば版やアンカーを含める。リンクテキストには参照先のページタイトルを使い、アンカーで節を指すときは「ページタイトル: 節見出し」とする。ページ自体が一つの操作や節に対応するとき（REST API の各エンドポイントなど）は、その見出しだけでよい
 
 `Target Type`は Target が示す区分であり、次のように対応します。
 
@@ -66,8 +73,8 @@ Target には専用の識別子、リポジトリルート基準の相対ファ�
 | `FR-XXX` | Functional Requirement |
 | `QR-XXX` | Quality Requirement |
 | `INV-XXX` | Invariant |
-| 相対ファイルパス | Internal Document |
-| 外部資料の URL | External Document |
+| 内部文書へのリンク | Internal Document |
+| 外部資料へのリンク | External Document |
 
 Markdown の Relationship テーブルでは `alignment` と `grounding` を使用します。`checks` は Go のテスト関数に付ける `//trace:checks FR-001` のようなコメントで宣言し、Markdown テーブルには記述しません。
 
@@ -77,7 +84,7 @@ Relationships の存在は、要求の充足、根拠の正確性、検証の実
 
 ## 4. 参照と変更時の整合性
 
-通常の文書参照には Markdown リンク `[タイトル](相対パス)` を使用します。Markdown リンクは参照先への移動を目的とし、Relationships は依存・根拠・検査対象の意味を記録するために使い分けます。
+通常の文書参照には Markdown リンク `[タイトル](相対パス)` を使用します。本文中の Markdown リンクは参照先への移動を目的とし、Relationships は依存・根拠・検査対象の意味を記録するために使い分けます。Relationship テーブルの Target もリンク形式で書きますが、意味を持つのはテーブルに記録した関係であり、リンクは参照先へ移動するための手段です。
 
 仕様や設計を変更するときは、次の点を確認します。
 

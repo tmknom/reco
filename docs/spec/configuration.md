@@ -95,7 +95,7 @@ GitHub API が提供する `enabled` や `sha_pinning_required` は、reco の Y
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `FR-005` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
-| `grounding` | `https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-github-actions-permissions-for-a-repository` | External Document |
+| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
 
 ### 4.1 入力の組み合わせ
 
@@ -109,10 +109,6 @@ GitHub API が提供する `enabled` や `sha_pinning_required` は、reco の Y
 | 省略 | 省略（`permissions` 自体を宣言） | エラー（空のマッピング） |
 
 これは **reco 固有の入力契約** です。GitHub REST API では Selected actions の3項目は任意パラメータですが、reco は選択方式の Actions 許可条件の期待状態を一意に定めるため、3項目を必須とします。入力として有効でも、現在の Actions 許可ポリシーや GitHub の制約によって、選択方式の Actions 許可条件を取得・適用できるとは限りません。
-
-| Relationship | Target | Target Type |
-|---|---|---|
-| `grounding` | `https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-allowed-actions-and-reusable-workflows-for-a-repository` | External Document |
 
 ### 4.2 `patterns_allowed`
 
@@ -128,10 +124,6 @@ patterns_allowed:
 
 GitHub の公式資料は `patterns_allowed` を公開リポジトリに適用する設定としています。非公開リポジトリでの保存・再取得・適用の具体的な挙動を、この入力契約によって保証するものではありません。
 
-| Relationship | Target | Target Type |
-|---|---|---|
-| `grounding` | `https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-allowed-actions-and-reusable-workflows-for-a-repository` | External Document |
-
 ## 5. Workflow permissions
 
 | YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
@@ -145,6 +137,7 @@ GitHub の公式資料は `patterns_allowed` を公開リポジトリに適用�
 |---|---|---|
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
+| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
 
 ## 6. 入力検証と対象名
 
@@ -191,10 +184,11 @@ GitHub は所有者名・リポジトリ名を大文字小文字非依存で扱�
 
 | Relationship | Target | Target Type |
 |---|---|---|
-| `grounding` | `https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#get-a-repository` | External Document |
+| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
 
 ## 7. References
 
 - [要求定義](requirements.md)
 - [CLI 仕様](cli.md)
+- [GitHub API 仕様](../research/github-api.md)
 - [YAML 1.2.2 Specification](https://yaml.org/spec/1.2.2/)
