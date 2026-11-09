@@ -19,6 +19,7 @@ Identify and read task-related sections below:
 ## Design
 
 - [Domain Model](docs/design/domain.md): Core concepts of reco and the distinctions between them (declaration, selection, and repository identity; management units; current state vs. observation result; reconciliation vs. applicability; logical change vs. update operation) - Use when naming domain types, deciding what a concept means, or checking that code keeps these distinctions
+- [Architecture](docs/design/architecture.md): Logical components and their boundaries, change planning and execution control, pre-validation, approval and per-update precondition checks, GitHub API trust boundary (redirects, unmanaged-setting preservation, non-atomic updates), and result classification - Use when placing responsibilities across packages, implementing the plan/apply flow, or changing how GitHub updates are issued and verified
 
 ## Project Overview
 
