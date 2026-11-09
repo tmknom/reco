@@ -10,9 +10,8 @@ import (
 
 // Repository は GitHub から取得したリポジトリの実体と一般設定である。
 type Repository struct {
-	ID       int64
-	FullName string
-	General  General
+	ID      int64
+	General General
 }
 
 // General はリポジトリ一般設定のうち、reco が観測する値である。
@@ -50,10 +49,9 @@ func (c *Client) repositoryURL(owner, repo string) *url.URL {
 
 // repositoryPayload は欠落と null を検出するため、各フィールドをポインタで受ける。
 type repositoryPayload struct {
-	ID                  *int64  `json:"id"`
-	FullName            *string `json:"full_name"`
-	AllowAutoMerge      *bool   `json:"allow_auto_merge"`
-	DeleteBranchOnMerge *bool   `json:"delete_branch_on_merge"`
+	ID                  *int64 `json:"id"`
+	AllowAutoMerge      *bool  `json:"allow_auto_merge"`
+	DeleteBranchOnMerge *bool  `json:"delete_branch_on_merge"`
 }
 
 // decodeRepository は応答本文をリポジトリに変換する。
@@ -67,9 +65,6 @@ func decodeRepository(data []byte) (Repository, error) {
 	if p.ID == nil {
 		missing = append(missing, "id")
 	}
-	if p.FullName == nil {
-		missing = append(missing, "full_name")
-	}
 	if p.AllowAutoMerge == nil {
 		missing = append(missing, "allow_auto_merge")
 	}
@@ -80,8 +75,7 @@ func decodeRepository(data []byte) (Repository, error) {
 		return Repository{}, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missing, ", "))
 	}
 	return Repository{
-		ID:       *p.ID,
-		FullName: *p.FullName,
+		ID: *p.ID,
 		General: General{
 			AllowAutoMerge:      *p.AllowAutoMerge,
 			DeleteBranchOnMerge: *p.DeleteBranchOnMerge,

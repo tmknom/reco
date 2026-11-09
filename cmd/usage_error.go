@@ -20,6 +20,15 @@ func noArgs(c *cobra.Command, args []string) error {
 	return nil
 }
 
+// requiredFlags は必須 flag の欠落を使い方の誤りにする。
+// cobra は MarkFlagRequired の欠落を FlagErrorFunc に通さず PreRunE の後に判定するため、PreRunE で先に判定して包む。
+func requiredFlags(c *cobra.Command, _ []string) error {
+	if err := c.ValidateRequiredFlags(); err != nil {
+		return &usageError{cmd: c, err: err}
+	}
+	return nil
+}
+
 func flagUsageError(c *cobra.Command, err error) error {
 	return &usageError{cmd: c, err: err}
 }

@@ -1,4 +1,4 @@
-package configuration
+package repository
 
 import (
 	"strings"
@@ -6,22 +6,22 @@ import (
 )
 
 //trace:checks FR-001
-func TestParseRepositoryReference(t *testing.T) {
+func TestParseReference(t *testing.T) {
 	cases := []struct {
 		name    string
 		input   string
-		want    RepositoryReference
+		want    Reference
 		wantErr string
 	}{
 		{
 			name:  "OWNER/REPO is split into owner and repo",
 			input: "owner/repo",
-			want:  RepositoryReference{Owner: "owner", Repo: "repo"},
+			want:  Reference{Owner: "owner", Repo: "repo"},
 		},
 		{
 			name:  "ASCII letters, digits, hyphen, underscore and dot are accepted",
 			input: "Owner-1/Repo_2.x",
-			want:  RepositoryReference{Owner: "Owner-1", Repo: "Repo_2.x"},
+			want:  Reference{Owner: "Owner-1", Repo: "Repo_2.x"},
 		},
 		{
 			name:    "name without slash is rejected",
@@ -91,19 +91,26 @@ func TestParseRepositoryReference(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := parseRepositoryReference(tc.input)
+			got, err := ParseReference(tc.input)
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatalf("parseRepositoryReference(%q) error = %v, want it to contain %q", tc.input, err, tc.wantErr)
+					t.Fatalf("ParseReference(%q) error = %v, want it to contain %q", tc.input, err, tc.wantErr)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("parseRepositoryReference(%q) error = %v", tc.input, err)
+				t.Fatalf("ParseReference(%q) error = %v", tc.input, err)
 			}
 			if got != tc.want {
-				t.Errorf("parseRepositoryReference(%q) = %+v, want %+v", tc.input, got, tc.want)
+				t.Errorf("ParseReference(%q) = %+v, want %+v", tc.input, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestReference_String(t *testing.T) {
+	got := Reference{Owner: "owner", Repo: "repo"}.String()
+	if got != "owner/repo" {
+		t.Errorf("String() = %q, want %q", got, "owner/repo")
 	}
 }

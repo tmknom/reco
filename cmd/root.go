@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/logger"
 )
 
@@ -31,10 +32,14 @@ type Environment struct {
 
 // Execute は args を実行し、終了コードを返す。
 func Execute(ctx context.Context, args []string, env Environment) int {
+	return execute(ctx, args, env)
+}
+
+func execute(ctx context.Context, args []string, env Environment, opts ...github.Option) int {
 	level := new(slog.LevelVar)
 	log := logger.New(env.Stderr, level)
 
-	root := newRootCmd(env.Version, level)
+	root := newRootCmd(env.Version, level, opts...) //nolint:contextcheck // サブコマンドは ExecuteContext に渡した ctx を c.Context() で受け取るため、組み立てに ctx を渡さない
 	root.SetArgs(args)
 	root.SetOut(env.Stdout)
 	root.SetErr(env.Stderr)
@@ -49,7 +54,7 @@ func Execute(ctx context.Context, args []string, env Environment) int {
 	return exitOK
 }
 
-func newRootCmd(version string, level *slog.LevelVar) *cobra.Command {
+func newRootCmd(version string, level *slog.LevelVar, opts ...github.Option) *cobra.Command {
 	if version == "" {
 		version = devVersion
 	}
@@ -66,7 +71,11 @@ func newRootCmd(version string, level *slog.LevelVar) *cobra.Command {
 	}
 	// CLI 仕様のコマンド一覧が外部契約のため、cobra が自動で加える completion を外す
 	root.CompletionOptions.DisableDefaultCmd = true
+	// 同じ理由で help コマンドも外す。cobra はサブコマンドがあると help を自動で加え、外す設定を持たないため、
+	// 名前のない隠しコマンドに差し替えて、help を未定義のコマンドとして扱わせる
+	root.SetHelpCommand(&cobra.Command{Hidden: true})
 	root.SetFlagErrorFunc(flagUsageError)
 	root.PersistentFlags().Var(newLogLevel(level), "log-level", "level of diagnostic logs ("+logLevelChoices()+")")
+	root.AddCommand(newShowCmd(opts...))
 	return root
 }

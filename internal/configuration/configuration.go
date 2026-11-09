@@ -4,6 +4,8 @@
 // yaml.Node の木と、各ノードの位置にあるソースの文字を走査して検証する。公開する型は YAML を知らない。
 package configuration
 
+import "github.com/tmknom/reco/internal/repository"
+
 // Declaration は設定宣言。
 type Declaration struct {
 	Repositories []RepositoryDeclaration
@@ -11,14 +13,8 @@ type Declaration struct {
 
 // RepositoryDeclaration はリポジトリごとの宣言。
 type RepositoryDeclaration struct {
-	Reference RepositoryReference
+	Reference repository.Reference
 	General   General
-}
-
-// RepositoryReference は OWNER/REPO 形式のリポジトリ指定。
-type RepositoryReference struct {
-	Owner string
-	Repo  string
 }
 
 // General はリポジトリ一般設定の期待状態。

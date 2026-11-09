@@ -6,13 +6,15 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/tmknom/reco/internal/github"
 )
 
-func runExecute(t *testing.T, version string, args ...string) (code int, stdout, stderr string) {
+func runExecute(t *testing.T, version string, opts []github.Option, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	var out, errOut bytes.Buffer
 	env := Environment{Stdout: &out, Stderr: &errOut, Version: version}
-	code = Execute(context.Background(), args, env)
+	code = execute(context.Background(), args, env, opts...)
 	return code, out.String(), errOut.String()
 }
 
@@ -52,10 +54,11 @@ func TestExecute_Success(t *testing.T) {
 		{name: "--version ignores positional arguments", version: "v1.2.3", args: []string{"foo", "--version"}, stdout: "v1.2.3"},
 		{name: "--version without embedded version prints dev", version: "", args: []string{"--version"}, stdout: "dev"},
 		{name: "--log-level is accepted", args: []string{"--log-level", "debug"}, stdout: "Usage:"},
+		{name: "show --help shows show usage without --repo", args: []string{"show", "--help"}, stdout: "reco show"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			code, stdout, stderr := runExecute(t, tc.version, tc.args...)
+			code, stdout, stderr := runExecute(t, tc.version, nil, tc.args...)
 			if code != 0 {
 				t.Errorf("got exit code %d, want 0 (stderr %q)", code, stderr)
 			}
@@ -66,6 +69,21 @@ func TestExecute_Success(t *testing.T) {
 				t.Errorf("got stderr %q, want empty", stderr)
 			}
 		})
+	}
+}
+
+// 他のテストは接続先を差し替えるため execute を呼ぶ。
+func TestExecute_PassesArgsAndEnvironment(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := Execute(context.Background(), []string{"--version"}, Environment{Stdout: &out, Stderr: &errOut, Version: "v1.2.3"})
+	if code != 0 {
+		t.Errorf("got exit code %d, want 0 (stderr %q)", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "v1.2.3") {
+		t.Errorf("got stdout %q, want it to contain %q", out.String(), "v1.2.3")
+	}
+	if errOut.String() != "" {
+		t.Errorf("got stderr %q, want empty", errOut.String())
 	}
 }
 
@@ -85,10 +103,12 @@ func TestExecute_UsageError(t *testing.T) {
 		{name: "invalid log level with --help is rejected", args: []string{"--log-level", "verbose", "--help"}, token: "verbose"},
 		{name: "extra positional argument", args: []string{"foo"}, token: "foo"},
 		{name: "completion command is not provided", args: []string{"completion"}, token: "completion"},
+		// help は使い方の文面にも現れるため token を空にする
+		{name: "help command is not provided", args: []string{"help"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			code, stdout, stderr := runExecute(t, "", tc.args...)
+			code, stdout, stderr := runExecute(t, "", nil, tc.args...)
 			if code != 1 {
 				t.Errorf("got exit code %d, want 1", code)
 			}
@@ -106,5 +126,15 @@ func TestExecute_UsageError(t *testing.T) {
 				t.Errorf("got stderr %q, want %q exactly once", stderr, tc.token)
 			}
 		})
+	}
+}
+
+// CLI 仕様のコマンド一覧が外部契約のため、help に cobra の自動で加えるコマンドや話題が現れないことを確かめる。
+func TestExecute_HelpListsOnlySpecifiedCommands(t *testing.T) {
+	_, stdout, _ := runExecute(t, "", nil, "--help")
+	for _, unwanted := range []string{"Additional help topics", "Help about any command"} {
+		if strings.Contains(stdout, unwanted) {
+			t.Errorf("got stdout %q, want it not to contain %q", stdout, unwanted)
+		}
 	}
 }

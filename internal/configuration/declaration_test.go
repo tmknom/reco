@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/tmknom/reco/internal/repository"
 )
 
 // TestDocumentDeclaration は、各階層で要求するキーの集合 (スキーマ) と、各段階へ渡すパスを確かめる。
@@ -11,9 +13,9 @@ import (
 //
 //trace:checks FR-001
 func TestDocumentDeclaration(t *testing.T) {
-	repository := func(owner, repo string, allowAutoMerge bool) RepositoryDeclaration {
+	repositoryDeclaration := func(owner, repo string, allowAutoMerge bool) RepositoryDeclaration {
 		return RepositoryDeclaration{
-			Reference: RepositoryReference{Owner: owner, Repo: repo},
+			Reference: repository.Reference{Owner: owner, Repo: repo},
 			General:   General{AllowAutoMerge: new(allowAutoMerge)},
 		}
 	}
@@ -33,14 +35,14 @@ func TestDocumentDeclaration(t *testing.T) {
 		{
 			name: "true is read as an explicit expected value true",
 			src:  minimal,
-			want: Declaration{Repositories: []RepositoryDeclaration{repository("owner", "repo", true)}},
+			want: Declaration{Repositories: []RepositoryDeclaration{repositoryDeclaration("owner", "repo", true)}},
 		},
 		{
 			name: "all repository declarations are read, keeping false as an explicit expected value",
 			src:  second,
 			want: Declaration{Repositories: []RepositoryDeclaration{
-				repository("owner", "repo", true),
-				repository("owner", "second", false),
+				repositoryDeclaration("owner", "repo", true),
+				repositoryDeclaration("owner", "second", false),
 			}},
 		},
 		// ルート

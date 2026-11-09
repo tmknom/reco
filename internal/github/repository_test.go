@@ -78,7 +78,7 @@ func TestDecodeRepository(t *testing.T) {
 		if err != nil {
 			t.Fatalf("decodeRepository() error = %v", err)
 		}
-		want := Repository{ID: 1296269, FullName: "owner/repo", General: General{AllowAutoMerge: true, DeleteBranchOnMerge: false}}
+		want := Repository{ID: 1296269, General: General{AllowAutoMerge: true, DeleteBranchOnMerge: false}}
 		if got != want {
 			t.Errorf("decodeRepository() = %+v, want %+v", got, want)
 		}
@@ -90,7 +90,6 @@ func TestDecodeRepository(t *testing.T) {
 		errContains string
 	}{
 		{name: "missing id is unexpected response", body: `{"full_name": "o/r", "allow_auto_merge": true, "delete_branch_on_merge": true}`, errContains: "id"},
-		{name: "missing full_name is unexpected response", body: `{"id": 1, "allow_auto_merge": true, "delete_branch_on_merge": true}`, errContains: "full_name"},
 		{name: "missing allow_auto_merge is unexpected response", body: `{"id": 1, "full_name": "o/r", "delete_branch_on_merge": true}`, errContains: "allow_auto_merge"},
 		{name: "missing delete_branch_on_merge is unexpected response", body: `{"id": 1, "full_name": "o/r", "allow_auto_merge": true}`, errContains: "delete_branch_on_merge"},
 		{name: "null allow_auto_merge is unexpected response", body: `{"id": 1, "full_name": "o/r", "allow_auto_merge": null, "delete_branch_on_merge": true}`, errContains: "allow_auto_merge"},
@@ -124,7 +123,7 @@ func TestFetchRepository(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchRepository() error = %v", err)
 	}
-	want := Repository{ID: 1296269, FullName: "owner/repo", General: General{AllowAutoMerge: true, DeleteBranchOnMerge: false}}
+	want := Repository{ID: 1296269, General: General{AllowAutoMerge: true, DeleteBranchOnMerge: false}}
 	if repo != want {
 		t.Errorf("FetchRepository() = %+v, want %+v", repo, want)
 	}

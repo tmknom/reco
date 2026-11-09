@@ -1,4 +1,5 @@
-package configuration
+// Package repository は、リポジトリを名前で指し示すリポジトリ指定を扱う。
+package repository
 
 import (
 	"errors"
@@ -6,24 +7,35 @@ import (
 	"strings"
 )
 
-// parseRepositoryReference は OWNER/REPO 形式の名前をリポジトリ指定に分ける。
+// Reference は OWNER/REPO 形式のリポジトリ指定。
+type Reference struct {
+	Owner string
+	Repo  string
+}
+
+// String は OWNER/REPO 形式の名前を返す。
+func (r Reference) String() string {
+	return r.Owner + "/" + r.Repo
+}
+
+// ParseReference は OWNER/REPO 形式の名前をリポジトリ指定に分ける。
 // 文字を ASCII の英数字と -、_、. に限るのは、空白や制御文字に加え、URL やクローン用の表記の断片
 // (:、@、%、?、#) と、URL パスのドットセグメントになる . と .. を後段に渡さないため。
-func parseRepositoryReference(name string) (RepositoryReference, error) {
+func ParseReference(name string) (Reference, error) {
 	owner, repo, found := strings.Cut(name, "/")
 	if !found || strings.Contains(repo, "/") {
-		return RepositoryReference{}, errors.New(`must be OWNER/REPO with exactly one "/"`)
+		return Reference{}, errors.New(`must be OWNER/REPO with exactly one "/"`)
 	}
 	if err := checkNameSegment("OWNER", owner); err != nil {
-		return RepositoryReference{}, err
+		return Reference{}, err
 	}
 	if err := checkNameSegment("REPO", repo); err != nil {
-		return RepositoryReference{}, err
+		return Reference{}, err
 	}
 	if strings.HasSuffix(strings.ToLower(repo), ".git") {
-		return RepositoryReference{}, errors.New(`must not end with ".git"`)
+		return Reference{}, errors.New(`must not end with ".git"`)
 	}
-	return RepositoryReference{Owner: owner, Repo: repo}, nil
+	return Reference{Owner: owner, Repo: repo}, nil
 }
 
 func checkNameSegment(label, segment string) error {
