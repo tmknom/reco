@@ -1,4 +1,4 @@
-module github.com/tmknom/template-go
+module github.com/tmknom/reco
 
 go 1.27.0
 

@@ -83,14 +83,14 @@ linters:
           files:
             - "${base-path}/internal/**"
           deny:
-            - pkg: github.com/tmknom/template-go/cmd
+            - pkg: github.com/tmknom/reco/cmd
               desc: internal must not depend on cmd
         internal-from-main:
           list-mode: lax
           files:
             - "${base-path}/main.go"
           deny:
-            - pkg: github.com/tmknom/template-go/internal
+            - pkg: github.com/tmknom/reco/internal
               desc: main only calls cmd.Execute
     exhaustive:
       default-signifies-exhaustive: true

@@ -81,6 +81,15 @@ CLI が選択した認証情報だけを GitHub Access へ渡します。認証�
 | `alignment` | `INV-004` | Invariant |
 | `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
 
+### 2.3 Go package との対応
+
+2.1節の領域と、領域をまたいで使う部品は、Go の package に次のように対応します。
+
+| 領域・部品 | package |
+|---|---|
+| CLI | `cmd` |
+| 診断ログの出力 (全領域が共通に使う logger) | `internal/logger` |
+
 ## 3. 情報の流れと変更計画
 
 ### 3.1 設定宣言と管理範囲
