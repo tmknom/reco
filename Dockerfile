@@ -1,3 +1,3 @@
 FROM scratch
-ENTRYPOINT ["/template-go"]
-COPY template-go /
+ENTRYPOINT ["/reco"]
+COPY reco /

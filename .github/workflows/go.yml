@@ -1,0 +1,74 @@
+name: Go
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "**.go"
+      - go.mod
+      - go.sum
+      - scripts/coverage/**
+      - scripts/golangci-lint/**
+      - .github/workflows/go.yml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: tmknom/secure-checkout-action@v1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Check import formatting
+        run: |
+          unformatted="$(go tool goimports -l -local github.com/tmknom/reco .)"
+          if [ -n "${unformatted}" ]; then
+            echo "files need goimports:"
+            echo "${unformatted}"
+            exit 1
+          fi
+
+      # Makefile は版を固定しない外部の Makefile を clone して読み込むため、CI では make を使わない
+      - name: Vet
+        run: go vet ./...
+
+      - name: Check known vulnerabilities
+        run: go tool govulncheck ./...
+
+      - name: Test with coverage
+        run: |
+          go test -count=1 -coverprofile="${RUNNER_TEMP}/coverage.out" ./...
+          scripts/coverage/check.sh "${RUNNER_TEMP}/coverage.out"
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: tmknom/secure-checkout-action@v1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          # scripts/golangci-lint/compose.yaml のイメージと同じ版にそろえる
+          version: v2.14.0
+          args: --config=scripts/golangci-lint/.golangci.yml

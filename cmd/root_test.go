@@ -3,130 +3,108 @@ package cmd
 import (
 	"bytes"
 	"context"
-	"errors"
-	"io"
+	"encoding/json"
 	"strings"
 	"testing"
-	"testing/iotest"
-	"time"
 )
 
-func runExecute(stdin, version, commit string, args ...string) (int, string, string) {
-	var stdout, stderr bytes.Buffer
-	env := Env{
-		Stdin:   strings.NewReader(stdin),
-		Stdout:  &stdout,
-		Stderr:  &stderr,
-		Current: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
-		WorkDir: "/work",
-		Version: version,
-		Commit:  commit,
-	}
-	code := Execute(context.Background(), args, env)
-	return code, stdout.String(), stderr.String()
+func runExecute(t *testing.T, version string, args ...string) (code int, stdout, stderr string) {
+	t.Helper()
+	var out, errOut bytes.Buffer
+	env := Environment{Stdout: &out, Stderr: &errOut, Version: version}
+	code = Execute(context.Background(), args, env)
+	return code, out.String(), errOut.String()
 }
 
-func TestExecute_Run(t *testing.T) {
-	code, stdout, stderr := runExecute("hello\n", "", "")
-	if code != 0 {
-		t.Errorf("got exit code %d, want 0", code)
-	}
-	for _, want := range []string{`"in": "hello"`, `"work_dir": "/work"`, `"time": "2026-01-02T03:04:05Z"`} {
-		if !strings.Contains(stdout, want) {
-			t.Errorf("got stdout %q, want it to contain %q", stdout, want)
+// errorRecords は、stderr の JSON 行のうち ERROR レベルのレコードを返す。使い方などの JSON でない行は読み飛ばす。
+func errorRecords(t *testing.T, stderr string) []map[string]any {
+	t.Helper()
+	var got []map[string]any
+	for line := range strings.SplitSeq(stderr, "\n") {
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			t.Fatalf("got invalid JSON line %q: %v", line, err)
+		}
+		if m["level"] == "ERROR" {
+			got = append(got, m)
 		}
 	}
-	if stderr != "" {
-		t.Errorf("got stderr %q, want empty", stderr)
+	return got
+}
+
+func TestExecute_Success(t *testing.T) {
+	cases := []struct {
+		name    string
+		version string
+		args    []string
+		stdout  string
+	}{
+		{name: "no arguments shows help on stdout", args: nil, stdout: "Usage:"},
+		{name: "--help shows help on stdout", args: []string{"--help"}, stdout: "Usage:"},
+		// 引数のない root は RunE でも help を出すため、位置引数を添えて help flag として効いたことを確かめる
+		{name: "-h shows help on stdout", args: []string{"foo", "-h"}, stdout: "Usage:"},
+		{name: "--help ignores positional arguments", args: []string{"foo", "--help"}, stdout: "Usage:"},
+		{name: "--version prints the embedded version", version: "v1.2.3", args: []string{"--version"}, stdout: "v1.2.3"},
+		{name: "-v prints the embedded version", version: "v1.2.3", args: []string{"-v"}, stdout: "v1.2.3"},
+		{name: "--version ignores positional arguments", version: "v1.2.3", args: []string{"foo", "--version"}, stdout: "v1.2.3"},
+		{name: "--version without embedded version prints dev", version: "", args: []string{"--version"}, stdout: "dev"},
+		{name: "--log-level is accepted", args: []string{"--log-level", "debug"}, stdout: "Usage:"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, stdout, stderr := runExecute(t, tc.version, tc.args...)
+			if code != 0 {
+				t.Errorf("got exit code %d, want 0 (stderr %q)", code, stderr)
+			}
+			if !strings.Contains(stdout, tc.stdout) {
+				t.Errorf("got stdout %q, want it to contain %q", stdout, tc.stdout)
+			}
+			if stderr != "" {
+				t.Errorf("got stderr %q, want empty", stderr)
+			}
+		})
 	}
 }
 
-func TestExecute_Help(t *testing.T) {
-	code, stdout, _ := runExecute("", "", "", "--help")
-	if code != 0 {
-		t.Errorf("got exit code %d, want 0", code)
+func TestExecute_UsageError(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		// token は、エラーの対象として stderr にちょうど 1 回だけ現れる語。cobra のエラー表示が重なると 2 回になる。
+		// 使い方の文面にも現れる語のときは空にする。
+		token string
+	}{
+		{name: "unknown flag", args: []string{"--invalid"}, token: "--invalid"},
+		{name: "flag without value", args: []string{"--log-level"}},
+		{name: "uppercase log level is rejected", args: []string{"--log-level", "INFO"}, token: "INFO"},
+		{name: "log level with surrounding space is rejected", args: []string{"--log-level", "info "}},
+		{name: "unknown log level name is rejected", args: []string{"--log-level", "verbose"}, token: "verbose"},
+		{name: "invalid log level with --help is rejected", args: []string{"--log-level", "verbose", "--help"}, token: "verbose"},
+		{name: "extra positional argument", args: []string{"foo"}, token: "foo"},
+		{name: "completion command is not provided", args: []string{"completion"}, token: "completion"},
 	}
-	if !strings.Contains(stdout, "Template repository for Go") {
-		t.Errorf("got stdout %q, want help text", stdout)
-	}
-}
-
-func TestExecute_Version(t *testing.T) {
-	code, stdout, _ := runExecute("", "v1.2.3", "abc123", "--version")
-	if code != 0 {
-		t.Errorf("got exit code %d, want 0", code)
-	}
-	if !strings.Contains(stdout, "v1.2.3 (abc123)") {
-		t.Errorf("got stdout %q, want version", stdout)
-	}
-}
-
-func TestExecute_VersionWithoutBuildInfo(t *testing.T) {
-	code, stdout, _ := runExecute("", "", "", "--version")
-	if code != 0 {
-		t.Errorf("got exit code %d, want 0", code)
-	}
-	if !strings.Contains(stdout, "dev") {
-		t.Errorf("got stdout %q, want dev version", stdout)
-	}
-}
-
-func TestExecute_UnexpectedArgs(t *testing.T) {
-	code, stdout, stderr := runExecute("hello", "", "", "foo")
-	if code != exitFailure {
-		t.Errorf("got exit code %d, want %d", code, exitFailure)
-	}
-	if stdout != "" {
-		t.Errorf("got stdout %q, want empty", stdout)
-	}
-	if !strings.Contains(stderr, "unknown command") {
-		t.Errorf("got stderr %q, want unknown command error", stderr)
-	}
-}
-
-func TestExecute_ReadError(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	env := Env{Stdin: iotest.ErrReader(errors.New("boom")), Stdout: &stdout, Stderr: &stderr}
-	code := Execute(context.Background(), nil, env)
-	if code != exitFailure {
-		t.Errorf("got exit code %d, want %d", code, exitFailure)
-	}
-	if !strings.Contains(stderr.String(), "boom") {
-		t.Errorf("got stderr %q, want read error", stderr.String())
-	}
-}
-
-func TestExecute_Canceled(t *testing.T) {
-	pr, pw := io.Pipe()
-	defer func() { _ = pw.Close() }()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan int, 1)
-	go func() {
-		var stdout, stderr bytes.Buffer
-		done <- Execute(ctx, nil, Env{Stdin: pr, Stdout: &stdout, Stderr: &stderr})
-	}()
-
-	cancel()
-	select {
-	case code := <-done:
-		if code != exitInterrupted {
-			t.Errorf("got exit code %d, want %d", code, exitInterrupted)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("Execute did not return after cancel")
-	}
-}
-
-func TestExecute_UnknownFlag(t *testing.T) {
-	code, stdout, stderr := runExecute("", "", "", "--invalid")
-	if code != exitFailure {
-		t.Errorf("got exit code %d, want %d", code, exitFailure)
-	}
-	if stdout != "" {
-		t.Errorf("got stdout %q, want empty", stdout)
-	}
-	if !strings.Contains(stderr, "unknown flag: --invalid") {
-		t.Errorf("got stderr %q, want unknown flag error", stderr)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, stdout, stderr := runExecute(t, "", tc.args...)
+			if code != 1 {
+				t.Errorf("got exit code %d, want 1", code)
+			}
+			if stdout != "" {
+				t.Errorf("got stdout %q, want empty", stdout)
+			}
+			records := errorRecords(t, stderr)
+			if len(records) != 1 || records[0]["msg"] != "command failed" {
+				t.Errorf("got ERROR records %v, want one command failed record", records)
+			}
+			if !strings.Contains(stderr, "Usage:") {
+				t.Errorf("got stderr %q, want usage", stderr)
+			}
+			if tc.token != "" && strings.Count(stderr, tc.token) != 1 {
+				t.Errorf("got stderr %q, want %q exactly once", stderr, tc.token)
+			}
+		})
 	}
 }
