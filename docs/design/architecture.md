@@ -79,7 +79,7 @@ CLI が選択した認証情報だけを GitHub Access へ渡します。認証�
 | `alignment` | `FR-010` | Functional Requirement |
 | `alignment` | `QR-001` | Quality Requirement |
 | `alignment` | `INV-004` | Invariant |
-| `grounding` | `https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#use-conditional-requests` | External Document |
+| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
 
 ## 3. 情報の流れと変更計画
 
@@ -187,7 +187,7 @@ Apply は承認された変更計画を Change Execution に渡し、Change Exec
 
 ### 5.1 外部契約の吸収
 
-GitHub Access は GitHub REST API の応答やエラーを、reco が扱う観測結果と失敗情報に変換します。利用する REST API のバージョンを明示し、取得条件・権限・必須フィールドなどの制約も提供します。未管理設定の値は推測して補完しません。
+GitHub Access は GitHub REST API の応答やエラーを、reco が扱う観測結果と失敗情報に変換します。利用する REST API のバージョン（`2026-03-10`）を明示し、取得条件・権限・必須フィールドなどの制約も提供します。未管理設定の値は推測して補完しません。
 
 ### 5.2 HTTP 通信とリダイレクトの信頼境界
 
@@ -207,9 +207,7 @@ GitHub Access は、認証付きリクエストの送信先を GitHub.com の RE
 | `alignment` | `QR-002` | Quality Requirement |
 | `alignment` | `INV-004` | Invariant |
 | `alignment` | `INV-005` | Invariant |
-| `grounding` | `https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#follow-redirects` | External Document |
-| `grounding` | `https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#get-a-repository` | External Document |
-| `grounding` | `https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#update-a-repository` | External Document |
+| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
 
 ### 5.3 未管理設定を保全する更新方式
 
@@ -233,9 +231,7 @@ API パラメータが任意であることは、省略した値の保持を保�
 | `alignment` | `FR-006` | Functional Requirement |
 | `alignment` | `FR-011` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
-| `grounding` | `https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#update-a-repository` | External Document |
-| `grounding` | `https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-github-actions-permissions-for-a-repository` | External Document |
-| `grounding` | `https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-default-workflow-permissions-for-a-repository` | External Document |
+| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
 
 ### 5.4 非原子的な更新と中間状態
 
@@ -252,8 +248,7 @@ GitHub の複数の更新操作を原子的に実行する仕組みはありま�
 | `alignment` | `FR-012` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
 | `alignment` | `INV-004` | Invariant |
-| `grounding` | `https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#get-allowed-actions-and-reusable-workflows-for-a-repository` | External Document |
-| `grounding` | `https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-allowed-actions-and-reusable-workflows-for-a-repository` | External Document |
+| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
 
 ## 6. 更新結果と障害時の制御
 
@@ -293,12 +288,15 @@ Change Execution は、各更新操作の応答と更新後の期待状態の観
 
 読み取り操作のリトライは、対象オリジンの制約と回数・待機時間の上限を守り、再試行可能な一時的失敗に限定します。認証失敗や対象の不明確さをリトライで補いません。レート制限時は GitHub の指示する待機条件を守り、書き込み操作間には推奨される間隔を設けます。読み取りの再試行は、更新要求の再送を認める根拠になりません。
 
+レート制限の超過は `403` または `429` で報告され、ステータスコードだけでは権限不足と区別できません。GitHub Access は `retry-after` と `x-ratelimit-remaining` の応答ヘッダーからレート制限かどうかを判定し、レート制限による `403` を権限不足と断定しません。レート制限で拒否された更新要求は、更新操作の失敗として扱い、再送しません。
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-010` | Functional Requirement |
 | `alignment` | `FR-013` | Functional Requirement |
 | `alignment` | `INV-004` | Invariant |
 | `alignment` | `INV-005` | Invariant |
+| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
 
 ## 7. References
 
@@ -306,3 +304,4 @@ Change Execution は、各更新操作の応答と更新後の期待状態の観
 - [CLI 仕様](../spec/cli.md)
 - [YAML 設定仕様](../spec/configuration.md)
 - [ドメインモデル](domain.md)
+- [GitHub API 仕様](../research/github-api.md)

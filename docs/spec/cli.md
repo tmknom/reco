@@ -60,7 +60,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 両方が未設定または空の場合は、GitHub API へのアクセス前にエラーとします。選択したトークンで認証に失敗しても、もう一方へ切り替えません。トークン用のコマンドラインオプションは設けず、`gh` コマンドや資格情報ストアからの取得、トークンの自動生成・保存も行いません。
 
-認証トークン・認証ヘッダーの秘密情報は、通常出力、エラー、ログに表示・記録しません。外部 API の応答を診断に使う場合も秘密情報をそのまま出力しません。エラー表示では `401`、`403`、`404` を区別して示し、`404` だけからリポジトリの不存在を断定しません。
+認証トークン・認証ヘッダーの秘密情報は、通常出力、エラー、ログに表示・記録しません。外部 API の応答を診断に使う場合も秘密情報をそのまま出力しません。エラー表示では `401`、`403`、`404` を区別して示し、`404` だけからリポジトリの不存在を断定しません。`403` または `429` がレート制限によるものと判定できる場合は、権限不足ではなくレート制限として示します。
 
 環境変数の優先順位は [GitHub CLI の環境変数仕様](https://cli.github.com/manual/gh_help_environment) と同じですが、reco が GitHub CLI の認証機構を利用することは意味しません。
 
@@ -68,7 +68,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 |---|---|---|
 | `alignment` | `FR-003` | Functional Requirement |
 | `alignment` | `QR-001` | Quality Requirement |
-| `grounding` | `https://docs.github.com/en/rest/using-the-rest-api/troubleshooting-the-rest-api#404-not-found-for-an-existing-resource` | External Document |
+| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
 
 ## 4. `plan`：変更計画の確認
 
@@ -275,3 +275,4 @@ HTTP リダイレクトには追従しません。読み取り要求では観測
 
 - [要求定義](requirements.md)
 - [YAML 設定仕様](configuration.md)
+- [GitHub API 仕様](../research/github-api.md)
