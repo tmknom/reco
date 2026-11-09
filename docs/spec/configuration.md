@@ -95,6 +95,7 @@ GitHub API が提供する `enabled` や `sha_pinning_required` は、reco の Y
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `FR-005` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
+| `grounding` | `https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-github-actions-permissions-for-a-repository` | External Document |
 
 ### 4.1 入力の組み合わせ
 
@@ -109,6 +110,10 @@ GitHub API が提供する `enabled` や `sha_pinning_required` は、reco の Y
 
 これは **reco 固有の入力契約** です。GitHub REST API では Selected actions の3項目は任意パラメータですが、reco は選択方式の Actions 許可条件の期待状態を一意に定めるため、3項目を必須とします。入力として有効でも、現在の Actions 許可ポリシーや GitHub の制約によって、選択方式の Actions 許可条件を取得・適用できるとは限りません。
 
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | `https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-allowed-actions-and-reusable-workflows-for-a-repository` | External Document |
+
 ### 4.2 `patterns_allowed`
 
 `patterns_allowed` は文字列の要素からなるシーケンスで、`[]` は空集合を明示します。空文字列、空白だけの文字列、前後に空白を含む文字列、`null`、文字列以外の要素、および同一文字列の重複は受け付けません。重複は YAML のエスケープ表現を解釈した後の文字列で判定します。値を自動補完・トリミング・正規化しません。
@@ -122,6 +127,10 @@ patterns_allowed:
 許可パターンは、reco の照合では **文字列の集合** として扱います。配列要素の順序だけが違う場合は差分とみなしません。一方、ワイルドカードや異なるパターンの意味的な包含関係は解釈せず、文字列の一致によって扱います。GitHub がこれらのパターンを実際に許可条件として扱うかどうかは、GitHub の仕様と対象リポジトリの条件に従います。
 
 GitHub の公式資料は `patterns_allowed` を公開リポジトリに適用する設定としています。非公開リポジトリでの保存・再取得・適用の具体的な挙動を、この入力契約によって保証するものではありません。
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | `https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-allowed-actions-and-reusable-workflows-for-a-repository` | External Document |
 
 ## 5. Workflow permissions
 
@@ -179,6 +188,10 @@ GitHub の公式資料は `patterns_allowed` を公開リポジトリに適用�
 GitHub は所有者名・リポジトリ名を大文字小文字非依存で扱います。このため、同一文字列の `name` に加え、**大文字小文字だけが異なる `name` の重複も入力時に拒否します**。たとえば `Example/Project-A` と `example/project-a` を同一の設定宣言に並べることはできません。大文字小文字の同一視は ASCII 英字に限ります。
 
 表記が異なる名前がリネーム・移転などによって GitHub 上の同一リポジトリ ID を指すかどうかは、YAML の検証では判定しません。実行時の対象指定方法は [CLI 仕様](cli.md) で定めます。なお、実行対象を一つに絞っても、この文書で定める YAML 宣言全体の検証は省略しません。
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | `https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#get-a-repository` | External Document |
 
 ## 7. References
 

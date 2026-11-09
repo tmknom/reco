@@ -9,10 +9,11 @@ Identify and read task-related sections below:
 - Modify `cmd/` or CLI behavior → Read **Specifications** section (CLI, Requirements)
 - Modify YAML configuration handling → Read **Specifications** section (Configuration, Requirements)
 - Make design decisions or evaluate scope → Read **Project Overview** section
+- Edit documents under `docs/` → Read **Contributing** section
 
 ## Specifications
 
-- [Requirements](docs/spec/requirements.md): Functional requirements, quality requirements, and invariants of reco - Use when implementing or changing features, or checking supported scope, safety guarantees, and terms such as Desired State, Management Scope, and Change Plan
+- [Requirements](docs/spec/requirements.md): Functional requirements, quality requirements, and invariants of reco - Use when implementing or changing features, or checking supported scope and safety guarantees
 - [CLI](docs/spec/cli.md): Commands (`plan`, `apply`, `show`), options, credential selection, interactive approval, output, and exit codes - Use when modifying `cmd/`, adding commands or options, or changing user-visible output and exit codes
 - [Configuration](docs/spec/configuration.md): YAML configuration structure, types, allowed values, combinations, management scope interpretation, and input validation - Use when modifying configuration parsing or validation, or adding supported repository settings
 
@@ -24,3 +25,7 @@ Identify and read task-related sections below:
 ## Project Overview
 
 - [Constitution](docs/CONSTITUTION.md): Purpose, problem statement, value proposition, design principles, and non-goals of reco - Use when making design decisions, resolving tradeoffs between principles, or judging whether a feature is in scope
+
+## Contributing
+
+- [Documentation Policy](docs/contributing/docs-policy.md): Responsibilities and sources of truth of each document, identifiers (`FR`, `QR`, `INV`), Relationships (`alignment`, `grounding`, `checks`), and consistency checks on change - Use when adding or changing requirements, identifiers, or Relationship tables, or when editing specs and designs

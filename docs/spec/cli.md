@@ -68,6 +68,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 |---|---|---|
 | `alignment` | `FR-003` | Functional Requirement |
 | `alignment` | `QR-001` | Quality Requirement |
+| `grounding` | `https://docs.github.com/en/rest/using-the-rest-api/troubleshooting-the-rest-api#404-not-found-for-an-existing-resource` | External Document |
 
 ## 4. `plan`：変更計画の確認
 
