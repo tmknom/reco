@@ -88,6 +88,7 @@ CLI が選択した認証情報だけを GitHub Access へ渡します。認証�
 | 領域・部品 | package |
 |---|---|
 | CLI | `cmd` |
+| Configuration | `internal/configuration` |
 | 診断ログの出力 (全領域が共通に使う logger) | `internal/logger` |
 
 ## 3. 情報の流れと変更計画
