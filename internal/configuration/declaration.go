@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/tmknom/reco/internal/repository"
 )
 
 func (d document) declaration() (Declaration, error) {
@@ -26,7 +28,7 @@ func (d document) declaration() (Declaration, error) {
 		if err != nil {
 			return Declaration{}, err
 		}
-		name := r.Reference.Owner + "/" + r.Reference.Repo
+		name := r.Reference.String()
 		key := strings.ToLower(name)
 		if j, ok := seen[key]; ok {
 			return Declaration{}, invalid(item, path, "duplicate name %q; same as repositories[%d] (compared ignoring letter case)", name, j)
@@ -47,7 +49,7 @@ func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDe
 	if err != nil {
 		return RepositoryDeclaration{}, err
 	}
-	reference, err := parseRepositoryReference(name)
+	reference, err := repository.ParseReference(name)
 	if err != nil {
 		return RepositoryDeclaration{}, invalid(entries["name"], namePath, "%v; got %q", err, name)
 	}
