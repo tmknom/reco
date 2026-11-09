@@ -41,6 +41,7 @@ flowchart TB
 | リポジトリ所有者 | Repository Owner | GitHub 上でリポジトリを所有するアカウント |
 | リポジトリ ID | Repository ID | GitHub がリポジトリの実体に付与する識別子。所有者名とリポジトリ名による指定とは異なる |
 | リポジトリ設定 | Repository Setting | GitHub がリポジトリについて提供する設定。Auto-merge の許可や Actions の実行許可範囲など |
+| リポジトリ一般設定 | General | リポジトリ設定のうち、Pull Request の Auto-merge の許可やマージ後のブランチ自動削除など、リポジトリ全般の振る舞いに関する設定の領域 |
 | Actions 許可ポリシー | Allowed Actions Policy | 許可する Actions と再利用可能なワークフローの範囲を定める上位設定 |
 | 選択方式の Actions 許可条件 | Selected Actions Criteria | 上位の許可ポリシーが `selected` のときに適用される詳細な許可条件 |
 
@@ -52,7 +53,8 @@ Repository Owner は所有関係を表す概念であり、reco が認証主体�
 
 | 日本語 | 英語 | 意味 |
 |---|---|---|
-| 設定宣言 | Configuration Declaration | リポジトリの指定と、各リポジトリで管理する設定・期待状態を利用者が明示した情報 |
+| 設定宣言 | Configuration Declaration | 利用者が明示した、リポジトリごとの宣言の集まり |
+| リポジトリごとの宣言 | Repository Declaration | 設定宣言の要素。一つのリポジトリ指定と、そのリポジトリについて期待状態を明示した管理設定の組 |
 | リポジトリ指定 | Repository Reference | 所有者名とリポジトリ名の組など、リポジトリを名前で指し示す情報。GitHub 上の実体を識別する Repository ID とは異なる |
 | 対象リポジトリ | Target Repository | 一回の操作で選択されたリポジトリ。設定宣言に記載されているだけの指定とは区別する |
 | 期待状態 | Desired State | リポジトリについて、管理対象として宣言した設定に利用者が求める状態 |
