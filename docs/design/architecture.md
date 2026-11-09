@@ -79,6 +79,7 @@ CLI が選択した認証情報だけを GitHub Access へ渡します。認証�
 | `alignment` | `FR-010` | Functional Requirement |
 | `alignment` | `QR-001` | Quality Requirement |
 | `alignment` | `INV-004` | Invariant |
+| `grounding` | `https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#use-conditional-requests` | External Document |
 
 ## 3. 情報の流れと変更計画
 
@@ -117,7 +118,7 @@ Change Planning は設定宣言、観測結果、照合結果、適用可能性�
 | 単位 | 設計上の意味 |
 |---|---|
 | 管理設定 | 利用者が期待状態を明示した設定。管理対象かどうかの基準 |
-| 論理的な設定変更 | 承認内容と、完了を判断する期待状態が対応する単位 |
+| 論理的な設定変更 | 利用者が意図する変更内容と、完了を判断する期待状態とが対応する変更の単位 |
 | 更新操作 | 論理的な設定変更を実現する GitHub への個々の更新要求。個別の前提条件と応答を持つ |
 | 対象リポジトリ | 一回の実行で選択されたリポジトリ。複数の変更を含み得る |
 
@@ -206,6 +207,9 @@ GitHub Access は、認証付きリクエストの送信先を GitHub.com の RE
 | `alignment` | `QR-002` | Quality Requirement |
 | `alignment` | `INV-004` | Invariant |
 | `alignment` | `INV-005` | Invariant |
+| `grounding` | `https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#follow-redirects` | External Document |
+| `grounding` | `https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#get-a-repository` | External Document |
+| `grounding` | `https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#update-a-repository` | External Document |
 
 ### 5.3 未管理設定を保全する更新方式
 
@@ -229,6 +233,9 @@ API パラメータが任意であることは、省略した値の保持を保�
 | `alignment` | `FR-006` | Functional Requirement |
 | `alignment` | `FR-011` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
+| `grounding` | `https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#update-a-repository` | External Document |
+| `grounding` | `https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-github-actions-permissions-for-a-repository` | External Document |
+| `grounding` | `https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-default-workflow-permissions-for-a-repository` | External Document |
 
 ### 5.4 非原子的な更新と中間状態
 
@@ -245,6 +252,8 @@ GitHub の複数の更新操作を原子的に実行する仕組みはありま�
 | `alignment` | `FR-012` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
 | `alignment` | `INV-004` | Invariant |
+| `grounding` | `https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#get-allowed-actions-and-reusable-workflows-for-a-repository` | External Document |
+| `grounding` | `https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-allowed-actions-and-reusable-workflows-for-a-repository` | External Document |
 
 ## 6. 更新結果と障害時の制御
 
