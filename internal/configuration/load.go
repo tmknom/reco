@@ -3,7 +3,6 @@ package configuration
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"unicode/utf8"
@@ -12,16 +11,13 @@ import (
 )
 
 // Load は fsys の name を読み、設定宣言に変換する。入力検証に失敗したら設定宣言を返さない。
+// エラーに name を付けないのは、fs.FS の名前が利用者の指定したパスと異なり、呼び出し元がそのパスを付けるため。
 func Load(fsys fs.FS, name string) (Declaration, error) {
 	data, err := fs.ReadFile(fsys, name)
 	if err != nil {
 		return Declaration{}, err
 	}
-	d, err := parse(data)
-	if err != nil {
-		return Declaration{}, fmt.Errorf("%s: %w", name, err)
-	}
-	return d, nil
+	return parse(data)
 }
 
 func parse(data []byte) (Declaration, error) {

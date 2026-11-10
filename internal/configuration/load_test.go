@@ -75,20 +75,20 @@ func TestLoad(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid document is rejected with the file name and no declaration", func(t *testing.T) {
+	t.Run("invalid document is rejected without the file name and with no declaration", func(t *testing.T) {
 		got, err := load("")
-		if err == nil || !strings.HasPrefix(err.Error(), name+": ") {
-			t.Errorf("Load() error = %v, want it to start with %q", err, name+": ")
+		if err == nil || strings.HasPrefix(err.Error(), name) {
+			t.Errorf("Load() error = %v, want an error not starting with %q", err, name)
 		}
 		if !reflect.DeepEqual(got, Declaration{}) {
 			t.Errorf("Load() returned a declaration with error: %+v", got)
 		}
 	})
 
-	t.Run("invalid declaration is rejected with the file name and no declaration", func(t *testing.T) {
+	t.Run("invalid declaration is rejected without the file name and with no declaration", func(t *testing.T) {
 		got, err := load("repositories: []\n")
-		if err == nil || !strings.HasPrefix(err.Error(), name+": repositories") {
-			t.Errorf("Load() error = %v, want it to start with %q", err, name+": repositories")
+		if err == nil || !strings.HasPrefix(err.Error(), "repositories") {
+			t.Errorf("Load() error = %v, want it to start with %q", err, "repositories")
 		}
 		if !reflect.DeepEqual(got, Declaration{}) {
 			t.Errorf("Load() returned a declaration with error: %+v", got)

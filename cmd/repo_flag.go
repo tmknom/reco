@@ -24,6 +24,13 @@ func (f *repoFlag) String() string {
 // Type は help に --repo OWNER/REPO と表示させる。
 func (f *repoFlag) Type() string { return "OWNER/REPO" }
 
+func (f *repoFlag) selection() *repository.Reference {
+	if !f.set {
+		return nil
+	}
+	return &f.reference
+}
+
 // Set は 2 回目の指定を拒否する。pflag の既定は後の値で上書きするが、CLI 仕様は --repo を一回の実行に一つだけ認めるため。
 func (f *repoFlag) Set(s string) error {
 	if f.set {

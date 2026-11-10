@@ -10,10 +10,11 @@ import (
 	"github.com/tmknom/reco/internal/github"
 )
 
-func runExecute(t *testing.T, version string, opts []github.Option, args ...string) (code int, stdout, stderr string) {
+func runExecute(t *testing.T, env Environment, opts []github.Option, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	env := Environment{Stdout: &out, Stderr: &errOut, Version: version}
+	env.Stdout = &out
+	env.Stderr = &errOut
 	code = execute(context.Background(), args, env, opts...)
 	return code, out.String(), errOut.String()
 }
@@ -55,10 +56,11 @@ func TestExecute_Success(t *testing.T) {
 		{name: "--version without embedded version prints dev", version: "", args: []string{"--version"}, stdout: "dev"},
 		{name: "--log-level is accepted", args: []string{"--log-level", "debug"}, stdout: "Usage:"},
 		{name: "show --help shows show usage without --repo", args: []string{"show", "--help"}, stdout: "reco show"},
+		{name: "plan --help shows plan usage with the default --config", args: []string{"plan", "--help"}, stdout: "(default ./reco.yaml)"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			code, stdout, stderr := runExecute(t, tc.version, nil, tc.args...)
+			code, stdout, stderr := runExecute(t, Environment{Version: tc.version}, nil, tc.args...)
 			if code != 0 {
 				t.Errorf("got exit code %d, want 0 (stderr %q)", code, stderr)
 			}
@@ -108,7 +110,7 @@ func TestExecute_UsageError(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			code, stdout, stderr := runExecute(t, "", nil, tc.args...)
+			code, stdout, stderr := runExecute(t, Environment{}, nil, tc.args...)
 			if code != 1 {
 				t.Errorf("got exit code %d, want 1", code)
 			}
@@ -131,7 +133,7 @@ func TestExecute_UsageError(t *testing.T) {
 
 // CLI 仕様のコマンド一覧が外部契約のため、help に cobra の自動で加えるコマンドや話題が現れないことを確かめる。
 func TestExecute_HelpListsOnlySpecifiedCommands(t *testing.T) {
-	_, stdout, _ := runExecute(t, "", nil, "--help")
+	_, stdout, _ := runExecute(t, Environment{}, nil, "--help")
 	for _, unwanted := range []string{"Additional help topics", "Help about any command"} {
 		if strings.Contains(stdout, unwanted) {
 			t.Errorf("got stdout %q, want it not to contain %q", stdout, unwanted)

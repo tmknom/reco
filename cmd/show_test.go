@@ -2,50 +2,11 @@ package cmd
 
 import (
 	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/tmknom/reco/internal/github"
 )
-
-const (
-	ghEnvValue     = "gh-token-value"
-	githubEnvValue = "github-token-value"
-)
-
-type gitHubServer struct {
-	mu             sync.Mutex
-	authorizations []string
-}
-
-func newGitHubServer(t *testing.T, status int, body string) (*gitHubServer, []github.Option) {
-	t.Helper()
-	s := &gitHubServer{}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		s.mu.Lock()
-		s.authorizations = append(s.authorizations, r.Header.Get("Authorization"))
-		s.mu.Unlock()
-		w.WriteHeader(status)
-		_, _ = w.Write([]byte(body))
-	}))
-	t.Cleanup(server.Close)
-	u, err := url.Parse(server.URL)
-	if err != nil {
-		t.Fatalf("parse server URL: %v", err)
-	}
-	return s, []github.Option{github.WithBaseURL(u)}
-}
-
-func (s *gitHubServer) receivedAuthorizations() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return append([]string(nil), s.authorizations...)
-}
-
-const repositoryBody = `{"id": 1, "allow_auto_merge": true, "delete_branch_on_merge": false}`
 
 //trace:checks FR-003
 //trace:checks FR-004
@@ -64,7 +25,7 @@ func TestShow_Success(t *testing.T) {
 			t.Setenv("GITHUB_TOKEN", githubEnvValue)
 			server, opts := newGitHubServer(t, http.StatusOK, repositoryBody)
 
-			code, stdout, stderr := runExecute(t, "", opts, tc.args...)
+			code, stdout, stderr := runExecute(t, Environment{}, opts, tc.args...)
 			if code != 0 {
 				t.Errorf("got exit code %d, want 0 (stderr %q)", code, stderr)
 			}
@@ -74,8 +35,8 @@ func TestShow_Success(t *testing.T) {
 			if stderr != "" {
 				t.Errorf("got stderr %q, want empty", stderr)
 			}
-			if got := server.receivedAuthorizations(); len(got) != 1 || !strings.Contains(got[0], ghEnvValue) {
-				t.Errorf("got Authorization %q, want one request with GH_TOKEN", got)
+			if got := server.receivedRequests(); len(got) != 1 || !strings.Contains(got[0].authorization, ghEnvValue) {
+				t.Errorf("got requests %+v, want one request with GH_TOKEN", got)
 			}
 			for _, token := range []string{ghEnvValue, githubEnvValue} {
 				if strings.Contains(stdout+stderr, token) {
@@ -103,7 +64,7 @@ func TestShow_UsageError(t *testing.T) {
 			t.Setenv("GITHUB_TOKEN", "")
 			server, opts := newGitHubServer(t, http.StatusOK, repositoryBody)
 
-			code, stdout, stderr := runExecute(t, "", opts, tc.args...)
+			code, stdout, stderr := runExecute(t, Environment{}, opts, tc.args...)
 			if code != 1 {
 				t.Errorf("got exit code %d, want 1", code)
 			}
@@ -117,7 +78,7 @@ func TestShow_UsageError(t *testing.T) {
 			if !strings.Contains(stderr, "reco show") {
 				t.Errorf("got stderr %q, want show usage", stderr)
 			}
-			if got := server.receivedAuthorizations(); len(got) != 0 {
+			if got := server.receivedRequests(); len(got) != 0 {
 				t.Errorf("got %d requests, want none", len(got))
 			}
 		})
@@ -130,7 +91,7 @@ func TestShow_TokenMissing(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "")
 	server, opts := newGitHubServer(t, http.StatusOK, repositoryBody)
 
-	code, stdout, stderr := runExecute(t, "", opts, "show", "--repo", "owner/repo")
+	code, stdout, stderr := runExecute(t, Environment{}, opts, "show", "--repo", "owner/repo")
 	if code != 1 {
 		t.Errorf("got exit code %d, want 1", code)
 	}
@@ -141,7 +102,7 @@ func TestShow_TokenMissing(t *testing.T) {
 	if len(records) != 1 || records[0]["msg"] != "command failed" {
 		t.Errorf("got ERROR records %v, want one command failed record", records)
 	}
-	if got := server.receivedAuthorizations(); len(got) != 0 {
+	if got := server.receivedRequests(); len(got) != 0 {
 		t.Errorf("got %d requests, want none", len(got))
 	}
 }
@@ -157,7 +118,7 @@ func TestShow_ObservationFailure(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", githubEnvValue)
 	server, opts := newGitHubServer(t, http.StatusUnauthorized, `{"message": "Bad credentials"}`)
 
-	code, stdout, stderr := runExecute(t, "", opts, "show", "--repo", "owner/repo")
+	code, stdout, stderr := runExecute(t, Environment{}, opts, "show", "--repo", "owner/repo")
 	if code != 1 {
 		t.Errorf("got exit code %d, want 1", code)
 	}
@@ -171,8 +132,8 @@ func TestShow_ObservationFailure(t *testing.T) {
 	if msg, _ := records[0]["error"].(string); !strings.Contains(msg, "owner/repo") || !strings.Contains(msg, github.ErrUnauthorized.Error()) {
 		t.Errorf("got error %q, want it to contain the target and the authentication failure", msg)
 	}
-	if got := server.receivedAuthorizations(); len(got) != 1 || !strings.Contains(got[0], ghEnvValue) {
-		t.Errorf("got Authorization %q, want one request with GH_TOKEN and no retry with GITHUB_TOKEN", got)
+	if got := server.receivedRequests(); len(got) != 1 || !strings.Contains(got[0].authorization, ghEnvValue) {
+		t.Errorf("got requests %+v, want one request with GH_TOKEN and no retry with GITHUB_TOKEN", got)
 	}
 	for _, token := range []string{ghEnvValue, githubEnvValue} {
 		if strings.Contains(stdout+stderr, token) {
