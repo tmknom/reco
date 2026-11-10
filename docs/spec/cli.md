@@ -66,6 +66,12 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 環境変数の優先順位は [GitHub CLI の環境変数仕様](https://cli.github.com/manual/gh_help_environment) と同じですが、reco が GitHub CLI の認証機構を利用することは意味しません。
 
+reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub API 仕様](../research/github-api.md) 3 章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。
+
+```text
+$ GH_TOKEN=$(gh auth token) reco plan
+```
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-003` | Functional Requirement |
