@@ -33,7 +33,7 @@ repositories:
         can_approve_pull_request_reviews: false
 ```
 
-Set a token in `GH_TOKEN` or `GITHUB_TOKEN`, then run:
+Set a token in `GH_TOKEN` or `GITHUB_TOKEN` (typically `export GH_TOKEN=$(gh auth token)`), then run:
 
 ```shell
 reco plan                        # show the change plan without updating

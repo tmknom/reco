@@ -6,7 +6,7 @@
 
 GitHub API の契約の正本は、GitHub の公開ドキュメントです。本ドキュメントは、開発のたびに公開ドキュメントを参照しなくて済むよう、必要な事実を一か所に集めます。reco の要求・仕様・設計の文書は GitHub API の事実を本ドキュメントから参照し、本ドキュメントは GitHub の公開ドキュメント以外に依存しません。事実を reco でどう扱うか（管理範囲、入力検証、更新の安全性、停止条件など）は、参照する側の文書が定めます。
 
-記述は、GitHub REST API `2026-03-10` 版と、版を持たない REST API ガイドの公開ドキュメントを、2026-11-09 に確認した内容に基づきます。各セクションの根拠は、そのセクションの Relationship テーブルに示します。公開ドキュメントに記載のない挙動は「記載がない」と明示し、GitHub の保証として扱いません。公開ドキュメントの記載が不十分で、reco の開発者が実際の動作を確認した事項に限り、`> [!NOTE]` の注釈で公開ドキュメントの記載と区別して示します。
+記述は、GitHub REST API `2026-03-10` 版と、版を持たない GitHub の公開ドキュメントに基づきます。各セクションの根拠は、そのセクションの Relationship テーブルに示します。公開ドキュメントに記載のない挙動は「記載がない」と明示し、GitHub の保証として扱いません。公開ドキュメントの記載が不十分で、reco の開発者が実際の動作を確認した事項に限り、`> [!NOTE]` の注釈で公開ドキュメントの記載と区別して示します。
 
 ## 2. REST API の共通仕様
 
@@ -58,7 +58,7 @@ GitHub は、存在するはずのリソースに `404` が返るときの確認
 
 GitHub App や fine-grained personal access token で「Resource not accessible by integration」や「Resource not accessible by personal access token」のエラーを受けたときは、応答の `X-Accepted-GitHub-Permissions` ヘッダーで必要な権限を確認できます。
 
-各エンドポイントのドキュメントに列挙された応答コードには、共通仕様によって返るコードが含まれていない場合があります。たとえば、レート制限の超過（2.5）では `403` または `429` が返りますが、3.1 の各エンドポイントの応答コード一覧に `429` はありません。認証失敗の `401` も同様です。
+各エンドポイントのドキュメントに列挙された応答コードには、共通仕様によって返るコードが含まれていない場合があります。たとえば、レート制限の超過（2.5）では `403` または `429` が返りますが、3.5 の各エンドポイントの応答コード一覧に `429` はありません。認証失敗の `401` も同様です。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -105,7 +105,45 @@ GitHub REST API には、プライマリとセカンダリのレート制限が�
 
 ## 3. エンドポイントと必要な権限
 
-次の表は、各エンドポイントに必要な fine-grained personal access token の repository permissions です。トークン種別、所有者、リポジトリ側の条件によって、実際にアクセスできるかは変わり得ます。
+REST API へのアクセスに使うトークンは、種別によって権限の表し方が異なります。OAuth app のトークンと personal access token (classic) は scope で、fine-grained personal access token は repository permissions で、アクセスできる範囲を表します。どの種別でも、実際にアクセスできるかは、トークンの scope や permissions に加えて、トークン所有者のリポジトリに対するロールによって変わり得ます。
+
+### 3.1 GitHub CLI が発行・保存するトークン
+
+`gh auth login` は、既定ではブラウザを使う認証フローでトークンを取得し、システムの資格情報ストアに保存します。資格情報ストアを使えない場合は、平文のファイルに保存します。`gh auth token` は、指定したホスト（省略時は既定のホスト）のアクティブなアカウントのトークンを出力し、更新可能で期限切れ間近のトークンは出力前に自動で更新します。
+
+GitHub CLI が求めるトークンの最小の scope は `repo`、`read:org`、`gist` です。GitHub CLI のドキュメントはこの最小 scope を `--with-token` で渡すトークンの条件として示しており、ブラウザを使う認証フローで得られるトークンの種別と scope を明記していません。fine-grained personal access token を GitHub CLI で使う場合は、`--with-token` ではなく環境変数 `GH_TOKEN` で渡すよう推奨しています。
+
+トークンが持つ scope は、そのトークンで送ったリクエストの応答ヘッダー `X-OAuth-Scopes` で確認できます。エンドポイントが確認する scope は `X-Accepted-OAuth-Scopes` ヘッダーに示されます。
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [gh auth login](https://cli.github.com/manual/gh_auth_login) | External Document |
+| `grounding` | [gh auth token](https://cli.github.com/manual/gh_auth_token) | External Document |
+| `grounding` | [Scopes for OAuth apps](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps) | External Document |
+
+### 3.2 OAuth app のトークンと personal access token (classic) の scope
+
+scope は OAuth のトークンがアクセスできる範囲を制限するだけで、ユーザーがすでに持つ権限を超える権限を与えません。reco の利用するエンドポイントに関係する scope は次のとおりです。
+
+| scope | 公開ドキュメントの記載 |
+|---|---|
+| （scope なし） | 公開情報（ユーザーのプロフィール、リポジトリの情報、gist を含む）への読み取り専用のアクセスを与える |
+| `repo` | 公開・非公開リポジトリへの完全なアクセス（コードやコミットステータスの読み書きを含む）を与える |
+| `public_repo` | アクセスを公開リポジトリに限定する |
+
+Actions permissions 系のエンドポイント（5〜7章）では、OAuth app のトークンと personal access token (classic) に `repo` scope が必要です。`GET /repos/{owner}/{repo}` と `PATCH /repos/{owner}/{repo}` のドキュメントには、必要な scope の記載がありません。
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [Scopes for OAuth apps](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps) | External Document |
+| `grounding` | [Authenticating to the REST API: Authenticating with a personal access token](https://docs.github.com/en/rest/authentication/authenticating-to-the-rest-api#authenticating-with-a-personal-access-token) | External Document |
+| `grounding` | [REST API endpoints for GitHub Actions permissions](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10) | External Document |
+| `grounding` | [Get a repository](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#get-a-repository) | External Document |
+| `grounding` | [Update a repository](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#update-a-repository) | External Document |
+
+### 3.3 fine-grained personal access token の permissions
+
+次の表は、各エンドポイントに必要な fine-grained personal access token の repository permissions です。
 
 | 用途 | メソッド・パス | Fine-grained token permissions |
 |---|---|---|
@@ -118,18 +156,23 @@ GitHub REST API には、プライマリとセカンダリのレート制限が�
 | Workflow permissions の取得 | `GET /repos/{owner}/{repo}/actions/permissions/workflow` | Administration: read |
 | Workflow permissions の更新 | `PUT /repos/{owner}/{repo}/actions/permissions/workflow` | Administration: write |
 
-`GET /repos/{owner}/{repo}` については、権限の一覧が Metadata: read だけを挙げる一方、エンドポイントのドキュメントは「マージ関連設定を見るには `contents:read` と `contents:write` の権限が必要」と記載しています。どのフィールドがマージ関連設定にあたるかと、権限が足りないときにそのフィールドがどう返るかは記載がありません。
-
-Actions permissions 系のエンドポイント（5〜7章）では、OAuth app のトークンと personal access token (classic) に `repo` scope が必要です。
-
 | Relationship | Target | Target Type |
 |---|---|---|
 | `grounding` | [Permissions required for fine-grained personal access tokens: Repository permissions for Metadata](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2026-03-10#repository-permissions-for-metadata) | External Document |
 | `grounding` | [Permissions required for fine-grained personal access tokens: Repository permissions for Administration](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2026-03-10#repository-permissions-for-administration) | External Document |
-| `grounding` | [Get a repository](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#get-a-repository) | External Document |
-| `grounding` | [REST API endpoints for GitHub Actions permissions](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10) | External Document |
 
-### 3.1 公開ドキュメントに記載された HTTP 応答
+### 3.4 トークン所有者のリポジトリロールとマージ関連設定
+
+Organization が所有するリポジトリのロールのうち、リポジトリの設定を変更できるのは Admin だけです。Pull Request の自動マージを個々の Pull Request で有効・無効にする操作は、Write・Maintain・Admin に許可されています。Actions permissions 系の設定を変更できるロールは、ロールの一覧に記載がありません。
+
+`GET /repos/{owner}/{repo}` のドキュメントは、「マージ関連設定を見るには `contents:read` と `contents:write` の権限が必要」と記載しています。この記載は fine-grained personal access token の permissions の表記で書かれており、3.3 の表が Metadata: read だけを挙げることとも一致しません。OAuth app のトークンと personal access token (classic) で、scope とトークン所有者のロールのどの組み合わせがこの条件にあたるかは記載がありません。また、どのフィールドがマージ関連設定にあたるかと、条件を満たさないときにそのフィールドがどう返るかも記載がありません。
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [Repository roles for an organization](https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-repository-roles/repository-roles-for-an-organization) | External Document |
+| `grounding` | [Get a repository](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#get-a-repository) | External Document |
+
+### 3.5 公開ドキュメントに記載された HTTP 応答
 
 | エンドポイント | 正常応答 | ドキュメントに記載されたその他の応答 |
 |---|---|---|
