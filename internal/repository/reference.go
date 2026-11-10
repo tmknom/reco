@@ -18,6 +18,12 @@ func (r Reference) String() string {
 	return r.Owner + "/" + r.Repo
 }
 
+// EqualFold は、所有者名とリポジトリ名を大文字小文字を区別せずに比べる。GitHub が両者をそう扱うため。
+// ParseReference が名前を ASCII に限るため、検証済みの名前では ASCII 英字だけの同一視になる。
+func (r Reference) EqualFold(o Reference) bool {
+	return strings.EqualFold(r.Owner, o.Owner) && strings.EqualFold(r.Repo, o.Repo)
+}
+
 // ParseReference は OWNER/REPO 形式の名前をリポジトリ指定に分ける。
 // 文字を ASCII の英数字と -、_、. に限るのは、空白や制御文字に加え、URL やクローン用の表記の断片
 // (:、@、%、?、#) と、URL パスのドットセグメントになる . と .. を後段に渡さないため。

@@ -91,7 +91,7 @@ CLI が選択した認証情報だけを GitHub Access へ渡します。認証�
 | Plan、Apply、Show、Change Planning、Change Execution、Reconciliation | `internal/reco` |
 | Configuration | `internal/configuration` |
 | GitHub Access | `internal/github` |
-| リポジトリ指定の形式判定 | `internal/repository` |
+| リポジトリ指定の形式判定と比較 | `internal/repository` |
 | 診断ログの出力 (全領域が共通に使う logger) | `internal/logger` |
 
 計画生成、照合、実行を独立した package にしないのは、使う側が各操作の入口関数だけで、package を分けても依存の向きの制約が増えないためです。

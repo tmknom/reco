@@ -47,3 +47,23 @@ func TestRepoFlag_Set(t *testing.T) {
 		}
 	})
 }
+
+func TestRepoFlag_Selection(t *testing.T) {
+	t.Run("unset flag selects nothing", func(t *testing.T) {
+		var f repoFlag
+		if got := f.selection(); got != nil {
+			t.Errorf("selection() = %+v, want nil", got)
+		}
+	})
+
+	t.Run("set flag selects the parsed reference", func(t *testing.T) {
+		var f repoFlag
+		if err := f.Set("owner/repo"); err != nil {
+			t.Fatalf("Set() error = %v", err)
+		}
+		want := repository.Reference{Owner: "owner", Repo: "repo"}
+		if got := f.selection(); got == nil || *got != want {
+			t.Errorf("selection() = %+v, want %+v", got, want)
+		}
+	})
+}

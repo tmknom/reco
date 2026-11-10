@@ -114,3 +114,25 @@ func TestReference_String(t *testing.T) {
 		t.Errorf("String() = %q, want %q", got, "owner/repo")
 	}
 }
+
+//trace:checks FR-002
+func TestReference_EqualFold(t *testing.T) {
+	base := Reference{Owner: "owner", Repo: "repo"}
+	cases := []struct {
+		name  string
+		other Reference
+		want  bool
+	}{
+		{name: "owner differing only in letter case is equal", other: Reference{Owner: "Owner", Repo: "repo"}, want: true},
+		{name: "repo differing only in letter case is equal", other: Reference{Owner: "owner", Repo: "REPO"}, want: true},
+		{name: "different owner is not equal", other: Reference{Owner: "other", Repo: "repo"}, want: false},
+		{name: "different repo is not equal", other: Reference{Owner: "owner", Repo: "other"}, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := base.EqualFold(tc.other); got != tc.want {
+				t.Errorf("%v.EqualFold(%v) = %t, want %t", base, tc.other, got, tc.want)
+			}
+		})
+	}
+}

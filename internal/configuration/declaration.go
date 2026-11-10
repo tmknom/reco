@@ -2,7 +2,7 @@ package configuration
 
 import (
 	"fmt"
-	"strings"
+	"slices"
 
 	"go.yaml.in/yaml/v3"
 
@@ -19,21 +19,15 @@ func (d document) declaration() (Declaration, error) {
 		return Declaration{}, err
 	}
 	repositories := make([]RepositoryDeclaration, 0, len(items))
-	// GitHub は所有者名とリポジトリ名を大文字小文字を区別せずに扱うため、小文字にそろえた名前で重複を判定する。
-	// 名前は ASCII に限られているため、strings.ToLower は ASCII 英字だけの同一視になる。
-	seen := make(map[string]int, len(items))
 	for i, item := range items {
 		path := fmt.Sprintf("repositories[%d]", i)
 		r, err := d.repositoryDeclaration(item, path)
 		if err != nil {
 			return Declaration{}, err
 		}
-		name := r.Reference.String()
-		key := strings.ToLower(name)
-		if j, ok := seen[key]; ok {
-			return Declaration{}, invalid(item, path, "duplicate name %q; same as repositories[%d] (compared ignoring letter case)", name, j)
+		if j := slices.IndexFunc(repositories, func(seen RepositoryDeclaration) bool { return seen.Reference.EqualFold(r.Reference) }); j >= 0 {
+			return Declaration{}, invalid(item, path, "duplicate name %q; same as repositories[%d] (compared ignoring letter case)", r.Reference.String(), j)
 		}
-		seen[key] = i
 		repositories = append(repositories, r)
 	}
 	return Declaration{Repositories: repositories}, nil

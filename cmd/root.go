@@ -13,10 +13,10 @@ import (
 	"github.com/tmknom/reco/internal/logger"
 )
 
-const (
-	exitOK      = 0
-	exitFailure = 1
-)
+const exitOK = 0
+
+// ExitFailure は、処理の失敗を表す終了コード。
+const ExitFailure = 1
 
 // devVersion は、バージョンが埋め込まれていない実行ファイルが --version で表示する値。
 // cobra は Version が空だと --version を登録しないため、空のままにしない。
@@ -28,6 +28,8 @@ type Environment struct {
 	Stderr io.Writer
 	// Version は、実行ファイルに埋め込まれたバージョン。埋め込まれていなければ空。
 	Version string
+	// WorkDir は、相対パスの基準にする起動時の作業ディレクトリ。
+	WorkDir string
 }
 
 // Execute は args を実行し、終了コードを返す。
@@ -39,7 +41,7 @@ func execute(ctx context.Context, args []string, env Environment, opts ...github
 	level := new(slog.LevelVar)
 	log := logger.New(env.Stderr, level)
 
-	root := newRootCmd(env.Version, level, opts...) //nolint:contextcheck // サブコマンドは ExecuteContext に渡した ctx を c.Context() で受け取るため、組み立てに ctx を渡さない
+	root := newRootCmd(env.Version, env.WorkDir, level, opts...) //nolint:contextcheck // サブコマンドは ExecuteContext に渡した ctx を c.Context() で受け取るため、組み立てに ctx を渡さない
 	root.SetArgs(args)
 	root.SetOut(env.Stdout)
 	root.SetErr(env.Stderr)
@@ -49,12 +51,12 @@ func execute(ctx context.Context, args []string, env Environment, opts ...github
 			// Usage() は SetOut の出力先 (stdout) に書くため、使い方の文字列を stderr へ書く
 			usage.cmd.PrintErr(usage.cmd.UsageString())
 		}
-		return exitFailure
+		return ExitFailure
 	}
 	return exitOK
 }
 
-func newRootCmd(version string, level *slog.LevelVar, opts ...github.Option) *cobra.Command {
+func newRootCmd(version, workDir string, level *slog.LevelVar, opts ...github.Option) *cobra.Command {
 	if version == "" {
 		version = devVersion
 	}
@@ -76,6 +78,7 @@ func newRootCmd(version string, level *slog.LevelVar, opts ...github.Option) *co
 	root.SetHelpCommand(&cobra.Command{Hidden: true})
 	root.SetFlagErrorFunc(flagUsageError)
 	root.PersistentFlags().Var(newLogLevel(level), "log-level", "level of diagnostic logs ("+logLevelChoices()+")")
+	root.AddCommand(newPlanCmd(workDir, opts...))
 	root.AddCommand(newShowCmd(opts...))
 	return root
 }
