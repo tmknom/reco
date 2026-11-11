@@ -32,6 +32,7 @@ func run() int {
 		Stderr:  os.Stderr,
 		Version: version,
 		WorkDir: wd,
+		Getenv:  os.Getenv,
 	}
 	return cmd.Execute(ctx, os.Args[1:], env)
 }

@@ -57,13 +57,11 @@ func TestPlan_Success(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("GH_TOKEN", ghEnvValue)
-			t.Setenv("GITHUB_TOKEN", githubEnvValue)
 			workDir := t.TempDir()
 			writeConfig(t, workDir, tc.configName, tc.src)
 			server, opts := newGitHubServer(t, http.StatusOK, mismatchedRepositoryBody)
 
-			code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir}, opts, tc.args...)
+			code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue, "GITHUB_TOKEN": githubEnvValue})}, opts, tc.args...)
 			if code != 0 {
 				t.Errorf("got exit code %d, want 0 (stderr %q)", code, stderr)
 			}
@@ -99,13 +97,11 @@ func TestPlan_InvalidInput(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("GH_TOKEN", ghEnvValue)
-			t.Setenv("GITHUB_TOKEN", "")
 			workDir := t.TempDir()
 			writeConfig(t, workDir, "reco.yaml", declaredRepository)
 			server, opts := newGitHubServer(t, http.StatusOK, mismatchedRepositoryBody)
 
-			code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir}, opts, tc.args...)
+			code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue})}, opts, tc.args...)
 			if code != 1 {
 				t.Errorf("got exit code %d, want 1", code)
 			}
@@ -125,13 +121,11 @@ func TestPlan_InvalidInput(t *testing.T) {
 
 //trace:checks FR-003
 func TestPlan_TokenMissing(t *testing.T) {
-	t.Setenv("GH_TOKEN", "")
-	t.Setenv("GITHUB_TOKEN", "")
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", declaredRepository)
 	server, opts := newGitHubServer(t, http.StatusOK, mismatchedRepositoryBody)
 
-	code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir}, opts, "plan")
+	code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir, Getenv: fakeGetenv(nil)}, opts, "plan")
 	if code != 1 {
 		t.Errorf("got exit code %d, want 1", code)
 	}
@@ -150,11 +144,9 @@ func TestPlan_TokenMissing(t *testing.T) {
 //trace:checks FR-001
 //trace:checks QR-002
 func TestPlan_ConfigNotFound(t *testing.T) {
-	t.Setenv("GH_TOKEN", ghEnvValue)
-	t.Setenv("GITHUB_TOKEN", "")
 	server, opts := newGitHubServer(t, http.StatusOK, mismatchedRepositoryBody)
 
-	code, stdout, stderr := runExecute(t, Environment{WorkDir: t.TempDir()}, opts, "plan")
+	code, stdout, stderr := runExecute(t, Environment{WorkDir: t.TempDir(), Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue})}, opts, "plan")
 	if code != 1 {
 		t.Errorf("got exit code %d, want 1", code)
 	}
@@ -179,13 +171,11 @@ func TestPlan_ConfigNotFound(t *testing.T) {
 //trace:checks FR-004
 //trace:checks QR-001
 func TestPlan_ObservationFailure(t *testing.T) {
-	t.Setenv("GH_TOKEN", ghEnvValue)
-	t.Setenv("GITHUB_TOKEN", githubEnvValue)
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", declaredRepository)
 	server, opts := newGitHubServer(t, http.StatusUnauthorized, `{"message": "Bad credentials"}`)
 
-	code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir}, opts, "plan")
+	code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue, "GITHUB_TOKEN": githubEnvValue})}, opts, "plan")
 	if code != 1 {
 		t.Errorf("got exit code %d, want 1", code)
 	}
