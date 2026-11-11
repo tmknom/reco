@@ -3,7 +3,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"io"
 	"log/slog"
 
@@ -46,11 +45,9 @@ func execute(ctx context.Context, args []string, env Environment, opts ...github
 	root.SetOut(env.Stdout)
 	root.SetErr(env.Stderr)
 	if err := root.ExecuteContext(ctx); err != nil {
+		// slog は error+4 のように ERROR より高いレベルも受理する。そのレベルでもエラー理由を省略しない
+		level.Set(min(level.Level(), slog.LevelError))
 		log.Error("command failed", "error", err)
-		if usage, ok := errors.AsType[*usageError](err); ok {
-			// Usage() は SetOut の出力先 (stdout) に書くため、使い方の文字列を stderr へ書く
-			usage.cmd.PrintErr(usage.cmd.UsageString())
-		}
 		return ExitFailure
 	}
 	return exitOK
@@ -64,20 +61,10 @@ func newRootCmd(version, workDir string, level *slog.LevelVar, opts ...github.Op
 		Use:           "reco",
 		Short:         "Declare GitHub repository settings in YAML, review the diff, and apply it",
 		Version:       version,
-		Args:          noArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		RunE: func(c *cobra.Command, _ []string) error {
-			return c.Help()
-		},
 	}
-	// CLI 仕様のコマンド一覧が外部契約のため、cobra が自動で加える completion を外す
-	root.CompletionOptions.DisableDefaultCmd = true
-	// 同じ理由で help コマンドも外す。cobra はサブコマンドがあると help を自動で加え、外す設定を持たないため、
-	// 名前のない隠しコマンドに差し替えて、help を未定義のコマンドとして扱わせる
-	root.SetHelpCommand(&cobra.Command{Hidden: true})
-	root.SetFlagErrorFunc(flagUsageError)
-	root.PersistentFlags().Var(newLogLevel(level), "log-level", "level of diagnostic logs ("+logLevelChoices()+")")
+	root.PersistentFlags().TextVar(level, "log-level", level, "diagnostic log `LEVEL`: debug, info, warn, or error")
 	root.AddCommand(newPlanCmd(workDir, opts...))
 	root.AddCommand(newShowCmd(opts...))
 	return root

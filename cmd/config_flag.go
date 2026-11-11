@@ -8,7 +8,7 @@ import (
 const defaultConfigPath = "./reco.yaml"
 
 // configFlag は --config の値で、pflag.Value を満たす。
-// 空のパスを flag の解析中に拒否するのは、--config "" を処理の開始前に使い方の誤りとするため。
+// 空のパスを flag の解析中に拒否するのは、エラーに pflag が flag 名を添えるため。
 type configFlag struct {
 	path string
 }

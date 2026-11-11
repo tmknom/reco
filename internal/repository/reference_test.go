@@ -8,20 +8,23 @@ import (
 //trace:checks FR-001
 func TestParseReference(t *testing.T) {
 	cases := []struct {
-		name    string
-		input   string
-		want    Reference
-		wantErr string
+		name      string
+		input     string
+		wantOwner string
+		wantRepo  string
+		wantErr   string
 	}{
 		{
-			name:  "OWNER/REPO is split into owner and repo",
-			input: "owner/repo",
-			want:  Reference{Owner: "owner", Repo: "repo"},
+			name:      "OWNER/REPO is split into owner and repo",
+			input:     "owner/repo",
+			wantOwner: "owner",
+			wantRepo:  "repo",
 		},
 		{
-			name:  "ASCII letters, digits, hyphen, underscore and dot are accepted",
-			input: "Owner-1/Repo_2.x",
-			want:  Reference{Owner: "Owner-1", Repo: "Repo_2.x"},
+			name:      "ASCII letters, digits, hyphen, underscore and dot are accepted",
+			input:     "Owner-1/Repo_2.x",
+			wantOwner: "Owner-1",
+			wantRepo:  "Repo_2.x",
 		},
 		{
 			name:    "name without slash is rejected",
@@ -101,15 +104,15 @@ func TestParseReference(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ParseReference(%q) error = %v", tc.input, err)
 			}
-			if got != tc.want {
-				t.Errorf("ParseReference(%q) = %+v, want %+v", tc.input, got, tc.want)
+			if got.Owner() != tc.wantOwner || got.Repo() != tc.wantRepo {
+				t.Errorf("ParseReference(%q) = owner %q, repo %q, want owner %q, repo %q", tc.input, got.Owner(), got.Repo(), tc.wantOwner, tc.wantRepo)
 			}
 		})
 	}
 }
 
 func TestReference_String(t *testing.T) {
-	got := Reference{Owner: "owner", Repo: "repo"}.String()
+	got := Reference{owner: "owner", repo: "repo"}.String()
 	if got != "owner/repo" {
 		t.Errorf("String() = %q, want %q", got, "owner/repo")
 	}
@@ -117,16 +120,16 @@ func TestReference_String(t *testing.T) {
 
 //trace:checks FR-002
 func TestReference_EqualFold(t *testing.T) {
-	base := Reference{Owner: "owner", Repo: "repo"}
+	base := Reference{owner: "owner", repo: "repo"}
 	cases := []struct {
 		name  string
 		other Reference
 		want  bool
 	}{
-		{name: "owner differing only in letter case is equal", other: Reference{Owner: "Owner", Repo: "repo"}, want: true},
-		{name: "repo differing only in letter case is equal", other: Reference{Owner: "owner", Repo: "REPO"}, want: true},
-		{name: "different owner is not equal", other: Reference{Owner: "other", Repo: "repo"}, want: false},
-		{name: "different repo is not equal", other: Reference{Owner: "owner", Repo: "other"}, want: false},
+		{name: "owner differing only in letter case is equal", other: Reference{owner: "Owner", repo: "repo"}, want: true},
+		{name: "repo differing only in letter case is equal", other: Reference{owner: "owner", repo: "REPO"}, want: true},
+		{name: "different owner is not equal", other: Reference{owner: "other", repo: "repo"}, want: false},
+		{name: "different repo is not equal", other: Reference{owner: "owner", repo: "other"}, want: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

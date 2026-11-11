@@ -3,8 +3,6 @@ package cmd
 import (
 	"strings"
 	"testing"
-
-	"github.com/tmknom/reco/internal/repository"
 )
 
 func TestRepoFlag_Set(t *testing.T) {
@@ -12,10 +10,6 @@ func TestRepoFlag_Set(t *testing.T) {
 		var f repoFlag
 		if err := f.Set("owner/repo"); err != nil {
 			t.Fatalf("Set() error = %v", err)
-		}
-		want := repository.Reference{Owner: "owner", Repo: "repo"}
-		if f.reference != want {
-			t.Errorf("got reference %+v, want %+v", f.reference, want)
 		}
 		if f.String() != "owner/repo" {
 			t.Errorf("String() = %q, want %q", f.String(), "owner/repo")
@@ -61,9 +55,8 @@ func TestRepoFlag_Selection(t *testing.T) {
 		if err := f.Set("owner/repo"); err != nil {
 			t.Fatalf("Set() error = %v", err)
 		}
-		want := repository.Reference{Owner: "owner", Repo: "repo"}
-		if got := f.selection(); got == nil || *got != want {
-			t.Errorf("selection() = %+v, want %+v", got, want)
+		if got := f.selection(); got == nil || got.String() != "owner/repo" {
+			t.Errorf("selection() = %v, want owner/repo", got)
 		}
 	})
 }

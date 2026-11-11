@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/tmknom/reco/internal/repository"
 )
 
 const testToken = "ghp_test-secret-token"
@@ -36,35 +38,35 @@ func newTestClient(t *testing.T, handler http.HandlerFunc) *Client {
 	return New(testToken, WithBaseURL(u))
 }
 
+func mustReference(t *testing.T, name string) repository.Reference {
+	t.Helper()
+	reference, err := repository.ParseReference(name)
+	if err != nil {
+		t.Fatalf("ParseReference(%q) error = %v", name, err)
+	}
+	return reference
+}
+
 func TestRepositoryURL(t *testing.T) {
 	cases := []struct {
-		name        string
-		client      *Client
-		owner, repo string
-		want        string
+		name   string
+		client *Client
+		want   string
 	}{
 		{
 			name:   "default client targets api.github.com",
 			client: New(testToken),
-			owner:  "owner", repo: "repo",
-			want: "https://api.github.com/repos/owner/repo",
+			want:   "https://api.github.com/repos/owner/repo",
 		},
 		{
 			name:   "base URL path and query are ignored",
 			client: New(testToken, WithBaseURL(&url.URL{Scheme: "http", Host: "127.0.0.1:1", Path: "/api/v3", RawQuery: "x=1"})),
-			owner:  "owner", repo: "repo",
-			want: "http://127.0.0.1:1/repos/owner/repo",
-		},
-		{
-			name:   "slash in a segment is escaped",
-			client: New(testToken),
-			owner:  "own/er", repo: "repo",
-			want: "https://api.github.com/repos/own%2Fer/repo",
+			want:   "http://127.0.0.1:1/repos/owner/repo",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.client.repositoryURL(tc.owner, tc.repo).String(); got != tc.want {
+			if got := tc.client.repositoryURL(mustReference(t, "owner/repo")).String(); got != tc.want {
 				t.Errorf("repositoryURL() = %q, want %q", got, tc.want)
 			}
 		})
@@ -119,7 +121,7 @@ func TestFetchRepository(t *testing.T) {
 		_, _ = w.Write([]byte(repositoryBody))
 	})
 
-	repo, err := c.FetchRepository(t.Context(), "owner", "repo")
+	repo, err := c.FetchRepository(t.Context(), mustReference(t, "owner/repo"))
 	if err != nil {
 		t.Fatalf("FetchRepository() error = %v", err)
 	}
@@ -198,7 +200,7 @@ func TestFetchRepositoryFailure(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newTestClient(t, tc.handler)
-			_, err := c.FetchRepository(t.Context(), "owner", "repo")
+			_, err := c.FetchRepository(t.Context(), mustReference(t, "owner/repo"))
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("FetchRepository() error = %v, want %v", err, tc.want)
 			}
@@ -223,7 +225,7 @@ func TestFetchRepositoryFailure(t *testing.T) {
 		})
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		_, err := c.FetchRepository(ctx, "owner", "repo")
+		_, err := c.FetchRepository(ctx, mustReference(t, "owner/repo"))
 		if !errors.Is(err, ErrCommunicationFailure) || !errors.Is(err, context.Canceled) {
 			t.Fatalf("FetchRepository() error = %v, want %v wrapping %v", err, ErrCommunicationFailure, context.Canceled)
 		}

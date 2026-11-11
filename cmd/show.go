@@ -10,10 +10,9 @@ import (
 func newShowCmd(opts ...github.Option) *cobra.Command {
 	var repo repoFlag
 	c := &cobra.Command{
-		Use:     "show",
-		Short:   "Show the current settings of a repository",
-		Args:    noArgs,
-		PreRunE: requiredFlags,
+		Use:   "show",
+		Short: "Show the current settings of a repository",
+		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			token, err := selectToken()
 			if err != nil {

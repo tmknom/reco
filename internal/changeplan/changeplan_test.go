@@ -12,7 +12,6 @@ import (
 	"testing/fstest"
 
 	"github.com/tmknom/reco/internal/github"
-	"github.com/tmknom/reco/internal/repository"
 )
 
 func TestPlan_Count(t *testing.T) {
@@ -46,7 +45,7 @@ func TestGenerate(t *testing.T) {
 			_, _ = w.Write([]byte(`{"id": 7, "allow_auto_merge": false, "delete_branch_on_merge": false}`))
 		})
 		client := github.New("test-token", github.WithBaseURL(baseURL))
-		sel := repository.Reference{Owner: "Owner", Repo: "Second"}
+		sel := mustReference(t, "Owner/Second")
 
 		got, err := Generate(context.Background(), client, file(declared), &sel)
 		if err != nil {
@@ -55,7 +54,7 @@ func TestGenerate(t *testing.T) {
 		if !strings.Contains(gotPath, "owner/second") {
 			t.Errorf("got request path %q, want it to contain the selected declaration", gotPath)
 		}
-		if want := (repository.Reference{Owner: "owner", Repo: "second"}); got.Target != want {
+		if want := mustReference(t, "owner/second"); got.Target != want {
 			t.Errorf("Target = %v, want %v", got.Target, want)
 		}
 		if got.RepositoryID != 7 {
@@ -102,7 +101,7 @@ func TestGenerate(t *testing.T) {
 		requested := false
 		baseURL := newGitHubServer(t, func(http.ResponseWriter, *http.Request) { requested = true })
 		client := github.New("test-token", github.WithBaseURL(baseURL))
-		sel := repository.Reference{Owner: "owner", Repo: "other"}
+		sel := mustReference(t, "owner/other")
 
 		if _, err := Generate(context.Background(), client, file(declared), &sel); err == nil {
 			t.Fatal("Generate() error = nil, want an error")
@@ -117,7 +116,7 @@ func TestGenerate(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 		})
 		client := github.New("test-token", github.WithBaseURL(baseURL))
-		sel := repository.Reference{Owner: "owner", Repo: "first"}
+		sel := mustReference(t, "owner/first")
 
 		_, err := Generate(context.Background(), client, file(declared), &sel)
 		if !errors.Is(err, github.ErrUnauthorized) {

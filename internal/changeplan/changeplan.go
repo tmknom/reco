@@ -63,7 +63,7 @@ func Generate(ctx context.Context, client *github.Client, file ConfigurationFile
 	if err != nil {
 		return Plan{}, err
 	}
-	observed, err := client.FetchRepository(ctx, target.Reference.Owner, target.Reference.Repo)
+	observed, err := client.FetchRepository(ctx, target.Reference)
 	if err != nil {
 		return Plan{}, err
 	}

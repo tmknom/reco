@@ -87,7 +87,7 @@ func TestPlan_Success(t *testing.T) {
 	}
 }
 
-func TestPlan_UsageError(t *testing.T) {
+func TestPlan_InvalidInput(t *testing.T) {
 	cases := []struct {
 		name string
 		args []string
@@ -115,9 +115,6 @@ func TestPlan_UsageError(t *testing.T) {
 			records := errorRecords(t, stderr)
 			if len(records) != 1 || records[0]["msg"] != "command failed" {
 				t.Errorf("got ERROR records %v, want one command failed record", records)
-			}
-			if !strings.Contains(stderr, "reco plan") {
-				t.Errorf("got stderr %q, want plan usage", stderr)
 			}
 			if got := server.receivedRequests(); len(got) != 0 {
 				t.Errorf("got %d requests, want none", len(got))
