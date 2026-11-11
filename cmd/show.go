@@ -4,7 +4,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tmknom/reco/internal/github"
-	"github.com/tmknom/reco/internal/reco"
+	"github.com/tmknom/reco/internal/show"
 )
 
 func newShowCmd(opts ...github.Option) *cobra.Command {
@@ -19,7 +19,7 @@ func newShowCmd(opts ...github.Option) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return reco.Show(c.Context(), reco.ShowConfig{
+			return show.Run(c.Context(), show.Config{
 				Token:         token,
 				Target:        repo.reference,
 				Out:           c.OutOrStdout(),

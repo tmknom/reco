@@ -1,4 +1,4 @@
-package reco
+package show
 
 import (
 	"bytes"
@@ -62,7 +62,7 @@ type failingWriter struct{}
 func (failingWriter) Write([]byte) (int, error) { return 0, errWrite }
 
 //trace:checks FR-004
-func TestShow(t *testing.T) {
+func TestRun(t *testing.T) {
 	target := repository.Reference{Owner: "owner", Repo: "repo"}
 
 	t.Run("observed repository is written to Out", func(t *testing.T) {
@@ -73,10 +73,10 @@ func TestShow(t *testing.T) {
 			_, _ = w.Write([]byte(`{"id": 1, "allow_auto_merge": true, "delete_branch_on_merge": false}`))
 		})
 		var out bytes.Buffer
-		cfg := ShowConfig{Token: "test-token", Target: target, Out: &out, GitHubOptions: []github.Option{github.WithBaseURL(baseURL)}}
+		cfg := Config{Token: "test-token", Target: target, Out: &out, GitHubOptions: []github.Option{github.WithBaseURL(baseURL)}}
 
-		if err := Show(context.Background(), cfg); err != nil {
-			t.Fatalf("Show() error = %v", err)
+		if err := Run(context.Background(), cfg); err != nil {
+			t.Fatalf("Run() error = %v", err)
 		}
 		if !strings.Contains(gotPath, "owner/repo") {
 			t.Errorf("got request path %q, want it to contain the target", gotPath)
@@ -94,11 +94,11 @@ func TestShow(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		})
 		var out bytes.Buffer
-		cfg := ShowConfig{Token: "test-token", Target: target, Out: &out, GitHubOptions: []github.Option{github.WithBaseURL(baseURL)}}
+		cfg := Config{Token: "test-token", Target: target, Out: &out, GitHubOptions: []github.Option{github.WithBaseURL(baseURL)}}
 
-		err := Show(context.Background(), cfg)
+		err := Run(context.Background(), cfg)
 		if !errors.Is(err, github.ErrNotFound) {
-			t.Errorf("Show() error = %v, want %v", err, github.ErrNotFound)
+			t.Errorf("Run() error = %v, want %v", err, github.ErrNotFound)
 		}
 		if out.Len() != 0 {
 			t.Errorf("got Out %q, want empty", out.String())

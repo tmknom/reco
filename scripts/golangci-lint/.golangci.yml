@@ -85,6 +85,31 @@ linters:
           deny:
             - pkg: github.com/tmknom/reco/cmd
               desc: internal must not depend on cmd
+        plan-from-internal:
+          list-mode: lax
+          files:
+            - "${base-path}/internal/**"
+            - "!${base-path}/internal/plan/**"
+          deny:
+            - pkg: github.com/tmknom/reco/internal/plan
+              desc: only cmd calls an operation package
+        show-from-internal:
+          list-mode: lax
+          files:
+            - "${base-path}/internal/**"
+            - "!${base-path}/internal/show/**"
+          deny:
+            - pkg: github.com/tmknom/reco/internal/show
+              desc: only cmd calls an operation package
+        show-without-declaration:
+          list-mode: lax
+          files:
+            - "${base-path}/internal/show/**"
+          deny:
+            - pkg: github.com/tmknom/reco/internal/changeplan
+              desc: show does not use the configuration declaration, reconciliation, or change plan
+            - pkg: github.com/tmknom/reco/internal/configuration
+              desc: show does not use the configuration declaration, reconciliation, or change plan
         internal-from-main:
           list-mode: lax
           files:
