@@ -8,14 +8,23 @@ import (
 	"github.com/tmknom/reco/internal/repository"
 )
 
+func mustReference(t *testing.T, name string) repository.Reference {
+	t.Helper()
+	reference, err := repository.ParseReference(name)
+	if err != nil {
+		t.Fatalf("ParseReference(%q) error = %v", name, err)
+	}
+	return reference
+}
+
 // TestDocumentDeclaration は、各階層で要求するキーの集合 (スキーマ) と、各段階へ渡すパスを確かめる。
 // 各段階が持つ規則 (マッピングやシーケンスの形、真偽値、name の形式) は、段階ごとのテストが確かめる。
 //
 //trace:checks FR-001
 func TestDocumentDeclaration(t *testing.T) {
-	repositoryDeclaration := func(owner, repo string, allowAutoMerge bool) RepositoryDeclaration {
+	repositoryDeclaration := func(name string, allowAutoMerge bool) RepositoryDeclaration {
 		return RepositoryDeclaration{
-			Reference: repository.Reference{Owner: owner, Repo: repo},
+			Reference: mustReference(t, name),
 			General:   General{AllowAutoMerge: new(allowAutoMerge)},
 		}
 	}
@@ -35,14 +44,14 @@ func TestDocumentDeclaration(t *testing.T) {
 		{
 			name: "true is read as an explicit expected value true",
 			src:  minimal,
-			want: Declaration{Repositories: []RepositoryDeclaration{repositoryDeclaration("owner", "repo", true)}},
+			want: Declaration{Repositories: []RepositoryDeclaration{repositoryDeclaration("owner/repo", true)}},
 		},
 		{
 			name: "all repository declarations are read, keeping false as an explicit expected value",
 			src:  second,
 			want: Declaration{Repositories: []RepositoryDeclaration{
-				repositoryDeclaration("owner", "repo", true),
-				repositoryDeclaration("owner", "second", false),
+				repositoryDeclaration("owner/repo", true),
+				repositoryDeclaration("owner/second", false),
 			}},
 		},
 		// ルート

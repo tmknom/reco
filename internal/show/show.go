@@ -12,8 +12,7 @@ import (
 
 // Config は Run の入力。
 type Config struct {
-	Token string
-	// Target は対象リポジトリのリポジトリ指定で、形式を検証済みであること。
+	Token         string
 	Target        repository.Reference
 	Out           io.Writer
 	GitHubOptions []github.Option
@@ -23,7 +22,7 @@ type Config struct {
 func Run(ctx context.Context, cfg Config) error {
 	client := github.New(cfg.Token, cfg.GitHubOptions...)
 	// 失敗の文言は対象名を含むため、ここでは包み直さない
-	observed, err := client.FetchRepository(ctx, cfg.Target.Owner, cfg.Target.Repo)
+	observed, err := client.FetchRepository(ctx, cfg.Target)
 	if err != nil {
 		return err
 	}

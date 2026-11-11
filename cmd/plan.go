@@ -15,7 +15,7 @@ func newPlanCmd(workDir string, opts ...github.Option) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "plan",
 		Short: "Show the changes that would bring the current settings to the configuration",
-		Args:  noArgs,
+		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			token, err := selectToken()
 			if err != nil {

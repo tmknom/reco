@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/tmknom/reco/internal/repository"
 )
 
 // Repository は GitHub から取得したリポジトリの実体と一般設定である。
@@ -20,18 +22,17 @@ type General struct {
 	DeleteBranchOnMerge bool
 }
 
-// FetchRepository は owner/repo のリポジトリを取得する。
-// owner と repo は呼び出し元が形式を検証済みであることを前提とする。パスのエスケープでは . と .. を防げないため。
-func (c *Client) FetchRepository(ctx context.Context, owner, repo string) (Repository, error) {
-	r, err := c.fetchRepository(ctx, owner, repo)
+// FetchRepository は reference のリポジトリを取得する。
+func (c *Client) FetchRepository(ctx context.Context, reference repository.Reference) (Repository, error) {
+	r, err := c.fetchRepository(ctx, reference)
 	if err != nil {
-		return Repository{}, fmt.Errorf("fetch repository %s/%s: %w", owner, repo, err)
+		return Repository{}, fmt.Errorf("fetch repository %s: %w", reference, err)
 	}
 	return r, nil
 }
 
-func (c *Client) fetchRepository(ctx context.Context, owner, repo string) (Repository, error) {
-	body, err := c.get(ctx, c.repositoryURL(owner, repo))
+func (c *Client) fetchRepository(ctx context.Context, reference repository.Reference) (Repository, error) {
+	body, err := c.get(ctx, c.repositoryURL(reference))
 	if err != nil {
 		return Repository{}, err
 	}
@@ -40,10 +41,9 @@ func (c *Client) fetchRepository(ctx context.Context, owner, repo string) (Repos
 
 // repositoryURL は送信先のオリジンに /repos/{owner}/{repo} を置く。
 // url.URL.JoinPath は path が空のオリジンに相対パスを返すため使わない。
-func (c *Client) repositoryURL(owner, repo string) *url.URL {
+func (c *Client) repositoryURL(reference repository.Reference) *url.URL {
 	u := *c.baseURL
-	u.Path = "/repos/" + owner + "/" + repo
-	u.RawPath = "/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(repo)
+	u.Path = "/repos/" + reference.Owner() + "/" + reference.Repo()
 	return &u
 }
 

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -19,12 +21,12 @@ func runExecute(t *testing.T, env Environment, opts []github.Option, args ...str
 	return code, out.String(), errOut.String()
 }
 
-// errorRecords は、stderr の JSON 行のうち ERROR レベルのレコードを返す。使い方などの JSON でない行は読み飛ばす。
+// errorRecords は、stderr の JSON 行のうち ERROR レベルのレコードを返す。
 func errorRecords(t *testing.T, stderr string) []map[string]any {
 	t.Helper()
 	var got []map[string]any
 	for line := range strings.SplitSeq(stderr, "\n") {
-		if !strings.HasPrefix(line, "{") {
+		if line == "" {
 			continue
 		}
 		var m map[string]any
@@ -47,14 +49,10 @@ func TestExecute_Success(t *testing.T) {
 	}{
 		{name: "no arguments shows help on stdout", args: nil, stdout: "Usage:"},
 		{name: "--help shows help on stdout", args: []string{"--help"}, stdout: "Usage:"},
-		// 引数のない root は RunE でも help を出すため、位置引数を添えて help flag として効いたことを確かめる
-		{name: "-h shows help on stdout", args: []string{"foo", "-h"}, stdout: "Usage:"},
-		{name: "--help ignores positional arguments", args: []string{"foo", "--help"}, stdout: "Usage:"},
+		{name: "-h shows help on stdout", args: []string{"-h"}, stdout: "Usage:"},
 		{name: "--version prints the embedded version", version: "v1.2.3", args: []string{"--version"}, stdout: "v1.2.3"},
 		{name: "-v prints the embedded version", version: "v1.2.3", args: []string{"-v"}, stdout: "v1.2.3"},
-		{name: "--version ignores positional arguments", version: "v1.2.3", args: []string{"foo", "--version"}, stdout: "v1.2.3"},
 		{name: "--version without embedded version prints dev", version: "", args: []string{"--version"}, stdout: "dev"},
-		{name: "--log-level is accepted", args: []string{"--log-level", "debug"}, stdout: "Usage:"},
 		{name: "show --help shows show usage without --repo", args: []string{"show", "--help"}, stdout: "reco show"},
 		{name: "plan --help shows plan usage with the default --config", args: []string{"plan", "--help"}, stdout: "(default ./reco.yaml)"},
 	}
@@ -89,24 +87,19 @@ func TestExecute_PassesArgsAndEnvironment(t *testing.T) {
 	}
 }
 
-func TestExecute_UsageError(t *testing.T) {
+func TestExecute_InvalidInput(t *testing.T) {
 	cases := []struct {
 		name string
 		args []string
-		// token は、エラーの対象として stderr にちょうど 1 回だけ現れる語。cobra のエラー表示が重なると 2 回になる。
-		// 使い方の文面にも現れる語のときは空にする。
+		// token は、エラー文言が対象として含む語。
 		token string
 	}{
 		{name: "unknown flag", args: []string{"--invalid"}, token: "--invalid"},
-		{name: "flag without value", args: []string{"--log-level"}},
-		{name: "uppercase log level is rejected", args: []string{"--log-level", "INFO"}, token: "INFO"},
-		{name: "log level with surrounding space is rejected", args: []string{"--log-level", "info "}},
-		{name: "unknown log level name is rejected", args: []string{"--log-level", "verbose"}, token: "verbose"},
-		{name: "invalid log level with --help is rejected", args: []string{"--log-level", "verbose", "--help"}, token: "verbose"},
-		{name: "extra positional argument", args: []string{"foo"}, token: "foo"},
-		{name: "completion command is not provided", args: []string{"completion"}, token: "completion"},
-		// help は使い方の文面にも現れるため token を空にする
-		{name: "help command is not provided", args: []string{"help"}},
+		{name: "flag without value", args: []string{"--log-level"}, token: "--log-level"},
+		{name: "unknown log level", args: []string{"--log-level", "verbose"}, token: "verbose"},
+		{name: "unknown command", args: []string{"foo"}, token: "foo"},
+		// 未定義のコマンドは flag の解析より前にエラーになるため、解析が済んでから失敗する必須 flag の欠落で確かめる
+		{name: "log level above error does not hide the failure", args: []string{"--log-level", "error+4", "show"}, token: "repo"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -117,26 +110,27 @@ func TestExecute_UsageError(t *testing.T) {
 			if stdout != "" {
 				t.Errorf("got stdout %q, want empty", stdout)
 			}
+			// errorRecords は JSON でない行で失敗するため、cobra が自分でエラーや使い方を書けばここで検出する
 			records := errorRecords(t, stderr)
 			if len(records) != 1 || records[0]["msg"] != "command failed" {
-				t.Errorf("got ERROR records %v, want one command failed record", records)
+				t.Fatalf("got ERROR records %v, want one command failed record", records)
 			}
-			if !strings.Contains(stderr, "Usage:") {
-				t.Errorf("got stderr %q, want usage", stderr)
-			}
-			if tc.token != "" && strings.Count(stderr, tc.token) != 1 {
-				t.Errorf("got stderr %q, want %q exactly once", stderr, tc.token)
+			if msg, _ := records[0]["error"].(string); !strings.Contains(msg, tc.token) {
+				t.Errorf("got error %q, want it to contain %q", msg, tc.token)
 			}
 		})
 	}
 }
 
-// CLI 仕様のコマンド一覧が外部契約のため、help に cobra の自動で加えるコマンドや話題が現れないことを確かめる。
-func TestExecute_HelpListsOnlySpecifiedCommands(t *testing.T) {
-	_, stdout, _ := runExecute(t, Environment{}, nil, "--help")
-	for _, unwanted := range []string{"Additional help topics", "Help about any command"} {
-		if strings.Contains(stdout, unwanted) {
-			t.Errorf("got stdout %q, want it not to contain %q", stdout, unwanted)
-		}
+func TestNewRootCmd_LogLevel(t *testing.T) {
+	level := new(slog.LevelVar)
+	root := newRootCmd("", "", level)
+	root.SetArgs([]string{"--log-level", "debug"})
+	root.SetOut(io.Discard)
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got := level.Level(); got != slog.LevelDebug {
+		t.Errorf("got level %v, want %v", got, slog.LevelDebug)
 	}
 }

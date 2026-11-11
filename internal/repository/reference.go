@@ -8,20 +8,28 @@ import (
 )
 
 // Reference は OWNER/REPO 形式のリポジトリ指定。
+// フィールドを公開しないのは、ゼロ値のほかは ParseReference の検証を通った値しか作れない状態にし、
+// 受け取る側が形式を検証し直さずに URL に組み込めるようにするため。
 type Reference struct {
-	Owner string
-	Repo  string
+	owner string
+	repo  string
 }
+
+// Owner は所有者名を返す。
+func (r Reference) Owner() string { return r.owner }
+
+// Repo はリポジトリ名を返す。
+func (r Reference) Repo() string { return r.repo }
 
 // String は OWNER/REPO 形式の名前を返す。
 func (r Reference) String() string {
-	return r.Owner + "/" + r.Repo
+	return r.owner + "/" + r.repo
 }
 
 // EqualFold は、所有者名とリポジトリ名を大文字小文字を区別せずに比べる。GitHub が両者をそう扱うため。
 // ParseReference が名前を ASCII に限るため、検証済みの名前では ASCII 英字だけの同一視になる。
 func (r Reference) EqualFold(o Reference) bool {
-	return strings.EqualFold(r.Owner, o.Owner) && strings.EqualFold(r.Repo, o.Repo)
+	return strings.EqualFold(r.owner, o.owner) && strings.EqualFold(r.repo, o.repo)
 }
 
 // ParseReference は OWNER/REPO 形式の名前をリポジトリ指定に分ける。
@@ -41,7 +49,7 @@ func ParseReference(name string) (Reference, error) {
 	if strings.HasSuffix(strings.ToLower(repo), ".git") {
 		return Reference{}, errors.New(`must not end with ".git"`)
 	}
-	return Reference{Owner: owner, Repo: repo}, nil
+	return Reference{owner: owner, repo: repo}, nil
 }
 
 func checkNameSegment(label, segment string) error {

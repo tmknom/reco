@@ -14,10 +14,19 @@ import (
 	"github.com/tmknom/reco/internal/repository"
 )
 
+func mustReference(t *testing.T, name string) repository.Reference {
+	t.Helper()
+	reference, err := repository.ParseReference(name)
+	if err != nil {
+		t.Fatalf("ParseReference(%q) error = %v", name, err)
+	}
+	return reference
+}
+
 //trace:checks FR-004
 //trace:checks QR-002
 func TestWriteObservation(t *testing.T) {
-	target := repository.Reference{Owner: "owner", Repo: "repo"}
+	target := mustReference(t, "owner/repo")
 	cases := []struct {
 		name           string
 		allowAutoMerge bool
@@ -63,7 +72,7 @@ func (failingWriter) Write([]byte) (int, error) { return 0, errWrite }
 
 //trace:checks FR-004
 func TestRun(t *testing.T) {
-	target := repository.Reference{Owner: "owner", Repo: "repo"}
+	target := mustReference(t, "owner/repo")
 
 	t.Run("observed repository is written to Out", func(t *testing.T) {
 		var gotPath, gotAuthorization string

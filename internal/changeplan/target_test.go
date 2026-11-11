@@ -1,25 +1,33 @@
 package changeplan
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/repository"
 )
 
-func repositoryDeclaration(name string, desired bool) configuration.RepositoryDeclaration {
-	owner, repo, _ := strings.Cut(name, "/")
+func mustReference(t *testing.T, name string) repository.Reference {
+	t.Helper()
+	reference, err := repository.ParseReference(name)
+	if err != nil {
+		t.Fatalf("ParseReference(%q) error = %v", name, err)
+	}
+	return reference
+}
+
+func repositoryDeclaration(t *testing.T, name string, desired bool) configuration.RepositoryDeclaration {
+	t.Helper()
 	return configuration.RepositoryDeclaration{
-		Reference: repository.Reference{Owner: owner, Repo: repo},
+		Reference: mustReference(t, name),
 		General:   configuration.General{AllowAutoMerge: &desired},
 	}
 }
 
 //trace:checks FR-002
 func TestSelectTarget(t *testing.T) {
-	first := repositoryDeclaration("owner/repo", true)
-	second := repositoryDeclaration("owner/second", false)
+	first := repositoryDeclaration(t, "owner/repo", true)
+	second := repositoryDeclaration(t, "owner/second", false)
 
 	t.Run("no selection and one declaration selects it", func(t *testing.T) {
 		d := configuration.Declaration{Repositories: []configuration.RepositoryDeclaration{first}}
@@ -43,7 +51,7 @@ func TestSelectTarget(t *testing.T) {
 
 	t.Run("selection differing only in letter case returns the declared spelling", func(t *testing.T) {
 		d := configuration.Declaration{Repositories: []configuration.RepositoryDeclaration{first}}
-		sel := repository.Reference{Owner: "Owner", Repo: "REPO"}
+		sel := mustReference(t, "Owner/REPO")
 		got, err := selectTarget(d, &sel)
 		if err != nil {
 			t.Fatalf("selectTarget() error = %v", err)
@@ -67,7 +75,7 @@ func TestSelectTarget(t *testing.T) {
 
 	t.Run("undeclared selection is an error naming it", func(t *testing.T) {
 		d := configuration.Declaration{Repositories: []configuration.RepositoryDeclaration{first, second}}
-		sel := repository.Reference{Owner: "owner", Repo: "other"}
+		sel := mustReference(t, "owner/other")
 		_, err := selectTarget(d, &sel)
 		want := "repository owner/other is not declared"
 		if err == nil || err.Error() != want {

@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
-
-	"github.com/tmknom/reco/internal/repository"
 )
 
 //trace:checks FR-001
@@ -67,7 +65,7 @@ func TestLoad(t *testing.T) {
 			t.Fatalf("Load() error = %v", err)
 		}
 		want := Declaration{Repositories: []RepositoryDeclaration{{
-			Reference: repository.Reference{Owner: "owner", Repo: "repo"},
+			Reference: mustReference(t, "owner/repo"),
 			General:   General{AllowAutoMerge: new(true)},
 		}}}
 		if !reflect.DeepEqual(got, want) {

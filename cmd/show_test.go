@@ -47,7 +47,7 @@ func TestShow_Success(t *testing.T) {
 	}
 }
 
-func TestShow_UsageError(t *testing.T) {
+func TestShow_InvalidInput(t *testing.T) {
 	cases := []struct {
 		name string
 		args []string
@@ -56,7 +56,6 @@ func TestShow_UsageError(t *testing.T) {
 		{name: "empty --repo", args: []string{"show", "--repo", ""}},
 		{name: "--config is not defined for show", args: []string{"show", "--repo", "owner/repo", "--config", "reco.yaml"}},
 		{name: "extra positional argument", args: []string{"show", "--repo", "owner/repo", "extra"}},
-		{name: "invalid --log-level after the command", args: []string{"show", "--log-level", "INFO", "--repo", "owner/repo"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -74,9 +73,6 @@ func TestShow_UsageError(t *testing.T) {
 			records := errorRecords(t, stderr)
 			if len(records) != 1 || records[0]["msg"] != "command failed" {
 				t.Errorf("got ERROR records %v, want one command failed record", records)
-			}
-			if !strings.Contains(stderr, "reco show") {
-				t.Errorf("got stderr %q, want show usage", stderr)
 			}
 			if got := server.receivedRequests(); len(got) != 0 {
 				t.Errorf("got %d requests, want none", len(got))

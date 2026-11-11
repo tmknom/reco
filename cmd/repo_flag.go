@@ -7,7 +7,7 @@ import (
 )
 
 // repoFlag は --repo の値で、pflag.Value を満たす。
-// flag の解析中に形式を検証するのは、不正な値を処理の開始前に使い方の誤りとするため。
+// flag の解析中にリポジトリ指定へ変換するのは、不正な値のエラーに pflag が flag 名を添えるため。
 type repoFlag struct {
 	reference repository.Reference
 	set       bool

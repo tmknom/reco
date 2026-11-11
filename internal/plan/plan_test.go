@@ -16,6 +16,15 @@ import (
 	"github.com/tmknom/reco/internal/repository"
 )
 
+func mustReference(t *testing.T, name string) repository.Reference {
+	t.Helper()
+	reference, err := repository.ParseReference(name)
+	if err != nil {
+		t.Fatalf("ParseReference(%q) error = %v", name, err)
+	}
+	return reference
+}
+
 func TestPluralize(t *testing.T) {
 	cases := []struct {
 		name             string
@@ -40,7 +49,7 @@ func TestPluralize(t *testing.T) {
 //trace:checks FR-007
 //trace:checks QR-002
 func TestWriteChangePlan(t *testing.T) {
-	target := repository.Reference{Owner: "owner", Repo: "repo"}
+	target := mustReference(t, "owner/repo")
 	cases := []struct {
 		name     string
 		settings []changeplan.SettingPlan
@@ -176,7 +185,8 @@ func TestRun(t *testing.T) {
 		var out bytes.Buffer
 		files := fstest.MapFS{"reco.yaml": {Data: []byte(configSource)}}
 		cfg := newConfig(files, &out, baseURL)
-		cfg.Selection = &repository.Reference{Owner: "owner", Repo: "other"}
+		selection := mustReference(t, "owner/other")
+		cfg.Selection = &selection
 
 		if err := Run(context.Background(), cfg); err == nil {
 			t.Fatal("Run() error = nil, want an error")
