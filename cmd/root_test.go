@@ -62,6 +62,7 @@ func TestExecute_Success(t *testing.T) {
 		{name: "--version without embedded version prints dev", version: "", args: []string{"--version"}, stdout: "dev"},
 		{name: "show --help shows show usage without --repo", args: []string{"show", "--help"}, stdout: "reco show"},
 		{name: "plan --help shows plan usage with the default --config", args: []string{"plan", "--help"}, stdout: "(default ./reco.yaml)"},
+		{name: "apply --help shows apply usage", args: []string{"apply", "--help"}, stdout: "reco apply"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

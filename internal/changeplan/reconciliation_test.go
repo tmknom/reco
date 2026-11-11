@@ -50,3 +50,42 @@ func TestReconcile(t *testing.T) {
 		})
 	}
 }
+
+//trace:checks FR-012
+func TestSettingPlan_Reconcile(t *testing.T) {
+	approved := SettingPlan{Setting: SettingAllowAutoMerge, Current: false, Desired: true, Result: Mismatch, Applicability: Applicable}
+	cases := []struct {
+		name     string
+		observed github.General
+		want     ReconciliationResult
+	}{
+		{name: "observed value equal to the desired value is a match", observed: github.General{AllowAutoMerge: true}, want: Match},
+		{name: "observed value different from the desired value is a mismatch", observed: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: true}, want: Mismatch},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := approved.Reconcile(tc.observed); got != tc.want {
+				t.Errorf("Reconcile() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+//trace:checks FR-010
+func TestSettingPlan_CurrentIn(t *testing.T) {
+	s := SettingPlan{Setting: SettingAllowAutoMerge}
+	for _, want := range []bool{true, false} {
+		if got := s.CurrentIn(github.General{AllowAutoMerge: want, DeleteBranchOnMerge: !want}); got != want {
+			t.Errorf("CurrentIn() = %t, want %t", got, want)
+		}
+	}
+}
+
+func TestSettingPlan_CurrentIn_UnknownSettingPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("CurrentIn() did not panic for an unknown setting")
+		}
+	}()
+	SettingPlan{Setting: "general.unknown"}.CurrentIn(github.General{})
+}

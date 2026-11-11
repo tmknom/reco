@@ -25,6 +25,10 @@ const devVersion = "dev"
 type Environment struct {
 	Stdout io.Writer
 	Stderr io.Writer
+	// Stdin は、承認の入力を読む標準入力。
+	Stdin io.Reader
+	// StdinIsTerminal は、Stdin が対話端末か。端末の判定は os.Stdin を参照できる main が行う。
+	StdinIsTerminal bool
 	// Version は、実行ファイルに埋め込まれたバージョン。埋め込まれていなければ空。
 	Version string
 	// WorkDir は、相対パスの基準にする起動時の作業ディレクトリ。
@@ -70,6 +74,7 @@ func newRootCmd(env Environment, level *slog.LevelVar, opts ...github.Option) *c
 		SilenceErrors: true,
 	}
 	root.PersistentFlags().TextVar(level, "log-level", level, "diagnostic log `LEVEL`: debug, info, warn, or error")
+	root.AddCommand(newApplyCmd(env, opts...))
 	root.AddCommand(newPlanCmd(env, opts...))
 	root.AddCommand(newShowCmd(env, opts...))
 	return root
