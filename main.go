@@ -7,6 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"golang.org/x/term"
+
 	"github.com/tmknom/reco/cmd"
 )
 
@@ -28,11 +30,14 @@ func run() int {
 	}
 
 	env := cmd.Environment{
-		Stdout:  os.Stdout,
-		Stderr:  os.Stderr,
-		Version: version,
-		WorkDir: wd,
-		Getenv:  os.Getenv,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+		Stdin:  os.Stdin,
+		// ModeCharDevice は /dev/null などの端末でない文字デバイスでも真になるため、端末の判定に使わない
+		StdinIsTerminal: term.IsTerminal(int(os.Stdin.Fd())),
+		Version:         version,
+		WorkDir:         wd,
+		Getenv:          os.Getenv,
 	}
 	return cmd.Execute(ctx, os.Args[1:], env)
 }

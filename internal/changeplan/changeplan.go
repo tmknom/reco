@@ -23,12 +23,11 @@ type Plan struct {
 // SettingPlan は、一つの管理設定についての計画。
 type SettingPlan struct {
 	// Setting は YAML パスで表した設定。
-	Setting string
-	Current bool
-	Desired bool
-	Result  ReconciliationResult
-	// Applicable は Result が Mismatch か NotComparable のときの適用可能性。Match では判断せず false。
-	Applicable bool
+	Setting       string
+	Current       bool
+	Desired       bool
+	Result        ReconciliationResult
+	Applicability Applicability
 }
 
 // Count は、照合結果が r の設定の数を返す。
@@ -69,7 +68,7 @@ func Generate(ctx context.Context, client *github.Client, file ConfigurationFile
 	}
 	settings := reconcile(target.General, observed.General)
 	for i := range settings {
-		settings[i].Applicable = isApplicable(settings[i].Result)
+		settings[i].Applicability = judgeApplicability(settings[i].Result)
 	}
 	return Plan{Target: target.Reference, RepositoryID: observed.ID, Settings: settings}, nil
 }
