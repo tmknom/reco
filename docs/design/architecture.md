@@ -81,20 +81,16 @@ CLI が選択した認証情報だけを GitHub Access へ渡します。認証�
 | `alignment` | `INV-004` | Invariant |
 | `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
 
-### 2.3 Go package との対応
+### 2.3 package の分け方
 
-2.1節の領域と、領域をまたいで使う部品は、Go の package に次のように対応します。
+Go の package は、2.1節の領域を次の考え方で分けます。
 
-| 領域・部品 | package |
-|---|---|
-| CLI | `cmd` |
-| Plan、Apply、Show、Change Planning、Change Execution、Reconciliation | `internal/reco` |
-| Configuration | `internal/configuration` |
-| GitHub Access | `internal/github` |
-| リポジトリ指定の形式判定と比較 | `internal/repository` |
-| 診断ログの出力 (全領域が共通に使う logger) | `internal/logger` |
+- 操作 (Plan、Apply、Show) は、操作ごとに package を分ける。各操作の処理の流れと表示は、[CLI 仕様](../spec/cli.md) の操作ごとの規定に従って別々に変わるため
+- 複数の操作が共有する領域は、操作の package の外に置く。操作の package を呼び出すのは CLI だけ (2.1節) のため
+- 同じ要求の変更で一緒に変わる領域は、同じ package に置く。たとえば照合の規則は変更計画と一緒に変わるため、Reconciliation は Change Planning と同じ package に置く
+- Change Execution は Apply と同じ package に置く。承認済み計画を実行する経路を Apply に限定し、ほかの操作から更新機能へ進む依存を作らないため
 
-計画生成、照合、実行を独立した package にしないのは、使う側が各操作の入口関数だけで、package を分けても依存の向きの制約が増えないためです。
+package 間の依存の制約は、`scripts/golangci-lint/.golangci.yml` の depguard 規則で検査します。
 
 ## 3. 情報の流れと変更計画
 

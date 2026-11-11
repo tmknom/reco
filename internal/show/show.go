@@ -1,5 +1,5 @@
-// Package reco は、reco の各操作の処理の流れを持つ。
-package reco
+// Package show は、show コマンドの処理の流れと観測結果の表示を持つ。
+package show
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"github.com/tmknom/reco/internal/repository"
 )
 
-// ShowConfig は Show の入力。
-type ShowConfig struct {
+// Config は Run の入力。
+type Config struct {
 	Token string
 	// Target は対象リポジトリのリポジトリ指定で、形式を検証済みであること。
 	Target        repository.Reference
@@ -19,8 +19,8 @@ type ShowConfig struct {
 	GitHubOptions []github.Option
 }
 
-// Show は対象リポジトリを観測し、観測結果を Out に書く。
-func Show(ctx context.Context, cfg ShowConfig) error {
+// Run は対象リポジトリを観測し、観測結果を Out に書く。
+func Run(ctx context.Context, cfg Config) error {
 	client := github.New(cfg.Token, cfg.GitHubOptions...)
 	// 失敗の文言は対象名を含むため、ここでは包み直さない
 	observed, err := client.FetchRepository(ctx, cfg.Target.Owner, cfg.Target.Repo)

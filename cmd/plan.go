@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tmknom/reco/internal/github"
-	"github.com/tmknom/reco/internal/reco"
+	"github.com/tmknom/reco/internal/plan"
 )
 
 func newPlanCmd(workDir string, opts ...github.Option) *cobra.Command {
@@ -22,7 +22,7 @@ func newPlanCmd(workDir string, opts ...github.Option) *cobra.Command {
 				return err
 			}
 			dir, name := resolveConfigPath(workDir, config.path)
-			return reco.Plan(c.Context(), reco.PlanConfig{
+			return plan.Run(c.Context(), plan.Config{
 				Token:         token,
 				ConfigDir:     os.DirFS(dir),
 				ConfigName:    name,
