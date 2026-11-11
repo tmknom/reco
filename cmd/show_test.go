@@ -21,11 +21,9 @@ func TestShow_Success(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("GH_TOKEN", ghEnvValue)
-			t.Setenv("GITHUB_TOKEN", githubEnvValue)
 			server, opts := newGitHubServer(t, http.StatusOK, repositoryBody)
 
-			code, stdout, stderr := runExecute(t, Environment{}, opts, tc.args...)
+			code, stdout, stderr := runExecute(t, Environment{Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue, "GITHUB_TOKEN": githubEnvValue})}, opts, tc.args...)
 			if code != 0 {
 				t.Errorf("got exit code %d, want 0 (stderr %q)", code, stderr)
 			}
@@ -59,11 +57,9 @@ func TestShow_InvalidInput(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("GH_TOKEN", ghEnvValue)
-			t.Setenv("GITHUB_TOKEN", "")
 			server, opts := newGitHubServer(t, http.StatusOK, repositoryBody)
 
-			code, stdout, stderr := runExecute(t, Environment{}, opts, tc.args...)
+			code, stdout, stderr := runExecute(t, Environment{Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue})}, opts, tc.args...)
 			if code != 1 {
 				t.Errorf("got exit code %d, want 1", code)
 			}
@@ -83,11 +79,9 @@ func TestShow_InvalidInput(t *testing.T) {
 
 //trace:checks FR-003
 func TestShow_TokenMissing(t *testing.T) {
-	t.Setenv("GH_TOKEN", "")
-	t.Setenv("GITHUB_TOKEN", "")
 	server, opts := newGitHubServer(t, http.StatusOK, repositoryBody)
 
-	code, stdout, stderr := runExecute(t, Environment{}, opts, "show", "--repo", "owner/repo")
+	code, stdout, stderr := runExecute(t, Environment{Getenv: fakeGetenv(nil)}, opts, "show", "--repo", "owner/repo")
 	if code != 1 {
 		t.Errorf("got exit code %d, want 1", code)
 	}
@@ -110,11 +104,9 @@ func TestShow_TokenMissing(t *testing.T) {
 //trace:checks FR-004
 //trace:checks QR-001
 func TestShow_ObservationFailure(t *testing.T) {
-	t.Setenv("GH_TOKEN", ghEnvValue)
-	t.Setenv("GITHUB_TOKEN", githubEnvValue)
 	server, opts := newGitHubServer(t, http.StatusUnauthorized, `{"message": "Bad credentials"}`)
 
-	code, stdout, stderr := runExecute(t, Environment{}, opts, "show", "--repo", "owner/repo")
+	code, stdout, stderr := runExecute(t, Environment{Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue, "GITHUB_TOKEN": githubEnvValue})}, opts, "show", "--repo", "owner/repo")
 	if code != 1 {
 		t.Errorf("got exit code %d, want 1", code)
 	}

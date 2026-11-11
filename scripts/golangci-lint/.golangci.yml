@@ -53,10 +53,11 @@ linters:
       - path: ^main\.go$
         linters:
           - forbidigo
+      # cmd/ では os.Getenv などを除外せずに報告し、環境変数は Environment.Getenv から読ませる。cmd のテストがプロセスの環境変数を変えずに値を渡せるようにするため
       - path: ^cmd/
         linters:
           - forbidigo
-        text: "use of `(time\\.(Now|Since|Until)|os\\.(Getenv|LookupEnv|Environ))`"
+        text: "use of `time\\.(Now|Since|Until)`"
       - path: _test\.go
         linters:
           - forbidigo

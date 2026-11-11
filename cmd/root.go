@@ -29,6 +29,10 @@ type Environment struct {
 	Version string
 	// WorkDir は、相対パスの基準にする起動時の作業ディレクトリ。
 	WorkDir string
+	// Getenv は、環境変数の値を返す。
+	// 環境変数の名前は CLI 仕様の約束で、cmd のテストで確かめるため、値ではなく関数で受けて名前を cmd に置く。
+	// CLI 仕様が未設定と空を区別しないため、os.LookupEnv ではなく os.Getenv の形にする。
+	Getenv func(string) string
 }
 
 // Execute は args を実行し、終了コードを返す。
@@ -40,7 +44,7 @@ func execute(ctx context.Context, args []string, env Environment, opts ...github
 	level := new(slog.LevelVar)
 	log := logger.New(env.Stderr, level)
 
-	root := newRootCmd(env.Version, env.WorkDir, level, opts...) //nolint:contextcheck // サブコマンドは ExecuteContext に渡した ctx を c.Context() で受け取るため、組み立てに ctx を渡さない
+	root := newRootCmd(env, level, opts...) //nolint:contextcheck // サブコマンドは ExecuteContext に渡した ctx を c.Context() で受け取るため、組み立てに ctx を渡さない
 	root.SetArgs(args)
 	root.SetOut(env.Stdout)
 	root.SetErr(env.Stderr)
@@ -53,7 +57,8 @@ func execute(ctx context.Context, args []string, env Environment, opts ...github
 	return exitOK
 }
 
-func newRootCmd(version, workDir string, level *slog.LevelVar, opts ...github.Option) *cobra.Command {
+func newRootCmd(env Environment, level *slog.LevelVar, opts ...github.Option) *cobra.Command {
+	version := env.Version
 	if version == "" {
 		version = devVersion
 	}
@@ -65,7 +70,7 @@ func newRootCmd(version, workDir string, level *slog.LevelVar, opts ...github.Op
 		SilenceErrors: true,
 	}
 	root.PersistentFlags().TextVar(level, "log-level", level, "diagnostic log `LEVEL`: debug, info, warn, or error")
-	root.AddCommand(newPlanCmd(workDir, opts...))
-	root.AddCommand(newShowCmd(opts...))
+	root.AddCommand(newPlanCmd(env, opts...))
+	root.AddCommand(newShowCmd(env, opts...))
 	return root
 }

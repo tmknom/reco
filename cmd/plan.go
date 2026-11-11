@@ -9,7 +9,7 @@ import (
 	"github.com/tmknom/reco/internal/plan"
 )
 
-func newPlanCmd(workDir string, opts ...github.Option) *cobra.Command {
+func newPlanCmd(env Environment, opts ...github.Option) *cobra.Command {
 	var repo repoFlag
 	config := newConfigFlag()
 	c := &cobra.Command{
@@ -17,11 +17,11 @@ func newPlanCmd(workDir string, opts ...github.Option) *cobra.Command {
 		Short: "Show the changes that would bring the current settings to the configuration",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			token, err := selectToken()
+			token, err := selectToken(env.Getenv)
 			if err != nil {
 				return err
 			}
-			dir, name := resolveConfigPath(workDir, config.path)
+			dir, name := resolveConfigPath(env.WorkDir, config.path)
 			return plan.Run(c.Context(), plan.Config{
 				Token:         token,
 				ConfigDir:     os.DirFS(dir),

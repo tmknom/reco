@@ -21,6 +21,13 @@ func runExecute(t *testing.T, env Environment, opts []github.Option, args ...str
 	return code, out.String(), errOut.String()
 }
 
+// fakeGetenv は、vars にない環境変数を空として返す、os.Getenv の代わりの関数を返す。
+func fakeGetenv(vars map[string]string) func(string) string {
+	return func(key string) string {
+		return vars[key]
+	}
+}
+
 // errorRecords は、stderr の JSON 行のうち ERROR レベルのレコードを返す。
 func errorRecords(t *testing.T, stderr string) []map[string]any {
 	t.Helper()
@@ -103,7 +110,7 @@ func TestExecute_InvalidInput(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			code, stdout, stderr := runExecute(t, Environment{}, nil, tc.args...)
+			code, stdout, stderr := runExecute(t, Environment{Getenv: fakeGetenv(nil)}, nil, tc.args...)
 			if code != 1 {
 				t.Errorf("got exit code %d, want 1", code)
 			}
@@ -124,7 +131,7 @@ func TestExecute_InvalidInput(t *testing.T) {
 
 func TestNewRootCmd_LogLevel(t *testing.T) {
 	level := new(slog.LevelVar)
-	root := newRootCmd("", "", level)
+	root := newRootCmd(Environment{Getenv: fakeGetenv(nil)}, level)
 	root.SetArgs([]string{"--log-level", "debug"})
 	root.SetOut(io.Discard)
 	if err := root.Execute(); err != nil {

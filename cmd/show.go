@@ -7,14 +7,14 @@ import (
 	"github.com/tmknom/reco/internal/show"
 )
 
-func newShowCmd(opts ...github.Option) *cobra.Command {
+func newShowCmd(env Environment, opts ...github.Option) *cobra.Command {
 	var repo repoFlag
 	c := &cobra.Command{
 		Use:   "show",
 		Short: "Show the current settings of a repository",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			token, err := selectToken()
+			token, err := selectToken(env.Getenv)
 			if err != nil {
 				return err
 			}
