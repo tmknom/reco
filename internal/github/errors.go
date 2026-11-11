@@ -17,13 +17,20 @@ var (
 	// ErrNotFound は、GitHub が対象を見つけられないと応答したことを表す。
 	// GitHub は権限のない非公開リポジトリにも 404 を返すため、文言で不存在を断定しない。
 	ErrNotFound = errors.New("not found or not accessible")
+	// ErrUnprocessable は、GitHub が要求の内容を処理できないと応答したことを表す。
+	// GitHub は値の検証の失敗にも過剰な要求にも 422 を返すため、文言で原因を断定しない。
+	ErrUnprocessable = errors.New("request not processable")
 	// ErrRedirect は、リダイレクト応答を受けて追従しなかったことを表す。
 	ErrRedirect = errors.New("redirect not followed")
-	// ErrUnexpectedResponse は、取得の契約に適合しない応答を受けたことを表す。
+	// ErrUnexpectedResponse は、取得や更新の契約に適合しない応答を受けたことを表す。
 	ErrUnexpectedResponse = errors.New("unexpected response")
 	// ErrCommunicationFailure は、接続の失敗、時間切れ、中断などで応答を受け取りきれなかったことを表す。
 	ErrCommunicationFailure = errors.New("communication failed")
 )
+
+// ErrUpdateOutcomeUnknown は、更新要求が GitHub に受け付けられたとも拒否されたとも確認できないことを表す。
+// 失敗の種類と重ねて返す。
+var ErrUpdateOutcomeUnknown = errors.New("update outcome unknown")
 
 // classifyFailure は 200 以外の応答を失敗の種類に変換する。
 // Location などのヘッダーと応答本文は、秘密情報を含み得るため文言に入れない。
@@ -40,6 +47,8 @@ func classifyFailure(status int, header http.Header) error {
 		kind = ErrForbidden
 	case status == http.StatusNotFound:
 		kind = ErrNotFound
+	case status == http.StatusUnprocessableEntity:
+		kind = ErrUnprocessable
 	case status == http.StatusTooManyRequests:
 		kind = ErrRateLimited
 	default:
