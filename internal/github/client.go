@@ -1,7 +1,8 @@
-// Package github は GitHub REST API からリポジトリの設定を取得し、要求の失敗を種類に分けて返す。
+// Package github は GitHub REST API でリポジトリの設定を取得・更新し、要求の失敗を種類に分けて返す。
 package github
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -55,25 +56,33 @@ func New(token string, opts ...Option) *Client {
 	return c
 }
 
-func (c *Client) get(ctx context.Context, u *url.URL) ([]byte, error) {
+// send は要求を送り、200 の応答本文を返す。失敗しても reco からは送り直さない。
+// status は受け取った応答のステータスで、応答を受け取れなかったときは 0 になる。
+func (c *Client) send(ctx context.Context, method string, u *url.URL, body []byte) (status int, data []byte, err error) {
 	// http.NewRequestWithContext は URL の解析に失敗し得る形をとるが、ここでは組み立て済みの URL を渡すため、到達しない失敗の分岐を作らないように直接組み立てる
-	req := (&http.Request{Method: http.MethodGet, URL: u, Header: http.Header{}}).WithContext(ctx)
+	req := (&http.Request{Method: method, URL: u, Header: http.Header{}}).WithContext(ctx)
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", apiVersion)
 	req.Header.Set("User-Agent", userAgent)
+	if body != nil {
+		req.Body = io.NopCloser(bytes.NewReader(body))
+		req.ContentLength = int64(len(body))
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrCommunicationFailure, err)
+		return 0, nil, fmt.Errorf("%w: %w", ErrCommunicationFailure, err)
 	}
 	// 読み取りだけの応答本文で、Close の失敗は読み取った結果に影響しない
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, classifyFailure(resp.StatusCode, resp.Header)
+		return resp.StatusCode, nil, classifyFailure(resp.StatusCode, resp.Header)
 	}
-	return readResponseBody(resp.Body)
+	data, err = readResponseBody(resp.Body)
+	return resp.StatusCode, data, err
 }
 
 // readResponseBody は応答本文を maxResponseBytes まで読む。

@@ -116,8 +116,9 @@ func TestDecodeRepository(t *testing.T) {
 func TestFetchRepository(t *testing.T) {
 	var gotMethod, gotPath string
 	var gotHeader http.Header
+	var gotContentLength int64
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		gotMethod, gotPath, gotHeader = r.Method, r.URL.Path, r.Header.Clone()
+		gotMethod, gotPath, gotHeader, gotContentLength = r.Method, r.URL.Path, r.Header.Clone(), r.ContentLength
 		_, _ = w.Write([]byte(repositoryBody))
 	})
 
@@ -132,6 +133,9 @@ func TestFetchRepository(t *testing.T) {
 
 	if gotMethod != http.MethodGet || gotPath != "/repos/owner/repo" {
 		t.Errorf("request = %s %s, want GET /repos/owner/repo", gotMethod, gotPath)
+	}
+	if gotContentLength != 0 || gotHeader.Get("Content-Type") != "" {
+		t.Errorf("GET request has Content-Length %d and Content-Type %q, want no body", gotContentLength, gotHeader.Get("Content-Type"))
 	}
 	headers := map[string]string{
 		"Authorization":        "Bearer " + testToken,

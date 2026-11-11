@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -32,7 +33,7 @@ func (c *Client) FetchRepository(ctx context.Context, reference repository.Refer
 }
 
 func (c *Client) fetchRepository(ctx context.Context, reference repository.Reference) (Repository, error) {
-	body, err := c.get(ctx, c.repositoryURL(reference))
+	_, body, err := c.send(ctx, http.MethodGet, c.repositoryURL(reference), nil)
 	if err != nil {
 		return Repository{}, err
 	}
@@ -55,7 +56,7 @@ type repositoryPayload struct {
 }
 
 // decodeRepository は応答本文をリポジトリに変換する。
-// 欠落の理由を応答から確認できないため、欠けた値を既定値で補わず、観測操作の失敗として返す。
+// 欠落の理由を応答から確認できないため、欠けた値を既定値で補わず、契約外の応答として返す。
 func decodeRepository(data []byte) (Repository, error) {
 	var p repositoryPayload
 	if err := json.Unmarshal(data, &p); err != nil {
