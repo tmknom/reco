@@ -80,7 +80,7 @@ func TestDecodeRepository(t *testing.T) {
 		if err != nil {
 			t.Fatalf("decodeRepository() error = %v", err)
 		}
-		want := Repository{ID: 1296269, General: General{AllowAutoMerge: true, DeleteBranchOnMerge: false}}
+		want := ObservationResult{RepositoryID: 1296269, General: General{AllowAutoMerge: true, DeleteBranchOnMerge: false}}
 		if got != want {
 			t.Errorf("decodeRepository() = %+v, want %+v", got, want)
 		}
@@ -110,10 +110,10 @@ func TestDecodeRepository(t *testing.T) {
 	}
 }
 
-// TestFetchRepository は、送信する要求と、応答から観測値までのつなぎ目を確かめる。
+// TestObserveRepository は、送信する要求と、応答から観測値までのつなぎ目を確かめる。
 //
 //trace:checks FR-004
-func TestFetchRepository(t *testing.T) {
+func TestObserveRepository(t *testing.T) {
 	var gotMethod, gotPath string
 	var gotHeader http.Header
 	var gotContentLength int64
@@ -122,13 +122,13 @@ func TestFetchRepository(t *testing.T) {
 		_, _ = w.Write([]byte(repositoryBody))
 	})
 
-	repo, err := c.FetchRepository(t.Context(), mustReference(t, "owner/repo"))
+	observed, err := c.ObserveRepository(t.Context(), mustReference(t, "owner/repo"))
 	if err != nil {
-		t.Fatalf("FetchRepository() error = %v", err)
+		t.Fatalf("ObserveRepository() error = %v", err)
 	}
-	want := Repository{ID: 1296269, General: General{AllowAutoMerge: true, DeleteBranchOnMerge: false}}
-	if repo != want {
-		t.Errorf("FetchRepository() = %+v, want %+v", repo, want)
+	want := ObservationResult{RepositoryID: 1296269, General: General{AllowAutoMerge: true, DeleteBranchOnMerge: false}}
+	if observed != want {
+		t.Errorf("ObserveRepository() = %+v, want %+v", observed, want)
 	}
 
 	if gotMethod != http.MethodGet || gotPath != "/repos/owner/repo" {
@@ -150,13 +150,13 @@ func TestFetchRepository(t *testing.T) {
 	}
 }
 
-// TestFetchRepositoryFailure は、失敗応答が種類を保って呼び出し元に届き、
+// TestObserveRepositoryFailure は、失敗応答が種類を保って呼び出し元に届き、
 // エラー文言にトークン、応答本文、転送先を含めないことを確かめる。種類の判定規則は TestClassifyFailure が確かめる。
 //
 //trace:checks FR-003
 //trace:checks FR-004
 //trace:checks QR-001
-func TestFetchRepositoryFailure(t *testing.T) {
+func TestObserveRepositoryFailure(t *testing.T) {
 	const bodyMarker = "BODY-MARKER"
 	var redirected atomic.Int32
 	redirectTarget := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -204,9 +204,9 @@ func TestFetchRepositoryFailure(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newTestClient(t, tc.handler)
-			_, err := c.FetchRepository(t.Context(), mustReference(t, "owner/repo"))
+			_, err := c.ObserveRepository(t.Context(), mustReference(t, "owner/repo"))
 			if !errors.Is(err, tc.want) {
-				t.Fatalf("FetchRepository() error = %v, want %v", err, tc.want)
+				t.Fatalf("ObserveRepository() error = %v, want %v", err, tc.want)
 			}
 			msg := err.Error()
 			if !strings.Contains(msg, "owner/repo") {
@@ -229,9 +229,9 @@ func TestFetchRepositoryFailure(t *testing.T) {
 		})
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		_, err := c.FetchRepository(ctx, mustReference(t, "owner/repo"))
+		_, err := c.ObserveRepository(ctx, mustReference(t, "owner/repo"))
 		if !errors.Is(err, ErrCommunicationFailure) || !errors.Is(err, context.Canceled) {
-			t.Fatalf("FetchRepository() error = %v, want %v wrapping %v", err, ErrCommunicationFailure, context.Canceled)
+			t.Fatalf("ObserveRepository() error = %v, want %v wrapping %v", err, ErrCommunicationFailure, context.Canceled)
 		}
 		if strings.Contains(err.Error(), testToken) {
 			t.Errorf("error = %q, must not contain the token", err)

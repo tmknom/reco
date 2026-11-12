@@ -22,17 +22,17 @@ type Config struct {
 func Run(ctx context.Context, cfg Config) error {
 	client := github.New(cfg.Token, cfg.GitHubOptions...)
 	// 失敗の文言は対象名を含むため、ここでは包み直さない
-	observed, err := client.FetchRepository(ctx, cfg.Target)
+	observed, err := client.ObserveRepository(ctx, cfg.Target)
 	if err != nil {
 		return err
 	}
-	return writeObservation(cfg.Out, cfg.Target, observed)
+	return writeObservationResult(cfg.Out, cfg.Target, observed)
 }
 
-// writeObservation は観測結果を CLI 仕様の show の形式で書く。
+// writeObservationResult は観測結果を CLI 仕様の show の形式で書く。
 // Repository 行には GitHub が返す名前ではなく、利用者が指定したリポジトリ指定を出す。
 // 観測操作の失敗の文言と同じ名前で対象を示すためで、リダイレクトに追従しないため両者の差は大文字小文字に限られる。
-func writeObservation(w io.Writer, target repository.Reference, observed github.Repository) error {
+func writeObservationResult(w io.Writer, target repository.Reference, observed github.ObservationResult) error {
 	_, err := fmt.Fprintf(w, "Repository: %s\n\nGeneral:\n  allow_auto_merge: %t\n", target, observed.General.AllowAutoMerge)
 	return err
 }

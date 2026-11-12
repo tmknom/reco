@@ -20,7 +20,7 @@ func repositoryDeclaration(t *testing.T, name string, desired bool) configuratio
 	t.Helper()
 	return configuration.RepositoryDeclaration{
 		Reference: mustReference(t, name),
-		General:   configuration.General{AllowAutoMerge: &desired},
+		Desired:   configuration.DesiredState{General: configuration.General{AllowAutoMerge: &desired}},
 	}
 }
 

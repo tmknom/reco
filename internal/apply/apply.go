@@ -11,6 +11,7 @@ import (
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
+	"github.com/tmknom/reco/internal/setting"
 )
 
 // Config は Run の入力。
@@ -41,7 +42,7 @@ func Run(ctx context.Context, cfg Config) error {
 }
 
 func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changeplan.Plan) error {
-	change, ok, err := logicalChange(p)
+	change, ok, err := singleLogicalChange(p)
 	if err != nil {
 		return err
 	}
@@ -60,43 +61,25 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 	if _, err := io.WriteString(cfg.Out, "Applying changes...\n"); err != nil {
 		return err
 	}
-	report := executeChange(ctx, client, p, change)
-	writeErr := writeChangeReport(cfg.Out, p.Target, change, report)
-	return errors.Join(report.err(p.Target, change), writeErr)
+	record := executeChange(ctx, client, p, change)
+	writeErr := writeChangeReport(cfg.Out, p.Target, change, record)
+	return errors.Join(changeError(record, p.Target, change), writeErr)
 }
 
-// logicalChange は、変更計画から適用する論理的な設定変更を一つ取り出す。変更が不要なら ok は偽になる。
-func logicalChange(p changeplan.Plan) (change changeplan.SettingPlan, ok bool, err error) {
-	var changes []changeplan.SettingPlan
-	for _, s := range p.Settings {
-		if s.Result == changeplan.Match {
-			continue
-		}
-		if s.Applicability != changeplan.Applicable {
-			return changeplan.SettingPlan{}, false, fmt.Errorf("%s: %s cannot be applied", p.Target, s.Setting)
-		}
-		changes = append(changes, s)
+// singleLogicalChange は、変更計画から実行する論理的な設定変更を一つ取り出す。変更が不要なら ok は偽になる。
+// 変更の実行は allow_auto_merge の論理的な設定変更 1 件だけを更新する。
+// changeplan.Generate が作る計画はこの形に収まるが、承認したあとで実行できないと分かるより前に止めるため、
+// 不変条件の破れとして panic せず、承認を求める前の error にする。
+func singleLogicalChange(p changeplan.Plan) (change changeplan.LogicalChange, ok bool, err error) {
+	changes, err := p.LogicalChanges()
+	if err != nil {
+		return changeplan.LogicalChange{}, false, err
 	}
 	if len(changes) == 0 {
-		return changeplan.SettingPlan{}, false, nil
+		return changeplan.LogicalChange{}, false, nil
 	}
-	// 変更の実行は、承認時の現在値が観測できた allow_auto_merge の 1 件だけを更新する。
-	// changeplan.Generate が作る計画はこの形に収まるが、承認したあとで実行できないと分かるより前に止めるため、
-	// 不変条件の破れとして panic せず、承認を求める前の error にする。
-	if len(changes) > 1 || changes[0].Setting != changeplan.SettingAllowAutoMerge || changes[0].Result != changeplan.Mismatch {
-		return changeplan.SettingPlan{}, false, fmt.Errorf("%s: only one known change of %s can be applied", p.Target, changeplan.SettingAllowAutoMerge)
+	if len(changes) > 1 || changes[0].Key != setting.AllowAutoMerge {
+		return changeplan.LogicalChange{}, false, fmt.Errorf("%s: only one known change of %s can be applied", p.Target, setting.AllowAutoMerge)
 	}
 	return changes[0], true, nil
-}
-
-// writeChangePlan は、承認を求める変更計画を CLI 仕様の apply の形式で書く。
-func writeChangePlan(w io.Writer, configPath string, target repository.Reference, change changeplan.SettingPlan) error {
-	_, err := fmt.Fprintf(w, "Configuration: %s\nRepository: %s\n  %s: %t -> %t\n\n",
-		configPath, target, change.Setting, change.Current, change.Desired)
-	return err
-}
-
-func writeNoChanges(w io.Writer) error {
-	_, err := io.WriteString(w, "No changes.\nRepositories checked: 1\n")
-	return err
 }

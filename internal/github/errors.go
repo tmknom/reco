@@ -28,10 +28,6 @@ var (
 	ErrCommunicationFailure = errors.New("communication failed")
 )
 
-// ErrUpdateOutcomeUnknown は、更新要求が GitHub に受け付けられたとも拒否されたとも確認できないことを表す。
-// 失敗の種類と重ねて返す。
-var ErrUpdateOutcomeUnknown = errors.New("update outcome unknown")
-
 // classifyFailure は 200 以外の応答を失敗の種類に変換する。
 // Location などのヘッダーと応答本文は、秘密情報を含み得るため文言に入れない。
 func classifyFailure(status int, header http.Header) error {

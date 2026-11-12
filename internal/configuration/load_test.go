@@ -66,7 +66,7 @@ func TestLoad(t *testing.T) {
 		}
 		want := Declaration{Repositories: []RepositoryDeclaration{{
 			Reference: mustReference(t, "owner/repo"),
-			General:   General{AllowAutoMerge: new(true)},
+			Desired:   DesiredState{General: General{AllowAutoMerge: new(true)}},
 		}}}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("Load() = %+v, want %+v", got, want)

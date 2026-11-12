@@ -25,7 +25,7 @@ func mustReference(t *testing.T, name string) repository.Reference {
 
 //trace:checks FR-004
 //trace:checks QR-002
-func TestWriteObservation(t *testing.T) {
+func TestWriteObservationResult(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 	cases := []struct {
 		name           string
@@ -46,20 +46,20 @@ func TestWriteObservation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
-			observed := github.Repository{ID: 1, General: github.General{AllowAutoMerge: tc.allowAutoMerge}}
-			if err := writeObservation(&out, target, observed); err != nil {
-				t.Fatalf("writeObservation() error = %v", err)
+			observed := github.ObservationResult{RepositoryID: 1, General: github.General{AllowAutoMerge: tc.allowAutoMerge}}
+			if err := writeObservationResult(&out, target, observed); err != nil {
+				t.Fatalf("writeObservationResult() error = %v", err)
 			}
 			if out.String() != tc.want {
-				t.Errorf("writeObservation() wrote %q, want %q", out.String(), tc.want)
+				t.Errorf("writeObservationResult() wrote %q, want %q", out.String(), tc.want)
 			}
 		})
 	}
 
 	t.Run("write failure is returned", func(t *testing.T) {
-		err := writeObservation(failingWriter{}, target, github.Repository{})
+		err := writeObservationResult(failingWriter{}, target, github.ObservationResult{})
 		if !errors.Is(err, errWrite) {
-			t.Errorf("writeObservation() error = %v, want %v", err, errWrite)
+			t.Errorf("writeObservationResult() error = %v, want %v", err, errWrite)
 		}
 	})
 }

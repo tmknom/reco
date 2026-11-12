@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/tmknom/reco/internal/github"
+	"github.com/tmknom/reco/internal/setting"
 )
 
 //trace:checks INV-004
@@ -16,27 +17,27 @@ func TestCheckPrecondition(t *testing.T) {
 	change := allowAutoMergeChange()
 	cases := []struct {
 		name     string
-		observed github.Repository
+		observed github.ObservationResult
 		want     preconditionCheck
 	}{
 		{
 			name:     "same identity and current value hold",
-			observed: github.Repository{ID: 1, General: github.General{AllowAutoMerge: false}},
+			observed: github.ObservationResult{RepositoryID: 1, General: github.General{AllowAutoMerge: false}},
 			want:     preconditionHolds,
 		},
 		{
 			name:     "different ID alone is an identity mismatch",
-			observed: github.Repository{ID: 2, General: github.General{AllowAutoMerge: false}},
+			observed: github.ObservationResult{RepositoryID: 2, General: github.General{AllowAutoMerge: false}},
 			want:     preconditionIdentityMismatch,
 		},
 		{
 			name:     "changed current value alone is a current value change even if it equals the desired value",
-			observed: github.Repository{ID: 1, General: github.General{AllowAutoMerge: true}},
+			observed: github.ObservationResult{RepositoryID: 1, General: github.General{AllowAutoMerge: true}},
 			want:     preconditionCurrentValueChanged,
 		},
 		{
 			name:     "different ID and current value is an identity mismatch",
-			observed: github.Repository{ID: 2, General: github.General{AllowAutoMerge: true}},
+			observed: github.ObservationResult{RepositoryID: 2, General: github.General{AllowAutoMerge: true}},
 			want:     preconditionIdentityMismatch,
 		},
 	}
@@ -49,52 +50,27 @@ func TestCheckPrecondition(t *testing.T) {
 	}
 }
 
-//trace:checks FR-013
-func TestUpdateOutcomeOf(t *testing.T) {
-	cases := []struct {
-		name string
-		err  error
-		want updateOutcome
-	}{
-		{name: "nil is succeeded", err: nil, want: updateSucceeded},
-		{name: "unknown outcome error is unknown", err: github.ErrUpdateOutcomeUnknown, want: updateOutcomeUnknown},
-		{
-			name: "unknown outcome with context canceled is still unknown",
-			err:  errors.Join(github.ErrUpdateOutcomeUnknown, context.Canceled),
-			want: updateOutcomeUnknown,
-		},
-		{name: "forbidden is failed", err: github.ErrForbidden, want: updateFailed},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := updateOutcomeOf(tc.err); got != tc.want {
-				t.Errorf("updateOutcomeOf(%v) = %v, want %v", tc.err, got, tc.want)
-			}
-		})
-	}
-}
-
 //trace:checks FR-012
 func TestConfirmDesiredState(t *testing.T) {
 	change := allowAutoMergeChange()
 	cases := []struct {
 		name     string
-		observed github.Repository
+		observed github.ObservationResult
 		want     desiredStateConfirmation
 	}{
 		{
 			name:     "desired value matches",
-			observed: github.Repository{ID: 1, General: github.General{AllowAutoMerge: true}},
+			observed: github.ObservationResult{RepositoryID: 1, General: github.General{AllowAutoMerge: true}},
 			want:     desiredStateMatches,
 		},
 		{
 			name:     "other value is a mismatch",
-			observed: github.Repository{ID: 1, General: github.General{AllowAutoMerge: false}},
+			observed: github.ObservationResult{RepositoryID: 1, General: github.General{AllowAutoMerge: false}},
 			want:     desiredStateMismatch,
 		},
 		{
 			name:     "different ID is not confirmed even if the value matches",
-			observed: github.Repository{ID: 2, General: github.General{AllowAutoMerge: true}},
+			observed: github.ObservationResult{RepositoryID: 2, General: github.General{AllowAutoMerge: true}},
 			want:     desiredStateRepositoryChanged,
 		},
 	}
@@ -109,11 +85,11 @@ func TestConfirmDesiredState(t *testing.T) {
 
 //trace:checks INV-001
 //trace:checks FR-012
-func TestUnmanagedChanges(t *testing.T) {
+func TestUnexpectedUnmanagedChanges(t *testing.T) {
 	cases := []struct {
 		name          string
 		before, after github.General
-		want          []unmanagedChange
+		want          []unexpectedUnmanagedChange
 	}{
 		{
 			name:   "same settings have no change",
@@ -125,7 +101,7 @@ func TestUnmanagedChanges(t *testing.T) {
 			name:   "different delete_branch_on_merge is reported with both values",
 			before: github.General{DeleteBranchOnMerge: false},
 			after:  github.General{DeleteBranchOnMerge: true},
-			want:   []unmanagedChange{{Setting: "general.delete_branch_on_merge", Before: false, After: true}},
+			want:   []unexpectedUnmanagedChange{{Key: setting.DeleteBranchOnMerge, Before: false, After: true}},
 		},
 		{
 			name:   "different allow_auto_merge alone is not an unmanaged change",
@@ -136,8 +112,8 @@ func TestUnmanagedChanges(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := unmanagedChanges(tc.before, tc.after); !slices.Equal(got, tc.want) {
-				t.Errorf("unmanagedChanges() = %v, want %v", got, tc.want)
+			if got := unexpectedUnmanagedChanges(tc.before, tc.after); !slices.Equal(got, tc.want) {
+				t.Errorf("unexpectedUnmanagedChanges() = %v, want %v", got, tc.want)
 			}
 		})
 	}
@@ -159,9 +135,9 @@ func TestExecuteChange(t *testing.T) {
 		responses     []response
 		wantMethods   []string
 		wantPrecond   preconditionCheck
-		wantUpdate    updateOutcome
+		wantUpdate    github.UpdateOutcome
 		wantDesired   desiredStateConfirmation
-		wantUnmanaged []unmanagedChange
+		wantUnmanaged []unexpectedUnmanagedChange
 		wantResult    changeResult
 		// wantCauses は、cause が errors.Is でたどれるべき error。空なら cause は nil。
 		wantCauses []error
@@ -193,7 +169,7 @@ func TestExecuteChange(t *testing.T) {
 			responses:   []response{okRepository(1, false, false), okRepository(1, true, false), okRepository(1, true, false)},
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
-			wantUpdate:  updateSucceeded,
+			wantUpdate:  github.UpdateSucceeded,
 			wantDesired: desiredStateMatches,
 			wantResult:  completed,
 		},
@@ -202,7 +178,7 @@ func TestExecuteChange(t *testing.T) {
 			responses:   []response{okRepository(1, false, false), {status: http.StatusForbidden}},
 			wantMethods: []string{"GET", "PATCH"},
 			wantPrecond: preconditionHolds,
-			wantUpdate:  updateFailed,
+			wantUpdate:  github.UpdateRejected,
 			wantDesired: desiredStateNotChecked,
 			wantResult:  failed,
 			wantCauses:  []error{github.ErrForbidden},
@@ -212,38 +188,38 @@ func TestExecuteChange(t *testing.T) {
 			responses:   []response{okRepository(1, false, false), redirect, okRepository(1, true, false)},
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
-			wantUpdate:  updateOutcomeUnknown,
+			wantUpdate:  github.UpdateUnknown,
 			wantDesired: desiredStateMatches,
 			wantResult:  failed,
-			wantCauses:  []error{github.ErrUpdateOutcomeUnknown},
+			wantCauses:  []error{github.ErrRedirect},
 		},
 		{
 			name:        "disconnected update with an unreadable diagnosis keeps both the update and the read errors",
 			responses:   []response{okRepository(1, false, false), disconnect, serverError},
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
-			wantUpdate:  updateOutcomeUnknown,
+			wantUpdate:  github.UpdateUnknown,
 			wantDesired: desiredStateUnconfirmed,
 			wantResult:  failed,
-			wantCauses:  []error{github.ErrUpdateOutcomeUnknown, github.ErrUnexpectedResponse},
+			wantCauses:  []error{github.ErrCommunicationFailure, github.ErrUnexpectedResponse},
 		},
 		{
 			name:          "unknown update shows a changed unmanaged setting observed by the diagnosis",
 			responses:     []response{okRepository(1, false, false), redirect, okRepository(1, true, true)},
 			wantMethods:   []string{"GET", "PATCH", "GET"},
 			wantPrecond:   preconditionHolds,
-			wantUpdate:    updateOutcomeUnknown,
+			wantUpdate:    github.UpdateUnknown,
 			wantDesired:   desiredStateMatches,
-			wantUnmanaged: []unmanagedChange{{Setting: "general.delete_branch_on_merge", Before: false, After: true}},
+			wantUnmanaged: []unexpectedUnmanagedChange{{Key: setting.DeleteBranchOnMerge, Before: false, After: true}},
 			wantResult:    failed,
-			wantCauses:    []error{github.ErrUpdateOutcomeUnknown},
+			wantCauses:    []error{github.ErrRedirect},
 		},
 		{
 			name:        "successful update with an unreadable confirmation is unconfirmed with the read error as the cause",
 			responses:   []response{okRepository(1, false, false), okRepository(1, true, false), serverError},
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
-			wantUpdate:  updateSucceeded,
+			wantUpdate:  github.UpdateSucceeded,
 			wantDesired: desiredStateUnconfirmed,
 			wantResult:  failed,
 			wantCauses:  []error{github.ErrUnexpectedResponse},
@@ -253,7 +229,7 @@ func TestExecuteChange(t *testing.T) {
 			responses:   []response{okRepository(1, false, false), okRepository(1, true, false), okRepository(1, false, false)},
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
-			wantUpdate:  updateSucceeded,
+			wantUpdate:  github.UpdateSucceeded,
 			wantDesired: desiredStateMismatch,
 			wantResult:  failed,
 		},
@@ -262,9 +238,9 @@ func TestExecuteChange(t *testing.T) {
 			responses:     []response{okRepository(1, false, false), okRepository(1, true, false), okRepository(1, true, true)},
 			wantMethods:   []string{"GET", "PATCH", "GET"},
 			wantPrecond:   preconditionHolds,
-			wantUpdate:    updateSucceeded,
+			wantUpdate:    github.UpdateSucceeded,
 			wantDesired:   desiredStateMatches,
-			wantUnmanaged: []unmanagedChange{{Setting: "general.delete_branch_on_merge", Before: false, After: true}},
+			wantUnmanaged: []unexpectedUnmanagedChange{{Key: setting.DeleteBranchOnMerge, Before: false, After: true}},
 			wantResult:    failed,
 		},
 		{
@@ -272,7 +248,7 @@ func TestExecuteChange(t *testing.T) {
 			responses:   []response{okRepository(1, false, false), okRepository(1, true, false), okRepository(2, true, true)},
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
-			wantUpdate:  updateSucceeded,
+			wantUpdate:  github.UpdateSucceeded,
 			wantDesired: desiredStateRepositoryChanged,
 			wantResult:  failed,
 		},
@@ -280,7 +256,7 @@ func TestExecuteChange(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			baseURL, rec := newSequenceServer(t, tc.responses...)
-			p := newPlan(t, allowAutoMergeChange())
+			p := newPlan(t)
 
 			got := executeChange(context.Background(), newClient(baseURL), p, allowAutoMergeChange())
 
@@ -296,8 +272,8 @@ func TestExecuteChange(t *testing.T) {
 			if got.confirmation != tc.wantDesired {
 				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
 			}
-			if !slices.Equal(got.unmanagedChanges, tc.wantUnmanaged) {
-				t.Errorf("unmanagedChanges = %v, want %v", got.unmanagedChanges, tc.wantUnmanaged)
+			if !slices.Equal(got.unexpectedUnmanagedChanges, tc.wantUnmanaged) {
+				t.Errorf("unexpectedUnmanagedChanges = %v, want %v", got.unexpectedUnmanagedChanges, tc.wantUnmanaged)
 			}
 			if got.result() != tc.wantResult {
 				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)

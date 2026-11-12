@@ -1,4 +1,4 @@
-// Package changeplan は、変更計画の生成を持つ。
+// Package changeplan は、設定宣言と観測結果を照合し、変更計画を生成する。
 package changeplan
 
 import (
@@ -9,22 +9,24 @@ import (
 	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
+	"github.com/tmknom/reco/internal/setting"
 )
 
-// Plan は、対象リポジトリと、管理範囲内の設定ごとの計画をまとめた変更計画。
+// Plan は変更計画。対象の選択が一つのリポジトリに限るため、リポジトリの計画を兼ねる。
 type Plan struct {
 	// Target は宣言の name。
-	Target       repository.Reference
-	RepositoryID int64
+	Target repository.Reference
+	// RepositoryID は計画時の観測で得た、Target が指す実体の ID。承認されると、変更前提の同一性の基準になる。
+	RepositoryID repository.ID
 	// Settings は一致した設定も含む。変更予定とは Result で区別する。
 	Settings []SettingPlan
 }
 
 // SettingPlan は、一つの管理設定についての計画。
 type SettingPlan struct {
-	// Setting は YAML パスで表した設定。
-	Setting       string
-	Current       bool
+	Key setting.Key
+	// Observed は計画時の観測値。
+	Observed      bool
 	Desired       bool
 	Result        ReconciliationResult
 	Applicability Applicability
@@ -62,13 +64,13 @@ func Generate(ctx context.Context, client *github.Client, file ConfigurationFile
 	if err != nil {
 		return Plan{}, err
 	}
-	observed, err := client.FetchRepository(ctx, target.Reference)
+	observed, err := client.ObserveRepository(ctx, target.Reference)
 	if err != nil {
 		return Plan{}, err
 	}
-	settings := reconcile(target.General, observed.General)
+	settings := reconcile(target.Desired, observed.General)
 	for i := range settings {
 		settings[i].Applicability = judgeApplicability(settings[i].Result)
 	}
-	return Plan{Target: target.Reference, RepositoryID: observed.ID, Settings: settings}, nil
+	return Plan{Target: target.Reference, RepositoryID: observed.RepositoryID, Settings: settings}, nil
 }
