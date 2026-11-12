@@ -110,10 +110,21 @@ func (r changeReport) details(change changeplan.SettingPlan) []string {
 	if r.update != updateNotStarted {
 		lines = append(lines, "Update request: "+r.update.text(), "Desired state: "+r.confirmation.text(r.update))
 	}
+	if cause := r.possibleCause(change.Setting); cause != "" {
+		lines = append(lines, "Possible cause: "+cause)
+	}
 	for _, c := range r.unmanagedChanges {
 		lines = append(lines, fmt.Sprintf("Unmanaged settings: %s changed %t -> %t (cause not determined)", c.Setting, c.Before, c.After))
 	}
 	return lines
+}
+
+// possibleCause は、設定に既知の原因の候補を返す。候補がなければ空文字列を返す。
+func (r changeReport) possibleCause(setting string) string {
+	if r.update != updateSucceeded || r.confirmation != desiredStateMismatch || setting != changeplan.SettingAllowAutoMerge {
+		return ""
+	}
+	return "auto-merge is not available for private repositories on GitHub Free, where GitHub may accept the update without applying it"
 }
 
 func (p preconditionCheck) reason(setting string) string {

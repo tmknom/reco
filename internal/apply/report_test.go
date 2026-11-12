@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
 )
 
@@ -90,6 +91,37 @@ func TestChangeReportErr(t *testing.T) {
 }
 
 //trace:checks FR-013
+func TestPossibleCause(t *testing.T) {
+	succeededMismatch := changeReport{precondition: preconditionHolds, update: updateSucceeded, confirmation: desiredStateMismatch}
+	cases := []struct {
+		name    string
+		report  changeReport
+		setting string
+		want    bool
+	}{
+		{name: "allow_auto_merge mismatch after a successful update has a possible cause", report: succeededMismatch, setting: changeplan.SettingAllowAutoMerge, want: true},
+		{name: "mismatch of another setting has no possible cause", report: succeededMismatch, setting: settingDeleteBranchOnMerge, want: false},
+		{
+			name:    "mismatch after an unknown outcome has no possible cause",
+			report:  changeReport{precondition: preconditionHolds, update: updateOutcomeUnknown, confirmation: desiredStateMismatch},
+			setting: changeplan.SettingAllowAutoMerge, want: false,
+		},
+		{
+			name:    "unconfirmed state after a successful update has no possible cause",
+			report:  changeReport{precondition: preconditionHolds, update: updateSucceeded, confirmation: desiredStateUnconfirmed},
+			setting: changeplan.SettingAllowAutoMerge, want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.report.possibleCause(tc.setting) != ""; got != tc.want {
+				t.Errorf("possibleCause(%q) = %q, want present = %v", tc.setting, tc.report.possibleCause(tc.setting), tc.want)
+			}
+		})
+	}
+}
+
+//trace:checks FR-013
 //trace:checks QR-002
 func TestWriteChangeReport(t *testing.T) {
 	target := mustReference(t, "owner/repo")
@@ -147,9 +179,10 @@ func TestWriteChangeReport(t *testing.T) {
 				rollbackNote,
 		},
 		{
-			name:   "success with a mismatch",
+			name:   "success with a mismatch shows the possible cause after the desired state",
 			report: changeReport{precondition: preconditionHolds, update: updateSucceeded, confirmation: desiredStateMismatch},
-			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: does not match\n\n" +
+			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: does not match\n" +
+				"    Possible cause: auto-merge is not available for private repositories on GitHub Free, where GitHub may accept the update without applying it\n\n" +
 				rollbackNote,
 		},
 		{
