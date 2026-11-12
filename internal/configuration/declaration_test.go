@@ -25,7 +25,7 @@ func TestDocumentDeclaration(t *testing.T) {
 	repositoryDeclaration := func(name string, allowAutoMerge bool) RepositoryDeclaration {
 		return RepositoryDeclaration{
 			Reference: mustReference(t, name),
-			General:   General{AllowAutoMerge: new(allowAutoMerge)},
+			Desired:   DesiredState{General: General{AllowAutoMerge: new(allowAutoMerge)}},
 		}
 	}
 	// second は 2 件目の宣言を持つ入力。失敗のケースは 2 件目の宣言を変えて作り、パスの添字を確かめる。

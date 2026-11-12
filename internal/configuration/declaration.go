@@ -51,7 +51,7 @@ func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDe
 	if err != nil {
 		return RepositoryDeclaration{}, err
 	}
-	return RepositoryDeclaration{Reference: reference, General: general}, nil
+	return RepositoryDeclaration{Reference: reference, Desired: DesiredState{General: general}}, nil
 }
 
 func (d document) general(n *yaml.Node, path string) (General, error) {

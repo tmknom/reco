@@ -119,6 +119,30 @@ linters:
               desc: show does not use the configuration declaration, reconciliation, or change plan
             - pkg: github.com/tmknom/reco/internal/configuration
               desc: show does not use the configuration declaration, reconciliation, or change plan
+        declaration-without-observation:
+          list-mode: lax
+          files:
+            - "${base-path}/internal/configuration/**"
+          deny:
+            - pkg: github.com/tmknom/reco/internal/github
+              desc: the declaration does not know the repository on GitHub or its current values
+        observation-without-declaration:
+          list-mode: lax
+          files:
+            - "${base-path}/internal/github/**"
+          deny:
+            - pkg: github.com/tmknom/reco/internal/configuration
+              desc: the observation does not know the management scope
+            - pkg: github.com/tmknom/reco/internal/changeplan
+              desc: the observation does not know the management scope
+        shared-terms-standalone:
+          list-mode: lax
+          files:
+            - "${base-path}/internal/repository/**"
+            - "${base-path}/internal/setting/**"
+          deny:
+            - pkg: github.com/tmknom/reco/internal
+              desc: shared terms of every context must not depend on any context
         internal-from-main:
           list-mode: lax
           files:

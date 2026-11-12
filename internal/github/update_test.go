@@ -13,23 +13,27 @@ import (
 )
 
 //trace:checks FR-013
-func TestIsOutcomeUnknown(t *testing.T) {
+func TestUpdateOutcomeOf(t *testing.T) {
+	errFailed := errors.New("failed")
 	cases := []struct {
 		name   string
 		status int
-		want   bool
+		err    error
+		want   UpdateOutcome
 	}{
-		{name: "no response is unknown", status: 0, want: true},
-		{name: "204 is unknown", status: 204, want: true},
-		{name: "399 is unknown", status: 399, want: true},
-		{name: "400 is a rejection", status: 400, want: false},
-		{name: "499 is a rejection", status: 499, want: false},
-		{name: "500 is unknown", status: 500, want: true},
+		{name: "200 without an error is succeeded", status: 200, err: nil, want: UpdateSucceeded},
+		{name: "200 with an error is unknown", status: 200, err: errFailed, want: UpdateUnknown},
+		{name: "no response is unknown", status: 0, err: errFailed, want: UpdateUnknown},
+		{name: "204 is unknown", status: 204, err: errFailed, want: UpdateUnknown},
+		{name: "399 is unknown", status: 399, err: errFailed, want: UpdateUnknown},
+		{name: "400 is rejected", status: 400, err: errFailed, want: UpdateRejected},
+		{name: "499 is rejected", status: 499, err: errFailed, want: UpdateRejected},
+		{name: "500 is unknown", status: 500, err: errFailed, want: UpdateUnknown},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := isOutcomeUnknown(tc.status); got != tc.want {
-				t.Errorf("isOutcomeUnknown(%d) = %v, want %v", tc.status, got, tc.want)
+			if got := updateOutcomeOf(tc.status, tc.err); got != tc.want {
+				t.Errorf("updateOutcomeOf(%d, %v) = %v, want %v", tc.status, tc.err, got, tc.want)
 			}
 		})
 	}
@@ -59,8 +63,9 @@ func TestUpdateAllowAutoMerge(t *testing.T) {
 				_, _ = w.Write([]byte(repositoryBody))
 			})
 
-			if err := c.UpdateAllowAutoMerge(t.Context(), mustReference(t, "owner/repo"), tc.allow); err != nil {
-				t.Fatalf("UpdateAllowAutoMerge() error = %v", err)
+			outcome, err := c.UpdateAllowAutoMerge(t.Context(), mustReference(t, "owner/repo"), tc.allow)
+			if err != nil || outcome != UpdateSucceeded {
+				t.Fatalf("UpdateAllowAutoMerge() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
 			}
 
 			if gotMethod != http.MethodPatch || gotPath != "/repos/owner/repo" {
@@ -84,7 +89,7 @@ func TestUpdateAllowAutoMerge(t *testing.T) {
 }
 
 // TestUpdateAllowAutoMergeRejected は、GitHub が拒否した更新を成否不明と取り違えず、再送しないことを確かめる。
-// ステータスごとの種類は TestClassifyFailure が、拒否と成否不明の境界は TestIsOutcomeUnknown が確かめる。
+// ステータスごとの種類は TestClassifyFailure が、拒否と成否不明の境界は TestUpdateOutcomeOf が確かめる。
 //
 //trace:checks FR-013
 //trace:checks INV-005
@@ -95,12 +100,9 @@ func TestUpdateAllowAutoMergeRejected(t *testing.T) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
 	})
 
-	err := c.UpdateAllowAutoMerge(t.Context(), mustReference(t, "owner/repo"), true)
-	if !errors.Is(err, ErrUnprocessable) {
-		t.Fatalf("UpdateAllowAutoMerge() error = %v, want %v", err, ErrUnprocessable)
-	}
-	if errors.Is(err, ErrUpdateOutcomeUnknown) {
-		t.Errorf("UpdateAllowAutoMerge() error = %v, must not be %v", err, ErrUpdateOutcomeUnknown)
+	outcome, err := c.UpdateAllowAutoMerge(t.Context(), mustReference(t, "owner/repo"), true)
+	if outcome != UpdateRejected || !errors.Is(err, ErrUnprocessable) {
+		t.Fatalf("UpdateAllowAutoMerge() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrUnprocessable)
 	}
 	if n := received.Load(); n != 1 {
 		t.Errorf("server received %d requests, want 1", n)
@@ -167,9 +169,13 @@ func TestUpdateAllowAutoMergeOutcomeUnknown(t *testing.T) {
 				tc.handler(w, r)
 			})
 
-			err := c.UpdateAllowAutoMerge(t.Context(), mustReference(t, "owner/repo"), true)
-			if !errors.Is(err, ErrUpdateOutcomeUnknown) || !errors.Is(err, tc.want) {
-				t.Fatalf("UpdateAllowAutoMerge() error = %v, want %v wrapping %v", err, ErrUpdateOutcomeUnknown, tc.want)
+			outcome, err := c.UpdateAllowAutoMerge(t.Context(), mustReference(t, "owner/repo"), true)
+			if outcome != UpdateUnknown || !errors.Is(err, tc.want) {
+				t.Fatalf("UpdateAllowAutoMerge() = %v, %v, want %v with %v", outcome, err, UpdateUnknown, tc.want)
+			}
+			// 成否不明は利用者に示す事実のため、error の文言に含める
+			if !strings.Contains(err.Error(), "update outcome unknown") {
+				t.Errorf("error = %q, want it to state that the update outcome is unknown", err)
 			}
 			if n := received.Load(); n != 1 {
 				t.Errorf("server received %d requests, want 1", n)

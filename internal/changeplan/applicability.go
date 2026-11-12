@@ -1,6 +1,7 @@
 package changeplan
 
-// Applicability は、不一致または比較不能と照合した設定を安全に変更できるかの判断。
+// Applicability は、変更予定 (不一致または比較不能と照合した設定) を安全に変更できるかの判断。
+// ゼロ値の ApplicabilityNotJudged は、一致した設定に判断がないことを表し、三つ目の判断ではない。
 type Applicability int
 
 const (

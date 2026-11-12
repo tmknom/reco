@@ -11,31 +11,31 @@ import (
 	"github.com/tmknom/reco/internal/repository"
 )
 
-// Repository は GitHub から取得したリポジトリの実体と一般設定である。
-type Repository struct {
-	ID      int64
-	General General
+// ObservationResult は、一回の観測で確認できた、リポジトリ指定が指す実体の ID と設定の観測値である。
+type ObservationResult struct {
+	RepositoryID repository.ID
+	General      General
 }
 
-// General はリポジトリ一般設定のうち、reco が観測する値である。
+// General はリポジトリ一般設定のうち、reco が観測する値である。管理範囲を知らないため、未管理設定の値も含む。
 type General struct {
 	AllowAutoMerge      bool
 	DeleteBranchOnMerge bool
 }
 
-// FetchRepository は reference のリポジトリを取得する。
-func (c *Client) FetchRepository(ctx context.Context, reference repository.Reference) (Repository, error) {
-	r, err := c.fetchRepository(ctx, reference)
+// ObserveRepository は reference のリポジトリを観測する。
+func (c *Client) ObserveRepository(ctx context.Context, reference repository.Reference) (ObservationResult, error) {
+	o, err := c.observeRepository(ctx, reference)
 	if err != nil {
-		return Repository{}, fmt.Errorf("fetch repository %s: %w", reference, err)
+		return ObservationResult{}, fmt.Errorf("fetch repository %s: %w", reference, err)
 	}
-	return r, nil
+	return o, nil
 }
 
-func (c *Client) fetchRepository(ctx context.Context, reference repository.Reference) (Repository, error) {
+func (c *Client) observeRepository(ctx context.Context, reference repository.Reference) (ObservationResult, error) {
 	_, body, err := c.send(ctx, http.MethodGet, c.repositoryURL(reference), nil)
 	if err != nil {
-		return Repository{}, err
+		return ObservationResult{}, err
 	}
 	return decodeRepository(body)
 }
@@ -55,12 +55,12 @@ type repositoryPayload struct {
 	DeleteBranchOnMerge *bool  `json:"delete_branch_on_merge"`
 }
 
-// decodeRepository は応答本文をリポジトリに変換する。
+// decodeRepository はリポジトリの応答本文を観測結果に変換する。
 // 欠落の理由を応答から確認できないため、欠けた値を既定値で補わず、契約外の応答として返す。
-func decodeRepository(data []byte) (Repository, error) {
+func decodeRepository(data []byte) (ObservationResult, error) {
 	var p repositoryPayload
 	if err := json.Unmarshal(data, &p); err != nil {
-		return Repository{}, fmt.Errorf("%w: %w", ErrUnexpectedResponse, err)
+		return ObservationResult{}, fmt.Errorf("%w: %w", ErrUnexpectedResponse, err)
 	}
 	var missing []string
 	if p.ID == nil {
@@ -73,10 +73,10 @@ func decodeRepository(data []byte) (Repository, error) {
 		missing = append(missing, "delete_branch_on_merge")
 	}
 	if len(missing) > 0 {
-		return Repository{}, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missing, ", "))
+		return ObservationResult{}, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missing, ", "))
 	}
-	return Repository{
-		ID: *p.ID,
+	return ObservationResult{
+		RepositoryID: repository.ID(*p.ID),
 		General: General{
 			AllowAutoMerge:      *p.AllowAutoMerge,
 			DeleteBranchOnMerge: *p.DeleteBranchOnMerge,

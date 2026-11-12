@@ -58,7 +58,7 @@ func TestWriteChangePlan(t *testing.T) {
 		{
 			name: "mismatch is shown as a change with a summary",
 			settings: []changeplan.SettingPlan{
-				{Setting: "general.allow_auto_merge", Current: false, Desired: true, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{Key: "general.allow_auto_merge", Observed: false, Desired: true, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 			},
 			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n  general.allow_auto_merge: false -> true\n\n" +
 				"Plan: 1 repository to update, 1 known change, 0 not-comparable settings\n",
@@ -66,8 +66,8 @@ func TestWriteChangePlan(t *testing.T) {
 		{
 			name: "matched settings are not shown as changes",
 			settings: []changeplan.SettingPlan{
-				{Setting: "general.matched", Current: true, Desired: true, Result: changeplan.Match},
-				{Setting: "general.allow_auto_merge", Current: true, Desired: false, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{Key: "general.matched", Observed: true, Desired: true, Result: changeplan.Match},
+				{Key: "general.allow_auto_merge", Observed: true, Desired: false, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 			},
 			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n  general.allow_auto_merge: true -> false\n\n" +
 				"Plan: 1 repository to update, 1 known change, 0 not-comparable settings\n",
@@ -75,7 +75,7 @@ func TestWriteChangePlan(t *testing.T) {
 		{
 			name: "all matches report no changes",
 			settings: []changeplan.SettingPlan{
-				{Setting: "general.allow_auto_merge", Current: false, Desired: false, Result: changeplan.Match},
+				{Key: "general.allow_auto_merge", Observed: false, Desired: false, Result: changeplan.Match},
 			},
 			want: "No changes.\nRepositories checked: 1\n",
 		},
@@ -95,7 +95,7 @@ func TestWriteChangePlan(t *testing.T) {
 
 	t.Run("not-comparable setting is never reported as no changes", func(t *testing.T) {
 		var out bytes.Buffer
-		p := changeplan.Plan{Target: target, Settings: []changeplan.SettingPlan{{Setting: "general.allow_auto_merge", Result: changeplan.NotComparable}}}
+		p := changeplan.Plan{Target: target, Settings: []changeplan.SettingPlan{{Key: "general.allow_auto_merge", Result: changeplan.NotComparable}}}
 		if err := writeChangePlan(&out, "./reco.yaml", p); err != nil {
 			t.Fatalf("writeChangePlan() error = %v", err)
 		}
@@ -107,7 +107,7 @@ func TestWriteChangePlan(t *testing.T) {
 	// 比較不能の現在値は確認できていないため、確認済みの差分の形式 (現在値 -> 期待値) で書かない
 	t.Run("not-comparable setting is not shown as a known change", func(t *testing.T) {
 		var out bytes.Buffer
-		p := changeplan.Plan{Target: target, Settings: []changeplan.SettingPlan{{Setting: "general.allow_auto_merge", Result: changeplan.NotComparable}}}
+		p := changeplan.Plan{Target: target, Settings: []changeplan.SettingPlan{{Key: "general.allow_auto_merge", Result: changeplan.NotComparable}}}
 		if err := writeChangePlan(&out, "./reco.yaml", p); err != nil {
 			t.Fatalf("writeChangePlan() error = %v", err)
 		}

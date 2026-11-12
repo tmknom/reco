@@ -60,7 +60,7 @@ func TestGenerate(t *testing.T) {
 		if got.RepositoryID != 7 {
 			t.Errorf("RepositoryID = %d, want 7", got.RepositoryID)
 		}
-		want := SettingPlan{Setting: "general.allow_auto_merge", Current: false, Desired: true, Result: Mismatch, Applicability: Applicable}
+		want := SettingPlan{Key: "general.allow_auto_merge", Observed: false, Desired: true, Result: Mismatch, Applicability: Applicable}
 		if len(got.Settings) != 1 || got.Settings[0] != want {
 			t.Errorf("Settings = %+v, want [%+v]", got.Settings, want)
 		}

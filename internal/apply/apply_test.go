@@ -17,6 +17,7 @@ import (
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
+	"github.com/tmknom/reco/internal/setting"
 )
 
 func mustReference(t *testing.T, name string) repository.Reference {
@@ -126,11 +127,16 @@ func newClient(baseURL *url.URL) *github.Client {
 	return github.New("test-token", github.WithBaseURL(baseURL))
 }
 
-// allowAutoMergeChange は、allow_auto_merge を false から true にする適用可能な変更。
-func allowAutoMergeChange() changeplan.SettingPlan {
+// allowAutoMergeChange は、allow_auto_merge を false から true にする論理的な設定変更。
+func allowAutoMergeChange() changeplan.LogicalChange {
+	return changeplan.LogicalChange{Key: setting.AllowAutoMerge, Observed: false, Desired: true}
+}
+
+// allowAutoMergeMismatch は、allowAutoMergeChange を導く適用可能な変更予定。
+func allowAutoMergeMismatch() changeplan.SettingPlan {
 	return changeplan.SettingPlan{
-		Setting:       changeplan.SettingAllowAutoMerge,
-		Current:       false,
+		Key:           setting.AllowAutoMerge,
+		Observed:      false,
 		Desired:       true,
 		Result:        changeplan.Mismatch,
 		Applicability: changeplan.Applicable,
@@ -142,26 +148,26 @@ func newPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.Plan {
 	return changeplan.Plan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
 }
 
+// TestSingleLogicalChange は、変更の実行が扱える論理的な設定変更に限る規則を確かめる。
+//
 //trace:checks INV-002
-//trace:checks FR-008
-func TestLogicalChange(t *testing.T) {
-	match := changeplan.SettingPlan{Setting: changeplan.SettingAllowAutoMerge, Current: true, Desired: true, Result: changeplan.Match}
-	change := allowAutoMergeChange()
+func TestSingleLogicalChange(t *testing.T) {
+	match := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Observed: true, Desired: true, Result: changeplan.Match}
 
 	t.Run("all matches have no change", func(t *testing.T) {
-		_, ok, err := logicalChange(newPlan(t, match))
+		_, ok, err := singleLogicalChange(newPlan(t, match))
 		if err != nil || ok {
-			t.Errorf("logicalChange() ok = %t, error = %v, want no change without error", ok, err)
+			t.Errorf("singleLogicalChange() ok = %t, error = %v, want no change without error", ok, err)
 		}
 	})
 
-	t.Run("applicable mismatch is returned next to a match", func(t *testing.T) {
-		got, ok, err := logicalChange(newPlan(t, match, change))
+	t.Run("applicable mismatch of allow_auto_merge is returned as the logical change", func(t *testing.T) {
+		got, ok, err := singleLogicalChange(newPlan(t, match, allowAutoMergeMismatch()))
 		if err != nil || !ok {
-			t.Fatalf("logicalChange() ok = %t, error = %v, want a change without error", ok, err)
+			t.Fatalf("singleLogicalChange() ok = %t, error = %v, want a change without error", ok, err)
 		}
-		if got != change {
-			t.Errorf("logicalChange() = %+v, want %+v", got, change)
+		if want := allowAutoMergeChange(); got != want {
+			t.Errorf("singleLogicalChange() = %+v, want %+v", got, want)
 		}
 	})
 
@@ -170,39 +176,21 @@ func TestLogicalChange(t *testing.T) {
 		settings []changeplan.SettingPlan
 	}{
 		{
-			name: "not-comparable not-applicable setting is an error",
-			settings: []changeplan.SettingPlan{
-				{Setting: changeplan.SettingAllowAutoMerge, Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable},
-			},
+			name:     "two logical changes are an error",
+			settings: []changeplan.SettingPlan{allowAutoMergeMismatch(), allowAutoMergeMismatch()},
 		},
 		{
-			name: "applicable not-comparable setting is an error because its current value is unknown",
+			name: "logical change of another setting is an error",
 			settings: []changeplan.SettingPlan{
-				{Setting: changeplan.SettingAllowAutoMerge, Desired: true, Result: changeplan.NotComparable, Applicability: changeplan.Applicable},
-			},
-		},
-		{
-			name: "mismatch whose applicability is not judged is an error",
-			settings: []changeplan.SettingPlan{
-				{Setting: changeplan.SettingAllowAutoMerge, Current: false, Desired: true, Result: changeplan.Mismatch, Applicability: changeplan.ApplicabilityNotJudged},
-			},
-		},
-		{
-			name:     "two applicable changes are an error",
-			settings: []changeplan.SettingPlan{change, change},
-		},
-		{
-			name: "applicable change of another setting is an error",
-			settings: []changeplan.SettingPlan{
-				{Setting: "general.delete_branch_on_merge", Current: false, Desired: true, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{Key: setting.DeleteBranchOnMerge, Observed: false, Desired: true, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 			},
 		},
 	}
 	for _, tc := range errorCases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, ok, err := logicalChange(newPlan(t, tc.settings...))
+			_, ok, err := singleLogicalChange(newPlan(t, tc.settings...))
 			if err == nil {
-				t.Errorf("logicalChange() ok = %t, error = nil, want an error", ok)
+				t.Errorf("singleLogicalChange() ok = %t, error = nil, want an error", ok)
 			}
 		})
 	}
@@ -249,7 +237,7 @@ func TestApplyPlan(t *testing.T) {
 		baseURL, rec := newSequenceServer(t)
 		var out bytes.Buffer
 		calls := 0
-		match := changeplan.SettingPlan{Setting: changeplan.SettingAllowAutoMerge, Current: true, Desired: true, Result: changeplan.Match}
+		match := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Observed: true, Desired: true, Result: changeplan.Match}
 
 		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, match))
 
@@ -268,7 +256,7 @@ func TestApplyPlan(t *testing.T) {
 		baseURL, rec := newSequenceServer(t)
 		var out bytes.Buffer
 		calls := 0
-		notApplicable := changeplan.SettingPlan{Setting: changeplan.SettingAllowAutoMerge, Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable}
+		notApplicable := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable}
 
 		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, notApplicable))
 
@@ -289,7 +277,7 @@ func TestApplyPlan(t *testing.T) {
 			return errors.New("declined")
 		}}
 
-		_ = applyPlan(context.Background(), cfg, newClient(baseURL), newPlan(t, allowAutoMergeChange()))
+		_ = applyPlan(context.Background(), cfg, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
 
 		if shown == "" {
 			t.Error("Out at approval is empty, want the change plan")
@@ -302,7 +290,7 @@ func TestApplyPlan(t *testing.T) {
 		errDeclined := errors.New("declined")
 		cfg := Config{Out: &out, Approve: func(context.Context) error { return errDeclined }}
 
-		err := applyPlan(context.Background(), cfg, newClient(baseURL), newPlan(t, allowAutoMergeChange()))
+		err := applyPlan(context.Background(), cfg, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
 
 		if !errors.Is(err, errDeclined) {
 			t.Fatalf("applyPlan() error = %v, want %v", err, errDeclined)
@@ -330,7 +318,7 @@ func TestApplyPlan(t *testing.T) {
 			return nil
 		}}
 
-		err := applyPlan(ctx, cfg, newClient(baseURL), newPlan(t, allowAutoMergeChange()))
+		err := applyPlan(ctx, cfg, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
 
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("applyPlan() error = %v, want %v", err, context.Canceled)
@@ -348,7 +336,7 @@ func TestApplyPlan(t *testing.T) {
 		var out bytes.Buffer
 		calls := 0
 
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeChange()))
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
 
 		if err != nil {
 			t.Fatalf("applyPlan() error = %v", err)
@@ -371,10 +359,10 @@ func TestApplyPlan(t *testing.T) {
 		var out bytes.Buffer
 		calls := 0
 
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeChange()))
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
 
-		if !errors.Is(err, github.ErrUpdateOutcomeUnknown) {
-			t.Errorf("applyPlan() error = %v, want %v", err, github.ErrUpdateOutcomeUnknown)
+		if !errors.Is(err, github.ErrRedirect) {
+			t.Errorf("applyPlan() error = %v, want %v", err, github.ErrRedirect)
 		}
 		if want := []string{"GET", "PATCH", "GET"}; !slices.Equal(rec.Methods(), want) {
 			t.Errorf("requests = %v, want %v", rec.Methods(), want)
@@ -389,7 +377,7 @@ func TestApplyPlan(t *testing.T) {
 		var out bytes.Buffer
 		calls := 0
 
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeChange()))
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
 
 		if err == nil {
 			t.Error("applyPlan() error = nil, want an error")
@@ -406,7 +394,7 @@ func TestApplyPlan(t *testing.T) {
 		baseURL, rec := newSequenceServer(t)
 		calls := 0
 
-		err := applyPlan(context.Background(), Config{Out: failingWriter{}, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeChange()))
+		err := applyPlan(context.Background(), Config{Out: failingWriter{}, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
 
 		if !errors.Is(err, errWrite) {
 			t.Errorf("applyPlan() error = %v, want %v", err, errWrite)
@@ -421,7 +409,7 @@ func TestApplyPlan(t *testing.T) {
 		calls := 0
 		out := &failAfterWriter{n: 1}
 
-		err := applyPlan(context.Background(), Config{Out: out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeChange()))
+		err := applyPlan(context.Background(), Config{Out: out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
 
 		if !errors.Is(err, errWrite) {
 			t.Errorf("applyPlan() error = %v, want %v", err, errWrite)
@@ -436,7 +424,7 @@ func TestApplyPlan(t *testing.T) {
 		calls := 0
 		out := &failAfterWriter{n: 2}
 
-		err := applyPlan(context.Background(), Config{Out: out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeChange()))
+		err := applyPlan(context.Background(), Config{Out: out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
 
 		if !errors.Is(err, errWrite) {
 			t.Errorf("applyPlan() error = %v, want %v", err, errWrite)
