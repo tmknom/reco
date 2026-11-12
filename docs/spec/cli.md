@@ -72,6 +72,8 @@ reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN
 $ GH_TOKEN=$(gh auth token) reco plan
 ```
 
+このトークンの scope は利用者の権限を超えないため、操作できるかはトークン所有者の対象リポジトリでのロールで決まります。reco が動作を確認した条件は、トークン所有者が対象リポジトリの Admin ロールを持つことです。Write 以上のロールを持たないリポジトリでは、GitHub が General の値を応答に含めないため、`show`・`plan`・`apply` は観測操作の失敗としてエラー終了します。Write・Maintain ロールでの動作は確認していません。
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-003` | Functional Requirement |
@@ -156,6 +158,7 @@ Repositories checked: 2
 | `alignment` | `INV-003` | Invariant |
 | `alignment` | `INV-004` | Invariant |
 | `alignment` | `INV-005` | Invariant |
+| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
 
 ### 5.1 承認
 
@@ -200,6 +203,8 @@ Repositories updated: 1
 
 `failed` には、更新操作の失敗、更新操作の成否不明、成功応答後の期待状態の確認失敗、成功応答後の期待状態との不一致、成功応答後の未管理設定の予期しない変化のいずれに当たるかを添えて示します。先行操作の成功後に後続操作を開始できなかった場合は、その旨を示します。未管理設定の予期しない変化では、観測した変化を示しますが、reco に起因するとは断定しません。更新要求の応答を確認できない場合は成否不明とし、その後の再観測で期待状態が一致しても、更新操作の成否が判明したことにはならず、`updated` に変更しません。この再観測で未管理設定の変化を観測した場合も、更新操作の結果と分けて示します。
 
+更新操作が成功したのに期待状態と一致しない場合、reco は原因を断定しません。設定に既知の原因の候補があれば、`Possible cause:` として可能性の形で添えます。`general.allow_auto_merge` では、GitHub Free の非公開リポジトリで自動マージを利用できず、GitHub が更新を反映しないまま成功を応答する場合があることを示します（[GitHub API 仕様](../research/github-api.md) 4.2）。更新操作の成否が不明な場合は添えません。
+
 ### 5.3 異常時の表示例
 
 ```text
@@ -226,6 +231,16 @@ Error: unable to confirm an update result
 Note: No automatic retry was performed.
 ```
 
+```text
+Applying changes...
+  example/project-a: failed
+    Update request: succeeded
+    Desired state: does not match
+    Possible cause: auto-merge is not available for private repositories on GitHub Free, where GitHub may accept the update without applying it
+
+Note: Some changes may already have been applied. No automatic rollback was performed.
+```
+
 異常時の表示では、確認済みの操作結果、成否が不明な範囲、未実行の変更を区別します。
 
 ## 6. `show`：現在状態の表示
@@ -248,12 +263,15 @@ Workflow permissions:
   can_approve_pull_request_reviews: false
 ```
 
+権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。`unavailable` と表示せず、欠けた項目を示してエラーとします。
+
 `enabled` は観測・表示する値ですが、設定宣言で管理できる設定ではありません。`show` の表示は人が読むためのものであり、設定宣言として再利用できる形式ではありません。
 
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-004` | Functional Requirement |
 | `alignment` | `QR-002` | Quality Requirement |
+| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
 
 ## 7. 出力と終了コード
 
@@ -275,12 +293,19 @@ Workflow permissions:
 
 HTTP リダイレクトには追従しません。読み取り要求では観測失敗、更新要求では成否不明の `failed` として終了コード `1` を返します。対象と HTTP ステータスを示す一方、`Location` などに含まれる秘密情報は出力しません。更新成功後の再観測がリダイレクトで失敗した場合も、更新の成功と観測の失敗を区別します。
 
+GitHub は、名前変更前の名前で指定したリポジトリへの要求にリダイレクト応答を返します（[GitHub API 仕様](../research/github-api.md) 3.5）。このため、リダイレクト応答のエラーでは、リポジトリが名前変更または移転された可能性と、現在の名前で指定し直すことを案内します。転送先の名前は示しません。
+
+```text
+Error: fetch repository example/old-name: redirect not followed (HTTP 301): the repository may have been renamed or transferred; specify its current name
+```
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-004` | Functional Requirement |
 | `alignment` | `FR-013` | Functional Requirement |
 | `alignment` | `QR-001` | Quality Requirement |
 | `alignment` | `QR-002` | Quality Requirement |
+| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
 
 ## 8. References
 

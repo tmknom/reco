@@ -34,14 +34,16 @@ func TestIsRateLimited(t *testing.T) {
 //trace:checks FR-004
 //trace:checks FR-013
 func TestClassifyFailure(t *testing.T) {
+	const renameHint = "the repository may have been renamed or transferred; specify its current name"
 	cases := []struct {
-		name   string
-		status int
-		header http.Header
-		want   error
+		name     string
+		status   int
+		header   http.Header
+		want     error
+		wantHint bool
 	}{
-		{name: "300 is redirect", status: 300, want: ErrRedirect},
-		{name: "399 is redirect", status: 399, want: ErrRedirect},
+		{name: "300 is redirect suggesting the current name", status: 300, want: ErrRedirect, wantHint: true},
+		{name: "399 is redirect suggesting the current name", status: 399, want: ErrRedirect, wantHint: true},
 		{name: "204 is unexpected response", status: 204, want: ErrUnexpectedResponse},
 		{name: "400 is unexpected response", status: 400, want: ErrUnexpectedResponse},
 		{name: "401 is unauthorized", status: 401, want: ErrUnauthorized},
@@ -62,6 +64,9 @@ func TestClassifyFailure(t *testing.T) {
 			}
 			if want := fmt.Sprintf("HTTP %d", tc.status); !strings.Contains(err.Error(), want) {
 				t.Errorf("classifyFailure() error = %q, want it to contain %q", err, want)
+			}
+			if got := strings.Contains(err.Error(), renameHint); got != tc.wantHint {
+				t.Errorf("classifyFailure() error = %q, contains rename hint = %v, want %v", err, got, tc.wantHint)
 			}
 		})
 	}

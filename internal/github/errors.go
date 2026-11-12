@@ -38,7 +38,7 @@ func classifyFailure(status int, header http.Header) error {
 	var kind error
 	switch {
 	case 300 <= status && status < 400:
-		kind = ErrRedirect
+		return fmt.Errorf("%w (HTTP %d): the repository may have been renamed or transferred; specify its current name", ErrRedirect, status)
 	case status == http.StatusUnauthorized:
 		kind = ErrUnauthorized
 	case status == http.StatusForbidden && isRateLimited(header):
