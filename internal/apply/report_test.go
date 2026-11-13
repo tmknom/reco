@@ -170,7 +170,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 		{
 			name:   "unknown outcome with a matching state",
 			record: changeRecord{change: change, precondition: preconditionHolds, update: github.UpdateUnknown, confirmation: desiredStateMatches},
-			want: "  owner/repo: failed\n    Update request: unknown (response unavailable)\n" +
+			want: "  owner/repo: failed\n    Update request: unknown\n" +
 				"    Desired state: matches (update outcome still unknown)\n\nNote: No automatic retry was performed.\n",
 		},
 		{
@@ -199,6 +199,20 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 			},
 			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: matches\n" +
 				"    Other settings: general.delete_branch_on_merge changed false -> true (cause not determined)\n\n" +
+				rollbackNote,
+		},
+		{
+			name: "other setting change with permission level values",
+			record: changeRecord{
+				change: canApprovePullRequestReviewsChange(), precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateMatches,
+				unexpectedOutsideChanges: []unexpectedOutsideChange{{
+					Key:    setting.DefaultWorkflowPermissions,
+					Before: changeplan.PermissionLevelValue(setting.PermissionRead),
+					After:  changeplan.PermissionLevelValue(setting.PermissionWrite),
+				}},
+			},
+			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: matches\n" +
+				"    Other settings: actions.workflow.default_workflow_permissions changed read -> write (cause not determined)\n\n" +
 				rollbackNote,
 		},
 	}
@@ -295,7 +309,7 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 			},
 			want: "  owner/repo\n" +
 				"    general.delete_branch_on_merge: updated\n" +
-				"    general.allow_auto_merge: failed\n      Update request: unknown (response unavailable)\n" +
+				"    general.allow_auto_merge: failed\n      Update request: unknown\n" +
 				"      Desired state: matches (update outcome still unknown)\n\n" +
 				"Note: No automatic retry was performed.\n",
 		},

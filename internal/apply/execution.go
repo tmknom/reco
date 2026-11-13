@@ -36,7 +36,7 @@ func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan
 		panic("apply: no update operation for " + string(change.Key))
 	}
 	record := changeRecord{change: change}
-	before, err := client.ObserveRepository(ctx, p.Target)
+	before, err := client.ObserveRepository(ctx, p.Target, change.Key.Area())
 	if err != nil {
 		record.precondition = preconditionUnconfirmed
 		record.cause = err
@@ -47,13 +47,13 @@ func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan
 		return record
 	}
 
-	record.update, record.cause = update(client, ctx, p.Target, change.Desired.Bool())
+	record.update, record.cause = update(ctx, client, p.Target, change.Desired)
 	if record.update == github.UpdateRejected {
 		return record
 	}
 
 	// 更新が成功したときは確認のため、成否不明のときは診断のために観測する。
-	after, err := client.ObserveRepository(ctx, p.Target)
+	after, err := client.ObserveRepository(ctx, p.Target, change.Key.Area())
 	if err != nil {
 		record.confirmation = desiredStateUnconfirmed
 		record.cause = errors.Join(record.cause, err)
@@ -67,18 +67,33 @@ func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan
 	return record
 }
 
+// updateOperationFunc は、target の設定を期待値 desired に更新する更新要求を一度送る。
+type updateOperationFunc func(ctx context.Context, client *github.Client, target repository.Reference, desired changeplan.SettingValue) (github.UpdateOutcome, error)
+
 // updateOperation は、key の論理的な設定変更を実現する更新操作を返す。なければ ok は偽になる。
 // 承認前の判定と実行時の選択が同じ定義を使い、片方だけ設定を足し忘れることがないよう、一つの関数にする。
-// 承認前の判定が client を要しないよう、メソッド式で返す。
-// 更新操作を持つ設定はどれも真偽値の設定のため、期待値を真偽値で受ける。
-func updateOperation(key setting.Key) (update func(*github.Client, context.Context, repository.Reference, bool) (github.UpdateOutcome, error), ok bool) {
+// 承認前の判定が client と期待値を要しないよう、それらを引数で受ける関数値で返す。
+func updateOperation(key setting.Key) (update updateOperationFunc, ok bool) {
 	switch key {
 	case setting.DeleteBranchOnMerge:
-		return (*github.Client).UpdateDeleteBranchOnMerge, true
+		return boolUpdate((*github.Client).UpdateDeleteBranchOnMerge), true
 	case setting.AllowAutoMerge:
-		return (*github.Client).UpdateAllowAutoMerge, true
+		return boolUpdate((*github.Client).UpdateAllowAutoMerge), true
+	case setting.DefaultWorkflowPermissions:
+		return func(ctx context.Context, client *github.Client, target repository.Reference, desired changeplan.SettingValue) (github.UpdateOutcome, error) {
+			return client.UpdateDefaultWorkflowPermissions(ctx, target, desired.PermissionLevel())
+		}, true
+	case setting.CanApprovePullRequestReviews:
+		return boolUpdate((*github.Client).UpdateCanApprovePullRequestReviews), true
 	default:
 		return nil, false
+	}
+}
+
+// boolUpdate は、真偽値を受ける更新メソッドを、期待値を受ける更新操作にする。
+func boolUpdate(update func(*github.Client, context.Context, repository.Reference, bool) (github.UpdateOutcome, error)) updateOperationFunc {
+	return func(ctx context.Context, client *github.Client, target repository.Reference, desired changeplan.SettingValue) (github.UpdateOutcome, error) {
+		return update(client, ctx, target, desired.Bool())
 	}
 }
 
