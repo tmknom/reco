@@ -52,7 +52,7 @@ func (c *Client) ObserveRepository(ctx context.Context, reference repository.Ref
 }
 
 func (c *Client) observeRepository(ctx context.Context, reference repository.Reference) (ObservationResult, error) {
-	_, body, err := c.send(ctx, http.MethodGet, c.repositoryURL(reference), nil)
+	_, body, err := c.send(ctx, http.MethodGet, c.repositoryURL(reference), nil, http.StatusOK)
 	if err != nil {
 		return ObservationResult{}, err
 	}
@@ -65,6 +65,12 @@ func (c *Client) repositoryURL(reference repository.Reference) *url.URL {
 	u := *c.baseURL
 	u.Path = "/repos/" + reference.Owner() + "/" + reference.Repo()
 	return &u
+}
+
+func (c *Client) workflowPermissionsURL(reference repository.Reference) *url.URL {
+	u := c.repositoryURL(reference)
+	u.Path += "/actions/permissions/workflow"
+	return u
 }
 
 // repositoryPayload は欠落と null を検出するため、各フィールドをポインタで受ける。
@@ -104,9 +110,7 @@ func decodeRepository(data []byte) (ObservationResult, error) {
 }
 
 func (c *Client) observeWorkflowPermissions(ctx context.Context, reference repository.Reference) (WorkflowPermissions, error) {
-	u := c.repositoryURL(reference)
-	u.Path += "/actions/permissions/workflow"
-	_, body, err := c.send(ctx, http.MethodGet, u, nil)
+	_, body, err := c.send(ctx, http.MethodGet, c.workflowPermissionsURL(reference), nil, http.StatusOK)
 	if err != nil {
 		return WorkflowPermissions{}, err
 	}

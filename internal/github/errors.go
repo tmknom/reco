@@ -28,7 +28,7 @@ var (
 	ErrCommunicationFailure = errors.New("communication failed")
 )
 
-// classifyFailure は 200 以外の応答を失敗の種類に変換する。
+// classifyFailure は、要求の正常応答以外の応答を失敗の種類に変換する。
 // Location などのヘッダーと応答本文は、秘密情報を含み得るため文言に入れない。
 func classifyFailure(status int, header http.Header) error {
 	var kind error
