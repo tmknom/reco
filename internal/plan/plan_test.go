@@ -14,6 +14,7 @@ import (
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
+	"github.com/tmknom/reco/internal/setting"
 )
 
 func mustReference(t *testing.T, name string) repository.Reference {
@@ -58,26 +59,33 @@ func TestWriteChangePlan(t *testing.T) {
 		{
 			name: "mismatch is shown as a change with a summary",
 			settings: []changeplan.SettingPlan{
-				{Key: "general.allow_auto_merge", Observed: false, Desired: true, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{Key: "general.allow_auto_merge", Observed: changeplan.BoolValue(false), Desired: changeplan.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 			},
 			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n  general.allow_auto_merge: false -> true\n\n" +
 				"Plan: 1 repository to update, 1 known change, 0 not-comparable settings\n",
 		},
 		{
-			name: "every mismatch is shown in the plan order and counted",
+			name: "general and workflow permissions mismatches are shown in the plan order with enumerated values and counted",
 			settings: []changeplan.SettingPlan{
-				{Key: "general.delete_branch_on_merge", Observed: false, Desired: true, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
-				{Key: "general.allow_auto_merge", Observed: false, Desired: true, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{Key: setting.AllowAutoMerge, Observed: changeplan.BoolValue(false), Desired: changeplan.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{
+					Key:      setting.DefaultWorkflowPermissions,
+					Observed: changeplan.PermissionLevelValue(setting.PermissionWrite), Desired: changeplan.PermissionLevelValue(setting.PermissionRead),
+					Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+				},
+				{Key: setting.CanApprovePullRequestReviews, Observed: changeplan.BoolValue(true), Desired: changeplan.BoolValue(false), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 			},
 			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n" +
-				"  general.delete_branch_on_merge: false -> true\n  general.allow_auto_merge: false -> true\n\n" +
-				"Plan: 1 repository to update, 2 known changes, 0 not-comparable settings\n",
+				"  general.allow_auto_merge: false -> true\n" +
+				"  actions.workflow.default_workflow_permissions: write -> read\n" +
+				"  actions.workflow.can_approve_pull_request_reviews: true -> false\n\n" +
+				"Plan: 1 repository to update, 3 known changes, 0 not-comparable settings\n",
 		},
 		{
 			name: "matched settings are not shown as changes",
 			settings: []changeplan.SettingPlan{
-				{Key: "general.delete_branch_on_merge", Observed: true, Desired: true, Result: changeplan.Match},
-				{Key: "general.allow_auto_merge", Observed: true, Desired: false, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{Key: "general.delete_branch_on_merge", Observed: changeplan.BoolValue(true), Desired: changeplan.BoolValue(true), Result: changeplan.Match},
+				{Key: "general.allow_auto_merge", Observed: changeplan.BoolValue(true), Desired: changeplan.BoolValue(false), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 			},
 			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n  general.allow_auto_merge: true -> false\n\n" +
 				"Plan: 1 repository to update, 1 known change, 0 not-comparable settings\n",
@@ -85,7 +93,7 @@ func TestWriteChangePlan(t *testing.T) {
 		{
 			name: "all matches report no changes",
 			settings: []changeplan.SettingPlan{
-				{Key: "general.allow_auto_merge", Observed: false, Desired: false, Result: changeplan.Match},
+				{Key: "general.allow_auto_merge", Observed: changeplan.BoolValue(false), Desired: changeplan.BoolValue(false), Result: changeplan.Match},
 			},
 			want: "No changes.\nRepositories checked: 1\n",
 		},
@@ -127,7 +135,10 @@ func TestWriteChangePlan(t *testing.T) {
 	})
 
 	t.Run("write failure is returned", func(t *testing.T) {
-		p := changeplan.Plan{Target: target, Settings: []changeplan.SettingPlan{{Result: changeplan.Mismatch}}}
+		p := changeplan.Plan{Target: target, Settings: []changeplan.SettingPlan{{
+			Key: setting.AllowAutoMerge, Observed: changeplan.BoolValue(false), Desired: changeplan.BoolValue(true),
+			Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+		}}}
 		err := writeChangePlan(failingWriter{}, "./reco.yaml", p)
 		if !errors.Is(err, errWrite) {
 			t.Errorf("writeChangePlan() error = %v, want %v", err, errWrite)

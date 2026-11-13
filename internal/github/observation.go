@@ -35,6 +35,7 @@ type General struct {
 }
 
 // ObserveRepository は reference のリポジトリを観測する。areas で、General に加えて読み取る設定の領域を選ぶ。
+// General は常に読み取るため、areas に AreaGeneral を含めても結果は変わらない。
 func (c *Client) ObserveRepository(ctx context.Context, reference repository.Reference, areas ...setting.Area) (ObservationResult, error) {
 	o, err := c.observeRepository(ctx, reference)
 	if err != nil {

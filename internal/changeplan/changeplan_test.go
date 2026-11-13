@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
 
 	"github.com/tmknom/reco/internal/github"
+	"github.com/tmknom/reco/internal/setting"
 )
 
 func TestPlan_Count(t *testing.T) {
@@ -64,8 +66,8 @@ func TestGenerate(t *testing.T) {
 			t.Errorf("RepositoryID = %d, want 7", got.RepositoryID)
 		}
 		want := []SettingPlan{
-			{Key: "general.delete_branch_on_merge", Observed: false, Desired: true, Result: Mismatch, Applicability: Applicable},
-			{Key: "general.allow_auto_merge", Observed: false, Desired: true, Result: Mismatch, Applicability: Applicable},
+			{Key: setting.DeleteBranchOnMerge, Observed: BoolValue(false), Desired: BoolValue(true), Result: Mismatch, Applicability: Applicable},
+			{Key: setting.AllowAutoMerge, Observed: BoolValue(false), Desired: BoolValue(true), Result: Mismatch, Applicability: Applicable},
 		}
 		if !slices.Equal(got.Settings, want) {
 			t.Errorf("Settings = %+v, want %+v", got.Settings, want)
@@ -130,6 +132,90 @@ func TestGenerate(t *testing.T) {
 		}
 		if err == nil || !strings.HasPrefix(err.Error(), "fetch repository") {
 			t.Errorf("Generate() error = %v, want it to start with %q", err, "fetch repository")
+		}
+	})
+}
+
+const workflowSource = `repositories:
+  - name: owner/repo
+    general:
+      allow_auto_merge: true
+    actions:
+      workflow:
+        default_workflow_permissions: read
+`
+
+//trace:checks FR-004
+//trace:checks FR-005
+func TestGenerate_ObservedAreas(t *testing.T) {
+	file := func(src string) ConfigurationFile {
+		return ConfigurationFile{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(src)}}, Name: "reco.yaml", Path: "./reco.yaml"}
+	}
+	const repositoryBody = `{"id": 7, "allow_auto_merge": false, "delete_branch_on_merge": false}`
+
+	t.Run("general only sends only the repository GET", func(t *testing.T) {
+		var paths []string
+		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
+			paths = append(paths, r.Method+" "+r.URL.Path)
+			_, _ = w.Write([]byte(repositoryBody))
+		})
+		client := github.New("test-token", github.WithBaseURL(baseURL))
+
+		if _, err := Generate(context.Background(), client, file(twoRepositoriesSource), new(mustReference(t, "owner/first"))); err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		if want := []string{"GET /repos/owner/first"}; !slices.Equal(paths, want) {
+			t.Errorf("requests = %v, want %v", paths, want)
+		}
+	})
+
+	t.Run("declared workflow permissions are observed and reconciled", func(t *testing.T) {
+		var paths []string
+		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
+			paths = append(paths, r.Method+" "+r.URL.Path)
+			if strings.HasSuffix(r.URL.Path, "/actions/permissions/workflow") {
+				_, _ = w.Write([]byte(`{"default_workflow_permissions": "write", "can_approve_pull_request_reviews": true}`))
+				return
+			}
+			_, _ = w.Write([]byte(repositoryBody))
+		})
+		client := github.New("test-token", github.WithBaseURL(baseURL))
+
+		got, err := Generate(context.Background(), client, file(workflowSource), nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		if want := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions/workflow"}; !slices.Equal(paths, want) {
+			t.Errorf("requests = %v, want %v", paths, want)
+		}
+		want := []SettingPlan{
+			{Key: setting.AllowAutoMerge, Observed: BoolValue(false), Desired: BoolValue(true), Result: Mismatch, Applicability: Applicable},
+			{
+				Key: setting.DefaultWorkflowPermissions, Observed: PermissionLevelValue(setting.PermissionWrite), Desired: PermissionLevelValue(setting.PermissionRead),
+				Result: Mismatch, Applicability: Applicable,
+			},
+		}
+		if !slices.Equal(got.Settings, want) {
+			t.Errorf("Settings = %+v, want %+v", got.Settings, want)
+		}
+	})
+
+	t.Run("workflow permissions observation failure is returned without a plan", func(t *testing.T) {
+		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, "/actions/permissions/workflow") {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			_, _ = w.Write([]byte(repositoryBody))
+		})
+		client := github.New("test-token", github.WithBaseURL(baseURL))
+
+		got, err := Generate(context.Background(), client, file(workflowSource), nil)
+		if !errors.Is(err, github.ErrForbidden) {
+			t.Errorf("Generate() error = %v, want %v", err, github.ErrForbidden)
+		}
+		if !reflect.DeepEqual(got, Plan{}) {
+			t.Errorf("Generate() = %+v, want the zero plan", got)
 		}
 	})
 }

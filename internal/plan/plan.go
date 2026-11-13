@@ -51,7 +51,7 @@ func writeChangePlan(w io.Writer, configPath string, p changeplan.Plan) error {
 	fmt.Fprintf(&b, "Configuration: %s\n\nRepository: %s\n", configPath, p.Target)
 	for _, s := range p.Settings {
 		if s.Result == changeplan.Mismatch {
-			fmt.Fprintf(&b, "  %s: %t -> %t\n", s.Key, s.Observed, s.Desired)
+			fmt.Fprintf(&b, "  %s: %s -> %s\n", s.Key, s.Observed.String(), s.Desired.String())
 		}
 	}
 	fmt.Fprintf(&b, "\nPlan: %s to update, %s, %s\n",

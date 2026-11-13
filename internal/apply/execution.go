@@ -47,7 +47,7 @@ func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan
 		return record
 	}
 
-	record.update, record.cause = update(client, ctx, p.Target, change.Desired)
+	record.update, record.cause = update(client, ctx, p.Target, change.Desired.Bool())
 	if record.update == github.UpdateRejected {
 		return record
 	}
@@ -62,7 +62,7 @@ func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan
 	record.confirmation = confirmDesiredState(p.RepositoryID, change, after)
 	// ID が変わった観測は別のリポジトリの値のため、更新直前の値と比べない。
 	if record.confirmation != desiredStateRepositoryChanged {
-		record.unexpectedOutsideChanges = unexpectedOutsideChanges(change, before.General, after.General)
+		record.unexpectedOutsideChanges = unexpectedOutsideChanges(change, before, after)
 	}
 	return record
 }
@@ -70,6 +70,7 @@ func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan
 // updateOperation は、key の論理的な設定変更を実現する更新操作を返す。なければ ok は偽になる。
 // 承認前の判定と実行時の選択が同じ定義を使い、片方だけ設定を足し忘れることがないよう、一つの関数にする。
 // 承認前の判定が client を要しないよう、メソッド式で返す。
+// 更新操作を持つ設定はどれも真偽値の設定のため、期待値を真偽値で受ける。
 func updateOperation(key setting.Key) (update func(*github.Client, context.Context, repository.Reference, bool) (github.UpdateOutcome, error), ok bool) {
 	switch key {
 	case setting.DeleteBranchOnMerge:
@@ -87,7 +88,7 @@ func checkPrecondition(approvedID repository.ID, change changeplan.LogicalChange
 	if observed.RepositoryID != approvedID {
 		return preconditionIdentityMismatch
 	}
-	if changeplan.ObservedValue(change.Key, observed.General) != change.Observed {
+	if changeplan.ObservedValue(change.Key, observed) != change.Observed {
 		return preconditionCurrentValueChanged
 	}
 	return preconditionHolds
@@ -98,7 +99,7 @@ func confirmDesiredState(approvedID repository.ID, change changeplan.LogicalChan
 	if observed.RepositoryID != approvedID {
 		return desiredStateRepositoryChanged
 	}
-	if change.Reconcile(observed.General) == changeplan.Match {
+	if change.Reconcile(observed) == changeplan.Match {
 		return desiredStateMatches
 	}
 	return desiredStateMismatch
@@ -106,9 +107,9 @@ func confirmDesiredState(approvedID repository.ID, change changeplan.LogicalChan
 
 // unexpectedOutsideChanges は、change と同じ更新エンドポイントで観測する設定のうち change が変えないものについて、
 // 更新直前と更新後の観測値の差を返す。
-func unexpectedOutsideChanges(change changeplan.LogicalChange, before, after github.General) []unexpectedOutsideChange {
+func unexpectedOutsideChanges(change changeplan.LogicalChange, before, after github.ObservationResult) []unexpectedOutsideChange {
 	var changes []unexpectedOutsideChange
-	for _, key := range setting.GeneralKeys() {
+	for _, key := range setting.KeysIn(change.Key.Area()) {
 		if key == change.Key {
 			continue
 		}

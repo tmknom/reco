@@ -98,42 +98,42 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 	cases := []struct {
 		name          string
 		change        changeplan.LogicalChange
-		before, after github.General
+		before, after github.ObservationResult
 		want          []unexpectedOutsideChange
 	}{
 		{
 			name:   "same settings have no change",
 			change: allowAutoMergeChange(),
-			before: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false},
-			after:  github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false},
+			before: github.ObservationResult{General: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false}},
+			after:  github.ObservationResult{General: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false}},
 			want:   nil,
 		},
 		{
 			name:   "allow_auto_merge change reports different delete_branch_on_merge with both values",
 			change: allowAutoMergeChange(),
-			before: github.General{DeleteBranchOnMerge: false},
-			after:  github.General{DeleteBranchOnMerge: true},
-			want:   []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: false, After: true}},
+			before: github.ObservationResult{General: github.General{DeleteBranchOnMerge: false}},
+			after:  github.ObservationResult{General: github.General{DeleteBranchOnMerge: true}},
+			want:   []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: changeplan.BoolValue(false), After: changeplan.BoolValue(true)}},
 		},
 		{
 			name:   "allow_auto_merge change does not report its own setting",
 			change: allowAutoMergeChange(),
-			before: github.General{AllowAutoMerge: false},
-			after:  github.General{AllowAutoMerge: true},
+			before: github.ObservationResult{General: github.General{AllowAutoMerge: false}},
+			after:  github.ObservationResult{General: github.General{AllowAutoMerge: true}},
 			want:   nil,
 		},
 		{
 			name:   "delete_branch_on_merge change reports different allow_auto_merge with both values",
 			change: deleteBranchOnMergeChange(),
-			before: github.General{AllowAutoMerge: false},
-			after:  github.General{AllowAutoMerge: true},
-			want:   []unexpectedOutsideChange{{Key: setting.AllowAutoMerge, Before: false, After: true}},
+			before: github.ObservationResult{General: github.General{AllowAutoMerge: false}},
+			after:  github.ObservationResult{General: github.General{AllowAutoMerge: true}},
+			want:   []unexpectedOutsideChange{{Key: setting.AllowAutoMerge, Before: changeplan.BoolValue(false), After: changeplan.BoolValue(true)}},
 		},
 		{
 			name:   "delete_branch_on_merge change does not report its own setting",
 			change: deleteBranchOnMergeChange(),
-			before: github.General{DeleteBranchOnMerge: false},
-			after:  github.General{DeleteBranchOnMerge: true},
+			before: github.ObservationResult{General: github.General{DeleteBranchOnMerge: false}},
+			after:  github.ObservationResult{General: github.General{DeleteBranchOnMerge: true}},
 			want:   nil,
 		},
 	}
@@ -237,7 +237,7 @@ func TestExecuteChange(t *testing.T) {
 			wantPrecond: preconditionHolds,
 			wantUpdate:  github.UpdateUnknown,
 			wantDesired: desiredStateMatches,
-			wantOutside: []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: false, After: true}},
+			wantOutside: []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: changeplan.BoolValue(false), After: changeplan.BoolValue(true)}},
 			wantResult:  failed,
 			wantCauses:  []error{github.ErrRedirect},
 		},
@@ -267,7 +267,7 @@ func TestExecuteChange(t *testing.T) {
 			wantPrecond: preconditionHolds,
 			wantUpdate:  github.UpdateSucceeded,
 			wantDesired: desiredStateMatches,
-			wantOutside: []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: false, After: true}},
+			wantOutside: []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: changeplan.BoolValue(false), After: changeplan.BoolValue(true)}},
 			wantResult:  failed,
 		},
 		{
@@ -321,7 +321,7 @@ func TestExecuteChange(t *testing.T) {
 
 	t.Run("change without an update operation panics before sending a request", func(t *testing.T) {
 		baseURL, rec := newSequenceServer(t)
-		change := changeplan.LogicalChange{Key: unknownKey, Observed: false, Desired: true}
+		change := changeplan.LogicalChange{Key: unknownKey, Observed: changeplan.BoolValue(false), Desired: changeplan.BoolValue(true)}
 		defer func() {
 			if recover() == nil {
 				t.Error("executeChange() did not panic")

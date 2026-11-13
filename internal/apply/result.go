@@ -56,7 +56,7 @@ const (
 // unexpectedOutsideChange は、変更対象外の設定の予期しない変化。
 type unexpectedOutsideChange struct {
 	Key           setting.Key
-	Before, After bool
+	Before, After changeplan.SettingValue
 }
 
 // updateStarted は、更新操作を開始したかを返す。

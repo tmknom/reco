@@ -16,7 +16,7 @@ func writeChangePlan(w io.Writer, configPath string, target repository.Reference
 	var b strings.Builder
 	fmt.Fprintf(&b, "Configuration: %s\nRepository: %s\n", configPath, target)
 	for _, change := range changes {
-		fmt.Fprintf(&b, "  %s: %t -> %t\n", change.Key, change.Observed, change.Desired)
+		fmt.Fprintf(&b, "  %s: %s -> %s\n", change.Key, change.Observed.String(), change.Desired.String())
 	}
 	b.WriteString("\n")
 	_, err := io.WriteString(w, b.String())
@@ -102,7 +102,7 @@ func details(record changeRecord) []string {
 		lines = append(lines, "Possible cause: "+cause)
 	}
 	for _, c := range record.unexpectedOutsideChanges {
-		lines = append(lines, fmt.Sprintf("Other settings: %s changed %t -> %t (cause not determined)", c.Key, c.Before, c.After))
+		lines = append(lines, fmt.Sprintf("Other settings: %s changed %s -> %s (cause not determined)", c.Key, c.Before.String(), c.After.String()))
 	}
 	return lines
 }

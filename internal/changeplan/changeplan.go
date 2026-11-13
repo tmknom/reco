@@ -26,9 +26,9 @@ type Plan struct {
 // SettingPlan は、一つの管理設定についての計画。
 type SettingPlan struct {
 	Key setting.Key
-	// Observed は計画時の観測値。
-	Observed      bool
-	Desired       bool
+	// Observed は計画時の観測値。比較不能の設定では値がない。
+	Observed      SettingValue
+	Desired       SettingValue
 	Result        ReconciliationResult
 	Applicability Applicability
 }
@@ -65,11 +65,11 @@ func Generate(ctx context.Context, client *github.Client, file ConfigurationFile
 	if err != nil {
 		return Plan{}, err
 	}
-	observed, err := client.ObserveRepository(ctx, target.Reference)
+	observed, err := client.ObserveRepository(ctx, target.Reference, managedAreas(target.Desired)...)
 	if err != nil {
 		return Plan{}, err
 	}
-	settings := reconcile(target.Desired, observed.General)
+	settings := reconcile(target.Desired, observed)
 	for i := range settings {
 		settings[i].Applicability = judgeApplicability(settings[i].Result)
 	}
