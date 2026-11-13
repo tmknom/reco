@@ -88,7 +88,7 @@ repositories:
 
 `selected_actions` の3項目は選択方式の Actions 許可条件を表し、 **一つの設定グループ** として扱います。3項目を一体として宣言するのは reco の入力契約であり、GitHub への更新の単位を定めるものではありません。
 
-GitHub API が提供する `enabled` や `sha_pinning_required` は、reco の YAML からは管理しません。
+GitHub API が提供する `enabled` や `sha_pinning_required` は、reco の YAML で宣言できません。ただし `allowed_actions` を宣言した場合は、そのポリシーで Actions が実行できること、つまり Actions が有効であることも期待状態に含めます。Actions が無効のリポジトリでは、reco は宣言したポリシーで Actions を有効にします。reco が Actions を無効にすることはありません。
 
 | Relationship | Target | Target Type |
 |---|---|---|

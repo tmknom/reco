@@ -111,17 +111,25 @@ No changes.
 Repositories checked: 2
 ```
 
-比較不能で、かつ安全な変更に必要な条件を確認できない場合は、現在値を推測せずに照合結果と適用可能性の両方を示します。
+比較不能な設定予定は、現在値を推測せずに示します。Actions が無効のリポジトリでは `allowed_actions` の現在値を取得できませんが、宣言したポリシーで Actions を有効にする変更として適用できます（[YAML 設定仕様](configuration.md) 4章）。
 
 ```text
 Repository: example/project-a
   actions.permissions.allowed_actions
     Current: unavailable (GitHub Actions is disabled)
-    Desired: local_only
-    Applicability: not applicable (requires enabling GitHub Actions, which is not managed)
+    Desired: local_only (enables GitHub Actions)
 
 Plan: 1 repository to update, 0 known changes, 1 not-comparable setting
-Plan cannot be applied.
+```
+
+安全な変更に必要な条件を確認できない場合は、照合結果に加えて `Applicability: not applicable (<理由>)` を示し、集計の後に `Plan cannot be applied.` と表示します。
+
+宣言した変更に伴って GitHub が管理範囲外の設定を削除する場合は、変更予定に `Side effect:` として失われる設定と現在値を添えます。この変更は適用可能であり、利用者が承認すれば実行します。現在は、Actions 許可ポリシーを `selected` から `all` / `local_only` へ変え、既存の選択方式の Actions 許可条件が失われる場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。Actions が無効のリポジトリで `all` / `local_only` を宣言した場合は、無効にする前のポリシーが `selected` であれば同じく失われますが、無効の間は値もポリシーも取得できないため、失われる可能性があることだけを示します。`Side effect:` は変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。
+
+```text
+Repository: example/project-a
+  actions.permissions.allowed_actions: selected -> all
+    Side effect: GitHub discards the current selected_actions (github_owned_allowed: true, verified_allowed: true, patterns_allowed: ["example/*"])
 ```
 
 `plan` の終了コード `0` は、差分がないことも、後の `apply` が成功することも保証しません。
@@ -265,7 +273,7 @@ Workflow permissions:
 
 権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。`unavailable` と表示せず、欠けた項目を示してエラーとします。
 
-`enabled` は観測・表示する値ですが、設定宣言で管理できる設定ではありません。`show` の表示は人が読むためのものであり、設定宣言として再利用できる形式ではありません。
+`enabled` は観測・表示する値ですが、設定宣言に書ける設定ではありません。`allowed_actions` を宣言したときに Actions が有効であることを期待状態に含める扱いは、[YAML 設定仕様](configuration.md) 4章が定めます。`show` の表示は人が読むためのものであり、設定宣言として再利用できる形式ではありません。
 
 | Relationship | Target | Target Type |
 |---|---|---|
