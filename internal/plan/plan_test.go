@@ -64,9 +64,19 @@ func TestWriteChangePlan(t *testing.T) {
 				"Plan: 1 repository to update, 1 known change, 0 not-comparable settings\n",
 		},
 		{
+			name: "every mismatch is shown in the plan order and counted",
+			settings: []changeplan.SettingPlan{
+				{Key: "general.delete_branch_on_merge", Observed: false, Desired: true, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{Key: "general.allow_auto_merge", Observed: false, Desired: true, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+			},
+			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n" +
+				"  general.delete_branch_on_merge: false -> true\n  general.allow_auto_merge: false -> true\n\n" +
+				"Plan: 1 repository to update, 2 known changes, 0 not-comparable settings\n",
+		},
+		{
 			name: "matched settings are not shown as changes",
 			settings: []changeplan.SettingPlan{
-				{Key: "general.matched", Observed: true, Desired: true, Result: changeplan.Match},
+				{Key: "general.delete_branch_on_merge", Observed: true, Desired: true, Result: changeplan.Match},
 				{Key: "general.allow_auto_merge", Observed: true, Desired: false, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 			},
 			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n  general.allow_auto_merge: true -> false\n\n" +

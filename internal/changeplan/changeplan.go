@@ -19,6 +19,7 @@ type Plan struct {
 	// RepositoryID は計画時の観測で得た、Target が指す実体の ID。承認されると、変更前提の同一性の基準になる。
 	RepositoryID repository.ID
 	// Settings は一致した設定も含む。変更予定とは Result で区別する。
+	// 並びは CLI 仕様が定める変更予定の表示順。
 	Settings []SettingPlan
 }
 

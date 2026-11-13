@@ -22,12 +22,13 @@ func mustReference(t *testing.T, name string) repository.Reference {
 //
 //trace:checks FR-001
 func TestDocumentDeclaration(t *testing.T) {
-	repositoryDeclaration := func(name string, allowAutoMerge bool) RepositoryDeclaration {
+	repositoryDeclaration := func(name string, general General) RepositoryDeclaration {
 		return RepositoryDeclaration{
 			Reference: mustReference(t, name),
-			Desired:   DesiredState{General: General{AllowAutoMerge: new(allowAutoMerge)}},
+			Desired:   DesiredState{General: general},
 		}
 	}
+	first := repositoryDeclaration("owner/repo", General{AllowAutoMerge: new(true)})
 	// second は 2 件目の宣言を持つ入力。失敗のケースは 2 件目の宣言を変えて作り、パスの添字を確かめる。
 	second := minimal + `  - name: owner/second
     general:
@@ -42,16 +43,32 @@ func TestDocumentDeclaration(t *testing.T) {
 		wantReason string
 	}{
 		{
-			name: "true is read as an explicit expected value true",
+			name: "allow_auto_merge alone is read, leaving delete_branch_on_merge omitted",
 			src:  minimal,
-			want: Declaration{Repositories: []RepositoryDeclaration{repositoryDeclaration("owner/repo", true)}},
+			want: Declaration{Repositories: []RepositoryDeclaration{first}},
 		},
 		{
 			name: "all repository declarations are read, keeping false as an explicit expected value",
 			src:  second,
 			want: Declaration{Repositories: []RepositoryDeclaration{
-				repositoryDeclaration("owner/repo", true),
-				repositoryDeclaration("owner/second", false),
+				first,
+				repositoryDeclaration("owner/second", General{AllowAutoMerge: new(false)}),
+			}},
+		},
+		{
+			name: "delete_branch_on_merge alone is read, leaving allow_auto_merge omitted",
+			src:  strings.Replace(second, "allow_auto_merge: false", "delete_branch_on_merge: true", 1),
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				repositoryDeclaration("owner/second", General{DeleteBranchOnMerge: new(true)}),
+			}},
+		},
+		{
+			name: "both general settings are read into their own fields",
+			src:  strings.Replace(second, "allow_auto_merge: false", "allow_auto_merge: true\n      delete_branch_on_merge: false", 1),
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				repositoryDeclaration("owner/second", General{DeleteBranchOnMerge: new(false), AllowAutoMerge: new(true)}),
 			}},
 		},
 		// ルート
@@ -68,6 +85,12 @@ func TestDocumentDeclaration(t *testing.T) {
 			wantReason: "must not be empty",
 		},
 		// リポジトリごとの宣言
+		{
+			name:       "actions is rejected as an unknown key",
+			src:        second + "    actions:\n      workflow: {}\n",
+			wantPath:   "repositories[1]",
+			wantReason: `unknown key "actions"`,
+		},
 		{
 			name:       "missing name is rejected",
 			src:        strings.Replace(second, "  - name: owner/second\n", "  -\n", 1),
@@ -101,9 +124,15 @@ func TestDocumentDeclaration(t *testing.T) {
 		// General
 		{
 			name:       "unknown key in general is rejected",
-			src:        second + "      delete_branch_on_merge: true\n",
+			src:        second + "      allow_squash_merge: true\n",
 			wantPath:   "repositories[1].general",
-			wantReason: `unknown key "delete_branch_on_merge"`,
+			wantReason: `unknown key "allow_squash_merge"`,
+		},
+		{
+			name:       "delete_branch_on_merge without a value is rejected rather than read as omitted",
+			src:        second + "      delete_branch_on_merge:\n",
+			wantPath:   "repositories[1].general.delete_branch_on_merge",
+			wantReason: "must not be null",
 		},
 		{
 			name:       "invalid allow_auto_merge is rejected at allow_auto_merge",

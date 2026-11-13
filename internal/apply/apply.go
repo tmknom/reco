@@ -68,8 +68,8 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 
 // singleLogicalChange は、変更計画から実行する論理的な設定変更を一つ取り出す。変更が不要なら ok は偽になる。
 // 変更の実行は allow_auto_merge の論理的な設定変更 1 件だけを更新する。
-// changeplan.Generate が作る計画はこの形に収まるが、承認したあとで実行できないと分かるより前に止めるため、
-// 不変条件の破れとして panic せず、承認を求める前の error にする。
+// それ以外の論理的な設定変更を持つ変更計画は、承認したあとで実行できないと分かるより前に止めるため、
+// 承認を求める前の error にする。
 func singleLogicalChange(p changeplan.Plan) (change changeplan.LogicalChange, ok bool, err error) {
 	changes, err := p.LogicalChanges()
 	if err != nil {
