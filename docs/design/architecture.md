@@ -68,7 +68,7 @@ Change Planning は Configuration に設定宣言全体を検証させてから�
 
 リポジトリ名は対象を指定するための情報であり、GitHub が返すリポジトリ ID と同一ではありません。Change Planning は選択された対象の ID を観測時に取得し、Change Execution は各更新直前の再確認に対象の ID も含め、承認した対象と異なるリポジトリへ名前解決された場合は更新しません。これにより、承認後の名前変更・移転・名前の再利用による誤対象更新を検出する機会を設けます。ただし、確認と書き込みの間の競合まで排除するものではありません。なお、異なる名前が同じ実体を指すかどうかは計画時に判定しません。名前変更前の名前で参照すると、GitHub API はリダイレクト応答を返します。reco はこれを観測操作の失敗として扱います（5.2節）。
 
-この確認は、リポジトリ ID について二つの前提を置きます。一つは、名前変更や移転で ID が変わらないことです。名前変更の前後で変わらないことは確認済みです（[GitHub API 仕様](../research/github-api.md) 4.1）。もう一つは、ある実体の ID が別の実体に割り当てられないことです。GitHub は名前の再利用への対策として ID を含む OIDC の subject クレームを導入していますが、REST API の `id` について再割り当てがないとは明記していません。reco はこの二つを前提として置きます。一つ目が崩れると、正当な対象を同一でないと判定して停止します。この誤りは安全側です。二つ目が崩れると、名前の再利用による誤対象を検出できません。
+この確認は、リポジトリ ID について二つの前提を置きます。一つは、名前変更や移転で ID が変わらないことです。名前変更の前後で変わらないことは確認済みです（[GitHub リポジトリ API 仕様](../research/repositories.md) 2章）。もう一つは、ある実体の ID が別の実体に割り当てられないことです。GitHub は名前の再利用への対策として ID を含む OIDC の subject クレームを導入していますが、REST API の `id` について再割り当てがないとは明記していません。reco はこの二つを前提として置きます。一つ目が崩れると、正当な対象を同一でないと判定して停止します。この誤りは安全側です。二つ目が崩れると、名前の再利用による誤対象を検出できません。
 
 CLI が選択した認証情報だけを GitHub Access へ渡します。認証に失敗しても別の認証情報へ切り替えず、認証トークン・認証ヘッダーを出力しません。GitHub の応答や通信エラーを診断に利用する場合も、秘密情報を含む生データを無条件に表示しない境界を設けます。`401`、`403`、`404` などの応答は区別しますが、権限不足と不存在を根拠なく断定しません。
 
@@ -81,7 +81,8 @@ CLI が選択した認証情報だけを GitHub Access へ渡します。認証�
 | `alignment` | `FR-010` | Functional Requirement |
 | `alignment` | `QR-001` | Quality Requirement |
 | `alignment` | `INV-004` | Invariant |
-| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
 
 ### 2.3 package の分け方
 
@@ -113,7 +114,7 @@ GitHub Access は取得値に加え、どの設定を確認できたか、GitHub
 
 API の成功応答を受け取ったことだけでは、必要な設定値を確認できたとは判断しません。必要なフィールドが得られない場合、GitHub の既知の取得条件による観測不能と根拠をもって分類できるときに限り、観測結果にその理由を記録します。読み取り要求の成功応答に期待するこの形を **取得契約** と呼びます。本文を解釈でき、観測に必要なフィールドが、既知の取得条件による欠落を除いてそろっていることです。理由を確認できない欠落や解釈できない本文のように、取得契約に適合しない応答は観測操作の失敗として扱います。欠落した値を既定値で補ったり、理由を推測して比較不能へ置き換えたりしません。
 
-トークン所有者が Write 以上のロールを持たないリポジトリでは、`GET /repos/{owner}/{repo}` の応答から `allow_auto_merge` と `delete_branch_on_merge` がそろって欠けます（[GitHub API 仕様](../research/github-api.md) 3.4）。この欠落は取得条件による観測不能として扱わず、観測操作の失敗のままとします。原因は権限の不足であり、ドメインモデルは権限による失敗を観測結果に含めないためです。観測不能として `plan` を進めても、同じ権限では更新できず、利用者が対処すべき原因が後の失敗まで見えなくなります。
+トークン所有者が Write 以上のロールを持たないリポジトリでは、`GET /repos/{owner}/{repo}` の応答から `allow_auto_merge` と `delete_branch_on_merge` がそろって欠けます（[GitHub リポジトリ API 仕様](../research/repositories.md) 1.1）。この欠落は取得条件による観測不能として扱わず、観測操作の失敗のままとします。原因は権限の不足であり、ドメインモデルは権限による失敗を観測結果に含めないためです。観測不能として `plan` を進めても、同じ権限では更新できず、利用者が対処すべき原因が後の失敗まで見えなくなります。
 
 Reconciliation は管理範囲内の期待状態と観測結果を比較し、一致（Match）、不一致（Mismatch）、比較不能（Not Comparable）を返します。比較可能な集合値は設定の意味に沿って比較し、例えば許可パターンは要素の順序だけで差分を作りません。未観測値を既定値で補わず、観測操作の失敗を比較不能として処理しません。
 
@@ -125,7 +126,8 @@ Change Planning は照合とは別に適用可能性（Applicability）を判断
 | `alignment` | `FR-005` | Functional Requirement |
 | `alignment` | `FR-006` | Functional Requirement |
 | `alignment` | `QR-002` | Quality Requirement |
-| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
 
 ### 3.3 変更計画と実行単位
 
@@ -223,7 +225,8 @@ GitHub Access は、認証付きリクエストの送信先を GitHub.com の RE
 | `alignment` | `QR-002` | Quality Requirement |
 | `alignment` | `INV-004` | Invariant |
 | `alignment` | `INV-005` | Invariant |
-| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
 
 ### 5.3 未管理設定を保全する更新方式
 
@@ -240,9 +243,9 @@ API パラメータが任意であることは、省略した値の保持を保�
 
 更新後は、影響を受け得る未管理設定のうち再取得できる値について、更新直前に確認した既存値との一致も確認します。管理範囲の期待状態だけが一致していても、未管理設定の予期しない変化を検出した場合は変更全体を完了扱いせず、後続の更新を停止します。取得条件によって更新後に再確認できない設定は、値を推測して保全済みとせず、事前に確認した外部契約や実動作の根拠が保全を支持する範囲でのみ適用可能と判断します。再取得した値の変化は外部主体の同時変更による可能性もあるため、原因を断定しません。
 
-General では、`PATCH /repos/{owner}/{repo}` で省略したフィールドが保持されることを実際の動作で確認しています（[GitHub API 仕様](../research/github-api.md) 4.2）。これが、宣言された変更対象だけを送る方式の根拠です。更新後に再取得して更新直前の値と比べる未管理フィールドは、reco が観測する General のうち管理範囲外の値（`allow_auto_merge` だけを管理する場合は `delete_branch_on_merge`）に限ります。名前、説明、公開範囲など、reco が観測しないフィールドは再確認せず、保持の確認結果を根拠に保全されるとみなします。
+General では、`PATCH /repos/{owner}/{repo}` で省略したフィールドが保持されることを実際の動作で確認しています（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）。これが、宣言された変更対象だけを送る方式の根拠です。更新後に再取得して更新直前の値と比べる未管理フィールドは、reco が観測する General のうち管理範囲外の値（`allow_auto_merge` だけを管理する場合は `delete_branch_on_merge`）に限ります。名前、説明、公開範囲など、reco が観測しないフィールドは再確認せず、保持の確認結果を根拠に保全されるとみなします。
 
-Actions 許可ポリシーでは、`PUT /repos/{owner}/{repo}/actions/permissions` で省略した `sha_pinning_required` が保持されることを実際の動作で確認しています（[GitHub API 仕様](../research/github-api.md) 5.2）。必須の `enabled` には `true` を送ります。`allowed_actions` の宣言は Actions が有効であることを期待状態に含むためです（[YAML 設定仕様](../spec/configuration.md) 4章）。`sha_pinning_required` は送りません。更新後は `sha_pinning_required` を再取得し、更新直前の値と比べます。Actions が無効のときは `sha_pinning_required` の応答が保存された値を示さないため（GitHub API 仕様 5.1）、更新直前の値と比べられません。この場合は、無効の状態から有効化と同時にポリシーを変えても `sha_pinning_required` が保持されるという確認結果（GitHub API 仕様 5.2）を根拠に、保全されるとみなします。
+Actions 許可ポリシーでは、`PUT /repos/{owner}/{repo}/actions/permissions` で省略した `sha_pinning_required` が保持されることを実際の動作で確認しています（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 3.2）。必須の `enabled` には `true` を送ります。`allowed_actions` の宣言は Actions が有効であることを期待状態に含むためです（[YAML 設定仕様](../spec/configuration.md) 4章）。`sha_pinning_required` は送りません。更新後は `sha_pinning_required` を再取得し、更新直前の値と比べます。Actions が無効のときは `sha_pinning_required` の応答が保存された値を示さないため（GitHub Actions 権限 API 仕様 3.1）、更新直前の値と比べられません。この場合は、無効の状態から有効化と同時にポリシーを変えても `sha_pinning_required` が保持されるという確認結果（GitHub Actions 権限 API 仕様 3.2）を根拠に、保全されるとみなします。
 
 この方式が保護するのは reco 自身の更新操作による未管理設定の変更であり、外部主体による競合や GitHub 側の独立した変化ではありません。
 
@@ -251,17 +254,18 @@ Actions 許可ポリシーでは、`PUT /repos/{owner}/{repo}/actions/permission
 | `alignment` | `FR-006` | Functional Requirement |
 | `alignment` | `FR-011` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
-| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
 
 ### 5.4 非原子的な更新と中間状態
 
-選択方式の Actions 許可条件の取得・更新には、Actions 許可ポリシー（`allowed_actions`）が `selected` であるという前提があります。`all` / `local_only` のとき、GitHub は選択方式の Actions 許可条件の取得を `409` で拒否します（[GitHub API 仕様](../research/github-api.md) 6章）。そのため `all` / `local_only` から `selected` へ変更する際は、Actions 許可ポリシーを先に更新するしかなく、二つの更新操作の間に中間状態が生じます。
+選択方式の Actions 許可条件の取得・更新には、Actions 許可ポリシー（`allowed_actions`）が `selected` であるという前提があります。`all` / `local_only` のとき、GitHub は選択方式の Actions 許可条件の取得を `409` で拒否します（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 4章）。そのため `all` / `local_only` から `selected` へ変更する際は、Actions 許可ポリシーを先に更新するしかなく、二つの更新操作の間に中間状態が生じます。
 
 Change Planning は、予定する中間状態、各更新操作の前提、未管理設定への影響を踏まえて実行可能性と順序を判断します。Change Execution は操作直前に、先行操作による予定どおりの変化と、外部からの予定外の変化を区別します。比較不能な選択方式の Actions 許可条件は推測しません。
 
 宣言した遷移が、GitHub の仕様上避けられない影響（管理範囲外の値の消失や、一時的な中間状態）を伴う場合も、reco はそれを理由に利用者が宣言した遷移を止めません。適用不能とするのは、利用者が宣言していない設定を reco が変えなければ実行できない遷移です。そのような変更は、利用者の意図なしにセキュリティを下げ得るためです。
 
-Actions 許可ポリシーの遷移は次の表に従います。遷移元は観測した現在値、遷移先は宣言した値です。Actions が無効のときは遷移元のポリシーが応答に含まれないため（GitHub API 仕様 5.1）、遷移元を「無効」として扱い、照合結果は比較不能とします。
+Actions 許可ポリシーの遷移は次の表に従います。遷移元は観測した現在値、遷移先は宣言した値です。Actions が無効のときは遷移元のポリシーが応答に含まれないため（GitHub Actions 権限 API 仕様 3.1）、遷移元を「無効」として扱い、照合結果は比較不能とします。
 
 | 遷移元 | 遷移先 | 更新操作の順序 | 中間状態で取得できる値と取得できない値 | 適用不能になる条件 |
 |---|---|---|---|---|
@@ -274,9 +278,9 @@ Actions 許可ポリシーの遷移は次の表に従います。遷移元は観
 
 `all` / `local_only` / 無効から `selected` への遷移では、(2) の直前の変更前提に、Actions 許可ポリシーが `selected` であること（(1) による予定どおりの変化）を含めます。中間状態の3項目は (2) ですべて上書きするため、変更前提に含めません。遷移元が `local_only` のとき、中間状態は `github_owned_allowed: true` によって GitHub 所有の Actions を許可します。宣言した `github_owned_allowed` が `false` なら、遷移元も宣言した状態も許可しない Actions を (1) から (2) までの間だけ許可することになります。(2) が失敗すると、この中間状態が残ります。
 
-`selected` のまま3項目だけを変える場合は、Actions 許可ポリシーの更新を送りません。現在の値と同じ `selected` を送っても、GitHub は `github_owned_allowed` を `true` に変えるためです（GitHub API 仕様 5.2）。
+`selected` のまま3項目だけを変える場合は、Actions 許可ポリシーの更新を送りません。現在の値と同じ `selected` を送っても、GitHub は `github_owned_allowed` を `true` に変えるためです（GitHub Actions 権限 API 仕様 3.2）。
 
-`selected` から `all` / `local_only` への切替によって、GitHub は選択方式の Actions 許可条件を残さず、`selected` に戻したときには上記の値に戻っています（GitHub API 仕様 6章）。遷移先が `all` / `local_only` のとき選択方式の Actions 許可条件は宣言できないため（[YAML 設定仕様](../spec/configuration.md) 4.1）、その既存値は管理範囲外の設定であり、reco はこの消失を防げません。Change Planning は、この遷移を適用可能としたうえで、既存の選択方式の Actions 許可条件が失われることを観測した値とともに変更計画へ含めます（[CLI 仕様](../spec/cli.md) 4章）。消失を承認前に明示するのは、INV-001 が禁じる管理範囲外の設定の暗黙の削除に当たらないようにするためです。更新後は選択方式の Actions 許可条件を取得できないため、その値を保全済みとはみなさず、消失したものとして扱います。
+`selected` から `all` / `local_only` への切替によって、GitHub は選択方式の Actions 許可条件を残さず、`selected` に戻したときには上記の値に戻っています（GitHub Actions 権限 API 仕様 4章）。遷移先が `all` / `local_only` のとき選択方式の Actions 許可条件は宣言できないため（[YAML 設定仕様](../spec/configuration.md) 4.1）、その既存値は管理範囲外の設定であり、reco はこの消失を防げません。Change Planning は、この遷移を適用可能としたうえで、既存の選択方式の Actions 許可条件が失われることを観測した値とともに変更計画へ含めます（[CLI 仕様](../spec/cli.md) 4章）。消失を承認前に明示するのは、INV-001 が禁じる管理範囲外の設定の暗黙の削除に当たらないようにするためです。更新後は選択方式の Actions 許可条件を取得できないため、その値を保全済みとはみなさず、消失したものとして扱います。
 
 GitHub の複数の更新操作を原子的に実行する仕組みはありません。途中で更新が失敗・中断された場合は、先行操作の影響が残り得ます。最終状態の一致を確認できることと、中間状態の安全性を確認できることは別の条件です。
 
@@ -287,7 +291,7 @@ GitHub の複数の更新操作を原子的に実行する仕組みはありま�
 | `alignment` | `FR-012` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
 | `alignment` | `INV-004` | Invariant |
-| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
 
 ## 6. 更新結果と障害時の制御
 
@@ -313,19 +317,26 @@ Change Execution は、各更新操作の応答と更新後の期待状態の観
 
 | 更新要求への応答 | 更新操作の結果 |
 |---|---|
-| `200` を受け取り、本文が更新の契約に適合した | 成功 |
-| `4xx`（認証失敗、権限不足、レート制限、対象が見つからない、処理できない要求、その他の `4xx`） | 失敗 |
+| 更新エンドポイントの正常応答を受け取り、応答が更新の契約に適合した | 成功 |
+| `4xx`（認証失敗、権限不足、レート制限、対象が見つからない、処理できない要求、競合、その他の `4xx`） | 失敗 |
 | `5xx` | 成否不明 |
 | `3xx`（リダイレクト応答） | 成否不明 |
 | 応答を受け取れなかった（接続の失敗、時間切れ、中断） | 成否不明 |
-| `200` の本文を最後まで受け取れなかった、または本文が更新の契約に適合しない | 成否不明 |
-| `200` 以外の `2xx`、最終応答としての `1xx` | 成否不明 |
+| 正常応答の本文を最後まで受け取れなかった、または応答が更新の契約に適合しない | 成否不明 |
+| 更新エンドポイントの正常応答以外の `2xx`、最終応答としての `1xx` | 成否不明 |
 
 `4xx` だけを失敗とするのは、GitHub が要求を拒否したと応答したステータスだからです。`5xx` は拒否を表さず、更新が処理されたかを応答から判断できないため、reco は成否不明とします。
 
-成功の判定に使う **更新の契約** は、`200` の本文を解釈でき、リポジトリ ID と観測する General の各値がそろっていることを指します。必要なフィールドは取得契約と同じですが、取得契約と異なり、欠落を取得条件による観測不能とはみなしません。更新の成功応答で確かめるのは値ではなく、GitHub が更新要求を処理した応答であることだからです。
+更新エンドポイントの正常応答とは、[GitHub API 仕様](../research/README.md) がその更新エンドポイントの正常応答として記載したステータスです。成功とする `2xx` を正常応答に限るのは、GitHub がドキュメントで正常応答として示したステータスでなければ、更新要求を処理した応答だと根拠づけられないためです。正常応答のステータスは更新エンドポイントによって異なるため、本節では特定のステータスを定めません。
 
-更新操作の成功は、期待状態に達したことを意味しません。GitHub は、送った値を反映しないまま `200` を返す場合があります（[GitHub API 仕様](../research/github-api.md) 4.2）。この場合、更新操作は成功、期待状態の確認結果は不一致となり、変更結果は失敗です。
+成功の判定に使う **更新の契約** は、正常応答が本文を持つかどうかで次のように定まります。
+
+- **本文がリソースの表現を返す正常応答**：本文を解釈でき、その設定の取得契約と同じフィールドがそろっている。取得契約と異なり、欠落を取得条件による観測不能とはみなさない
+- **本文のない正常応答**：本文で確かめる値はない
+
+更新の成功応答で確かめるのは値ではなく、GitHub が更新要求を処理した応答であることです。本文のない正常応答では、更新後の値とリポジトリ ID を、更新後の期待状態の確認で再取得して確かめます。
+
+更新操作の成功は、期待状態に達したことを意味しません。GitHub は、送った値を反映しないまま `200` を返す場合があります（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）。この場合、更新操作は成功、期待状態の確認結果は不一致となり、変更結果は失敗です。
 
 更新操作の成功後の不一致について、GitHub の応答は原因を示しません。reco は原因を断定しませんが、設定ごとに既知の原因の候補があれば、可能性として変更結果に添えます。対象のリポジトリがその原因の条件に当たるかは確かめていないため、候補は条件付きの文で示します。候補は公式ドキュメントに記載がなくても、推測として挙げてかまいません。原因を断定しない表示であれば、候補が外れても誤った判断を招かず、候補がないよりも利用者が原因を調べる手がかりになるためです。成否不明の更新では、不一致の原因が更新操作にあるかも分からないため、候補を添えません。
 
@@ -338,7 +349,9 @@ Change Execution は、各更新操作の応答と更新後の期待状態の観
 | `alignment` | `FR-012` | Functional Requirement |
 | `alignment` | `FR-013` | Functional Requirement |
 | `alignment` | `QR-002` | Quality Requirement |
-| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
 
 ### 6.2 停止・再観測・リトライ
 
@@ -356,7 +369,7 @@ Change Execution は、各更新操作の応答と更新後の期待状態の観
 | `alignment` | `FR-013` | Functional Requirement |
 | `alignment` | `INV-004` | Invariant |
 | `alignment` | `INV-005` | Invariant |
-| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
 
 ## 7. References
 
@@ -364,4 +377,6 @@ Change Execution は、各更新操作の応答と更新後の期待状態の観
 - [CLI 仕様](../spec/cli.md)
 - [YAML 設定仕様](../spec/configuration.md)
 - [ドメインモデル](domain.md)
-- [GitHub API 仕様](../research/github-api.md)
+- [GitHub REST API 共通仕様](../research/rest-api.md)
+- [GitHub リポジトリ API 仕様](../research/repositories.md)
+- [GitHub Actions 権限 API 仕様](../research/actions-permissions.md)

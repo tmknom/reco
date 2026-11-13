@@ -14,11 +14,11 @@
 | YAML 設定仕様 | 設定宣言の構造、型、許容値、入力検証などの外部契約 |
 | ドメインモデル | リポジトリ設定の管理に関する概念とその関係 |
 | アーキテクチャ設計 | システムの論理構成、責務、依存関係、主要な処理の仕組み |
-| GitHub API 仕様 | reco が利用する GitHub REST API の外部契約を、GitHub の公式資料から抜粋・整理したもの |
+| GitHub API 仕様 | reco が利用する GitHub REST API の外部契約を、GitHub の公式資料から抜粋・整理したもの。`docs/research/` の複数の文書からなる |
 
 用語の意味は、ドメインモデルを正本とします。ほかの文書で用語を導入するときは、意味を変えずに要約します。
 
-GitHub API の契約は GitHub の公式資料が正本です。開発のたびに公式資料を参照しなくて済むよう、必要な事実は [GitHub API 仕様](../research/github-api.md) に抽出します。GitHub API 仕様は GitHub の公式資料だけを根拠とし、ほかの内部文書に依存せず単独で読めるようにします。ただし、公式資料の記載が不十分で、reco の開発者が実際の動作を確認した事項は、公式資料の記載と区別できる注釈として記載できます。依存の向きは一方向であり、ほかの内部文書が GitHub API の事実を根拠とするときは GitHub API 仕様を参照し、GitHub API 仕様からほかの内部文書は参照しません。GitHub API 仕様に必要な事実がなければ、公式資料で確認して GitHub API 仕様に追記してから参照します。
+GitHub API の契約は GitHub の公式資料が正本です。開発のたびに公式資料を参照しなくて済むよう、必要な事実は [GitHub API 仕様](../research/README.md) に抽出します。GitHub API 仕様を構成する文書と、事実をどの文書に書くかは、GitHub API 仕様の README が定めます。GitHub API 仕様は GitHub の公式資料だけを根拠とし、ほかの内部文書に依存せず単独で読めるようにします。ただし、公式資料の記載が不十分で、reco の開発者が実際の動作を確認した事項は、公式資料の記載と区別できる注釈として記載できます。依存の向きは一方向であり、ほかの内部文書が GitHub API の事実を根拠とするときは GitHub API 仕様を参照し、GitHub API 仕様からほかの内部文書は参照しません。GitHub API 仕様に必要な事実がなければ、公式資料で確認して GitHub API 仕様に追記してから参照します。
 
 reco の要求・契約・設計における独自の判断と、GitHub が定めた事実を区別します。GitHub の事実をどう扱うかは参照する側の文書で定め、GitHub API 仕様には書きません。同じ規則を複数文書で独立して定義せず、必要な箇所から正本を参照します。
 
@@ -53,7 +53,7 @@ Relationships は、記述元（Source）から参照先（Target）への意味
 | `grounding` | Target は、Source の重要な主張・判断・定義を支持する根拠である |
 | `checks` | Source の検証手段は、Target が定める性質を検査対象とする |
 
-Markdown では、関係を持つ定義またはセクションに、`Relationship`・`Target`・`Target Type` の3列からなるテーブルを直接置きます。次の例では「2.2 対象の同一性・認証・信頼境界」が Source、`FR-002` と GitHub API 仕様が Target です。
+Markdown では、関係を持つ定義またはセクションに、`Relationship`・`Target`・`Target Type` の3列からなるテーブルを直接置きます。次の例では「2.2 対象の同一性・認証・信頼境界」が Source、`FR-002` と GitHub リポジトリ API 仕様が Target です。
 
 ```markdown
 ### 2.2 対象の同一性・認証・信頼境界
@@ -63,7 +63,7 @@ Markdown では、関係を持つ定義またはセクションに、`Relationsh
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-002` | Functional Requirement |
-| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
 ```
 
 テーブルは原則として Source となるセクションの末尾に配置します。下位見出しのある章全体を Source とする場合は、直前の小節に属するように見えないよう、最初の下位見出しより前の章本文に配置します。
@@ -112,9 +112,9 @@ Relationships の存在は、要求の充足、根拠の正確性、検証の実
 | 見出しの変更・ファイルの移動 | 本文中のリンク、Relationship テーブルの Target、`llms.txt` | リンクが切れていないか。識別子は維持する |
 | 機能要求・品質要求・不変条件の意味の変更 | その識別子を Target とする `alignment` を持つセクション、本文中の言及、その識別子を `//trace:checks` で宣言したテスト | 参照元が変更後の条件と整合するか。テストの検査条件と期待結果が変更後の意味に合うか |
 | CLI 仕様・YAML 設定仕様の変更 | その文書を参照する設計の節、関係するテスト | 設計と実装が変更後の契約を前提にしているか |
-| GitHub API 仕様の変更 | GitHub API 仕様を Target とする `grounding` を持つすべてのセクション | 主張が引き続き根拠に支持されるか |
+| GitHub API 仕様の変更 | 変更した GitHub API 仕様の文書を Target とする `grounding` を持つすべてのセクション | 主張が引き続き根拠に支持されるか |
 
-`grounding` の Target はファイル単位で書くため、GitHub API 仕様の変更では逆引きの候補が広くなります。本文中に `[GitHub API 仕様](../research/github-api.md) 4.2` のような節番号を添えたリンクがあれば、変更した節に依存する箇所を先に特定する手がかりになります。ただし、節番号を添えずに依存している箇所もあるため、節番号のない候補も、主張が変更した節に依存していないかを確認します。
+`grounding` の Target はファイル単位で書くため、GitHub API 仕様の変更では、変更した節に依存しない箇所も逆引きの候補に含まれます。本文中に `[GitHub リポジトリ API 仕様](../research/repositories.md) 4章` のような節番号を添えたリンクがあれば、変更した節に依存する箇所を先に特定する手がかりになります。ただし、節番号を添えずに依存している箇所もあるため、節番号のない候補も、主張が変更した節に依存していないかを確認します。
 
 テストが合格しても、検査条件が変更後の意味に合っているとは限りません。テストは変更前の意味を前提に書かれており、意味を変えた後も合格し続けることがあるためです。`//trace:checks` で宣言したテストは、合格していても期待結果を読み直します。
 
