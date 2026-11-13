@@ -132,6 +132,7 @@ func notAttemptedReason(record changeRecord) string {
 	}
 }
 
+// updateOutcomeText は、更新操作の結果の表示を返す。成否不明の原因は error が示すため、ここでは区別しない。
 func updateOutcomeText(u github.UpdateOutcome) string {
 	switch u {
 	case github.UpdateSucceeded:
@@ -139,7 +140,7 @@ func updateOutcomeText(u github.UpdateOutcome) string {
 	case github.UpdateRejected:
 		return "rejected"
 	default:
-		return "unknown (response unavailable)"
+		return "unknown"
 	}
 }
 

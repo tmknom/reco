@@ -55,3 +55,11 @@ func (v SettingValue) Bool() bool {
 	}
 	return v.boolean
 }
+
+// PermissionLevel は、ワークフローの GITHUB_TOKEN の既定権限の値を返す。それ以外の値は不変条件の破れのため panic する。
+func (v SettingValue) PermissionLevel() setting.PermissionLevel {
+	if v.kind != kindPermissionLevel {
+		panic("changeplan: setting value is not a permission level")
+	}
+	return v.level
+}

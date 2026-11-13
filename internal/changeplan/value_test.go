@@ -50,3 +50,20 @@ func TestSettingValue_BoolOfPermissionLevelPanics(t *testing.T) {
 	}()
 	_ = PermissionLevelValue(setting.PermissionWrite).Bool()
 }
+
+func TestSettingValue_PermissionLevel(t *testing.T) {
+	for _, want := range []setting.PermissionLevel{setting.PermissionRead, setting.PermissionWrite} {
+		if got := PermissionLevelValue(want).PermissionLevel(); got != want {
+			t.Errorf("PermissionLevelValue(%q).PermissionLevel() = %q, want %q", want, got, want)
+		}
+	}
+}
+
+func TestSettingValue_PermissionLevelOfBoolPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("PermissionLevel() did not panic for a boolean value")
+		}
+	}()
+	_ = BoolValue(true).PermissionLevel()
+}

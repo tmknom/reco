@@ -86,6 +86,62 @@ func TestApply_Approved(t *testing.T) {
 	}
 }
 
+// TestApply_ApprovedWithWorkflowPermissions は、PATCH と PUT が混ざる承認済みの実行の配線を確かめる。
+//
+//trace:checks FR-011
+func TestApply_ApprovedWithWorkflowPermissions(t *testing.T) {
+	workDir := t.TempDir()
+	writeConfig(t, workDir, "reco.yaml", `repositories:
+  - name: owner/repo
+    general:
+      allow_auto_merge: true
+    actions:
+      workflow:
+        default_workflow_permissions: read
+`)
+	writePermissionsBody := `{"default_workflow_permissions": "write", "can_approve_pull_request_reviews": false}`
+	server, opts := newGitHubServerSequence(t,
+		stubResponse{http.StatusOK, mismatchedRepositoryBody},
+		stubResponse{http.StatusOK, writePermissionsBody},
+		stubResponse{http.StatusOK, mismatchedRepositoryBody},
+		stubResponse{http.StatusOK, appliedRepositoryBody},
+		stubResponse{http.StatusOK, appliedRepositoryBody},
+		stubResponse{http.StatusOK, appliedRepositoryBody},
+		stubResponse{http.StatusOK, writePermissionsBody},
+		stubResponse{http.StatusNoContent, ""},
+		stubResponse{http.StatusOK, appliedRepositoryBody},
+		stubResponse{http.StatusOK, workflowPermissionsBody},
+	)
+
+	env := Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue}), Stdin: strings.NewReader("y\n"), StdinIsTerminal: true}
+	code, stdout, stderr := runExecute(t, env, opts, "apply")
+	if code != 0 {
+		t.Errorf("got exit code %d, want 0 (stderr %q)", code, stderr)
+	}
+	if !strings.Contains(stdout, "owner/repo: updated") {
+		t.Errorf("got stdout %q, want owner/repo: updated", stdout)
+	}
+	repo, workflow := "/repos/owner/repo", "/repos/owner/repo/actions/permissions/workflow"
+	want := []receivedRequest{
+		{method: http.MethodGet, path: repo}, {method: http.MethodGet, path: workflow},
+		{method: http.MethodGet, path: repo}, {method: http.MethodPatch, path: repo}, {method: http.MethodGet, path: repo},
+		{method: http.MethodGet, path: repo}, {method: http.MethodGet, path: workflow}, {method: http.MethodPut, path: workflow},
+		{method: http.MethodGet, path: repo}, {method: http.MethodGet, path: workflow},
+	}
+	got := server.receivedRequests()
+	if len(got) != len(want) {
+		t.Fatalf("got requests %+v, want %d requests", got, len(want))
+	}
+	for i, r := range got {
+		if r.method != want[i].method || r.path != want[i].path {
+			t.Errorf("got request %d %s %s, want %s %s", i, r.method, r.path, want[i].method, want[i].path)
+		}
+		if !strings.Contains(r.authorization, ghEnvValue) {
+			t.Errorf("got request %d %+v, want GH_TOKEN in Authorization", i, r)
+		}
+	}
+}
+
 //trace:checks FR-009
 //trace:checks INV-003
 func TestApply_NotApproved(t *testing.T) {

@@ -136,6 +136,37 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			after:  github.ObservationResult{General: github.General{DeleteBranchOnMerge: true}},
 			want:   nil,
 		},
+		{
+			name:   "default_workflow_permissions change reports different can_approve_pull_request_reviews with both values",
+			change: defaultWorkflowPermissionsChange(),
+			before: github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: false}},
+			after:  github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: true}},
+			want:   []unexpectedOutsideChange{{Key: setting.CanApprovePullRequestReviews, Before: changeplan.BoolValue(false), After: changeplan.BoolValue(true)}},
+		},
+		{
+			name:   "can_approve_pull_request_reviews change reports different default_workflow_permissions with both values",
+			change: canApprovePullRequestReviewsChange(),
+			before: github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: true}},
+			after:  github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: false}},
+			want: []unexpectedOutsideChange{{
+				Key:    setting.DefaultWorkflowPermissions,
+				Before: changeplan.PermissionLevelValue(setting.PermissionRead),
+				After:  changeplan.PermissionLevelValue(setting.PermissionWrite),
+			}},
+		},
+		{
+			name:   "workflow permissions change does not compare general settings",
+			change: defaultWorkflowPermissionsChange(),
+			before: github.ObservationResult{
+				General:             github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false},
+				WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite},
+			},
+			after: github.ObservationResult{
+				General:             github.General{AllowAutoMerge: true, DeleteBranchOnMerge: true},
+				WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead},
+			},
+			want: nil,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -157,8 +188,10 @@ func TestExecuteChange(t *testing.T) {
 	serverError := response{status: http.StatusInternalServerError}
 	redirect := response{status: http.StatusTemporaryRedirect, location: "https://example.com/"}
 
+	noContent := response{status: http.StatusNoContent}
 	cases := []struct {
 		name        string
+		change      changeplan.LogicalChange
 		responses   []response
 		wantMethods []string
 		wantPrecond preconditionCheck
@@ -171,6 +204,7 @@ func TestExecuteChange(t *testing.T) {
 	}{
 		{
 			name:        "unreadable repository before the update is unconfirmed",
+			change:      allowAutoMergeChange(),
 			responses:   []response{{status: http.StatusNotFound}},
 			wantMethods: []string{"GET"},
 			wantPrecond: preconditionUnconfirmed,
@@ -179,6 +213,7 @@ func TestExecuteChange(t *testing.T) {
 		},
 		{
 			name:        "different repository ID sends no update request",
+			change:      allowAutoMergeChange(),
 			responses:   []response{okRepository(2, false, false)},
 			wantMethods: []string{"GET"},
 			wantPrecond: preconditionIdentityMismatch,
@@ -186,6 +221,7 @@ func TestExecuteChange(t *testing.T) {
 		},
 		{
 			name:        "different current value sends no update request",
+			change:      allowAutoMergeChange(),
 			responses:   []response{okRepository(1, true, false)},
 			wantMethods: []string{"GET"},
 			wantPrecond: preconditionCurrentValueChanged,
@@ -193,6 +229,7 @@ func TestExecuteChange(t *testing.T) {
 		},
 		{
 			name:        "update confirmed by the second read is complete",
+			change:      allowAutoMergeChange(),
 			responses:   []response{okRepository(1, false, false), okRepository(1, true, false), okRepository(1, true, false)},
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
@@ -202,6 +239,7 @@ func TestExecuteChange(t *testing.T) {
 		},
 		{
 			name:        "rejected update is not followed by a read",
+			change:      allowAutoMergeChange(),
 			responses:   []response{okRepository(1, false, false), {status: http.StatusForbidden}},
 			wantMethods: []string{"GET", "PATCH"},
 			wantPrecond: preconditionHolds,
@@ -212,6 +250,7 @@ func TestExecuteChange(t *testing.T) {
 		},
 		{
 			name:        "redirected update is unknown and stays failed even if the state matches",
+			change:      allowAutoMergeChange(),
 			responses:   []response{okRepository(1, false, false), redirect, okRepository(1, true, false)},
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
@@ -222,6 +261,7 @@ func TestExecuteChange(t *testing.T) {
 		},
 		{
 			name:        "disconnected update with an unreadable diagnosis keeps both the update and the read errors",
+			change:      allowAutoMergeChange(),
 			responses:   []response{okRepository(1, false, false), disconnect, serverError},
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
@@ -232,6 +272,7 @@ func TestExecuteChange(t *testing.T) {
 		},
 		{
 			name:        "unknown update shows a changed other setting observed by the diagnosis",
+			change:      allowAutoMergeChange(),
 			responses:   []response{okRepository(1, false, false), redirect, okRepository(1, true, true)},
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
@@ -243,6 +284,7 @@ func TestExecuteChange(t *testing.T) {
 		},
 		{
 			name:        "successful update with an unreadable confirmation is unconfirmed with the read error as the cause",
+			change:      allowAutoMergeChange(),
 			responses:   []response{okRepository(1, false, false), okRepository(1, true, false), serverError},
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
@@ -253,6 +295,7 @@ func TestExecuteChange(t *testing.T) {
 		},
 		{
 			name:        "successful update with another value is a mismatch",
+			change:      allowAutoMergeChange(),
 			responses:   []response{okRepository(1, false, false), okRepository(1, true, false), okRepository(1, false, false)},
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
@@ -262,6 +305,7 @@ func TestExecuteChange(t *testing.T) {
 		},
 		{
 			name:        "successful update with a changed other setting fails",
+			change:      allowAutoMergeChange(),
 			responses:   []response{okRepository(1, false, false), okRepository(1, true, false), okRepository(1, true, true)},
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
@@ -271,7 +315,69 @@ func TestExecuteChange(t *testing.T) {
 			wantResult:  failed,
 		},
 		{
+			name:        "workflow permissions update confirmed by two reads before and after is complete",
+			change:      defaultWorkflowPermissionsChange(),
+			responses:   []response{okRepository(1, false, false), okWorkflowPermissions("write", false), noContent, okRepository(1, false, false), okWorkflowPermissions("read", false)},
+			wantMethods: []string{"GET", "GET", "PUT", "GET", "GET"},
+			wantPrecond: preconditionHolds,
+			wantUpdate:  github.UpdateSucceeded,
+			wantDesired: desiredStateMatches,
+			wantResult:  completed,
+		},
+		{
+			name:        "unreadable workflow permissions before the update is unconfirmed",
+			change:      defaultWorkflowPermissionsChange(),
+			responses:   []response{okRepository(1, false, false), serverError},
+			wantMethods: []string{"GET", "GET"},
+			wantPrecond: preconditionUnconfirmed,
+			wantResult:  notAttempted,
+			wantCauses:  []error{github.ErrUnexpectedResponse},
+		},
+		{
+			name:   "workflow permissions update answered with 200 is unknown and stays failed even if the state matches",
+			change: defaultWorkflowPermissionsChange(),
+			responses: []response{
+				okRepository(1, false, false), okWorkflowPermissions("write", false), {status: http.StatusOK},
+				okRepository(1, false, false), okWorkflowPermissions("read", false),
+			},
+			wantMethods: []string{"GET", "GET", "PUT", "GET", "GET"},
+			wantPrecond: preconditionHolds,
+			wantUpdate:  github.UpdateUnknown,
+			wantDesired: desiredStateMatches,
+			wantResult:  failed,
+			wantCauses:  []error{github.ErrUnexpectedResponse},
+		},
+		{
+			name:   "successful workflow permissions update with unreadable workflow permissions after it is unconfirmed",
+			change: defaultWorkflowPermissionsChange(),
+			responses: []response{
+				okRepository(1, false, false), okWorkflowPermissions("write", false), noContent,
+				okRepository(1, false, false), serverError,
+			},
+			wantMethods: []string{"GET", "GET", "PUT", "GET", "GET"},
+			wantPrecond: preconditionHolds,
+			wantUpdate:  github.UpdateSucceeded,
+			wantDesired: desiredStateUnconfirmed,
+			wantResult:  failed,
+			wantCauses:  []error{github.ErrUnexpectedResponse},
+		},
+		{
+			name:   "successful workflow permissions update with a changed unsent workflow permission fails",
+			change: defaultWorkflowPermissionsChange(),
+			responses: []response{
+				okRepository(1, false, false), okWorkflowPermissions("write", false), noContent,
+				okRepository(1, false, false), okWorkflowPermissions("read", true),
+			},
+			wantMethods: []string{"GET", "GET", "PUT", "GET", "GET"},
+			wantPrecond: preconditionHolds,
+			wantUpdate:  github.UpdateSucceeded,
+			wantDesired: desiredStateMatches,
+			wantOutside: []unexpectedOutsideChange{{Key: setting.CanApprovePullRequestReviews, Before: changeplan.BoolValue(false), After: changeplan.BoolValue(true)}},
+			wantResult:  failed,
+		},
+		{
 			name:        "successful update with a changed repository ID does not compare other settings",
+			change:      allowAutoMergeChange(),
 			responses:   []response{okRepository(1, false, false), okRepository(1, true, false), okRepository(2, true, true)},
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
@@ -285,10 +391,10 @@ func TestExecuteChange(t *testing.T) {
 			baseURL, rec := newSequenceServer(t, tc.responses...)
 			p := newPlan(t)
 
-			got := executeChange(context.Background(), newClient(baseURL), p, allowAutoMergeChange())
+			got := executeChange(context.Background(), newClient(baseURL), p, tc.change)
 
-			if got.change != allowAutoMergeChange() {
-				t.Errorf("change = %+v, want %+v", got.change, allowAutoMergeChange())
+			if got.change != tc.change {
+				t.Errorf("change = %+v, want %+v", got.change, tc.change)
 			}
 			if !slices.Equal(rec.Methods(), tc.wantMethods) {
 				t.Errorf("requests = %v, want %v", rec.Methods(), tc.wantMethods)
@@ -340,23 +446,42 @@ func TestExecuteChange(t *testing.T) {
 //trace:checks INV-001
 //trace:checks FR-011
 func TestUpdateOperation(t *testing.T) {
+	noContent := response{status: http.StatusNoContent}
 	cases := []struct {
 		name     string
 		key      setting.Key
+		desired  changeplan.SettingValue
+		response response
 		wantBody map[string]any
 	}{
-		{name: "delete_branch_on_merge sends only delete_branch_on_merge", key: setting.DeleteBranchOnMerge, wantBody: map[string]any{"delete_branch_on_merge": true}},
-		{name: "allow_auto_merge sends only allow_auto_merge", key: setting.AllowAutoMerge, wantBody: map[string]any{"allow_auto_merge": true}},
+		{
+			name: "delete_branch_on_merge sends only delete_branch_on_merge", key: setting.DeleteBranchOnMerge, desired: changeplan.BoolValue(true),
+			response: okRepository(1, true, true), wantBody: map[string]any{"delete_branch_on_merge": true},
+		},
+		{
+			name: "allow_auto_merge sends only allow_auto_merge", key: setting.AllowAutoMerge, desired: changeplan.BoolValue(true),
+			response: okRepository(1, true, true), wantBody: map[string]any{"allow_auto_merge": true},
+		},
+		{
+			name: "default_workflow_permissions sends only default_workflow_permissions", key: setting.DefaultWorkflowPermissions,
+			desired:  changeplan.PermissionLevelValue(setting.PermissionRead),
+			response: noContent, wantBody: map[string]any{"default_workflow_permissions": "read"},
+		},
+		{
+			name: "can_approve_pull_request_reviews sends only can_approve_pull_request_reviews", key: setting.CanApprovePullRequestReviews,
+			desired:  changeplan.BoolValue(false),
+			response: noContent, wantBody: map[string]any{"can_approve_pull_request_reviews": false},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			baseURL, rec := newSequenceServer(t, okRepository(1, true, true))
+			baseURL, rec := newSequenceServer(t, tc.response)
 			update, ok := updateOperation(tc.key)
 			if !ok {
 				t.Fatalf("updateOperation(%q) ok = false, want true", tc.key)
 			}
 
-			if _, err := update(newClient(baseURL), context.Background(), mustReference(t, "owner/repo"), true); err != nil {
+			if _, err := update(context.Background(), newClient(baseURL), mustReference(t, "owner/repo"), tc.desired); err != nil {
 				t.Fatalf("update() error = %v", err)
 			}
 
@@ -380,11 +505,15 @@ func TestUpdateOperation(t *testing.T) {
 //trace:checks INV-004
 //trace:checks INV-005
 //trace:checks FR-010
+//trace:checks FR-012
 //trace:checks FR-013
 func TestExecuteChanges(t *testing.T) {
 	redirect := response{status: http.StatusTemporaryRedirect, location: "https://example.com/"}
+	noContent := response{status: http.StatusNoContent}
+	generalChanges := []changeplan.LogicalChange{deleteBranchOnMergeChange(), allowAutoMergeChange()}
 	cases := []struct {
 		name        string
+		changes     []changeplan.LogicalChange
 		responses   []response
 		wantMethods []string
 		wantBodies  []map[string]any
@@ -392,7 +521,8 @@ func TestExecuteChanges(t *testing.T) {
 		wantResults []changeResult
 	}{
 		{
-			name: "both changes complete with a fresh read before each update",
+			name:    "both changes complete with a fresh read before each update",
+			changes: generalChanges,
 			responses: []response{
 				okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true),
 				okRepository(1, false, true), okRepository(1, true, true), okRepository(1, true, true),
@@ -403,7 +533,8 @@ func TestExecuteChanges(t *testing.T) {
 			wantResults: []changeResult{completed, completed},
 		},
 		{
-			name: "second current value changed after the first completes is not attempted",
+			name:    "second current value changed after the first completes is not attempted",
+			changes: generalChanges,
 			responses: []response{
 				okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true),
 				okRepository(1, true, true),
@@ -415,6 +546,7 @@ func TestExecuteChanges(t *testing.T) {
 		},
 		{
 			name:        "first precondition failure stops the second without a request",
+			changes:     generalChanges,
 			responses:   []response{okRepository(2, false, false)},
 			wantMethods: []string{"GET"},
 			wantBodies:  []map[string]any{nil},
@@ -423,17 +555,58 @@ func TestExecuteChanges(t *testing.T) {
 		},
 		{
 			name:        "first unknown update outcome stops the second without a request",
+			changes:     generalChanges,
 			responses:   []response{okRepository(1, false, false), redirect, okRepository(1, false, true)},
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantBodies:  []map[string]any{nil, {"delete_branch_on_merge": true}, nil},
 			wantPrecond: []preconditionCheck{preconditionHolds, preconditionNotChecked},
 			wantResults: []changeResult{failed, notAttempted},
 		},
+		{
+			name: "general and workflow permissions changes all complete with patches before puts",
+			changes: []changeplan.LogicalChange{
+				deleteBranchOnMergeChange(), allowAutoMergeChange(), defaultWorkflowPermissionsChange(), canApprovePullRequestReviewsChange(),
+			},
+			responses: []response{
+				okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true),
+				okRepository(1, false, true), okRepository(1, true, true), okRepository(1, true, true),
+				okRepository(1, true, true), okWorkflowPermissions("write", true), noContent, okRepository(1, true, true), okWorkflowPermissions("read", true),
+				okRepository(1, true, true), okWorkflowPermissions("read", true), noContent, okRepository(1, true, true), okWorkflowPermissions("read", false),
+			},
+			wantMethods: []string{
+				"GET", "PATCH", "GET",
+				"GET", "PATCH", "GET",
+				"GET", "GET", "PUT", "GET", "GET",
+				"GET", "GET", "PUT", "GET", "GET",
+			},
+			wantBodies: []map[string]any{
+				nil, {"delete_branch_on_merge": true}, nil,
+				nil, {"allow_auto_merge": true}, nil,
+				nil, nil, {"default_workflow_permissions": "read"}, nil, nil,
+				nil, nil, {"can_approve_pull_request_reviews": false}, nil, nil,
+			},
+			wantPrecond: []preconditionCheck{preconditionHolds, preconditionHolds, preconditionHolds, preconditionHolds},
+			wantResults: []changeResult{completed, completed, completed, completed},
+		},
+		{
+			name: "general mismatch stops the workflow permissions change without a read or an update",
+			changes: []changeplan.LogicalChange{
+				deleteBranchOnMergeChange(), allowAutoMergeChange(), defaultWorkflowPermissionsChange(),
+			},
+			responses: []response{
+				okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true),
+				okRepository(1, false, true), okRepository(1, false, true), okRepository(1, false, true),
+			},
+			wantMethods: []string{"GET", "PATCH", "GET", "GET", "PATCH", "GET"},
+			wantBodies:  []map[string]any{nil, {"delete_branch_on_merge": true}, nil, nil, {"allow_auto_merge": true}, nil},
+			wantPrecond: []preconditionCheck{preconditionHolds, preconditionHolds, preconditionNotChecked},
+			wantResults: []changeResult{completed, failed, notAttempted},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			baseURL, rec := newSequenceServer(t, tc.responses...)
-			changes := []changeplan.LogicalChange{deleteBranchOnMergeChange(), allowAutoMergeChange()}
+			changes := tc.changes
 
 			got := executeChanges(context.Background(), newClient(baseURL), newPlan(t), changes)
 

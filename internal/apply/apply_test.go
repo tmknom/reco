@@ -185,6 +185,20 @@ func deleteBranchOnMergeMismatch() changeplan.SettingPlan {
 	}
 }
 
+// defaultWorkflowPermissionsChange は、default_workflow_permissions を write から read にする論理的な設定変更。
+func defaultWorkflowPermissionsChange() changeplan.LogicalChange {
+	return changeplan.LogicalChange{
+		Key:      setting.DefaultWorkflowPermissions,
+		Observed: changeplan.PermissionLevelValue(setting.PermissionWrite),
+		Desired:  changeplan.PermissionLevelValue(setting.PermissionRead),
+	}
+}
+
+// canApprovePullRequestReviewsChange は、can_approve_pull_request_reviews を true から false にする論理的な設定変更。
+func canApprovePullRequestReviewsChange() changeplan.LogicalChange {
+	return changeplan.LogicalChange{Key: setting.CanApprovePullRequestReviews, Observed: changeplan.BoolValue(true), Desired: changeplan.BoolValue(false)}
+}
+
 func newPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.Plan {
 	t.Helper()
 	return changeplan.Plan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
@@ -509,6 +523,7 @@ const workflowConfigSource = `repositories:
 
 //trace:checks INV-002
 //trace:checks FR-008
+//trace:checks FR-011
 func TestRun(t *testing.T) {
 	newConfig := func(files fstest.MapFS, out *bytes.Buffer, baseURL *url.URL, calls *int) Config {
 		return Config{
@@ -525,22 +540,29 @@ func TestRun(t *testing.T) {
 		}
 	}
 
-	t.Run("workflow permissions mismatch stops before showing the plan, approval and updates", func(t *testing.T) {
-		baseURL, rec := newSequenceServer(t, okRepository(1, false, false), okWorkflowPermissions("write", false))
+	t.Run("general and workflow permissions mismatches are applied after a single approval", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t,
+			okRepository(1, false, false), okWorkflowPermissions("write", false),
+			okRepository(1, false, false), okRepository(1, true, false), okRepository(1, true, false),
+			okRepository(1, true, false), okWorkflowPermissions("write", false), response{status: http.StatusNoContent},
+			okRepository(1, true, false), okWorkflowPermissions("read", false))
 		var out bytes.Buffer
 		calls := 0
 		files := fstest.MapFS{"reco.yaml": {Data: []byte(workflowConfigSource)}}
 
-		err := Run(context.Background(), newConfig(files, &out, baseURL, &calls))
-
-		if err == nil || !strings.Contains(err.Error(), string(setting.DefaultWorkflowPermissions)) {
-			t.Errorf("Run() error = %v, want it to name %s", err, setting.DefaultWorkflowPermissions)
+		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
+			t.Fatalf("Run() error = %v", err)
 		}
-		if out.Len() != 0 {
-			t.Errorf("got Out %q, want empty", out.String())
+		if calls != 1 {
+			t.Errorf("approve calls = %d, want 1", calls)
 		}
-		if want := []string{"GET", "GET"}; calls != 0 || !slices.Equal(rec.Methods(), want) {
-			t.Errorf("approve calls = %d, requests = %v, want no approval and requests %v", calls, rec.Methods(), want)
+		want := []string{"GET", "GET", "GET", "PATCH", "GET", "GET", "GET", "PUT", "GET", "GET"}
+		if !slices.Equal(rec.Methods(), want) {
+			t.Errorf("requests = %v, want %v", rec.Methods(), want)
+		}
+		if !strings.Contains(out.String(), "actions.workflow.default_workflow_permissions: write -> read") ||
+			!strings.Contains(out.String(), "owner/repo: updated") {
+			t.Errorf("got Out %q, want the workflow permissions change and the repository updated", out.String())
 		}
 	})
 
