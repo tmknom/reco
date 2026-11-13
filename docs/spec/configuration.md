@@ -95,7 +95,7 @@ GitHub API が提供する `enabled` や `sha_pinning_required` は、reco の Y
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `FR-005` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
-| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
 
 ### 4.1 入力の組み合わせ
 
@@ -137,7 +137,7 @@ GitHub の公式資料は `patterns_allowed` を公開リポジトリに適用�
 |---|---|---|
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
-| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
 
 ## 6. 入力検証と対象名
 
@@ -186,11 +186,14 @@ GitHub は所有者名・リポジトリ名を大文字小文字非依存で扱�
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-001` | Functional Requirement |
-| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
 
 ## 7. References
 
 - [要求定義](requirements.md)
 - [CLI 仕様](cli.md)
-- [GitHub API 仕様](../research/github-api.md)
+- [GitHub REST API 共通仕様](../research/rest-api.md)
+- [GitHub リポジトリ API 仕様](../research/repositories.md)
+- [GitHub Actions 権限 API 仕様](../research/actions-permissions.md)
 - [YAML 1.2.2 Specification](https://yaml.org/spec/1.2.2/)

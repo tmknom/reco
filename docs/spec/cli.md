@@ -66,7 +66,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 環境変数の優先順位は [GitHub CLI の環境変数仕様](https://cli.github.com/manual/gh_help_environment) と同じですが、reco が GitHub CLI の認証機構を利用することは意味しません。
 
-reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub API 仕様](../research/github-api.md) 3 章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。
+reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。
 
 ```text
 $ GH_TOKEN=$(gh auth token) reco plan
@@ -78,7 +78,9 @@ $ GH_TOKEN=$(gh auth token) reco plan
 |---|---|---|
 | `alignment` | `FR-003` | Functional Requirement |
 | `alignment` | `QR-001` | Quality Requirement |
-| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
 
 ## 4. `plan`：変更計画の確認
 
@@ -166,7 +168,9 @@ Repositories checked: 2
 | `alignment` | `INV-003` | Invariant |
 | `alignment` | `INV-004` | Invariant |
 | `alignment` | `INV-005` | Invariant |
-| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
 
 ### 5.1 承認
 
@@ -211,7 +215,7 @@ Repositories updated: 1
 
 `failed` には、更新操作の失敗、更新操作の成否不明、成功応答後の期待状態の確認失敗、成功応答後の期待状態との不一致、成功応答後の未管理設定の予期しない変化のいずれに当たるかを添えて示します。先行操作の成功後に後続操作を開始できなかった場合は、その旨を示します。未管理設定の予期しない変化では、観測した変化を示しますが、reco に起因するとは断定しません。更新要求の応答を確認できない場合は成否不明とし、その後の再観測で期待状態が一致しても、更新操作の成否が判明したことにはならず、`updated` に変更しません。この再観測で未管理設定の変化を観測した場合も、更新操作の結果と分けて示します。
 
-更新操作が成功したのに期待状態と一致しない場合、reco は原因を断定しません。設定に既知の原因の候補があれば、`Possible cause:` として可能性の形で添えます。`general.allow_auto_merge` では、GitHub Free の非公開リポジトリで自動マージを利用できず、GitHub が更新を反映しないまま成功を応答する場合があることを示します（[GitHub API 仕様](../research/github-api.md) 4.2）。更新操作の成否が不明な場合は添えません。
+更新操作が成功したのに期待状態と一致しない場合、reco は原因を断定しません。設定に既知の原因の候補があれば、`Possible cause:` として可能性の形で添えます。`general.allow_auto_merge` では、GitHub Free の非公開リポジトリで自動マージを利用できず、GitHub が更新を反映しないまま成功を応答する場合があることを示します（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）。更新操作の成否が不明な場合は添えません。
 
 ### 5.3 異常時の表示例
 
@@ -279,7 +283,8 @@ Workflow permissions:
 |---|---|---|
 | `alignment` | `FR-004` | Functional Requirement |
 | `alignment` | `QR-002` | Quality Requirement |
-| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
 
 ## 7. 出力と終了コード
 
@@ -301,7 +306,7 @@ Workflow permissions:
 
 HTTP リダイレクトには追従しません。読み取り要求では観測失敗、更新要求では成否不明の `failed` として終了コード `1` を返します。対象と HTTP ステータスを示す一方、`Location` などに含まれる秘密情報は出力しません。更新成功後の再観測がリダイレクトで失敗した場合も、更新の成功と観測の失敗を区別します。
 
-GitHub は、名前変更前の名前で指定したリポジトリへの要求にリダイレクト応答を返します（[GitHub API 仕様](../research/github-api.md) 3.5）。このため、リダイレクト応答のエラーでは、リポジトリが名前変更または移転された可能性と、現在の名前で指定し直すことを案内します。転送先の名前は示しません。
+GitHub は、名前変更前の名前で指定したリポジトリへの要求にリダイレクト応答を返します（[GitHub リポジトリ API 仕様](../research/repositories.md) 2章）。このため、リダイレクト応答のエラーでは、リポジトリが名前変更または移転された可能性と、現在の名前で指定し直すことを案内します。転送先の名前は示しません。
 
 ```text
 Error: fetch repository example/old-name: redirect not followed (HTTP 301): the repository may have been renamed or transferred; specify its current name
@@ -313,10 +318,13 @@ Error: fetch repository example/old-name: redirect not followed (HTTP 301): the 
 | `alignment` | `FR-013` | Functional Requirement |
 | `alignment` | `QR-001` | Quality Requirement |
 | `alignment` | `QR-002` | Quality Requirement |
-| `grounding` | [GitHub API 仕様](../research/github-api.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
 
 ## 8. References
 
 - [要求定義](requirements.md)
 - [YAML 設定仕様](configuration.md)
-- [GitHub API 仕様](../research/github-api.md)
+- [GitHub REST API 共通仕様](../research/rest-api.md)
+- [GitHub リポジトリ API 仕様](../research/repositories.md)
+- [GitHub Actions 権限 API 仕様](../research/actions-permissions.md)
