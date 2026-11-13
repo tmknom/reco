@@ -25,9 +25,15 @@
 
 サポート対象の API バージョンは、`2026-03-10`（サポート終了日は未定）と `2022-11-28`（2028-03-10 にサポート終了）です。新しいバージョンのリリース後も、以前のバージョンは少なくとも24か月サポートされます。サポートが終了したバージョンを指定すると `410 Gone` が返ります。バージョン間の破壊的変更は、GitHub の破壊的変更の一覧に記載されます。
 
+応答ヘッダー `X-GitHub-Api-Version-Selected` は、REST API の始め方のドキュメントの応答例に現れますが、その意味は記載がありません。
+
+> [!NOTE]
+> `X-GitHub-Api-Version: 2026-03-10` を指定したリクエストでは、成功・リダイレクトのどちらの応答でも `X-GitHub-Api-Version-Selected` が `2026-03-10` だったことを、reco の開発者が実際の動作で確認しています。
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `grounding` | [API Versions](https://docs.github.com/en/rest/about-the-rest-api/api-versions) | External Document |
+| `grounding` | [Getting started with the REST API: About the response code and headers](https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api#about-the-response-code-and-headers) | External Document |
 | `grounding` | [Breaking changes](https://docs.github.com/en/rest/about-the-rest-api/breaking-changes) | External Document |
 
 ## 3. リダイレクト
@@ -106,6 +112,9 @@ REST API へのアクセスに使うトークンは、種別によって権限�
 GitHub CLI が求めるトークンの最小の scope は `repo`、`read:org`、`gist` です。GitHub CLI のドキュメントはこの最小 scope を `--with-token` で渡すトークンの条件として示しており、ブラウザを使う認証フローで得られるトークンの種別と scope を明記していません。fine-grained personal access token を GitHub CLI で使う場合は、`--with-token` ではなく環境変数 `GH_TOKEN` で渡すよう推奨しています。
 
 トークンが持つ scope は、そのトークンで送ったリクエストの応答ヘッダー `X-OAuth-Scopes` で確認できます。エンドポイントが確認する scope は `X-Accepted-OAuth-Scopes` ヘッダーに示されます。
+
+> [!NOTE]
+> `X-Accepted-OAuth-Scopes` が空の値で返る更新エンドポイントがあることを、reco の開発者が実際の動作で確認しています。空の値が scope を必要としないことを意味するかは確認しておらず、このヘッダーだけでは必要な scope を特定できません。
 
 | Relationship | Target | Target Type |
 |---|---|---|
