@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/tmknom/reco/internal/setting"
 )
 
 // document は、唯一の YAML 文書の根ノードと、ノードの位置から文字を引くためのソースの行。
@@ -138,6 +140,19 @@ func (d document) boolValue(n *yaml.Node, path string) (bool, error) {
 		return false, invalid(n, path, "must be true or false (unquoted, lowercase); got %q", n.Value)
 	}
 	return n.Value == "true", nil
+}
+
+// permissionLevelValue は、文字列のうち定義された権限の値に完全一致するものだけを受理する。
+func (d document) permissionLevelValue(n *yaml.Node, path string) (setting.PermissionLevel, error) {
+	s, err := d.stringValue(n, path)
+	if err != nil {
+		return "", err
+	}
+	level, ok := setting.ParsePermissionLevel(s)
+	if !ok {
+		return "", invalid(n, path, "must be read or write; got %q", s)
+	}
+	return level, nil
 }
 
 func (d document) stringValue(n *yaml.Node, path string) (string, error) {

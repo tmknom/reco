@@ -133,7 +133,7 @@ func TestNotAttemptedReason_StartedUpdatePanics(t *testing.T) {
 func TestWriteChangeReport_SingleChange(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 	change := allowAutoMergeChange()
-	outside := []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: false, After: true}}
+	outside := []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: changeplan.BoolValue(false), After: changeplan.BoolValue(true)}}
 	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed.\n"
 
 	cases := []struct {
@@ -258,7 +258,7 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 			records: []changeRecord{
 				{
 					change: deleteBranchOnMergeChange(), precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateMatches,
-					unexpectedOutsideChanges: []unexpectedOutsideChange{{Key: setting.AllowAutoMerge, Before: false, After: true}},
+					unexpectedOutsideChanges: []unexpectedOutsideChange{{Key: setting.AllowAutoMerge, Before: changeplan.BoolValue(false), After: changeplan.BoolValue(true)}},
 				},
 				stopped,
 			},

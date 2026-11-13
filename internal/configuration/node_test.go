@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/tmknom/reco/internal/setting"
 )
 
 // nodeAt は、root から Content の添字を順にたどったノードを返す。添字がなければ root を返す。
@@ -253,6 +255,46 @@ func TestDocumentBoolValue(t *testing.T) {
 			}
 			if got != tc.want {
 				t.Errorf("boolValue() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+//trace:checks FR-001
+func TestDocumentPermissionLevelValue(t *testing.T) {
+	cases := []struct {
+		name    string
+		src     string
+		want    setting.PermissionLevel
+		wantErr string
+	}{
+		{name: "read is accepted", src: "read\n", want: setting.PermissionRead},
+		{name: "write is accepted", src: "write\n", want: setting.PermissionWrite},
+		{name: "quoted read is accepted", src: "\"read\"\n", want: setting.PermissionRead},
+		{name: "capitalized Read is rejected", src: "Read\n", wantErr: `must be read or write; got "Read"`},
+		{name: "undefined admin is rejected", src: "admin\n", wantErr: `must be read or write; got "admin"`},
+		{name: "quoted read with leading space is rejected", src: "\" read\"\n", wantErr: `must be read or write; got " read"`},
+		{name: "empty string is rejected", src: "\"\"\n", wantErr: `must be read or write; got ""`},
+		{name: "boolean true is rejected as not a string", src: "true\n", wantErr: "must be a string"},
+		{name: "number 1 is rejected as not a string", src: "1\n", wantErr: "must be a string"},
+		{name: "null is rejected", src: "null\n", wantErr: "must not be null"},
+		{name: "explicit tag is rejected", src: "!!str read\n", wantErr: "explicit tags are not allowed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.permissionLevelValue(doc.root, "v")
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("permissionLevelValue() error = %v, want it to contain %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("permissionLevelValue() error = %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("permissionLevelValue() = %q, want %q", got, tc.want)
 			}
 		})
 	}

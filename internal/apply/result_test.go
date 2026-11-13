@@ -3,6 +3,7 @@ package apply
 import (
 	"testing"
 
+	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -29,7 +30,7 @@ func TestChangeRecord_Result(t *testing.T) {
 			name: "success, match and other setting change is failed",
 			record: changeRecord{
 				precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateMatches,
-				unexpectedOutsideChanges: []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: false, After: true}},
+				unexpectedOutsideChanges: []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: changeplan.BoolValue(false), After: changeplan.BoolValue(true)}},
 			},
 			want: failed,
 		},

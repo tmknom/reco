@@ -12,12 +12,12 @@ import (
 type LogicalChange struct {
 	Key setting.Key
 	// Observed は計画時の観測値で、承認時の値として変更前提の基準になる。
-	Observed bool
-	Desired  bool
+	Observed SettingValue
+	Desired  SettingValue
 }
 
 // LogicalChanges は、変更予定から論理的な設定変更を導く。
-// General の管理設定は単独で更新できるため、変更予定と論理的な設定変更は一対一になる。
+// 管理設定はどれも単独で更新できるため、変更予定と論理的な設定変更は一対一になる。
 // 比較不能な変更予定は、変更前提の基準になる観測値がないため、適用可能と判断されていても error にする。
 func (p Plan) LogicalChanges() ([]LogicalChange, error) {
 	var changes []LogicalChange
@@ -33,7 +33,7 @@ func (p Plan) LogicalChanges() ([]LogicalChange, error) {
 	return changes, nil
 }
 
-// Reconcile は、c の期待値を observed と照合する。
-func (c LogicalChange) Reconcile(observed github.General) ReconciliationResult {
+// Reconcile は、c の期待値を observed と照合する。observed は c の設定の領域を読み取った観測の結果に限る。
+func (c LogicalChange) Reconcile(observed github.ObservationResult) ReconciliationResult {
 	return compare(ObservedValue(c.Key, observed), c.Desired)
 }

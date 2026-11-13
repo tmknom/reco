@@ -144,21 +144,26 @@ func okRepository(id int64, allowAutoMerge, deleteBranchOnMerge bool) response {
 	return response{status: http.StatusOK, body: repositoryJSON(id, allowAutoMerge, deleteBranchOnMerge)}
 }
 
+func okWorkflowPermissions(defaultWorkflowPermissions string, canApprovePullRequestReviews bool) response {
+	return response{status: http.StatusOK, body: fmt.Sprintf(
+		`{"default_workflow_permissions": %q, "can_approve_pull_request_reviews": %t}`, defaultWorkflowPermissions, canApprovePullRequestReviews)}
+}
+
 func newClient(baseURL *url.URL) *github.Client {
 	return github.New("test-token", github.WithBaseURL(baseURL))
 }
 
 // allowAutoMergeChange は、allow_auto_merge を false から true にする論理的な設定変更。
 func allowAutoMergeChange() changeplan.LogicalChange {
-	return changeplan.LogicalChange{Key: setting.AllowAutoMerge, Observed: false, Desired: true}
+	return changeplan.LogicalChange{Key: setting.AllowAutoMerge, Observed: changeplan.BoolValue(false), Desired: changeplan.BoolValue(true)}
 }
 
 // allowAutoMergeMismatch は、allowAutoMergeChange を導く適用可能な変更予定。
 func allowAutoMergeMismatch() changeplan.SettingPlan {
 	return changeplan.SettingPlan{
 		Key:           setting.AllowAutoMerge,
-		Observed:      false,
-		Desired:       true,
+		Observed:      changeplan.BoolValue(false),
+		Desired:       changeplan.BoolValue(true),
 		Result:        changeplan.Mismatch,
 		Applicability: changeplan.Applicable,
 	}
@@ -166,15 +171,15 @@ func allowAutoMergeMismatch() changeplan.SettingPlan {
 
 // deleteBranchOnMergeChange は、delete_branch_on_merge を false から true にする論理的な設定変更。
 func deleteBranchOnMergeChange() changeplan.LogicalChange {
-	return changeplan.LogicalChange{Key: setting.DeleteBranchOnMerge, Observed: false, Desired: true}
+	return changeplan.LogicalChange{Key: setting.DeleteBranchOnMerge, Observed: changeplan.BoolValue(false), Desired: changeplan.BoolValue(true)}
 }
 
 // deleteBranchOnMergeMismatch は、deleteBranchOnMergeChange を導く適用可能な変更予定。
 func deleteBranchOnMergeMismatch() changeplan.SettingPlan {
 	return changeplan.SettingPlan{
 		Key:           setting.DeleteBranchOnMerge,
-		Observed:      false,
-		Desired:       true,
+		Observed:      changeplan.BoolValue(false),
+		Desired:       changeplan.BoolValue(true),
 		Result:        changeplan.Mismatch,
 		Applicability: changeplan.Applicable,
 	}
@@ -190,7 +195,7 @@ const unknownKey setting.Key = "general.unknown"
 
 // unknownMismatch は、実行できる更新操作を持たない設定の適用可能な変更予定。
 func unknownMismatch() changeplan.SettingPlan {
-	return changeplan.SettingPlan{Key: unknownKey, Observed: false, Desired: true, Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
+	return changeplan.SettingPlan{Key: unknownKey, Observed: changeplan.BoolValue(false), Desired: changeplan.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
 }
 
 // TestExecutableChanges は、承認を求める前に、すべての論理的な設定変更が実行できる更新操作を持つことを確かめる規則を確かめる。
@@ -198,7 +203,7 @@ func unknownMismatch() changeplan.SettingPlan {
 //trace:checks INV-002
 //trace:checks FR-009
 func TestExecutableChanges(t *testing.T) {
-	match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: true, Desired: true, Result: changeplan.Match}
+	match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: changeplan.BoolValue(true), Desired: changeplan.BoolValue(true), Result: changeplan.Match}
 
 	t.Run("all matches have no change", func(t *testing.T) {
 		got, err := executableChanges(newPlan(t, match))
@@ -258,7 +263,7 @@ func TestApplyPlan(t *testing.T) {
 		baseURL, rec := newSequenceServer(t)
 		var out bytes.Buffer
 		calls := 0
-		match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: true, Desired: true, Result: changeplan.Match}
+		match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: changeplan.BoolValue(true), Desired: changeplan.BoolValue(true), Result: changeplan.Match}
 
 		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, match))
 
@@ -492,6 +497,16 @@ const configSource = `repositories:
       allow_auto_merge: true
 `
 
+// workflowConfigSource は、allow_auto_merge と default_workflow_permissions を宣言する。
+const workflowConfigSource = `repositories:
+  - name: owner/repo
+    general:
+      allow_auto_merge: true
+    actions:
+      workflow:
+        default_workflow_permissions: read
+`
+
 //trace:checks INV-002
 //trace:checks FR-008
 func TestRun(t *testing.T) {
@@ -509,6 +524,44 @@ func TestRun(t *testing.T) {
 			GitHubOptions: []github.Option{github.WithBaseURL(baseURL)},
 		}
 	}
+
+	t.Run("workflow permissions mismatch stops before showing the plan, approval and updates", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t, okRepository(1, false, false), okWorkflowPermissions("write", false))
+		var out bytes.Buffer
+		calls := 0
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(workflowConfigSource)}}
+
+		err := Run(context.Background(), newConfig(files, &out, baseURL, &calls))
+
+		if err == nil || !strings.Contains(err.Error(), string(setting.DefaultWorkflowPermissions)) {
+			t.Errorf("Run() error = %v, want it to name %s", err, setting.DefaultWorkflowPermissions)
+		}
+		if out.Len() != 0 {
+			t.Errorf("got Out %q, want empty", out.String())
+		}
+		if want := []string{"GET", "GET"}; calls != 0 || !slices.Equal(rec.Methods(), want) {
+			t.Errorf("approve calls = %d, requests = %v, want no approval and requests %v", calls, rec.Methods(), want)
+		}
+	})
+
+	t.Run("matching workflow permissions leave only the general change to apply", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t,
+			okRepository(1, false, false), okWorkflowPermissions("read", false),
+			okRepository(1, false, false), okRepository(1, true, false), okRepository(1, true, false))
+		var out bytes.Buffer
+		calls := 0
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(workflowConfigSource)}}
+
+		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		if want := []string{"GET", "GET", "GET", "PATCH", "GET"}; !slices.Equal(rec.Methods(), want) {
+			t.Errorf("requests = %v, want %v", rec.Methods(), want)
+		}
+		if !strings.Contains(out.String(), "owner/repo: updated") {
+			t.Errorf("got Out %q, want the repository to be updated", out.String())
+		}
+	})
 
 	t.Run("missing configuration file stops before approval and requests", func(t *testing.T) {
 		baseURL, rec := newSequenceServer(t)

@@ -11,8 +11,8 @@ import (
 //trace:checks INV-002
 //trace:checks FR-008
 func TestPlan_LogicalChanges(t *testing.T) {
-	match := SettingPlan{Key: setting.AllowAutoMerge, Observed: true, Desired: true, Result: Match}
-	mismatch := SettingPlan{Key: setting.AllowAutoMerge, Observed: false, Desired: true, Result: Mismatch, Applicability: Applicable}
+	match := SettingPlan{Key: setting.AllowAutoMerge, Observed: BoolValue(true), Desired: BoolValue(true), Result: Match}
+	mismatch := SettingPlan{Key: setting.AllowAutoMerge, Observed: BoolValue(false), Desired: BoolValue(true), Result: Mismatch, Applicability: Applicable}
 	newPlan := func(settings ...SettingPlan) Plan {
 		return Plan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
 	}
@@ -29,21 +29,21 @@ func TestPlan_LogicalChanges(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
-		want := []LogicalChange{{Key: setting.AllowAutoMerge, Observed: false, Desired: true}}
+		want := []LogicalChange{{Key: setting.AllowAutoMerge, Observed: BoolValue(false), Desired: BoolValue(true)}}
 		if !slices.Equal(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
 		}
 	})
 
 	t.Run("applicable mismatches of both settings become logical changes in the plan order", func(t *testing.T) {
-		deleteBranch := SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: false, Desired: true, Result: Mismatch, Applicability: Applicable}
+		deleteBranch := SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: BoolValue(false), Desired: BoolValue(true), Result: Mismatch, Applicability: Applicable}
 		got, err := newPlan(deleteBranch, mismatch).LogicalChanges()
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
 		want := []LogicalChange{
-			{Key: setting.DeleteBranchOnMerge, Observed: false, Desired: true},
-			{Key: setting.AllowAutoMerge, Observed: false, Desired: true},
+			{Key: setting.DeleteBranchOnMerge, Observed: BoolValue(false), Desired: BoolValue(true)},
+			{Key: setting.AllowAutoMerge, Observed: BoolValue(false), Desired: BoolValue(true)},
 		}
 		if !slices.Equal(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
@@ -56,15 +56,15 @@ func TestPlan_LogicalChanges(t *testing.T) {
 	}{
 		{
 			name:    "not-applicable mismatch is an error",
-			setting: SettingPlan{Key: setting.AllowAutoMerge, Observed: false, Desired: true, Result: Mismatch, Applicability: NotApplicable},
+			setting: SettingPlan{Key: setting.AllowAutoMerge, Observed: BoolValue(false), Desired: BoolValue(true), Result: Mismatch, Applicability: NotApplicable},
 		},
 		{
 			name:    "applicable not-comparable planned change is an error because it has no observed value",
-			setting: SettingPlan{Key: setting.AllowAutoMerge, Desired: true, Result: NotComparable, Applicability: Applicable},
+			setting: SettingPlan{Key: setting.AllowAutoMerge, Desired: BoolValue(true), Result: NotComparable, Applicability: Applicable},
 		},
 		{
 			name:    "mismatch without an applicability judgment is an error",
-			setting: SettingPlan{Key: setting.AllowAutoMerge, Observed: false, Desired: true, Result: Mismatch, Applicability: ApplicabilityNotJudged},
+			setting: SettingPlan{Key: setting.AllowAutoMerge, Observed: BoolValue(false), Desired: BoolValue(true), Result: Mismatch, Applicability: ApplicabilityNotJudged},
 		},
 	}
 	for _, tc := range errorCases {
@@ -79,14 +79,14 @@ func TestPlan_LogicalChanges(t *testing.T) {
 
 //trace:checks FR-012
 func TestLogicalChange_Reconcile(t *testing.T) {
-	approved := LogicalChange{Key: setting.AllowAutoMerge, Observed: false, Desired: true}
+	approved := LogicalChange{Key: setting.AllowAutoMerge, Observed: BoolValue(false), Desired: BoolValue(true)}
 	cases := []struct {
 		name     string
-		observed github.General
+		observed github.ObservationResult
 		want     ReconciliationResult
 	}{
-		{name: "observed value equal to the desired value is a match", observed: github.General{AllowAutoMerge: true}, want: Match},
-		{name: "observed value different from the desired value is a mismatch", observed: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: true}, want: Mismatch},
+		{name: "observed value equal to the desired value is a match", observed: github.ObservationResult{General: github.General{AllowAutoMerge: true}}, want: Match},
+		{name: "observed value different from the desired value is a mismatch", observed: github.ObservationResult{General: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: true}}, want: Mismatch},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
