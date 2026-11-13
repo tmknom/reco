@@ -237,7 +237,7 @@ API へ送信するフィールドは、設定宣言の管理範囲とは異な�
 | General | 宣言された変更対象だけを送り、省略したフィールドの保持に依拠して部分更新する |
 | Actions 許可ポリシー | 必須の `enabled` には `true` を送り、`sha_pinning_required` など未管理値を変えないことを確認できる方式で更新する |
 | 選択方式の Actions 許可条件 | 3項目を一体として扱い、Actions 許可ポリシーとの依存関係を考慮する |
-| Workflow permissions | 片方だけを管理する場合も、もう片方の値を維持できる方式で更新する |
+| Workflow permissions | 管理する値だけを送り、省略したもう一方のフィールドの保持に依拠して部分更新する |
 
 API パラメータが任意であることは、省略した値の保持を保証しません。既存値を併送する場合も、その値を観測でき、更新直前の条件が成立する必要があります。省略・併送のどちらでも未管理値の保全を確認できないときは、更新を適用不能とします。保全の判断には、GitHub が公開する契約と確認できた実際の動作を区別して用い、実証されていない保持動作を前提にしません。
 
@@ -246,6 +246,8 @@ API パラメータが任意であることは、省略した値の保持を保�
 General では、`PATCH /repos/{owner}/{repo}` で省略したフィールドが保持されることを実際の動作で確認しています（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）。これが、宣言された変更対象だけを送る方式の根拠です。更新後に再取得して更新直前の値と比べる未管理フィールドは、reco が観測する General のうち管理範囲外の値（`allow_auto_merge` だけを管理する場合は `delete_branch_on_merge`）に限ります。名前、説明、公開範囲など、reco が観測しないフィールドは再確認せず、保持の確認結果を根拠に保全されるとみなします。
 
 Actions 許可ポリシーでは、`PUT /repos/{owner}/{repo}/actions/permissions` で省略した `sha_pinning_required` が保持されることを実際の動作で確認しています（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 3.2）。必須の `enabled` には `true` を送ります。`allowed_actions` の宣言は Actions が有効であることを期待状態に含むためです（[YAML 設定仕様](../spec/configuration.md) 4章）。`sha_pinning_required` は送りません。更新後は `sha_pinning_required` を再取得し、更新直前の値と比べます。Actions が無効のときは `sha_pinning_required` の応答が保存された値を示さないため（GitHub Actions 権限 API 仕様 3.1）、更新直前の値と比べられません。この場合は、無効の状態から有効化と同時にポリシーを変えても `sha_pinning_required` が保持されるという確認結果（GitHub Actions 権限 API 仕様 3.2）を根拠に、保全されるとみなします。
+
+Workflow permissions では、`PUT /repos/{owner}/{repo}/actions/permissions/workflow` で省略したフィールドが保持されることを、公開・非公開のリポジトリで実際の動作により確認しています（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 5.2）。これが、管理する値だけを送る方式の根拠です。観測したもう一方の値を併送しないのは、観測から更新までのあいだに外部主体がその値を変えた場合に、古い値で上書きしてしまうためです。更新後に再取得して更新直前の値と比べる未管理フィールドは、`default_workflow_permissions` と `can_approve_pull_request_reviews` のうち管理範囲外のほうです。2フィールドは Actions が無効のときも取得・更新でき（GitHub Actions 権限 API 仕様 5.1・5.2）、Actions の有効状態はこの方式の条件になりません。
 
 この方式が保護するのは reco 自身の更新操作による未管理設定の変更であり、外部主体による競合や GitHub 側の独立した変化ではありません。
 

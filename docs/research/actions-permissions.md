@@ -128,6 +128,12 @@ Selected actions の取得・更新は、どちらもリポジトリの `allowed
 - 用途：ワークフロー実行時に `GITHUB_TOKEN` へ与えられる既定の権限と、GitHub Actions が Pull Request を承認するレビューを送信できるかの取得
 - 応答フィールド：`default_workflow_permissions`（`read` / `write`、必須）、`can_approve_pull_request_reviews`（boolean、必須）
 
+> [!NOTE]
+> 次は、reco の開発者が実際の動作で確認した事項です。
+>
+> - Actions が無効のときの応答：`200` で2フィールドを返す。値は無効にする前と同じだった（非公開リポジトリで確認）
+> - 権限のないリポジトリへの応答：トークン所有者が Write 以上のロールを持たない第三者の公開リポジトリでは `403` を返す。本文の `message` は `You must have repository read permissions or have the repository Actions policies fine-grained permission.` だった（`repo` scope を持つ personal access token (classic) で確認）
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `grounding` | [Get default workflow permissions for a repository](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#get-default-workflow-permissions-for-a-repository) | External Document |
@@ -148,7 +154,12 @@ Selected actions の取得・更新は、どちらもリポジトリの `allowed
 `can_approve_pull_request_reviews` について、REST API のドキュメントは承認にしか触れていません。リポジトリ設定のドキュメントは、設定画面の「Allow GitHub Actions to create and approve pull requests」という項目で、GitHub Actions による Pull Request の作成と承認を許可・禁止できると記載しています。
 
 > [!NOTE]
-> `can_approve_pull_request_reviews` が設定画面の上記の項目に対応し、Pull Request の承認だけでなく作成も対象に含むことは、reco の開発者が実際の動作で確認した事項です。
+> 次は、reco の開発者が実際の動作で確認した事項です。
+>
+> - `can_approve_pull_request_reviews` の対象：設定画面の上記の項目に対応し、Pull Request の承認だけでなく作成も対象に含む
+> - 省略したフィールドの保持：`default_workflow_permissions` だけを送ると、`can_approve_pull_request_reviews` は変わらない。`can_approve_pull_request_reviews` だけを送ると、`default_workflow_permissions` は変わらない。いずれも、省略した側を `true`、`write` にしてから確かめた（公開・非公開リポジトリで確認）
+> - 値の反映：`read`・`write`・`true`・`false` のいずれを送っても、直後の 5.1 の取得は送った値を返した（公開・非公開リポジトリで確認）
+> - Actions が無効のときの更新：片方だけを送る更新は `204` を返して反映され、もう一方は変わらない。Actions を有効に戻したあとも、無効のあいだに送った値が返る（非公開リポジトリで確認）
 
 | Relationship | Target | Target Type |
 |---|---|---|
