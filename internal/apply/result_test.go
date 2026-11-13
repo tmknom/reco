@@ -16,7 +16,7 @@ func TestChangeRecord_Result(t *testing.T) {
 	}{
 		{name: "zero value is not attempted", record: changeRecord{}, want: notAttempted},
 		{
-			name:   "success, match and no unmanaged change is complete",
+			name:   "success, match and no other setting change is complete",
 			record: changeRecord{precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateMatches},
 			want:   completed,
 		},
@@ -26,10 +26,10 @@ func TestChangeRecord_Result(t *testing.T) {
 			want:   failed,
 		},
 		{
-			name: "success, match and unmanaged change is failed",
+			name: "success, match and other setting change is failed",
 			record: changeRecord{
 				precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateMatches,
-				unexpectedUnmanagedChanges: []unexpectedUnmanagedChange{{Key: setting.DeleteBranchOnMerge, Before: false, After: true}},
+				unexpectedOutsideChanges: []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: false, After: true}},
 			},
 			want: failed,
 		},

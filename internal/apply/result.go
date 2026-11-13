@@ -1,18 +1,20 @@
 package apply
 
 import (
+	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
 
 // changeRecord は、承認した論理的な設定変更を実行して得た、変更結果を導く事実。
-// ゼロ値は、更新操作を開始していない状態を表す。
+// change だけを持つ値は、先行する異常によって何も確かめずに止めた論理的な設定変更を表す。
 type changeRecord struct {
+	change       changeplan.LogicalChange
 	precondition preconditionCheck
 	// update は updateStarted が真のときだけ意味を持つ。偽のときのゼロ値は、開始しなかった更新操作の結果ではない。
-	update                     github.UpdateOutcome
-	confirmation               desiredStateConfirmation
-	unexpectedUnmanagedChanges []unexpectedUnmanagedChange
+	update                   github.UpdateOutcome
+	confirmation             desiredStateConfirmation
+	unexpectedOutsideChanges []unexpectedOutsideChange
 	// cause は、変更前提の確認、更新操作、更新後の観測のうち、失敗した操作の error。
 	cause error
 }
@@ -27,10 +29,13 @@ const (
 )
 
 // preconditionCheck は、更新直前に変更前提を確かめた結果。
+// 未実行の理由はこの値から導く。preconditionNotChecked は先行する異常による停止、preconditionHolds 以外の残りの値は変更前提の不成立に当たる。
+// 理由を別のフィールドで持つと、前提は成立したのに理由は停止、のような矛盾した値を作れるため。
 type preconditionCheck int
 
 const (
-	preconditionUnconfirmed preconditionCheck = iota
+	preconditionNotChecked preconditionCheck = iota
+	preconditionUnconfirmed
 	preconditionHolds
 	preconditionIdentityMismatch
 	preconditionCurrentValueChanged
@@ -48,8 +53,8 @@ const (
 	desiredStateRepositoryChanged
 )
 
-// unexpectedUnmanagedChange は、未管理設定の予期しない変化。
-type unexpectedUnmanagedChange struct {
+// unexpectedOutsideChange は、変更対象外の設定の予期しない変化。
+type unexpectedOutsideChange struct {
 	Key           setting.Key
 	Before, After bool
 }
@@ -65,7 +70,7 @@ func (r changeRecord) result() changeResult {
 	switch {
 	case !r.updateStarted():
 		return notAttempted
-	case r.update == github.UpdateSucceeded && r.confirmation == desiredStateMatches && len(r.unexpectedUnmanagedChanges) == 0:
+	case r.update == github.UpdateSucceeded && r.confirmation == desiredStateMatches && len(r.unexpectedOutsideChanges) == 0:
 		return completed
 	default:
 		return failed

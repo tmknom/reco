@@ -63,8 +63,17 @@ func TestReconcile(t *testing.T) {
 func TestObservedValue_UnknownSettingPanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {
-			t.Error("observedValue() did not panic for an unknown setting")
+			t.Error("ObservedValue() did not panic for an unknown setting")
 		}
 	}()
-	observedValue("general.unknown", github.General{})
+	ObservedValue("general.unknown", github.General{})
+}
+
+func TestDesiredValue_UnknownSettingPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("desiredValue() did not panic for an unknown setting")
+		}
+	}()
+	desiredValue("general.unknown", configuration.General{})
 }

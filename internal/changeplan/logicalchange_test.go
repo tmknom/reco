@@ -35,6 +35,21 @@ func TestPlan_LogicalChanges(t *testing.T) {
 		}
 	})
 
+	t.Run("applicable mismatches of both settings become logical changes in the plan order", func(t *testing.T) {
+		deleteBranch := SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: false, Desired: true, Result: Mismatch, Applicability: Applicable}
+		got, err := newPlan(deleteBranch, mismatch).LogicalChanges()
+		if err != nil {
+			t.Fatalf("LogicalChanges() error = %v", err)
+		}
+		want := []LogicalChange{
+			{Key: setting.DeleteBranchOnMerge, Observed: false, Desired: true},
+			{Key: setting.AllowAutoMerge, Observed: false, Desired: true},
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
+		}
+	})
+
 	errorCases := []struct {
 		name    string
 		setting SettingPlan

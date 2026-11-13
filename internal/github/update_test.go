@@ -88,6 +88,44 @@ func TestUpdateAllowAutoMerge(t *testing.T) {
 	}
 }
 
+// TestUpdateDeleteBranchOnMerge は、本文が変更対象の項目だけであることを確かめる。
+// 要求の形と結果の判定は UpdateAllowAutoMerge と共有するため、本文だけを確かめる。
+//
+//trace:checks FR-011
+//trace:checks INV-001
+func TestUpdateDeleteBranchOnMerge(t *testing.T) {
+	cases := []struct {
+		name    string
+		enabled bool
+		want    map[string]any
+	}{
+		{name: "true sends only delete_branch_on_merge true", enabled: true, want: map[string]any{"delete_branch_on_merge": true}},
+		{name: "false sends only delete_branch_on_merge false", enabled: false, want: map[string]any{"delete_branch_on_merge": false}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotBody []byte
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				gotBody, _ = io.ReadAll(r.Body)
+				_, _ = w.Write([]byte(repositoryBody))
+			})
+
+			outcome, err := c.UpdateDeleteBranchOnMerge(t.Context(), mustReference(t, "owner/repo"), tc.enabled)
+			if err != nil || outcome != UpdateSucceeded {
+				t.Fatalf("UpdateDeleteBranchOnMerge() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+			}
+
+			var got map[string]any
+			if err := json.Unmarshal(gotBody, &got); err != nil {
+				t.Fatalf("request body %q is not JSON: %v", gotBody, err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("request body = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestUpdateAllowAutoMergeRejected は、GitHub が拒否した更新を成否不明と取り違えず、再送しないことを確かめる。
 // ステータスごとの種類は TestClassifyFailure が、拒否と成否不明の境界は TestUpdateOutcomeOf が確かめる。
 //

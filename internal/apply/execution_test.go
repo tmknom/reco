@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"reflect"
 	"slices"
 	"testing"
 
+	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -23,6 +25,11 @@ func TestCheckPrecondition(t *testing.T) {
 		{
 			name:     "same identity and current value hold",
 			observed: github.ObservationResult{RepositoryID: 1, General: github.General{AllowAutoMerge: false}},
+			want:     preconditionHolds,
+		},
+		{
+			name:     "changed value of another setting alone holds",
+			observed: github.ObservationResult{RepositoryID: 1, General: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: true}},
 			want:     preconditionHolds,
 		},
 		{
@@ -83,37 +90,57 @@ func TestConfirmDesiredState(t *testing.T) {
 	}
 }
 
+// TestUnexpectedOutsideChanges は、論理的な設定変更が変えない設定を、管理範囲によらず比べる規則を確かめる。
+//
 //trace:checks INV-001
 //trace:checks FR-012
-func TestUnexpectedUnmanagedChanges(t *testing.T) {
+func TestUnexpectedOutsideChanges(t *testing.T) {
 	cases := []struct {
 		name          string
+		change        changeplan.LogicalChange
 		before, after github.General
-		want          []unexpectedUnmanagedChange
+		want          []unexpectedOutsideChange
 	}{
 		{
 			name:   "same settings have no change",
+			change: allowAutoMergeChange(),
 			before: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false},
 			after:  github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false},
 			want:   nil,
 		},
 		{
-			name:   "different delete_branch_on_merge is reported with both values",
+			name:   "allow_auto_merge change reports different delete_branch_on_merge with both values",
+			change: allowAutoMergeChange(),
 			before: github.General{DeleteBranchOnMerge: false},
 			after:  github.General{DeleteBranchOnMerge: true},
-			want:   []unexpectedUnmanagedChange{{Key: setting.DeleteBranchOnMerge, Before: false, After: true}},
+			want:   []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: false, After: true}},
 		},
 		{
-			name:   "different allow_auto_merge alone is not an unmanaged change",
+			name:   "allow_auto_merge change does not report its own setting",
+			change: allowAutoMergeChange(),
 			before: github.General{AllowAutoMerge: false},
 			after:  github.General{AllowAutoMerge: true},
+			want:   nil,
+		},
+		{
+			name:   "delete_branch_on_merge change reports different allow_auto_merge with both values",
+			change: deleteBranchOnMergeChange(),
+			before: github.General{AllowAutoMerge: false},
+			after:  github.General{AllowAutoMerge: true},
+			want:   []unexpectedOutsideChange{{Key: setting.AllowAutoMerge, Before: false, After: true}},
+		},
+		{
+			name:   "delete_branch_on_merge change does not report its own setting",
+			change: deleteBranchOnMergeChange(),
+			before: github.General{DeleteBranchOnMerge: false},
+			after:  github.General{DeleteBranchOnMerge: true},
 			want:   nil,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := unexpectedUnmanagedChanges(tc.before, tc.after); !slices.Equal(got, tc.want) {
-				t.Errorf("unexpectedUnmanagedChanges() = %v, want %v", got, tc.want)
+			if got := unexpectedOutsideChanges(tc.change, tc.before, tc.after); !slices.Equal(got, tc.want) {
+				t.Errorf("unexpectedOutsideChanges() = %v, want %v", got, tc.want)
 			}
 		})
 	}
@@ -131,14 +158,14 @@ func TestExecuteChange(t *testing.T) {
 	redirect := response{status: http.StatusTemporaryRedirect, location: "https://example.com/"}
 
 	cases := []struct {
-		name          string
-		responses     []response
-		wantMethods   []string
-		wantPrecond   preconditionCheck
-		wantUpdate    github.UpdateOutcome
-		wantDesired   desiredStateConfirmation
-		wantUnmanaged []unexpectedUnmanagedChange
-		wantResult    changeResult
+		name        string
+		responses   []response
+		wantMethods []string
+		wantPrecond preconditionCheck
+		wantUpdate  github.UpdateOutcome
+		wantDesired desiredStateConfirmation
+		wantOutside []unexpectedOutsideChange
+		wantResult  changeResult
 		// wantCauses は、cause が errors.Is でたどれるべき error。空なら cause は nil。
 		wantCauses []error
 	}{
@@ -204,15 +231,15 @@ func TestExecuteChange(t *testing.T) {
 			wantCauses:  []error{github.ErrCommunicationFailure, github.ErrUnexpectedResponse},
 		},
 		{
-			name:          "unknown update shows a changed unmanaged setting observed by the diagnosis",
-			responses:     []response{okRepository(1, false, false), redirect, okRepository(1, true, true)},
-			wantMethods:   []string{"GET", "PATCH", "GET"},
-			wantPrecond:   preconditionHolds,
-			wantUpdate:    github.UpdateUnknown,
-			wantDesired:   desiredStateMatches,
-			wantUnmanaged: []unexpectedUnmanagedChange{{Key: setting.DeleteBranchOnMerge, Before: false, After: true}},
-			wantResult:    failed,
-			wantCauses:    []error{github.ErrRedirect},
+			name:        "unknown update shows a changed other setting observed by the diagnosis",
+			responses:   []response{okRepository(1, false, false), redirect, okRepository(1, true, true)},
+			wantMethods: []string{"GET", "PATCH", "GET"},
+			wantPrecond: preconditionHolds,
+			wantUpdate:  github.UpdateUnknown,
+			wantDesired: desiredStateMatches,
+			wantOutside: []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: false, After: true}},
+			wantResult:  failed,
+			wantCauses:  []error{github.ErrRedirect},
 		},
 		{
 			name:        "successful update with an unreadable confirmation is unconfirmed with the read error as the cause",
@@ -234,17 +261,17 @@ func TestExecuteChange(t *testing.T) {
 			wantResult:  failed,
 		},
 		{
-			name:          "successful update with a changed unmanaged setting fails",
-			responses:     []response{okRepository(1, false, false), okRepository(1, true, false), okRepository(1, true, true)},
-			wantMethods:   []string{"GET", "PATCH", "GET"},
-			wantPrecond:   preconditionHolds,
-			wantUpdate:    github.UpdateSucceeded,
-			wantDesired:   desiredStateMatches,
-			wantUnmanaged: []unexpectedUnmanagedChange{{Key: setting.DeleteBranchOnMerge, Before: false, After: true}},
-			wantResult:    failed,
+			name:        "successful update with a changed other setting fails",
+			responses:   []response{okRepository(1, false, false), okRepository(1, true, false), okRepository(1, true, true)},
+			wantMethods: []string{"GET", "PATCH", "GET"},
+			wantPrecond: preconditionHolds,
+			wantUpdate:  github.UpdateSucceeded,
+			wantDesired: desiredStateMatches,
+			wantOutside: []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: false, After: true}},
+			wantResult:  failed,
 		},
 		{
-			name:        "successful update with a changed repository ID does not compare unmanaged settings",
+			name:        "successful update with a changed repository ID does not compare other settings",
 			responses:   []response{okRepository(1, false, false), okRepository(1, true, false), okRepository(2, true, true)},
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
@@ -260,6 +287,9 @@ func TestExecuteChange(t *testing.T) {
 
 			got := executeChange(context.Background(), newClient(baseURL), p, allowAutoMergeChange())
 
+			if got.change != allowAutoMergeChange() {
+				t.Errorf("change = %+v, want %+v", got.change, allowAutoMergeChange())
+			}
 			if !slices.Equal(rec.Methods(), tc.wantMethods) {
 				t.Errorf("requests = %v, want %v", rec.Methods(), tc.wantMethods)
 			}
@@ -272,8 +302,8 @@ func TestExecuteChange(t *testing.T) {
 			if got.confirmation != tc.wantDesired {
 				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
 			}
-			if !slices.Equal(got.unexpectedUnmanagedChanges, tc.wantUnmanaged) {
-				t.Errorf("unexpectedUnmanagedChanges = %v, want %v", got.unexpectedUnmanagedChanges, tc.wantUnmanaged)
+			if !slices.Equal(got.unexpectedOutsideChanges, tc.wantOutside) {
+				t.Errorf("unexpectedOutsideChanges = %v, want %v", got.unexpectedOutsideChanges, tc.wantOutside)
 			}
 			if got.result() != tc.wantResult {
 				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)
@@ -285,6 +315,147 @@ func TestExecuteChange(t *testing.T) {
 			}
 			if len(tc.wantCauses) == 0 && got.cause != nil {
 				t.Errorf("cause = %v, want nil", got.cause)
+			}
+		})
+	}
+
+	t.Run("change without an update operation panics before sending a request", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t)
+		change := changeplan.LogicalChange{Key: unknownKey, Observed: false, Desired: true}
+		defer func() {
+			if recover() == nil {
+				t.Error("executeChange() did not panic")
+			}
+			if len(rec.Methods()) != 0 {
+				t.Errorf("requests = %v, want none", rec.Methods())
+			}
+		}()
+
+		executeChange(context.Background(), newClient(baseURL), newPlan(t), change)
+	})
+}
+
+// TestUpdateOperation は、論理的な設定変更の設定から、それを実現する更新操作を選ぶ規則を確かめる。
+//
+//trace:checks INV-001
+//trace:checks FR-011
+func TestUpdateOperation(t *testing.T) {
+	cases := []struct {
+		name     string
+		key      setting.Key
+		wantBody map[string]any
+	}{
+		{name: "delete_branch_on_merge sends only delete_branch_on_merge", key: setting.DeleteBranchOnMerge, wantBody: map[string]any{"delete_branch_on_merge": true}},
+		{name: "allow_auto_merge sends only allow_auto_merge", key: setting.AllowAutoMerge, wantBody: map[string]any{"allow_auto_merge": true}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, rec := newSequenceServer(t, okRepository(1, true, true))
+			update, ok := updateOperation(tc.key)
+			if !ok {
+				t.Fatalf("updateOperation(%q) ok = false, want true", tc.key)
+			}
+
+			if _, err := update(newClient(baseURL), context.Background(), mustReference(t, "owner/repo"), true); err != nil {
+				t.Fatalf("update() error = %v", err)
+			}
+
+			if want := []map[string]any{tc.wantBody}; !reflect.DeepEqual(rec.Bodies(), want) {
+				t.Errorf("request bodies = %v, want %v", rec.Bodies(), want)
+			}
+		})
+	}
+
+	t.Run("setting without an update operation is not ok", func(t *testing.T) {
+		if _, ok := updateOperation(unknownKey); ok {
+			t.Errorf("updateOperation(%q) ok = true, want false", unknownKey)
+		}
+	})
+}
+
+// TestExecuteChanges は、論理的な設定変更を順に実行し、完了以外の変更結果が出たら残りに要求を送らずに止める規則を確かめる。
+// 打ち切りの条件は変更結果が完了かどうかだけで、異常の種類から変更結果への対応は TestExecuteChange が確かめるため、
+// 未実行と失敗の代表だけを確かめる。
+//
+//trace:checks INV-004
+//trace:checks INV-005
+//trace:checks FR-010
+//trace:checks FR-013
+func TestExecuteChanges(t *testing.T) {
+	redirect := response{status: http.StatusTemporaryRedirect, location: "https://example.com/"}
+	cases := []struct {
+		name        string
+		responses   []response
+		wantMethods []string
+		wantBodies  []map[string]any
+		wantPrecond []preconditionCheck
+		wantResults []changeResult
+	}{
+		{
+			name: "both changes complete with a fresh read before each update",
+			responses: []response{
+				okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true),
+				okRepository(1, false, true), okRepository(1, true, true), okRepository(1, true, true),
+			},
+			wantMethods: []string{"GET", "PATCH", "GET", "GET", "PATCH", "GET"},
+			wantBodies:  []map[string]any{nil, {"delete_branch_on_merge": true}, nil, nil, {"allow_auto_merge": true}, nil},
+			wantPrecond: []preconditionCheck{preconditionHolds, preconditionHolds},
+			wantResults: []changeResult{completed, completed},
+		},
+		{
+			name: "second current value changed after the first completes is not attempted",
+			responses: []response{
+				okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true),
+				okRepository(1, true, true),
+			},
+			wantMethods: []string{"GET", "PATCH", "GET", "GET"},
+			wantBodies:  []map[string]any{nil, {"delete_branch_on_merge": true}, nil, nil},
+			wantPrecond: []preconditionCheck{preconditionHolds, preconditionCurrentValueChanged},
+			wantResults: []changeResult{completed, notAttempted},
+		},
+		{
+			name:        "first precondition failure stops the second without a request",
+			responses:   []response{okRepository(2, false, false)},
+			wantMethods: []string{"GET"},
+			wantBodies:  []map[string]any{nil},
+			wantPrecond: []preconditionCheck{preconditionIdentityMismatch, preconditionNotChecked},
+			wantResults: []changeResult{notAttempted, notAttempted},
+		},
+		{
+			name:        "first unknown update outcome stops the second without a request",
+			responses:   []response{okRepository(1, false, false), redirect, okRepository(1, false, true)},
+			wantMethods: []string{"GET", "PATCH", "GET"},
+			wantBodies:  []map[string]any{nil, {"delete_branch_on_merge": true}, nil},
+			wantPrecond: []preconditionCheck{preconditionHolds, preconditionNotChecked},
+			wantResults: []changeResult{failed, notAttempted},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, rec := newSequenceServer(t, tc.responses...)
+			changes := []changeplan.LogicalChange{deleteBranchOnMergeChange(), allowAutoMergeChange()}
+
+			got := executeChanges(context.Background(), newClient(baseURL), newPlan(t), changes)
+
+			if !slices.Equal(rec.Methods(), tc.wantMethods) {
+				t.Errorf("requests = %v, want %v", rec.Methods(), tc.wantMethods)
+			}
+			if !reflect.DeepEqual(rec.Bodies(), tc.wantBodies) {
+				t.Errorf("request bodies = %v, want %v", rec.Bodies(), tc.wantBodies)
+			}
+			if len(got) != len(changes) {
+				t.Fatalf("executeChanges() returned %d records, want %d", len(got), len(changes))
+			}
+			for i, record := range got {
+				if record.change != changes[i] {
+					t.Errorf("records[%d].change = %+v, want %+v", i, record.change, changes[i])
+				}
+				if record.precondition != tc.wantPrecond[i] {
+					t.Errorf("records[%d].precondition = %v, want %v", i, record.precondition, tc.wantPrecond[i])
+				}
+				if record.result() != tc.wantResults[i] {
+					t.Errorf("records[%d].result() = %v, want %v", i, record.result(), tc.wantResults[i])
+				}
 			}
 		})
 	}
