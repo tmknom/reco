@@ -56,6 +56,7 @@
 > [!NOTE]
 > 次は、reco の開発者が実際の動作で確認した事項です（非公開リポジトリで確認）。
 >
+> - Actions が有効のときの応答：`sha_pinning_required` は、必須ではないフィールドだが常に含まれていた
 > - Actions が無効のときの応答：`enabled` が `false` のとき、`allowed_actions` と `selected_actions_url` は応答に含まれない。`sha_pinning_required` は保存された値によらず `false` で返る。`enabled` だけを `true` にして有効に戻すと、無効にする前の `allowed_actions` と `sha_pinning_required` が返る
 
 | Relationship | Target | Target Type |

@@ -14,7 +14,12 @@
 | `GET /repos/{owner}/{repo}` | `200` | `301` Moved permanently、`403` Forbidden、`404` Resource not found |
 | `PATCH /repos/{owner}/{repo}` | `200` | `307` Temporary Redirect、`403` Forbidden、`404` Resource not found、`422` Validation failed, or the endpoint has been spammed |
 
-`301` と `307` がどのような条件で返るかは、エンドポイントのドキュメントに記載がありません。名前変更後に観測した応答は 2章に示します。
+`301` と `307` がどのような条件で返るかは、エンドポイントのドキュメントに記載がありません。どちらの応答本文も、スキーマは `message`、`documentation_url`、`url`、`status`（いずれも文字列）を持つ Basic Error です。名前変更後に観測した応答は 2章に示します。
+
+> [!NOTE]
+> 次は、reco の開発者が `repo` scope を持つトークンで実際の動作を確認した事項です。
+>
+> - 応答ヘッダー `X-Accepted-OAuth-Scopes` は、`GET /repos/{owner}/{repo}` では `repo`、`PATCH /repos/{owner}/{repo}` では空の値だった。`PATCH` に必要な scope は、このヘッダーからは特定できない
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -49,6 +54,8 @@
 >
 > - ID の安定性：リポジトリの名前変更の前後で `GET /repos/{owner}/{repo}` の `id` は変わらず、`GET /repositories/{id}` は同じリポジトリを返す。移転の前後と、旧名で新しいリポジトリを作った場合の `id` は確認していない
 > - 旧名へのリダイレクト：名前変更後の旧名で要求すると、`GET /repos/{owner}/{repo}` と `GET /repos/{owner}/{repo}/actions/permissions` に `301`、`PATCH /repos/{owner}/{repo}` に `307` が返る。いずれも `Location` は `https://api.github.com/repositories/{id}` にエンドポイントの残りのパスを続けた URL で、名前ではなくリポジトリ ID を指す。`307` が返った `PATCH` の本文の値は、リポジトリに反映されていなかった。移転や名前の再利用のあとの応答は確認していない
+> - リダイレクト応答の本文：`301` と `307` のどちらも、`message` は `Moved Permanently`、`url` は `Location` と同じ URL、`documentation_url` はリダイレクトへの追従を説明するページだった
+> - 名前を元に戻した場合：名前変更のあと元の名前へ戻すと、元の名前への `GET /repos/{owner}/{repo}` はリダイレクトされず `200` を返し、`id` も名前変更前と同じだった
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -59,7 +66,14 @@
 ## 3. `GET /repos/{owner}/{repo}`
 
 - 用途：リポジトリの情報と一般設定の取得
-- 主な応答フィールド：`id`（整数、必須）、`name`（文字列、必須）、`full_name`（文字列、必須）、`owner`、`delete_branch_on_merge`（boolean、必須ではない）、`allow_auto_merge`（boolean、必須ではない）
+- 主な応答フィールド：`id`（整数、必須）、`name`（文字列、必須）、`full_name`（文字列、必須）、`owner`（必須）、`updated_at`（日時の文字列、必須）、`delete_branch_on_merge`（boolean、必須ではない）、`allow_auto_merge`（boolean、必須ではない）
+
+`updated_at` がどの変更で更新されるかは、スキーマに記載がありません。
+
+> [!NOTE]
+> 次は、reco の開発者が実際の動作で確認した事項です。
+>
+> - `updated_at` と一般設定の変更：`PATCH /repos/{owner}/{repo}` で `allow_auto_merge` や `delete_branch_on_merge` を変更しても `updated_at` は変わらず、名前を変更すると変わった
 
 | Relationship | Target | Target Type |
 |---|---|---|
