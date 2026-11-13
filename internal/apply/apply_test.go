@@ -3,8 +3,10 @@ package apply
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -57,10 +59,12 @@ type response struct {
 	disconnect bool
 }
 
-// recorder は stub が受けた要求の method と Authorization を記録する。
+// recorder は stub が受けた要求の method、本文、Authorization を記録する。
 type recorder struct {
-	mu            sync.Mutex
-	methods       []string
+	mu      sync.Mutex
+	methods []string
+	// bodies は要求ごとの JSON 本文。本文のない要求では nil。
+	bodies        []map[string]any
 	authorization string
 }
 
@@ -68,6 +72,12 @@ func (r *recorder) Methods() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return slices.Clone(r.methods)
+}
+
+func (r *recorder) Bodies() []map[string]any {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.bodies)
 }
 
 func (r *recorder) Authorization() string {
@@ -82,8 +92,19 @@ func newSequenceServer(t *testing.T, responses ...response) (*url.URL, *recorder
 	rec := &recorder{}
 	next := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request body: %v", err)
+		}
+		if len(raw) > 0 {
+			if err := json.Unmarshal(raw, &body); err != nil {
+				t.Errorf("decode request body %q: %v", raw, err)
+			}
+		}
 		rec.mu.Lock()
 		rec.methods = append(rec.methods, r.Method)
+		rec.bodies = append(rec.bodies, body)
 		rec.authorization = r.Header.Get("Authorization")
 		resp := response{status: http.StatusInternalServerError}
 		if next < len(responses) {
@@ -143,76 +164,76 @@ func allowAutoMergeMismatch() changeplan.SettingPlan {
 	}
 }
 
+// deleteBranchOnMergeChange は、delete_branch_on_merge を false から true にする論理的な設定変更。
+func deleteBranchOnMergeChange() changeplan.LogicalChange {
+	return changeplan.LogicalChange{Key: setting.DeleteBranchOnMerge, Observed: false, Desired: true}
+}
+
+// deleteBranchOnMergeMismatch は、deleteBranchOnMergeChange を導く適用可能な変更予定。
+func deleteBranchOnMergeMismatch() changeplan.SettingPlan {
+	return changeplan.SettingPlan{
+		Key:           setting.DeleteBranchOnMerge,
+		Observed:      false,
+		Desired:       true,
+		Result:        changeplan.Mismatch,
+		Applicability: changeplan.Applicable,
+	}
+}
+
 func newPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.Plan {
 	t.Helper()
 	return changeplan.Plan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
 }
 
-// TestSingleLogicalChange は、変更の実行が扱える論理的な設定変更に限る規則を確かめる。
+// unknownKey は、実行できる更新操作を持たない設定。
+const unknownKey setting.Key = "general.unknown"
+
+// unknownMismatch は、実行できる更新操作を持たない設定の適用可能な変更予定。
+func unknownMismatch() changeplan.SettingPlan {
+	return changeplan.SettingPlan{Key: unknownKey, Observed: false, Desired: true, Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
+}
+
+// TestExecutableChanges は、承認を求める前に、すべての論理的な設定変更が実行できる更新操作を持つことを確かめる規則を確かめる。
 //
 //trace:checks INV-002
-func TestSingleLogicalChange(t *testing.T) {
+//trace:checks FR-009
+func TestExecutableChanges(t *testing.T) {
 	match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: true, Desired: true, Result: changeplan.Match}
 
 	t.Run("all matches have no change", func(t *testing.T) {
-		_, ok, err := singleLogicalChange(newPlan(t, match))
-		if err != nil || ok {
-			t.Errorf("singleLogicalChange() ok = %t, error = %v, want no change without error", ok, err)
+		got, err := executableChanges(newPlan(t, match))
+		if err != nil || len(got) != 0 {
+			t.Errorf("executableChanges() = %v, %v, want no change without error", got, err)
 		}
 	})
 
-	t.Run("applicable mismatch of allow_auto_merge is returned as the logical change", func(t *testing.T) {
-		got, ok, err := singleLogicalChange(newPlan(t, match, allowAutoMergeMismatch()))
-		if err != nil || !ok {
-			t.Fatalf("singleLogicalChange() ok = %t, error = %v, want a change without error", ok, err)
-		}
-		if want := allowAutoMergeChange(); got != want {
-			t.Errorf("singleLogicalChange() = %+v, want %+v", got, want)
+	t.Run("logical change without an update operation after an executable one is an error naming the setting", func(t *testing.T) {
+		got, err := executableChanges(newPlan(t, allowAutoMergeMismatch(), unknownMismatch()))
+		if err == nil || !strings.Contains(err.Error(), string(unknownKey)) {
+			t.Errorf("executableChanges() = %v, %v, want an error containing %q", got, err, unknownKey)
 		}
 	})
-
-	errorCases := []struct {
-		name     string
-		settings []changeplan.SettingPlan
-	}{
-		{
-			name:     "two logical changes are an error",
-			settings: []changeplan.SettingPlan{allowAutoMergeMismatch(), allowAutoMergeMismatch()},
-		},
-		{
-			name: "logical change of another setting is an error",
-			settings: []changeplan.SettingPlan{
-				{Key: setting.DeleteBranchOnMerge, Observed: false, Desired: true, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
-			},
-		},
-	}
-	for _, tc := range errorCases {
-		t.Run(tc.name, func(t *testing.T) {
-			_, ok, err := singleLogicalChange(newPlan(t, tc.settings...))
-			if err == nil {
-				t.Errorf("singleLogicalChange() ok = %t, error = nil, want an error", ok)
-			}
-		})
-	}
 }
 
 //trace:checks FR-009
 func TestWriteChangePlan(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 
-	t.Run("change is written with the configuration and the repository", func(t *testing.T) {
+	t.Run("changes are written in the given order with the configuration and the repository", func(t *testing.T) {
 		var out bytes.Buffer
-		if err := writeChangePlan(&out, "./reco.yaml", target, allowAutoMergeChange()); err != nil {
+		changes := []changeplan.LogicalChange{deleteBranchOnMergeChange(), allowAutoMergeChange()}
+		if err := writeChangePlan(&out, "./reco.yaml", target, changes); err != nil {
 			t.Fatalf("writeChangePlan() error = %v", err)
 		}
-		want := "Configuration: ./reco.yaml\nRepository: owner/repo\n  general.allow_auto_merge: false -> true\n\n"
+		want := "Configuration: ./reco.yaml\nRepository: owner/repo\n" +
+			"  general.delete_branch_on_merge: false -> true\n  general.allow_auto_merge: false -> true\n\n"
 		if out.String() != want {
 			t.Errorf("writeChangePlan() wrote %q, want %q", out.String(), want)
 		}
 	})
 
 	t.Run("write failure is returned", func(t *testing.T) {
-		err := writeChangePlan(failingWriter{}, "./reco.yaml", target, allowAutoMergeChange())
+		err := writeChangePlan(failingWriter{}, "./reco.yaml", target, []changeplan.LogicalChange{allowAutoMergeChange()})
 		if !errors.Is(err, errWrite) {
 			t.Errorf("writeChangePlan() error = %v, want %v", err, errWrite)
 		}
@@ -268,19 +289,49 @@ func TestApplyPlan(t *testing.T) {
 		}
 	})
 
-	t.Run("change plan is written to Out before approval is requested", func(t *testing.T) {
-		baseURL, _ := newSequenceServer(t)
+	t.Run("two changes are shown before approval and both are applied", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t,
+			okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true),
+			okRepository(1, false, true), okRepository(1, true, true), okRepository(1, true, true))
 		var out bytes.Buffer
 		var shown string
-		cfg := Config{Out: &out, ConfigPath: "./reco.yaml", Approve: func(context.Context) error {
+		cfg := Config{Out: &out, Approve: func(context.Context) error {
 			shown = out.String()
-			return errors.New("declined")
+			return nil
 		}}
 
-		_ = applyPlan(context.Background(), cfg, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
+		err := applyPlan(context.Background(), cfg, newClient(baseURL), newPlan(t, deleteBranchOnMergeMismatch(), allowAutoMergeMismatch()))
 
-		if shown == "" {
-			t.Error("Out at approval is empty, want the change plan")
+		if err != nil {
+			t.Fatalf("applyPlan() error = %v", err)
+		}
+		for _, want := range []string{"general.delete_branch_on_merge: false -> true", "general.allow_auto_merge: false -> true"} {
+			if !strings.Contains(shown, want) {
+				t.Errorf("Out at approval = %q, want it to contain %q", shown, want)
+			}
+		}
+		if want := []string{"GET", "PATCH", "GET", "GET", "PATCH", "GET"}; !slices.Equal(rec.Methods(), want) {
+			t.Errorf("requests = %v, want %v", rec.Methods(), want)
+		}
+		if !strings.Contains(out.String(), "owner/repo: updated") {
+			t.Errorf("got Out %q, want it to contain %q", out.String(), "owner/repo: updated")
+		}
+	})
+
+	t.Run("failed second change returns an error without reporting the repository updated", func(t *testing.T) {
+		baseURL, _ := newSequenceServer(t,
+			okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true),
+			okRepository(1, false, true), okRepository(1, true, true), okRepository(1, false, true))
+		var out bytes.Buffer
+		calls := 0
+
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, deleteBranchOnMergeMismatch(), allowAutoMergeMismatch()))
+
+		if err == nil {
+			t.Error("applyPlan() error = nil, want an error")
+		}
+		if strings.Contains(out.String(), "owner/repo: updated") {
+			t.Errorf("got Out %q, want no repository updated line", out.String())
 		}
 	})
 
@@ -441,13 +492,6 @@ const configSource = `repositories:
       allow_auto_merge: true
 `
 
-const bothGeneralSource = `repositories:
-  - name: owner/repo
-    general:
-      delete_branch_on_merge: true
-      allow_auto_merge: true
-`
-
 //trace:checks INV-002
 //trace:checks FR-008
 func TestRun(t *testing.T) {
@@ -500,25 +544,6 @@ func TestRun(t *testing.T) {
 		}
 		if calls != 0 {
 			t.Errorf("approve calls = %d, want none", calls)
-		}
-	})
-
-	t.Run("plan with a delete_branch_on_merge change stops before showing the plan, approval and update", func(t *testing.T) {
-		baseURL, rec := newSequenceServer(t, okRepository(1, true, false))
-		var out bytes.Buffer
-		calls := 0
-		files := fstest.MapFS{"reco.yaml": {Data: []byte(bothGeneralSource)}}
-
-		err := Run(context.Background(), newConfig(files, &out, baseURL, &calls))
-
-		if err == nil {
-			t.Fatal("Run() error = nil, want an error")
-		}
-		if out.Len() != 0 || calls != 0 {
-			t.Errorf("got Out %q, approve calls = %d, want neither the plan nor approval", out.String(), calls)
-		}
-		if want := []string{http.MethodGet}; !slices.Equal(rec.Methods(), want) {
-			t.Errorf("requests = %v, want %v", rec.Methods(), want)
 		}
 	})
 

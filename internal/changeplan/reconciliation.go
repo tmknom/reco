@@ -19,26 +19,32 @@ const (
 
 // reconcile は、期待値が明示された設定 (管理範囲内) だけを観測結果と照合する。
 // 期待値が省略された設定は管理範囲外のため、照合結果を作らない。
-// 次の表の並びが Plan.Settings の並びになる。
+// setting.GeneralKeys の並びが Plan.Settings の並びになる。
 func reconcile(desired configuration.DesiredState, observed github.General) []SettingPlan {
 	var settings []SettingPlan
-	for _, s := range []struct {
-		key     setting.Key
-		desired *bool
-	}{
-		{setting.DeleteBranchOnMerge, desired.General.DeleteBranchOnMerge},
-		{setting.AllowAutoMerge, desired.General.AllowAutoMerge},
-	} {
-		if s.desired != nil {
-			settings = append(settings, newSettingPlan(s.key, observedValue(s.key, observed), *s.desired))
+	for _, key := range setting.GeneralKeys() {
+		if d := desiredValue(key, desired.General); d != nil {
+			settings = append(settings, newSettingPlan(key, ObservedValue(key, observed), *d))
 		}
 	}
 	return settings
 }
 
-// observedValue は、key の設定の観測値を返す。
-// key は reconcile が管理範囲から作った計画に由来するため、未知の設定は不変条件の破れとして panic する。
-func observedValue(key setting.Key, observed github.General) bool {
+// desiredValue は、key の設定の期待値を返す。期待値が省略されていれば nil を返す。
+// key は setting.GeneralKeys に由来するため、未知の設定は不変条件の破れとして panic する。
+func desiredValue(key setting.Key, desired configuration.General) *bool {
+	switch key {
+	case setting.DeleteBranchOnMerge:
+		return desired.DeleteBranchOnMerge
+	case setting.AllowAutoMerge:
+		return desired.AllowAutoMerge
+	default:
+		panic(fmt.Sprintf("unknown setting %q", key))
+	}
+}
+
+// ObservedValue は、key の設定の観測値を返す。未知の設定は不変条件の破れとして panic する。
+func ObservedValue(key setting.Key, observed github.General) bool {
 	switch key {
 	case setting.DeleteBranchOnMerge:
 		return observed.DeleteBranchOnMerge

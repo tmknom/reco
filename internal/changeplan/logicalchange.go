@@ -33,12 +33,7 @@ func (p Plan) LogicalChanges() ([]LogicalChange, error) {
 	return changes, nil
 }
 
-// ObservedIn は、observed での c の設定の観測値を返す。
-func (c LogicalChange) ObservedIn(observed github.General) bool {
-	return observedValue(c.Key, observed)
-}
-
 // Reconcile は、c の期待値を observed と照合する。
 func (c LogicalChange) Reconcile(observed github.General) ReconciliationResult {
-	return compare(c.ObservedIn(observed), c.Desired)
+	return compare(ObservedValue(c.Key, observed), c.Desired)
 }

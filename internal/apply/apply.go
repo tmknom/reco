@@ -11,7 +11,6 @@ import (
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
-	"github.com/tmknom/reco/internal/setting"
 )
 
 // Config は Run の入力。
@@ -42,14 +41,14 @@ func Run(ctx context.Context, cfg Config) error {
 }
 
 func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changeplan.Plan) error {
-	change, ok, err := singleLogicalChange(p)
+	changes, err := executableChanges(p)
 	if err != nil {
 		return err
 	}
-	if !ok {
+	if len(changes) == 0 {
 		return writeNoChanges(cfg.Out)
 	}
-	if err := writeChangePlan(cfg.Out, cfg.ConfigPath, p.Target, change); err != nil {
+	if err := writeChangePlan(cfg.Out, cfg.ConfigPath, p.Target, changes); err != nil {
 		return err
 	}
 	if err := cfg.Approve(ctx); err != nil {
@@ -61,25 +60,23 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 	if _, err := io.WriteString(cfg.Out, "Applying changes...\n"); err != nil {
 		return err
 	}
-	record := executeChange(ctx, client, p, change)
-	writeErr := writeChangeReport(cfg.Out, p.Target, change, record)
-	return errors.Join(changeError(record, p.Target, change), writeErr)
+	records := executeChanges(ctx, client, p, changes)
+	writeErr := writeChangeReport(cfg.Out, p.Target, records)
+	return errors.Join(changesError(records, p.Target), writeErr)
 }
 
-// singleLogicalChange は、変更計画から実行する論理的な設定変更を一つ取り出す。変更が不要なら ok は偽になる。
-// 変更の実行は allow_auto_merge の論理的な設定変更 1 件だけを更新する。
-// それ以外の論理的な設定変更を持つ変更計画は、承認したあとで実行できないと分かるより前に止めるため、
+// executableChanges は、変更計画の論理的な設定変更を実行順で返す。
+// 実行できる更新操作を持たないものがあれば、承認したあとで実行できないと分かるより前に止めるため、
 // 承認を求める前の error にする。
-func singleLogicalChange(p changeplan.Plan) (change changeplan.LogicalChange, ok bool, err error) {
+func executableChanges(p changeplan.Plan) ([]changeplan.LogicalChange, error) {
 	changes, err := p.LogicalChanges()
 	if err != nil {
-		return changeplan.LogicalChange{}, false, err
+		return nil, err
 	}
-	if len(changes) == 0 {
-		return changeplan.LogicalChange{}, false, nil
+	for _, change := range changes {
+		if _, ok := updateOperation(change.Key); !ok {
+			return nil, fmt.Errorf("%s: %s cannot be applied: no update operation", p.Target, change.Key)
+		}
 	}
-	if len(changes) > 1 || changes[0].Key != setting.AllowAutoMerge {
-		return changeplan.LogicalChange{}, false, fmt.Errorf("%s: only one known change of %s can be applied", p.Target, setting.AllowAutoMerge)
-	}
-	return changes[0], true, nil
+	return changes, nil
 }

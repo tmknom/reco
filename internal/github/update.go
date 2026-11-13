@@ -21,12 +21,13 @@ const (
 // UpdateAllowAutoMerge は reference のリポジトリの allow_auto_merge を allow に更新する。
 // error が nil になるのは UpdateSucceeded のときだけで、呼び出し側は error から結果を導かない。
 func (c *Client) UpdateAllowAutoMerge(ctx context.Context, reference repository.Reference, allow bool) (UpdateOutcome, error) {
-	body := fmt.Appendf(nil, `{"allow_auto_merge":%t}`, allow)
-	outcome, err := c.updateRepository(ctx, reference, body)
-	if err != nil {
-		return outcome, fmt.Errorf("update repository %s: %w", reference, err)
-	}
-	return outcome, nil
+	return c.updateRepository(ctx, reference, fmt.Appendf(nil, `{"allow_auto_merge":%t}`, allow))
+}
+
+// UpdateDeleteBranchOnMerge は reference のリポジトリの delete_branch_on_merge を enabled に更新する。
+// error が nil になるのは UpdateSucceeded のときだけで、呼び出し側は error から結果を導かない。
+func (c *Client) UpdateDeleteBranchOnMerge(ctx context.Context, reference repository.Reference, enabled bool) (UpdateOutcome, error) {
+	return c.updateRepository(ctx, reference, fmt.Appendf(nil, `{"delete_branch_on_merge":%t}`, enabled))
 }
 
 // updateRepository は body を本文とする更新要求を送る。
@@ -37,10 +38,13 @@ func (c *Client) updateRepository(ctx context.Context, reference repository.Refe
 		_, err = decodeRepository(data)
 	}
 	outcome := updateOutcomeOf(status, err)
-	if outcome == UpdateUnknown {
-		return outcome, fmt.Errorf("update outcome unknown: %w", err)
+	if outcome == UpdateSucceeded {
+		return outcome, nil
 	}
-	return outcome, err
+	if outcome == UpdateUnknown {
+		err = fmt.Errorf("update outcome unknown: %w", err)
+	}
+	return outcome, fmt.Errorf("update repository %s: %w", reference, err)
 }
 
 // updateOutcomeOf は、更新要求の応答のステータスと失敗から更新操作の結果を判定する。
