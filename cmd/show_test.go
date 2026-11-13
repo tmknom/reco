@@ -21,7 +21,10 @@ func TestShow_Success(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			server, opts := newGitHubServer(t, http.StatusOK, repositoryBody)
+			server, opts := newGitHubServerByPath(t, map[string]stubResponse{
+				"/repos/owner/repo": {status: http.StatusOK, body: repositoryBody},
+				"/repos/owner/repo/actions/permissions/workflow": {status: http.StatusOK, body: workflowPermissionsBody},
+			})
 
 			code, stdout, stderr := runExecute(t, Environment{Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue, "GITHUB_TOKEN": githubEnvValue})}, opts, tc.args...)
 			if code != 0 {
@@ -33,8 +36,14 @@ func TestShow_Success(t *testing.T) {
 			if stderr != "" {
 				t.Errorf("got stderr %q, want empty", stderr)
 			}
-			if got := server.receivedRequests(); len(got) != 1 || !strings.Contains(got[0].authorization, ghEnvValue) {
-				t.Errorf("got requests %+v, want one request with GH_TOKEN", got)
+			got := server.receivedRequests()
+			if len(got) == 0 {
+				t.Fatal("got no requests, want requests with GH_TOKEN")
+			}
+			for _, r := range got {
+				if !strings.Contains(r.authorization, ghEnvValue) {
+					t.Errorf("got request %+v, want GH_TOKEN", r)
+				}
 			}
 			for _, token := range []string{ghEnvValue, githubEnvValue} {
 				if strings.Contains(stdout+stderr, token) {
