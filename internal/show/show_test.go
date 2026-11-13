@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
+	"github.com/tmknom/reco/internal/setting"
 )
 
 func mustReference(t *testing.T, name string) repository.Reference {
@@ -28,26 +30,33 @@ func mustReference(t *testing.T, name string) repository.Reference {
 func TestWriteObservationResult(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 	cases := []struct {
-		name           string
-		allowAutoMerge bool
-		want           string
+		name     string
+		observed github.ObservationResult
+		want     string
 	}{
 		{
-			name:           "allow_auto_merge true is shown under General",
-			allowAutoMerge: true,
-			want:           "Repository: owner/repo\n\nGeneral:\n  allow_auto_merge: true\n",
+			name: "general and workflow permissions are shown in the CLI spec order",
+			observed: github.ObservationResult{
+				RepositoryID:        1,
+				General:             github.General{DeleteBranchOnMerge: true, AllowAutoMerge: false},
+				WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: false},
+			},
+			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: true\n  allow_auto_merge: false\nWorkflow permissions:\n  default_workflow_permissions: read\n  can_approve_pull_request_reviews: false\n",
 		},
 		{
-			name:           "allow_auto_merge false is shown under General",
-			allowAutoMerge: false,
-			want:           "Repository: owner/repo\n\nGeneral:\n  allow_auto_merge: false\n",
+			name: "opposite values are shown as observed",
+			observed: github.ObservationResult{
+				RepositoryID:        1,
+				General:             github.General{DeleteBranchOnMerge: false, AllowAutoMerge: true},
+				WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: true},
+			},
+			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: false\n  allow_auto_merge: true\nWorkflow permissions:\n  default_workflow_permissions: write\n  can_approve_pull_request_reviews: true\n",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
-			observed := github.ObservationResult{RepositoryID: 1, General: github.General{AllowAutoMerge: tc.allowAutoMerge}}
-			if err := writeObservationResult(&out, target, observed); err != nil {
+			if err := writeObservationResult(&out, target, tc.observed); err != nil {
 				t.Fatalf("writeObservationResult() error = %v", err)
 			}
 			if out.String() != tc.want {
@@ -57,7 +66,8 @@ func TestWriteObservationResult(t *testing.T) {
 	}
 
 	t.Run("write failure is returned", func(t *testing.T) {
-		err := writeObservationResult(failingWriter{}, target, github.ObservationResult{})
+		observed := github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead}}
+		err := writeObservationResult(failingWriter{}, target, observed)
 		if !errors.Is(err, errWrite) {
 			t.Errorf("writeObservationResult() error = %v, want %v", err, errWrite)
 		}
@@ -74,12 +84,21 @@ func (failingWriter) Write([]byte) (int, error) { return 0, errWrite }
 func TestRun(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 
-	t.Run("observed repository is written to Out", func(t *testing.T) {
-		var gotPath, gotAuthorization string
+	t.Run("both areas are observed with GET only and written to Out", func(t *testing.T) {
+		var requests []string
 		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
-			gotPath = r.URL.Path
-			gotAuthorization = r.Header.Get("Authorization")
-			_, _ = w.Write([]byte(`{"id": 1, "allow_auto_merge": true, "delete_branch_on_merge": false}`))
+			requests = append(requests, r.Method+" "+r.URL.Path)
+			if !strings.Contains(r.Header.Get("Authorization"), "test-token") {
+				t.Errorf("got Authorization %q, want it to contain the token", r.Header.Get("Authorization"))
+			}
+			switch r.URL.Path {
+			case "/repos/owner/repo":
+				_, _ = w.Write([]byte(`{"id": 1, "allow_auto_merge": true, "delete_branch_on_merge": false}`))
+			case "/repos/owner/repo/actions/permissions/workflow":
+				_, _ = w.Write([]byte(`{"default_workflow_permissions": "write", "can_approve_pull_request_reviews": true}`))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
 		})
 		var out bytes.Buffer
 		cfg := Config{Token: "test-token", Target: target, Out: &out, GitHubOptions: []github.Option{github.WithBaseURL(baseURL)}}
@@ -87,27 +106,29 @@ func TestRun(t *testing.T) {
 		if err := Run(context.Background(), cfg); err != nil {
 			t.Fatalf("Run() error = %v", err)
 		}
-		if !strings.Contains(gotPath, "owner/repo") {
-			t.Errorf("got request path %q, want it to contain the target", gotPath)
+		want := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions/workflow"}
+		if !slices.Equal(requests, want) {
+			t.Errorf("got requests %v, want %v", requests, want)
 		}
-		if !strings.Contains(gotAuthorization, "test-token") {
-			t.Errorf("got Authorization %q, want it to contain the token", gotAuthorization)
-		}
-		if !strings.Contains(out.String(), "allow_auto_merge: true") {
-			t.Errorf("got Out %q, want it to contain the observed allow_auto_merge", out.String())
+		if !strings.Contains(out.String(), "default_workflow_permissions: write") {
+			t.Errorf("got Out %q, want it to contain the observed default_workflow_permissions", out.String())
 		}
 	})
 
-	t.Run("observation failure is returned without writing to Out", func(t *testing.T) {
-		baseURL := newGitHubServer(t, func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusNotFound)
+	t.Run("workflow permissions failure is returned without writing to Out", func(t *testing.T) {
+		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/repos/owner/repo" {
+				_, _ = w.Write([]byte(`{"id": 1, "allow_auto_merge": true, "delete_branch_on_merge": false}`))
+				return
+			}
+			w.WriteHeader(http.StatusForbidden)
 		})
 		var out bytes.Buffer
 		cfg := Config{Token: "test-token", Target: target, Out: &out, GitHubOptions: []github.Option{github.WithBaseURL(baseURL)}}
 
 		err := Run(context.Background(), cfg)
-		if !errors.Is(err, github.ErrNotFound) {
-			t.Errorf("Run() error = %v, want %v", err, github.ErrNotFound)
+		if !errors.Is(err, github.ErrForbidden) {
+			t.Errorf("Run() error = %v, want %v", err, github.ErrForbidden)
 		}
 		if out.Len() != 0 {
 			t.Errorf("got Out %q, want empty", out.String())

@@ -1,4 +1,4 @@
-// Package setting は、どの設定を指すかの識別を持つ。
+// Package setting は、どの設定や設定の領域を指すかの識別と、設定が取り得る値の定義を持つ。
 package setting
 
 // Key は設定の識別。値は YAML 設定仕様のキーのパスで、表示にもそのまま使う。
