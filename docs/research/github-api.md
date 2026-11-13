@@ -271,6 +271,11 @@ Pull Request の自動マージは、GitHub Free と GitHub Free for organizatio
 | `selected_actions_url` | 文字列 | 任意 |
 | `sha_pinning_required` | boolean | 任意 |
 
+> [!NOTE]
+> 次は、reco の開発者が実際の動作で確認した事項です（非公開リポジトリで確認）。
+>
+> - Actions が無効のときの応答：`enabled` が `false` のとき、`allowed_actions` と `selected_actions_url` は応答に含まれない。`sha_pinning_required` は保存された値によらず `false` で返る。`enabled` だけを `true` にして有効に戻すと、無効にする前の `allowed_actions` と `sha_pinning_required` が返る
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `grounding` | [Get GitHub Actions permissions for a repository](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#get-github-actions-permissions-for-a-repository) | External Document |
@@ -285,6 +290,13 @@ Pull Request の自動マージは、GitHub Free と GitHub Free for organizatio
 | `allowed_actions` | `all` / `local_only` / `selected` | 任意 | 実行を許可する Actions・再利用可能なワークフローの範囲 |
 | `sha_pinning_required` | boolean | 任意 | Actions を完全な長さのコミット SHA に固定することを必須にするか |
 
+> [!NOTE]
+> 次は、reco の開発者が実際の動作で確認した事項です。
+>
+> - 省略したフィールドの保持：`sha_pinning_required` を省略して `allowed_actions` を変えると、`sha_pinning_required` は変わらない。`enabled` だけを送ると、`allowed_actions` と `sha_pinning_required` は変わらない（非公開リポジトリで確認）
+> - `allowed_actions` に `selected` を送ったときの副作用：現在の値がすでに `selected` でも、6章の `github_owned_allowed` が `true` に変わる。`verified_allowed` と `patterns_allowed` は変わらない。`enabled` だけを送った場合は変わらない（公開・非公開リポジトリで確認）
+> - Actions が無効の状態からの変更：`enabled: true` と `allowed_actions` を一つのリクエストで送ると、有効化とポリシーの変更が同時に反映され、省略した `sha_pinning_required` は無効にする前の値のまま保持される。無効にする前のポリシーが `selected` だった場合、`selected` を送ると6章の3項目は `github_owned_allowed` が `true` に変わるほかは残り、`all` を送ると3項目は残らない（非公開リポジトリで確認）
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `grounding` | [Set GitHub Actions permissions for a repository](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-github-actions-permissions-for-a-repository) | External Document |
@@ -292,6 +304,14 @@ Pull Request の自動マージは、GitHub Free と GitHub Free for organizatio
 ## 6. Selected actions
 
 Selected actions の取得・更新は、どちらもリポジトリの `allowed_actions` が `selected` であることを利用の前提とします。`allowed_actions` が `all` または `local_only` のときにこれらのエンドポイントを呼んだ場合の応答（ステータスコードや本文）は、記載がありません。
+
+> [!NOTE]
+> 次は、reco の開発者が実際の動作で確認した事項です。
+>
+> - 前提を満たさないときの応答：`allowed_actions` が `all` または `local_only` のとき、および Actions が無効のとき、取得は `409` を返し、値は返らない。本文の `errors` は、それぞれ `All actions and workflows are allowed on this repository`、`Only local actions and workflows are allowed on this repository`、`GitHub Actions is disabled on this repository` である。`all` のときは更新も同じ `409` を返す。`local_only` のときと Actions が無効のときの更新は確認していない（非公開リポジトリで確認）
+> - `selected` から別のポリシーへの切替：`all` または `local_only` を経て `selected` に戻すと、切替前の値は残らず、`github_owned_allowed` が `true`、`verified_allowed` が `false`、`patterns_allowed` が `[]` になる（非公開リポジトリで `all`、公開リポジトリで `local_only` を経由して確認）。`all` から `selected` にした直後の値も同じだった
+> - Actions の無効化：無効にしてから `enabled` だけを `true` にして有効に戻すと、無効にする前の3項目の値が返る（非公開リポジトリで確認）
+> - 省略したフィールドの保持：`github_owned_allowed` だけを送ると、`verified_allowed` と `patterns_allowed` は変わらない（非公開リポジトリで確認）
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -314,6 +334,9 @@ Selected actions の取得・更新は、どちらもリポジトリの `allowed
 | `patterns_allowed` | 文字列の配列 | 任意 | 許可する Actions・再利用可能なワークフローを指定する文字列パターン。ワイルドカード・タグ・SHA を使用可能 |
 
 `patterns_allowed` の設定は **公開リポジトリにのみ適用される** と記載されています。非公開リポジトリで `patterns_allowed` を送ったときに値が保存されるか、取得時に返るか、空配列がどう扱われるかは記載がありません。
+
+> [!NOTE]
+> 非公開リポジトリでも、`patterns_allowed` に送った空でない配列と `[]` は保存され、6.1 の取得でそのまま返ることを、reco の開発者が実際の動作で確認しています。公開リポジトリでも同じです。保存された値が非公開リポジトリのワークフロー実行に適用されるかは確認していません。
 
 ## 7. Workflow permissions
 
