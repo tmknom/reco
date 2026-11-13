@@ -6,6 +6,6 @@ package setting
 type Key string
 
 const (
-	AllowAutoMerge      Key = "general.allow_auto_merge"
 	DeleteBranchOnMerge Key = "general.delete_branch_on_merge"
+	AllowAutoMerge      Key = "general.allow_auto_merge"
 )

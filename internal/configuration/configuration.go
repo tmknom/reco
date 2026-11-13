@@ -23,7 +23,7 @@ type DesiredState struct {
 }
 
 // General はリポジトリ一般設定の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
-// 省略できる設定を持たないため、Load が返す General のフィールドは nil にならない。
 type General struct {
-	AllowAutoMerge *bool
+	DeleteBranchOnMerge *bool
+	AllowAutoMerge      *bool
 }

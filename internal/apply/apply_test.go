@@ -152,7 +152,7 @@ func newPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.Plan {
 //
 //trace:checks INV-002
 func TestSingleLogicalChange(t *testing.T) {
-	match := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Observed: true, Desired: true, Result: changeplan.Match}
+	match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: true, Desired: true, Result: changeplan.Match}
 
 	t.Run("all matches have no change", func(t *testing.T) {
 		_, ok, err := singleLogicalChange(newPlan(t, match))
@@ -237,7 +237,7 @@ func TestApplyPlan(t *testing.T) {
 		baseURL, rec := newSequenceServer(t)
 		var out bytes.Buffer
 		calls := 0
-		match := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Observed: true, Desired: true, Result: changeplan.Match}
+		match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: true, Desired: true, Result: changeplan.Match}
 
 		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, match))
 
@@ -441,6 +441,13 @@ const configSource = `repositories:
       allow_auto_merge: true
 `
 
+const bothGeneralSource = `repositories:
+  - name: owner/repo
+    general:
+      delete_branch_on_merge: true
+      allow_auto_merge: true
+`
+
 //trace:checks INV-002
 //trace:checks FR-008
 func TestRun(t *testing.T) {
@@ -493,6 +500,25 @@ func TestRun(t *testing.T) {
 		}
 		if calls != 0 {
 			t.Errorf("approve calls = %d, want none", calls)
+		}
+	})
+
+	t.Run("plan with a delete_branch_on_merge change stops before showing the plan, approval and update", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t, okRepository(1, true, false))
+		var out bytes.Buffer
+		calls := 0
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(bothGeneralSource)}}
+
+		err := Run(context.Background(), newConfig(files, &out, baseURL, &calls))
+
+		if err == nil {
+			t.Fatal("Run() error = nil, want an error")
+		}
+		if out.Len() != 0 || calls != 0 {
+			t.Errorf("got Out %q, approve calls = %d, want neither the plan nor approval", out.String(), calls)
+		}
+		if want := []string{http.MethodGet}; !slices.Equal(rec.Methods(), want) {
+			t.Errorf("requests = %v, want %v", rec.Methods(), want)
 		}
 	})
 

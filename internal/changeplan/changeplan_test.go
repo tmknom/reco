@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -28,10 +29,12 @@ const twoRepositoriesSource = `repositories:
   - name: owner/second
     general:
       allow_auto_merge: true
+      delete_branch_on_merge: true
 `
 
 //trace:checks FR-001
 //trace:checks FR-002
+//trace:checks FR-005
 func TestGenerate(t *testing.T) {
 	file := func(files fstest.MapFS) ConfigurationFile {
 		return ConfigurationFile{Dir: files, Name: "reco.yaml", Path: "./reco.yaml"}
@@ -60,9 +63,12 @@ func TestGenerate(t *testing.T) {
 		if got.RepositoryID != 7 {
 			t.Errorf("RepositoryID = %d, want 7", got.RepositoryID)
 		}
-		want := SettingPlan{Key: "general.allow_auto_merge", Observed: false, Desired: true, Result: Mismatch, Applicability: Applicable}
-		if len(got.Settings) != 1 || got.Settings[0] != want {
-			t.Errorf("Settings = %+v, want [%+v]", got.Settings, want)
+		want := []SettingPlan{
+			{Key: "general.delete_branch_on_merge", Observed: false, Desired: true, Result: Mismatch, Applicability: Applicable},
+			{Key: "general.allow_auto_merge", Observed: false, Desired: true, Result: Mismatch, Applicability: Applicable},
+		}
+		if !slices.Equal(got.Settings, want) {
+			t.Errorf("Settings = %+v, want %+v", got.Settings, want)
 		}
 	})
 

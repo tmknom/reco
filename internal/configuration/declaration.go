@@ -10,7 +10,7 @@ import (
 )
 
 func (d document) declaration() (Declaration, error) {
-	entries, err := d.mappingEntries(d.root, "root", "repositories")
+	entries, err := d.mappingEntries(d.root, "root", []string{"repositories"}, nil)
 	if err != nil {
 		return Declaration{}, err
 	}
@@ -34,7 +34,7 @@ func (d document) declaration() (Declaration, error) {
 }
 
 func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDeclaration, error) {
-	entries, err := d.mappingEntries(n, path, "name", "general")
+	entries, err := d.mappingEntries(n, path, []string{"name", "general"}, nil)
 	if err != nil {
 		return RepositoryDeclaration{}, err
 	}
@@ -55,13 +55,24 @@ func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDe
 }
 
 func (d document) general(n *yaml.Node, path string) (General, error) {
-	entries, err := d.mappingEntries(n, path, "allow_auto_merge")
+	entries, err := d.mappingEntries(n, path, nil, []string{"delete_branch_on_merge", "allow_auto_merge"})
 	if err != nil {
 		return General{}, err
 	}
-	allowAutoMerge, err := d.boolValue(entries["allow_auto_merge"], path+".allow_auto_merge")
-	if err != nil {
-		return General{}, err
+	var general General
+	if value, ok := entries["delete_branch_on_merge"]; ok {
+		v, err := d.boolValue(value, path+".delete_branch_on_merge")
+		if err != nil {
+			return General{}, err
+		}
+		general.DeleteBranchOnMerge = &v
 	}
-	return General{AllowAutoMerge: &allowAutoMerge}, nil
+	if value, ok := entries["allow_auto_merge"]; ok {
+		v, err := d.boolValue(value, path+".allow_auto_merge")
+		if err != nil {
+			return General{}, err
+		}
+		general.AllowAutoMerge = &v
+	}
+	return general, nil
 }

@@ -72,9 +72,12 @@ func (d document) checkNode(n *yaml.Node, path string) error {
 	}
 }
 
-// mappingEntries は、n が keys をちょうど一度ずつ持つマッピングであることを確かめ、キーごとの値を返す。
+// mappingEntries は、n が required のキーをすべて持ち、required と optional 以外のキーを持たず、
+// どのキーも一度だけ持つマッピングであることを確かめ、キーごとの値を返す。
+// optional のキーは、宣言されたときだけ返す値に含まれる。
 // キーは引用符を外した後の文字列で比べるため、name と "name" は重複になる。
-func (d document) mappingEntries(n *yaml.Node, path string, keys ...string) (map[string]*yaml.Node, error) {
+func (d document) mappingEntries(n *yaml.Node, path string, required, optional []string) (map[string]*yaml.Node, error) {
+	keys := slices.Concat(required, optional)
 	if err := d.checkNode(n, path); err != nil {
 		return nil, err
 	}
@@ -103,7 +106,7 @@ func (d document) mappingEntries(n *yaml.Node, path string, keys ...string) (map
 		}
 		entries[key.Value] = value
 	}
-	for _, k := range keys {
+	for _, k := range required {
 		if _, ok := entries[k]; !ok {
 			return nil, invalid(n, path, "missing key %q", k)
 		}

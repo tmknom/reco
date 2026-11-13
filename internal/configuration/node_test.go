@@ -155,21 +155,22 @@ func TestDocumentMappingEntries(t *testing.T) {
 		want    []string
 		wantErr string
 	}{
-		{name: "mapping with every key once is accepted", src: "{a: 1, b: 2}\n", want: []string{"a", "b"}},
+		{name: "mapping with required and optional keys is accepted", src: "{a: 1, b: 2}\n", want: []string{"a", "b"}},
+		{name: "omitted optional key is not returned", src: "{a: 1}\n", want: []string{"a"}},
 		{name: "null is rejected", src: "~\n", wantErr: "must not be null"},
 		{name: "sequence is rejected as not a mapping", src: "[a, b]\n", wantErr: "must be a mapping"},
 		{name: "empty mapping is rejected", src: "{}\n", wantErr: "must not be empty"},
 		{name: "anchored key is rejected", src: "{&k a: 1, b: 2}\n", wantErr: "anchors are not allowed"},
 		{name: "merge key is rejected", src: "{a: 1, b: 2, <<: {c: 3}}\n", wantErr: "merge keys are not allowed"},
 		{name: "non-string key is rejected", src: "{a: 1, b: 2, true: x}\n", wantErr: "keys must be strings"},
-		{name: "unknown key is rejected", src: "{a: 1, b: 2, c: 3}\n", wantErr: `unknown key "c"`},
+		{name: "unknown key is rejected listing required and optional keys", src: "{a: 1, b: 2, c: 3}\n", wantErr: `unknown key "c"; expected a, b`},
 		{name: "duplicate key with quoted notation is rejected", src: "{a: 1, b: 2, \"a\": 3}\n", wantErr: `duplicate key "a"`},
-		{name: "missing key is rejected", src: "{a: 1}\n", wantErr: `missing key "b"`},
+		{name: "missing required key is rejected", src: "{b: 2}\n", wantErr: `missing key "a"`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := decodeSnippet(t, tc.src)
-			got, err := doc.mappingEntries(doc.root, "v", "a", "b")
+			got, err := doc.mappingEntries(doc.root, "v", []string{"a"}, []string{"b"})
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 					t.Errorf("mappingEntries() error = %v, want it to contain %q", err, tc.wantErr)
