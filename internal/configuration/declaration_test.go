@@ -18,6 +18,148 @@ func mustReference(t *testing.T, name string) repository.Reference {
 	return reference
 }
 
+// TestDocumentPermissions は、allowed_actions と selected_actions の組み合わせの規則と、判定の順序を確かめる。
+// 拒否のケースは、受理される selected の入力 (selected) の条件を 1 つだけ変えて作る。
+//
+//trace:checks FR-001
+func TestDocumentPermissions(t *testing.T) {
+	const selected = "allowed_actions: selected\nselected_actions:\n  github_owned_allowed: true\n  verified_allowed: false\n  patterns_allowed: [a/*, b/*]\n"
+	criteria := func(patterns []string) ActionsPermissions {
+		return ActionsPermissions{
+			AllowedActions:  new(setting.AllowedActionsSelected),
+			SelectedActions: &setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: patterns},
+		}
+	}
+	cases := []struct {
+		name string
+		src  string
+		want ActionsPermissions
+		// wantPath は error の先頭に付く、問題の箇所のパス。パスの直後の " (" まで照合する。
+		wantPath   string
+		wantReason string
+	}{
+		{name: "all without selected_actions is read, leaving selected_actions omitted", src: "allowed_actions: all\n", want: ActionsPermissions{AllowedActions: new(setting.AllowedActionsAll)}},
+		{name: "local_only without selected_actions is read, leaving selected_actions omitted", src: "allowed_actions: local_only\n", want: ActionsPermissions{AllowedActions: new(setting.AllowedActionsLocalOnly)}},
+		{name: "selected with all three items is read as one group", src: selected, want: criteria([]string{"a/*", "b/*"})},
+		{name: "empty patterns_allowed is read as non-nil empty", src: strings.Replace(selected, "[a/*, b/*]", "[]", 1), want: criteria([]string{})},
+		{
+			name:       "selected without selected_actions is rejected naming the three items",
+			src:        "allowed_actions: selected\n",
+			wantPath:   "P",
+			wantReason: `allowed_actions "selected" requires selected_actions with github_owned_allowed, verified_allowed, patterns_allowed`,
+		},
+		{
+			name:       "all with selected_actions is rejected at selected_actions",
+			src:        strings.Replace(selected, "allowed_actions: selected", "allowed_actions: all", 1),
+			wantPath:   "P.selected_actions",
+			wantReason: `selected_actions is allowed only when allowed_actions is "selected"; got allowed_actions "all"`,
+		},
+		{
+			name:       "local_only with selected_actions is rejected at selected_actions",
+			src:        strings.Replace(selected, "allowed_actions: selected", "allowed_actions: local_only", 1),
+			wantPath:   "P.selected_actions",
+			wantReason: `got allowed_actions "local_only"`,
+		},
+		{
+			name:       "selected_actions without allowed_actions is rejected",
+			src:        strings.Replace(selected, "allowed_actions: selected\n", "", 1),
+			wantPath:   "P",
+			wantReason: `selected_actions requires allowed_actions "selected"`,
+		},
+		{
+			name:       "all with invalid selected_actions contents is rejected by the combination, not the contents",
+			src:        "allowed_actions: all\nselected_actions:\n  sha_pinning_required: true\n",
+			wantPath:   "P.selected_actions",
+			wantReason: "selected_actions is allowed only when",
+		},
+		{
+			name:       "undefined allowed_actions with selected_actions is rejected by the value first",
+			src:        strings.Replace(selected, "allowed_actions: selected", "allowed_actions: none", 1),
+			wantPath:   "P.allowed_actions",
+			wantReason: `must be all, local_only, or selected; got "none"`,
+		},
+		{name: "empty permissions is rejected", src: "{}\n", wantPath: "P", wantReason: "must not be empty"},
+		{name: "unknown key is rejected", src: selected + "enabled: true\n", wantPath: "P", wantReason: `unknown key "enabled"; expected allowed_actions, selected_actions`},
+		{name: "duplicate allowed_actions is rejected", src: selected + "allowed_actions: all\n", wantPath: "P", wantReason: `duplicate key "allowed_actions"`},
+		{
+			name:       "selected_actions without a value is rejected rather than read as omitted",
+			src:        "allowed_actions: selected\nselected_actions:\n",
+			wantPath:   "P.selected_actions",
+			wantReason: "must not be null",
+		},
+		{
+			name:       "invalid selected_actions contents are rejected at selected_actions",
+			src:        strings.Replace(selected, "verified_allowed: false\n  ", "", 1),
+			wantPath:   "P.selected_actions",
+			wantReason: "missing verified_allowed",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.permissions(doc.root, "P")
+			if tc.wantPath != "" {
+				if err == nil {
+					t.Fatalf("permissions() = %+v, want error", got)
+				}
+				if !strings.HasPrefix(err.Error(), tc.wantPath+" (") {
+					t.Errorf("permissions() error = %q, want it to start with %q", err, tc.wantPath+" (")
+				}
+				if !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("permissions() error = %q, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("permissions() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("permissions() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+//trace:checks FR-001
+func TestDocumentSelectedActions(t *testing.T) {
+	const all = "github_owned_allowed: true\nverified_allowed: false\npatterns_allowed: [a/*]\n"
+	cases := []struct {
+		name       string
+		src        string
+		want       setting.SelectedActionsCriteria
+		wantReason string
+	}{
+		{name: "three items are read into their own fields", src: all, want: setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: []string{"a/*"}}},
+		{name: "swapped bool values are read into their own fields", src: "github_owned_allowed: false\nverified_allowed: true\npatterns_allowed: []\n", want: setting.SelectedActionsCriteria{GitHubOwnedAllowed: false, VerifiedAllowed: true, PatternsAllowed: []string{}}},
+		{name: "missing verified_allowed is rejected naming it", src: strings.Replace(all, "verified_allowed: false\n", "", 1), wantReason: "missing verified_allowed; selected_actions requires all of github_owned_allowed, verified_allowed, patterns_allowed"},
+		{name: "only github_owned_allowed is rejected naming both missing items in definition order", src: "github_owned_allowed: true\n", wantReason: "missing verified_allowed, patterns_allowed; selected_actions requires all of"},
+		{name: "unknown key is rejected", src: all + "sha_pinning_required: true\n", wantReason: `unknown key "sha_pinning_required"; expected github_owned_allowed, verified_allowed, patterns_allowed`},
+		{name: "duplicate key is rejected", src: all + "verified_allowed: true\n", wantReason: `duplicate key "verified_allowed"`},
+		{name: "empty mapping is rejected", src: "{}\n", wantReason: "must not be empty"},
+		{name: "invalid github_owned_allowed is rejected at the item", src: strings.Replace(all, "github_owned_allowed: true", "github_owned_allowed: yes", 1), wantReason: "S.github_owned_allowed (line 1, column 23): must be true or false"},
+		{name: "invalid bool is rejected at the item", src: strings.Replace(all, "verified_allowed: false", "verified_allowed: no", 1), wantReason: "S.verified_allowed (line 2, column 19): must be true or false"},
+		{name: "invalid patterns is rejected at the item", src: strings.Replace(all, "[a/*]", "a/*", 1), wantReason: "S.patterns_allowed (line 3, column 19): must be a sequence"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.selectedActions(doc.root, "S")
+			if tc.wantReason != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("selectedActions() error = %v, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("selectedActions() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("selectedActions() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestDocumentDeclaration は、各階層で要求するキーの集合 (スキーマ) と、各段階へ渡すパスを確かめる。
 // 各段階が持つ規則 (マッピングやシーケンスの形、真偽値、name の形式) は、段階ごとのテストが確かめる。
 //
@@ -191,16 +333,45 @@ func TestDocumentDeclaration(t *testing.T) {
 		},
 		// Actions
 		{
-			name:       "actions.permissions is rejected as an unknown key",
-			src:        second + "    actions:\n      permissions:\n        enabled: true\n",
-			wantPath:   "repositories[1].actions",
-			wantReason: `unknown key "permissions"; expected workflow`,
+			name: "actions.permissions alone is read into ActionsPermissions, leaving workflow omitted",
+			src:  second + "    actions:\n      permissions:\n        allowed_actions: local_only\n",
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				{
+					Reference: mustReference(t, "owner/second"),
+					Desired: DesiredState{
+						General:            General{AllowAutoMerge: new(false)},
+						ActionsPermissions: ActionsPermissions{AllowedActions: new(setting.AllowedActionsLocalOnly)},
+					},
+				},
+			}},
 		},
 		{
-			name:       "actions.permissions alongside actions.workflow is rejected as an unknown key",
-			src:        withWorkflow("        default_workflow_permissions: read\n      permissions:\n        enabled: true\n"),
+			name: "actions.permissions and actions.workflow are read into their own fields",
+			src:  second + "    actions:\n      permissions:\n        allowed_actions: all\n      workflow:\n        can_approve_pull_request_reviews: true\n",
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				{
+					Reference: mustReference(t, "owner/second"),
+					Desired: DesiredState{
+						General:             General{AllowAutoMerge: new(false)},
+						ActionsPermissions:  ActionsPermissions{AllowedActions: new(setting.AllowedActionsAll)},
+						WorkflowPermissions: WorkflowPermissions{CanApprovePullRequestReviews: new(true)},
+					},
+				},
+			}},
+		},
+		{
+			name:       "unknown key in actions is rejected listing permissions and workflow",
+			src:        second + "    actions:\n      secrets: {}\n",
 			wantPath:   "repositories[1].actions",
-			wantReason: `unknown key "permissions"`,
+			wantReason: `unknown key "secrets"; expected permissions, workflow`,
+		},
+		{
+			name:       "invalid permissions is rejected at actions.permissions",
+			src:        second + "    actions:\n      permissions:\n        allowed_actions: selected\n",
+			wantPath:   "repositories[1].actions.permissions",
+			wantReason: "requires selected_actions",
 		},
 		{
 			name:       "empty actions is rejected",

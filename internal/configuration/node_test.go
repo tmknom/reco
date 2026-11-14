@@ -2,6 +2,7 @@ package configuration
 
 import (
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -295,6 +296,95 @@ func TestDocumentPermissionLevelValue(t *testing.T) {
 			}
 			if got != tc.want {
 				t.Errorf("permissionLevelValue() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+//trace:checks FR-001
+func TestDocumentAllowedActionsPolicyValue(t *testing.T) {
+	cases := []struct {
+		name    string
+		src     string
+		want    setting.AllowedActionsPolicy
+		wantErr string
+	}{
+		{name: "all is accepted", src: "all\n", want: setting.AllowedActionsAll},
+		{name: "local_only is accepted", src: "local_only\n", want: setting.AllowedActionsLocalOnly},
+		{name: "selected is accepted", src: "selected\n", want: setting.AllowedActionsSelected},
+		{name: "quoted selected is accepted", src: "\"selected\"\n", want: setting.AllowedActionsSelected},
+		{name: "capitalized All is rejected", src: "All\n", wantErr: `must be all, local_only, or selected; got "All"`},
+		{name: "undefined none is rejected", src: "none\n", wantErr: `must be all, local_only, or selected; got "none"`},
+		{name: "empty string is rejected", src: "\"\"\n", wantErr: `must be all, local_only, or selected; got ""`},
+		{name: "boolean true is rejected as not a string", src: "true\n", wantErr: "must be a string"},
+		{name: "null is rejected", src: "null\n", wantErr: "must not be null"},
+		{name: "explicit tag is rejected", src: "!!str all\n", wantErr: "explicit tags are not allowed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.allowedActionsPolicyValue(doc.root, "v")
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("allowedActionsPolicyValue() error = %v, want it to contain %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("allowedActionsPolicyValue() error = %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("allowedActionsPolicyValue() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+//trace:checks FR-001
+func TestDocumentPatternsAllowedValue(t *testing.T) {
+	cases := []struct {
+		name    string
+		src     string
+		want    []string
+		wantErr string
+	}{
+		{name: "two items are read in declared order", src: "[b/*, a/*]\n", want: []string{"b/*", "a/*"}},
+		{name: "one item is read", src: "[a/*]\n", want: []string{"a/*"}},
+		{name: "empty sequence is read as non-nil empty", src: "[]\n", want: []string{}},
+		{name: "items differing only in letter case are not duplicates", src: "[a/*, A/*]\n", want: []string{"a/*", "A/*"}},
+		{name: "item with inner space is accepted", src: "[\"a b\"]\n", want: []string{"a b"}},
+		{name: "null is rejected", src: "~\n", wantErr: "must not be null"},
+		{name: "string is rejected as not a sequence", src: "a/*\n", wantErr: "must be a sequence"},
+		{name: "mapping is rejected as not a sequence", src: "{a: 1}\n", wantErr: "must be a sequence"},
+		{name: "empty string item is rejected", src: "[a/*, \"\"]\n", wantErr: `v[1] (line 1, column 7): must not be empty or have leading or trailing whitespace; got ""`},
+		{name: "whitespace-only item is rejected", src: "[\" \"]\n", wantErr: `v[0] (line 1, column 2): must not be empty or have leading or trailing whitespace; got " "`},
+		{name: "item with leading space is rejected", src: "[\" a\"]\n", wantErr: `v[0] (line 1, column 2): must not be empty or have leading or trailing whitespace; got " a"`},
+		{name: "item with trailing space is rejected", src: "[\"a \"]\n", wantErr: `v[0] (line 1, column 2): must not be empty or have leading or trailing whitespace; got "a "`},
+		{name: "item wrapped in no-break spaces is rejected", src: "[\"\\u00A0a\\u00A0\"]\n", wantErr: "v[0] (line 1, column 2): must not be empty or have leading or trailing whitespace"},
+		{name: "null item is rejected", src: "[a/*, null]\n", wantErr: "v[1] (line 1, column 7): must not be null"},
+		{name: "number item is rejected", src: "[a/*, 1]\n", wantErr: "v[1] (line 1, column 7): must be a string"},
+		{name: "boolean item is rejected", src: "[a/*, true]\n", wantErr: "v[1] (line 1, column 7): must be a string"},
+		{name: "nested sequence item is rejected", src: "[a/*, [b/*]]\n", wantErr: "v[1] (line 1, column 7): must be a string"},
+		{name: "mapping item is rejected", src: "[a/*, {b: c}]\n", wantErr: "v[1] (line 1, column 7): must be a string"},
+		{name: "tagged item is rejected", src: "[a/*, !!str b/*]\n", wantErr: "v[1] (line 1, column 7): explicit tags are not allowed"},
+		{name: "duplicate item is rejected naming the earlier index", src: "[a/*, b/*, a/*]\n", wantErr: `v[2] (line 1, column 12): duplicate pattern "a/*"; same as v[0]`},
+		{name: "item differing only in escape notation is rejected as a duplicate", src: "[\"a\", \"\\x61\"]\n", wantErr: `v[1] (line 1, column 7): duplicate pattern "a"; same as v[0]`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.patternsAllowedValue(doc.root, "v")
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("patternsAllowedValue() error = %v, want it to contain %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("patternsAllowedValue() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("patternsAllowedValue() = %#v, want %#v", got, tc.want)
 			}
 		})
 	}

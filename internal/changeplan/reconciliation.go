@@ -42,10 +42,14 @@ func managedAreas(desired configuration.DesiredState) []setting.Area {
 	return areas
 }
 
-func newSettingPlan(key setting.Key, observed, desired setting.Value) SettingPlan {
-	result := Match
-	if !observed.Equal(desired) {
+// newSettingPlan は、観測値があれば期待値と比べ、観測不能なら Equal に渡さずに比較不能とする。
+func newSettingPlan(key setting.Key, observed github.SettingObservation[setting.Value], desired setting.Value) SettingPlan {
+	result := NotComparable
+	if v, ok := observed.Value(); ok {
 		result = Mismatch
+		if v.Equal(desired) {
+			result = Match
+		}
 	}
 	return SettingPlan{Key: key, Observed: observed, Desired: desired, Result: result}
 }

@@ -85,6 +85,43 @@ func TestPlan_Success(t *testing.T) {
 	}
 }
 
+// 変更に伴う副作用は変更計画の一部として stdout に出し、Actions の実行許可の観測は宣言した対象でだけ送る。
+//
+//trace:checks FR-004
+//trace:checks FR-007
+func TestPlan_ActionsPermissions(t *testing.T) {
+	workDir := t.TempDir()
+	writeConfig(t, workDir, "reco.yaml", "repositories:\n  - name: owner/repo\n    actions:\n      permissions:\n        allowed_actions: all\n")
+	server, opts := newGitHubServerByPath(t, map[string]stubResponse{
+		"/repos/owner/repo":                                      {status: http.StatusOK, body: repositoryBody},
+		"/repos/owner/repo/actions/permissions":                  {status: http.StatusOK, body: actionsPermissionsBody},
+		"/repos/owner/repo/actions/permissions/selected-actions": {status: http.StatusOK, body: selectedActionsBody},
+	})
+
+	code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue})}, opts, "plan")
+	if code != 0 {
+		t.Errorf("got exit code %d, want 0 (stderr %q)", code, stderr)
+	}
+	for _, want := range []string{"actions.permissions.allowed_actions: selected -> all\n", "    Side effect: GitHub discards the current selected_actions ("} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("got stdout %q, want it to contain %q", stdout, want)
+		}
+	}
+	if stderr != "" {
+		t.Errorf("got stderr %q, want empty", stderr)
+	}
+	wantPaths := []string{"/repos/owner/repo", "/repos/owner/repo/actions/permissions", "/repos/owner/repo/actions/permissions/selected-actions"}
+	got := server.receivedRequests()
+	if len(got) != len(wantPaths) {
+		t.Fatalf("got requests %+v, want paths %v", got, wantPaths)
+	}
+	for i, r := range got {
+		if r.method != http.MethodGet || r.path != wantPaths[i] {
+			t.Errorf("got request %d %+v, want GET %s", i, r, wantPaths[i])
+		}
+	}
+}
+
 func TestPlan_InvalidInput(t *testing.T) {
 	cases := []struct {
 		name string

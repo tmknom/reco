@@ -23,21 +23,34 @@ type ObservationResult struct {
 	WorkflowPermissions *WorkflowPermissions
 }
 
-// Value は、key の設定の観測値を返す。o は key の設定の領域を読み取った観測の結果に限り、
-// 読み取らなかった領域の値は補わずに nil 参照で止まる。未知の設定は不変条件の破れとして panic する。
+// Value は、key の設定の観測結果を返す。取得条件を持たない設定は、常に観測値になる。
+// o は key の設定の領域を読み取った観測の結果に限り、読み取らなかった領域の値は補わずに nil 参照で止まる。
+// 未知の設定は不変条件の破れとして panic する。
 // 設定を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
-func (o ObservationResult) Value(key setting.Key) setting.Value {
+func (o ObservationResult) Value(key setting.Key) SettingObservation[setting.Value] {
 	switch key {
 	case setting.DeleteBranchOnMerge:
-		return setting.BoolValue(o.General.DeleteBranchOnMerge)
+		return Observed(setting.BoolValue(o.General.DeleteBranchOnMerge))
 	case setting.AllowAutoMerge:
-		return setting.BoolValue(o.General.AllowAutoMerge)
+		return Observed(setting.BoolValue(o.General.AllowAutoMerge))
+	case setting.AllowedActions:
+		return valueObservation(o.ActionsPermissions.AllowedActions, setting.AllowedActionsPolicyValue)
+	case setting.SelectedActions:
+		return valueObservation(o.ActionsPermissions.SelectedActions, setting.SelectedActionsCriteriaValue)
 	case setting.DefaultWorkflowPermissions:
-		return setting.PermissionLevelValue(o.WorkflowPermissions.DefaultWorkflowPermissions)
+		return Observed(setting.PermissionLevelValue(o.WorkflowPermissions.DefaultWorkflowPermissions))
 	case setting.CanApprovePullRequestReviews:
-		return setting.BoolValue(o.WorkflowPermissions.CanApprovePullRequestReviews)
+		return Observed(setting.BoolValue(o.WorkflowPermissions.CanApprovePullRequestReviews))
 	}
 	panic(fmt.Sprintf("unknown setting %q", key))
+}
+
+// valueObservation は、設定ごとの型の観測結果を、設定の値の観測結果に写す。観測不能は同じ理由のまま写す。
+func valueObservation[T any](o SettingObservation[T], toValue func(T) setting.Value) SettingObservation[setting.Value] {
+	if v, ok := o.Value(); ok {
+		return Observed(toValue(v))
+	}
+	return Unavailable[setting.Value](o.UnavailableReason())
 }
 
 // ActionsPermissions は Actions の実行許可のうち、reco が観測する設定である。

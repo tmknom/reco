@@ -119,6 +119,15 @@ linters:
               desc: show does not use the configuration declaration, reconciliation, or change plan
             - pkg: github.com/tmknom/reco/internal/configuration
               desc: show does not use the configuration declaration, reconciliation, or change plan
+        display-without-declaration:
+          list-mode: lax
+          files:
+            - "${base-path}/internal/display/**"
+          deny:
+            - pkg: github.com/tmknom/reco/internal/changeplan
+              desc: show uses display, and show does not use the configuration declaration, reconciliation, or change plan
+            - pkg: github.com/tmknom/reco/internal/configuration
+              desc: show uses display, and show does not use the configuration declaration, reconciliation, or change plan
         declaration-without-observation:
           list-mode: lax
           files:

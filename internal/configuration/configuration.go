@@ -26,6 +26,7 @@ type RepositoryDeclaration struct {
 // YAML の入れ子 (actions.workflow) は写さず、設定の領域ごとに持つ。
 type DesiredState struct {
 	General             General
+	ActionsPermissions  ActionsPermissions
 	WorkflowPermissions WorkflowPermissions
 }
 
@@ -38,6 +39,16 @@ func (d DesiredState) Value(key setting.Key) (value setting.Value, ok bool) {
 		return optionalBoolValue(d.General.DeleteBranchOnMerge)
 	case setting.AllowAutoMerge:
 		return optionalBoolValue(d.General.AllowAutoMerge)
+	case setting.AllowedActions:
+		if policy := d.ActionsPermissions.AllowedActions; policy != nil {
+			return setting.AllowedActionsPolicyValue(*policy), true
+		}
+		return setting.Value{}, false
+	case setting.SelectedActions:
+		if criteria := d.ActionsPermissions.SelectedActions; criteria != nil {
+			return setting.SelectedActionsCriteriaValue(*criteria), true
+		}
+		return setting.Value{}, false
 	case setting.DefaultWorkflowPermissions:
 		if level := d.WorkflowPermissions.DefaultWorkflowPermissions; level != nil {
 			return setting.PermissionLevelValue(*level), true
@@ -60,6 +71,13 @@ func optionalBoolValue(b *bool) (setting.Value, bool) {
 type General struct {
 	DeleteBranchOnMerge *bool
 	AllowAutoMerge      *bool
+}
+
+// ActionsPermissions は Actions の実行許可の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
+type ActionsPermissions struct {
+	AllowedActions *setting.AllowedActionsPolicy
+	// SelectedActions は設定グループの期待値で、3項目を一体として持つ。
+	SelectedActions *setting.SelectedActionsCriteria
 }
 
 // WorkflowPermissions はワークフロー権限の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。

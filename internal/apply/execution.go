@@ -134,13 +134,24 @@ func boolUpdate(update func(*github.Client, context.Context, repository.Referenc
 	}
 }
 
+// observedValue は、key の設定の観測値を返す。
+// 更新操作を持つ設定と、それと同じ設定の領域に属する設定は、どれも取得条件を持たず常に観測値になるため、
+// 観測不能は不変条件の破れとして panic する。
+func observedValue(o github.ObservationResult, key setting.Key) setting.Value {
+	v, ok := o.Value(key).Value()
+	if !ok {
+		panic("apply: no observed value of " + string(key))
+	}
+	return v
+}
+
 // checkPrecondition は、承認した変更を更新直前の観測と照らし、更新してよいかを判定する。
 // 別のリポジトリの値を承認時の値と比べても意味がないため、同一性を現在値より先に確かめる。
 func checkPrecondition(approvedID repository.ID, change changeplan.LogicalChange, observed github.ObservationResult) preconditionCheck {
 	if observed.RepositoryID != approvedID {
 		return preconditionIdentityMismatch
 	}
-	if !observed.Value(change.Key).Equal(change.Observed) {
+	if !observedValue(observed, change.Key).Equal(change.Observed) {
 		return preconditionCurrentValueChanged
 	}
 	return preconditionHolds
@@ -151,7 +162,7 @@ func confirmDesiredState(approvedID repository.ID, change changeplan.LogicalChan
 	if observed.RepositoryID != approvedID {
 		return desiredStateIdentityMismatch
 	}
-	if observed.Value(change.Key).Equal(change.Desired) {
+	if observedValue(observed, change.Key).Equal(change.Desired) {
 		return desiredStateMatches
 	}
 	return desiredStateMismatch
@@ -165,7 +176,7 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before, after git
 		if key == change.Key {
 			continue
 		}
-		b, a := before.Value(key), after.Value(key)
+		b, a := observedValue(before, key), observedValue(after, key)
 		if !b.Equal(a) {
 			changes = append(changes, unexpectedOutsideChange{Key: key, Before: b, After: a})
 		}
