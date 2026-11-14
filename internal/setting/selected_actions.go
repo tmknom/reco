@@ -1,6 +1,7 @@
 package setting
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -21,4 +22,16 @@ func (c SelectedActionsCriteria) PatternsAllowedString() string {
 		quoted[i] = strconv.Quote(p)
 	}
 	return "[" + strings.Join(quoted, ", ") + "]"
+}
+
+// equal は、YAML 設定仕様の許可パターンの照合規則に従って、二つの値が同じかどうかを返す。
+func (c SelectedActionsCriteria) equal(other SelectedActionsCriteria) bool {
+	return c.GitHubOwnedAllowed == other.GitHubOwnedAllowed &&
+		c.VerifiedAllowed == other.VerifiedAllowed &&
+		slices.Equal(patternSet(c.PatternsAllowed), patternSet(other.PatternsAllowed))
+}
+
+// patternSet は、保持する並びを表示と送信に使うため、引数を書き換えずに写しを整列する。
+func patternSet(patterns []string) []string {
+	return slices.Compact(slices.Sorted(slices.Values(patterns)))
 }

@@ -1,6 +1,7 @@
 package changeplan
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 
@@ -73,7 +74,7 @@ func TestReconcile(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := reconcile(tc.desired, tc.observed)
-			if !slices.Equal(got, tc.want) {
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("reconcile() = %+v, want %+v", got, tc.want)
 			}
 		})
