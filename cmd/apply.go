@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -33,6 +34,7 @@ func newApplyCmd(env Environment, opts ...github.Option) *cobra.Command {
 				Approve: func(ctx context.Context) error {
 					return requestApproval(ctx, env.Stdin, env.StdinIsTerminal, c.ErrOrStderr())
 				},
+				After:         time.After,
 				GitHubOptions: opts,
 			})
 		},

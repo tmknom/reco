@@ -15,7 +15,7 @@ type changeRecord struct {
 	update                   github.UpdateOutcome
 	confirmation             desiredStateConfirmation
 	unexpectedOutsideChanges []unexpectedOutsideChange
-	// cause は、変更前提の確認、更新操作、更新後の観測のうち、失敗した操作の error。
+	// cause は、変更前提の確認、更新操作、更新後の観測とその前の待機のうち、失敗した操作の error。
 	cause error
 }
 

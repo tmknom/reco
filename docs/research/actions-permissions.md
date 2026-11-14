@@ -158,7 +158,8 @@ Selected actions の取得・更新は、どちらもリポジトリの `allowed
 >
 > - `can_approve_pull_request_reviews` の対象：設定画面の上記の項目に対応し、Pull Request の承認だけでなく作成も対象に含む
 > - 省略したフィールドの保持：`default_workflow_permissions` だけを送ると、`can_approve_pull_request_reviews` は変わらない。`can_approve_pull_request_reviews` だけを送ると、`default_workflow_permissions` は変わらない。いずれも、省略した側を `true`、`write` にしてから確かめた（公開・非公開リポジトリで確認）
-> - 値の反映：`read`・`write`・`true`・`false` のいずれを送っても、直後の 5.1 の取得は送った値を返した（公開・非公開リポジトリで確認）
+> - 値の反映：`read`・`write`・`true`・`false` のいずれを送っても、送った値が 5.1 の取得に反映された（公開・非公開リポジトリで確認）
+> - 更新直後の取得：公開リポジトリで `can_approve_pull_request_reviews` を `true` から `false` にする更新では、`204` を受け取った直後の 5.1 の取得が更新前の `true` を返すことがあった。6回中5回で起きた。時刻を測った2回では、`204` の約 0.5 秒後の取得が `true`、約 1.5 秒後の取得が `false` を返した。逆向きの更新、`default_workflow_permissions` の更新、非公開リポジトリで `can_approve_pull_request_reviews` を `false` にする更新では、直後の取得が送った値を返した
 > - Actions が無効のときの更新：片方だけを送る更新は `204` を返して反映され、もう一方は変わらない。Actions を有効に戻したあとも、無効のあいだに送った値が返る（非公開リポジトリで確認）
 
 | Relationship | Target | Target Type |

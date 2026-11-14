@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
@@ -153,6 +154,23 @@ func newClient(baseURL *url.URL) *github.Client {
 	return github.New("test-token", github.WithBaseURL(baseURL))
 }
 
+// delayRecorder は、待つよう求められた時間を記録し、実時間を待たずに経過を知らせる。
+type delayRecorder struct {
+	delays []time.Duration
+}
+
+func (r *delayRecorder) after(d time.Duration) <-chan time.Time {
+	r.delays = append(r.delays, d)
+	elapsed := make(chan time.Time, 1)
+	elapsed <- time.Time{}
+	return elapsed
+}
+
+// elapsedAtOnce は、待つ時間を確かめないテストで、実時間を待たずに経過を知らせる。
+func elapsedAtOnce(d time.Duration) <-chan time.Time {
+	return (&delayRecorder{}).after(d)
+}
+
 // allowAutoMergeChange は、allow_auto_merge を false から true にする論理的な設定変更。
 func allowAutoMergeChange() changeplan.LogicalChange {
 	return changeplan.LogicalChange{Key: setting.AllowAutoMerge, Observed: changeplan.BoolValue(false), Desired: changeplan.BoolValue(true)}
@@ -279,7 +297,7 @@ func TestApplyPlan(t *testing.T) {
 		calls := 0
 		match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: changeplan.BoolValue(true), Desired: changeplan.BoolValue(true), Result: changeplan.Match}
 
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, match))
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, match))
 
 		if err != nil {
 			t.Fatalf("applyPlan() error = %v", err)
@@ -298,7 +316,7 @@ func TestApplyPlan(t *testing.T) {
 		calls := 0
 		notApplicable := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable}
 
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, notApplicable))
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, notApplicable))
 
 		if err == nil {
 			t.Error("applyPlan() error = nil, want an error")
@@ -317,7 +335,7 @@ func TestApplyPlan(t *testing.T) {
 		cfg := Config{Out: &out, Approve: func(context.Context) error {
 			shown = out.String()
 			return nil
-		}}
+		}, After: elapsedAtOnce}
 
 		err := applyPlan(context.Background(), cfg, newClient(baseURL), newPlan(t, deleteBranchOnMergeMismatch(), allowAutoMergeMismatch()))
 
@@ -340,11 +358,11 @@ func TestApplyPlan(t *testing.T) {
 	t.Run("failed second change returns an error without reporting the repository updated", func(t *testing.T) {
 		baseURL, _ := newSequenceServer(t,
 			okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true),
-			okRepository(1, false, true), okRepository(1, true, true), okRepository(1, false, true))
+			okRepository(1, false, true), okRepository(1, true, true), response{status: http.StatusInternalServerError})
 		var out bytes.Buffer
 		calls := 0
 
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, deleteBranchOnMergeMismatch(), allowAutoMergeMismatch()))
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, deleteBranchOnMergeMismatch(), allowAutoMergeMismatch()))
 
 		if err == nil {
 			t.Error("applyPlan() error = nil, want an error")
@@ -406,7 +424,7 @@ func TestApplyPlan(t *testing.T) {
 		var out bytes.Buffer
 		calls := 0
 
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
 
 		if err != nil {
 			t.Fatalf("applyPlan() error = %v", err)
@@ -429,7 +447,7 @@ func TestApplyPlan(t *testing.T) {
 		var out bytes.Buffer
 		calls := 0
 
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
 
 		if !errors.Is(err, github.ErrRedirect) {
 			t.Errorf("applyPlan() error = %v, want %v", err, github.ErrRedirect)
@@ -447,7 +465,7 @@ func TestApplyPlan(t *testing.T) {
 		var out bytes.Buffer
 		calls := 0
 
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
 
 		if err == nil {
 			t.Error("applyPlan() error = nil, want an error")
@@ -479,7 +497,7 @@ func TestApplyPlan(t *testing.T) {
 		calls := 0
 		out := &failAfterWriter{n: 1}
 
-		err := applyPlan(context.Background(), Config{Out: out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
+		err := applyPlan(context.Background(), Config{Out: out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
 
 		if !errors.Is(err, errWrite) {
 			t.Errorf("applyPlan() error = %v, want %v", err, errWrite)
@@ -494,7 +512,7 @@ func TestApplyPlan(t *testing.T) {
 		calls := 0
 		out := &failAfterWriter{n: 2}
 
-		err := applyPlan(context.Background(), Config{Out: out, Approve: approve(&calls)}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
+		err := applyPlan(context.Background(), Config{Out: out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch()))
 
 		if !errors.Is(err, errWrite) {
 			t.Errorf("applyPlan() error = %v, want %v", err, errWrite)
@@ -536,6 +554,7 @@ func TestRun(t *testing.T) {
 				*calls++
 				return nil
 			},
+			After:         elapsedAtOnce,
 			GitHubOptions: []github.Option{github.WithBaseURL(baseURL)},
 		}
 	}

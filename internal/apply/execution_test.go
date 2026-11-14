@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
@@ -189,11 +190,15 @@ func TestExecuteChange(t *testing.T) {
 	redirect := response{status: http.StatusTemporaryRedirect, location: "https://example.com/"}
 
 	noContent := response{status: http.StatusNoContent}
+	// allDelays は、アーキテクチャ設計が定める、期待状態と一致しないときに観測し直す前に待つ時間。
+	allDelays := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second}
 	cases := []struct {
 		name        string
 		change      changeplan.LogicalChange
 		responses   []response
 		wantMethods []string
+		// wantDelays は、観測し直す前に待つよう求めた時間の並び。待たなければ nil。
+		wantDelays  []time.Duration
 		wantPrecond preconditionCheck
 		wantUpdate  github.UpdateOutcome
 		wantDesired desiredStateConfirmation
@@ -294,14 +299,73 @@ func TestExecuteChange(t *testing.T) {
 			wantCauses:  []error{github.ErrUnexpectedResponse},
 		},
 		{
-			name:        "successful update with another value is a mismatch",
-			change:      allowAutoMergeChange(),
-			responses:   []response{okRepository(1, false, false), okRepository(1, true, false), okRepository(1, false, false)},
-			wantMethods: []string{"GET", "PATCH", "GET"},
+			name:   "successful update with another value on all six reads is a mismatch",
+			change: allowAutoMergeChange(),
+			responses: []response{
+				okRepository(1, false, false), okRepository(1, true, false),
+				okRepository(1, false, false), okRepository(1, false, false), okRepository(1, false, false),
+				okRepository(1, false, false), okRepository(1, false, false), okRepository(1, false, false),
+			},
+			wantMethods: []string{"GET", "PATCH", "GET", "GET", "GET", "GET", "GET", "GET"},
+			wantDelays:  allDelays,
 			wantPrecond: preconditionHolds,
 			wantUpdate:  github.UpdateSucceeded,
 			wantDesired: desiredStateMismatch,
 			wantResult:  failed,
+		},
+		{
+			name:   "successful update with the desired value on the third read is complete",
+			change: allowAutoMergeChange(),
+			responses: []response{
+				okRepository(1, false, false), okRepository(1, true, false),
+				okRepository(1, false, false), okRepository(1, false, false), okRepository(1, true, false),
+			},
+			wantMethods: []string{"GET", "PATCH", "GET", "GET", "GET"},
+			wantDelays:  allDelays[:2],
+			wantPrecond: preconditionHolds,
+			wantUpdate:  github.UpdateSucceeded,
+			wantDesired: desiredStateMatches,
+			wantResult:  completed,
+		},
+		{
+			name:   "other setting changed only on a mismatching read is not an unexpected outside change",
+			change: allowAutoMergeChange(),
+			responses: []response{
+				okRepository(1, false, false), okRepository(1, true, false),
+				okRepository(1, false, true), okRepository(1, true, false),
+			},
+			wantMethods: []string{"GET", "PATCH", "GET", "GET"},
+			wantDelays:  allDelays[:1],
+			wantPrecond: preconditionHolds,
+			wantUpdate:  github.UpdateSucceeded,
+			wantDesired: desiredStateMatches,
+			wantResult:  completed,
+		},
+		{
+			name:   "unreadable read after a mismatching read is unconfirmed without further reads",
+			change: allowAutoMergeChange(),
+			responses: []response{
+				okRepository(1, false, false), okRepository(1, true, false),
+				okRepository(1, false, false), serverError,
+			},
+			wantMethods: []string{"GET", "PATCH", "GET", "GET"},
+			wantDelays:  allDelays[:1],
+			wantPrecond: preconditionHolds,
+			wantUpdate:  github.UpdateSucceeded,
+			wantDesired: desiredStateUnconfirmed,
+			wantResult:  failed,
+			wantCauses:  []error{github.ErrUnexpectedResponse},
+		},
+		{
+			name:        "unknown update with another value is read only once",
+			change:      allowAutoMergeChange(),
+			responses:   []response{okRepository(1, false, false), redirect, okRepository(1, false, false)},
+			wantMethods: []string{"GET", "PATCH", "GET"},
+			wantPrecond: preconditionHolds,
+			wantUpdate:  github.UpdateUnknown,
+			wantDesired: desiredStateMismatch,
+			wantResult:  failed,
+			wantCauses:  []error{github.ErrRedirect},
 		},
 		{
 			name:        "successful update with a changed other setting fails",
@@ -390,14 +454,18 @@ func TestExecuteChange(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			baseURL, rec := newSequenceServer(t, tc.responses...)
 			p := newPlan(t)
+			delays := &delayRecorder{}
 
-			got := executeChange(context.Background(), newClient(baseURL), p, tc.change)
+			got := executeChange(context.Background(), newClient(baseURL), p, tc.change, delays.after)
 
 			if got.change != tc.change {
 				t.Errorf("change = %+v, want %+v", got.change, tc.change)
 			}
 			if !slices.Equal(rec.Methods(), tc.wantMethods) {
 				t.Errorf("requests = %v, want %v", rec.Methods(), tc.wantMethods)
+			}
+			if !slices.Equal(delays.delays, tc.wantDelays) {
+				t.Errorf("delays = %v, want %v", delays.delays, tc.wantDelays)
 			}
 			if got.precondition != tc.wantPrecond {
 				t.Errorf("precondition = %v, want %v", got.precondition, tc.wantPrecond)
@@ -437,7 +505,32 @@ func TestExecuteChange(t *testing.T) {
 			}
 		}()
 
-		executeChange(context.Background(), newClient(baseURL), newPlan(t), change)
+		executeChange(context.Background(), newClient(baseURL), newPlan(t), change, elapsedAtOnce)
+	})
+
+	t.Run("interruption while waiting to read again after a mismatch is unconfirmed without another read", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t, okRepository(1, false, false), okRepository(1, true, false), okRepository(1, false, false), okRepository(1, true, false))
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		interrupted := func(time.Duration) <-chan time.Time {
+			cancel()
+			return make(chan time.Time)
+		}
+
+		got := executeChange(ctx, newClient(baseURL), newPlan(t), allowAutoMergeChange(), interrupted)
+
+		if want := []string{"GET", "PATCH", "GET"}; !slices.Equal(rec.Methods(), want) {
+			t.Errorf("requests = %v, want %v", rec.Methods(), want)
+		}
+		if got.update != github.UpdateSucceeded {
+			t.Errorf("update = %v, want %v", got.update, github.UpdateSucceeded)
+		}
+		if got.confirmation != desiredStateUnconfirmed {
+			t.Errorf("confirmation = %v, want %v", got.confirmation, desiredStateUnconfirmed)
+		}
+		if !errors.Is(got.cause, context.Canceled) {
+			t.Errorf("cause = %v, want it to wrap %v", got.cause, context.Canceled)
+		}
 	})
 }
 
@@ -589,13 +682,13 @@ func TestExecuteChanges(t *testing.T) {
 			wantResults: []changeResult{completed, completed, completed, completed},
 		},
 		{
-			name: "general mismatch stops the workflow permissions change without a read or an update",
+			name: "unconfirmed general change stops the workflow permissions change without a read or an update",
 			changes: []changeplan.LogicalChange{
 				deleteBranchOnMergeChange(), allowAutoMergeChange(), defaultWorkflowPermissionsChange(),
 			},
 			responses: []response{
 				okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true),
-				okRepository(1, false, true), okRepository(1, false, true), okRepository(1, false, true),
+				okRepository(1, false, true), okRepository(1, false, true), {status: http.StatusInternalServerError},
 			},
 			wantMethods: []string{"GET", "PATCH", "GET", "GET", "PATCH", "GET"},
 			wantBodies:  []map[string]any{nil, {"delete_branch_on_merge": true}, nil, nil, {"allow_auto_merge": true}, nil},
@@ -608,7 +701,7 @@ func TestExecuteChanges(t *testing.T) {
 			baseURL, rec := newSequenceServer(t, tc.responses...)
 			changes := tc.changes
 
-			got := executeChanges(context.Background(), newClient(baseURL), newPlan(t), changes)
+			got := executeChanges(context.Background(), newClient(baseURL), newPlan(t), changes, elapsedAtOnce)
 
 			if !slices.Equal(rec.Methods(), tc.wantMethods) {
 				t.Errorf("requests = %v, want %v", rec.Methods(), tc.wantMethods)
