@@ -3,13 +3,15 @@ package setting
 
 import "fmt"
 
-// Key は設定の識別。値は YAML 設定仕様のキーのパスで、表示にもそのまま使う。
+// Key は設定の識別。値は表示にそのまま使う。宣言を受け付ける設定 (Keys) では、YAML 設定仕様のキーのパスと一致する。
 type Key string
 
 const (
-	DeleteBranchOnMerge          Key = "general.delete_branch_on_merge"
-	AllowAutoMerge               Key = "general.allow_auto_merge"
-	AllowedActions               Key = "actions.permissions.allowed_actions"
+	DeleteBranchOnMerge Key = "general.delete_branch_on_merge"
+	AllowAutoMerge      Key = "general.allow_auto_merge"
+	AllowedActions      Key = "actions.permissions.allowed_actions"
+	// SHAPinningRequired は、観測するが宣言を受け付けない設定。Keys に含めない。
+	SHAPinningRequired           Key = "actions.permissions.sha_pinning_required"
 	SelectedActions              Key = "actions.permissions.selected_actions"
 	DefaultWorkflowPermissions   Key = "actions.workflow.default_workflow_permissions"
 	CanApprovePullRequestReviews Key = "actions.workflow.can_approve_pull_request_reviews"
@@ -27,7 +29,7 @@ func (k Key) Area() Area {
 	switch k {
 	case DeleteBranchOnMerge, AllowAutoMerge:
 		return AreaGeneral
-	case AllowedActions, SelectedActions:
+	case AllowedActions, SHAPinningRequired, SelectedActions:
 		return AreaActionsPermissions
 	case DefaultWorkflowPermissions, CanApprovePullRequestReviews:
 		return AreaWorkflowPermissions

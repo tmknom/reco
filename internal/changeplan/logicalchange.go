@@ -16,15 +16,18 @@ type LogicalChange struct {
 }
 
 // LogicalChanges は、変更予定から論理的な設定変更を導く。
-// 比較不能な変更予定は、変更前提の基準になる観測値がないため、適用可能と判断されていても error にする。
-// 論理的な設定変更にするのは不一致の変更予定だけで、どれも単独の管理設定の変更として実現できるため、変更予定と論理的な設定変更は一対一になる。
+// 適用可能と判断されていても、LogicalChange が変更前提の基準を運べない変更予定は error にする。
+// 比較不能な変更予定は基準になる観測値がなく、副作用を伴う変更予定は失われる値を基準に持てないためである。
+// 失われる値を更新直前に確かめずに更新すると、承認の前に示していない値を失わせ得る。
+// 遷移先が selected のポリシーの変更予定は、同じ計画に並ぶ選択方式の Actions 許可条件の比較不能な変更予定によって拒否される。
+// そのため論理的な設定変更になるのは、単独の管理設定の変更として実現できる変更予定だけで、変更予定と論理的な設定変更は一対一になる。
 func (p Plan) LogicalChanges() ([]LogicalChange, error) {
 	var changes []LogicalChange
 	for _, s := range p.Settings {
 		if s.Result == Match {
 			continue
 		}
-		if s.Applicability != Applicable || s.Result != Mismatch {
+		if s.Applicability != Applicable || s.Result != Mismatch || len(s.SideEffects) > 0 {
 			return nil, fmt.Errorf("%s: %s cannot be applied", p.Target, s.Key)
 		}
 		// 不一致は観測値があるときだけ生じるため、値の有無は確かめない

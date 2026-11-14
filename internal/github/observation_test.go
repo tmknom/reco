@@ -961,6 +961,18 @@ func TestObservationResult_ValueOfActionsPermissions(t *testing.T) {
 			want:     Unavailable[setting.Value](UnavailableActionsDisabled),
 		},
 		{
+			name:     "sha_pinning_required returns the observed value",
+			observed: ActionsPermissions{Enabled: true, AllowedActions: Observed(setting.AllowedActionsAll), SHAPinningRequired: Observed(true), SelectedActions: Unavailable[setting.SelectedActionsCriteria](UnavailableNotSelected)},
+			key:      setting.SHAPinningRequired,
+			want:     Observed(setting.BoolValue(true)),
+		},
+		{
+			name:     "sha_pinning_required keeps the unavailable reason",
+			observed: ActionsPermissions{AllowedActions: Unavailable[setting.AllowedActionsPolicy](UnavailableActionsDisabled), SHAPinningRequired: Unavailable[bool](UnavailableActionsDisabled), SelectedActions: Unavailable[setting.SelectedActionsCriteria](UnavailableActionsDisabled)},
+			key:      setting.SHAPinningRequired,
+			want:     Unavailable[setting.Value](UnavailableActionsDisabled),
+		},
+		{
 			name:     "selected_actions returns the observed criteria as is",
 			observed: ActionsPermissions{Enabled: true, AllowedActions: Observed(setting.AllowedActionsSelected), SelectedActions: Observed(criteria)},
 			key:      setting.SelectedActions,

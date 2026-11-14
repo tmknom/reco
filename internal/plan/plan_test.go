@@ -125,38 +125,11 @@ func TestWriteChangePlan_ActionsPermissions(t *testing.T) {
 	disabled := github.Unavailable[setting.Value](github.UnavailableActionsDisabled)
 	notSelected := github.Unavailable[setting.Value](github.UnavailableNotSelected)
 	const header = "Configuration: ./reco.yaml\n\nRepository: owner/repo\n"
-	const possibleLoss = "    Side effect: GitHub may discard selected_actions if allowed_actions was \"selected\" before GitHub Actions was disabled (current values are unavailable)\n"
 	cases := []struct {
 		name     string
 		settings []changeplan.SettingPlan
 		want     string
 	}{
-		{
-			name: "selected to all shows the side effect with the observed criteria under the known change",
-			settings: []changeplan.SettingPlan{{
-				Key: setting.AllowedActions, Observed: github.Observed(policy(setting.AllowedActionsSelected)), Desired: policy(setting.AllowedActionsAll),
-				Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
-				SideEffects: []changeplan.SideEffect{{Key: setting.SelectedActions, Observed: github.Observed(setting.SelectedActionsCriteriaValue(criteria))}},
-			}},
-			want: header +
-				"  actions.permissions.allowed_actions: selected -> all\n" +
-				"    Side effect: GitHub discards the current selected_actions (github_owned_allowed: true, verified_allowed: true, patterns_allowed: [\"example/*\"])\n\n" +
-				"Plan: 1 repository to update, 1 known change, 0 not-comparable settings\n",
-		},
-		{
-			name: "disabled to local_only is a not-comparable setting that enables actions and may discard the criteria",
-			settings: []changeplan.SettingPlan{{
-				Key: setting.AllowedActions, Observed: disabled, Desired: policy(setting.AllowedActionsLocalOnly),
-				Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
-				SideEffects: []changeplan.SideEffect{{Key: setting.SelectedActions, Observed: disabled}},
-			}},
-			want: header +
-				"  actions.permissions.allowed_actions\n" +
-				"    Current: unavailable (GitHub Actions is disabled)\n" +
-				"    Desired: local_only (enables GitHub Actions)\n" +
-				possibleLoss + "\n" +
-				"Plan: 1 repository to update, 0 known changes, 1 not-comparable setting\n",
-		},
 		{
 			name: "all to selected counts the policy as a known change and the criteria group as one not-comparable setting",
 			settings: []changeplan.SettingPlan{
@@ -185,22 +158,6 @@ func TestWriteChangePlan_ActionsPermissions(t *testing.T) {
 				"    Desired: github_owned_allowed: true, verified_allowed: true, patterns_allowed: [\"example/*\"]\n\n" +
 				"Plan: 1 repository to update, 0 known changes, 2 not-comparable settings\n",
 		},
-		{
-			name: "criteria group known change shows the current and desired values on separate lines",
-			settings: []changeplan.SettingPlan{
-				{Key: setting.AllowedActions, Observed: github.Observed(policy(setting.AllowedActionsSelected)), Desired: policy(setting.AllowedActionsSelected), Result: changeplan.Match},
-				{
-					Key:      setting.SelectedActions,
-					Observed: github.Observed(setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{}})),
-					Desired:  setting.SelectedActionsCriteriaValue(criteria), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
-				},
-			},
-			want: header +
-				"  actions.permissions.selected_actions:\n" +
-				"    github_owned_allowed: true, verified_allowed: false, patterns_allowed: []\n" +
-				"    -> github_owned_allowed: true, verified_allowed: true, patterns_allowed: [\"example/*\"]\n\n" +
-				"Plan: 1 repository to update, 1 known change, 0 not-comparable settings\n",
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -214,15 +171,6 @@ func TestWriteChangePlan_ActionsPermissions(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestSideEffectText_UnknownSettingPanics(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Error("sideEffectText() did not panic for a side effect on another setting")
-		}
-	}()
-	_ = sideEffectText(changeplan.SideEffect{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true))})
 }
 
 func TestWriteChangePlan_WriteFailure(t *testing.T) {

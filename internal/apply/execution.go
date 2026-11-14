@@ -9,7 +9,6 @@ import (
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
-	"github.com/tmknom/reco/internal/setting"
 )
 
 // executeChanges は、承認した論理的な設定変更を順に実行する。
@@ -32,11 +31,7 @@ func executeChanges(ctx context.Context, client *github.Client, p changeplan.Pla
 // executeChange は、承認した論理的な設定変更を実行し、変更結果を導く事実を返す。
 // 更新直前に観測して変更前提を確かめ、成立したときだけ更新要求を一度だけ送る。再送はしない。
 func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan, change changeplan.LogicalChange, after func(time.Duration) <-chan time.Time) changeRecord {
-	update, ok := updateOperationOf(change.Key)
-	if !ok {
-		// executableChanges が承認を求める前に確かめた不変条件の破れのため、要求を送る前に止める。
-		panic("apply: no update operation for " + string(change.Key))
-	}
+	update := updateOperationOf(change.Key)
 	record := changeRecord{change: change}
 	before, err := client.ObserveRepository(ctx, p.Target, change.Key.Area())
 	if err != nil {
@@ -66,6 +61,9 @@ func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan
 		record.cause = errors.Join(record.cause, err)
 		return record
 	}
+	if record.confirmation == desiredStateUnavailable {
+		record.desiredUnavailableReason = observed.Value(change.Key).UnavailableReason()
+	}
 	// ID が変わった観測は別のリポジトリの値のため、更新直前の値と比べない。
 	if record.confirmation != desiredStateIdentityMismatch {
 		record.unexpectedOutsideChanges = unexpectedOutsideChanges(update.endpoint, change, before, observed)
@@ -73,11 +71,11 @@ func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan
 	return record
 }
 
-// confirmationRetryDelays は、期待状態と一致しないときに観測し直す前に待つ時間を、観測し直す順に並べたもの。
+// confirmationRetryDelays は、期待状態との一致を確認できないときに観測し直す前に待つ時間を、観測し直す順に並べたもの。
 var confirmationRetryDelays = [...]time.Duration{1 * time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second}
 
 // observeAfterUpdate は、更新後の観測を行い、期待状態の確認結果と、それを与えた観測を返す。
-// GitHub は正常応答のあとすぐには更新を反映しないことがあるため、期待状態と一致しないあいだは、
+// GitHub は正常応答のあとすぐには更新を反映しないことがあるため、期待状態と一致しないあいだと、期待値と比べる設定が観測不能のあいだは、
 // retryDelays の時間ずつ待って、retryDelays を使い切るまで観測し直す。
 func observeAfterUpdate(ctx context.Context, client *github.Client, p changeplan.Plan, change changeplan.LogicalChange, retryDelays []time.Duration, after func(time.Duration) <-chan time.Time) (github.ObservationResult, desiredStateConfirmation, error) {
 	for i := 0; ; i++ {
@@ -86,7 +84,7 @@ func observeAfterUpdate(ctx context.Context, client *github.Client, p changeplan
 			return github.ObservationResult{}, desiredStateUnconfirmed, err
 		}
 		confirmation := confirmDesiredState(p.RepositoryID, change, observed)
-		if confirmation != desiredStateMismatch || i == len(retryDelays) {
+		if (confirmation != desiredStateMismatch && confirmation != desiredStateUnavailable) || i == len(retryDelays) {
 			return observed, confirmation, nil
 		}
 		if err := waitFor(ctx, after, retryDelays[i]); err != nil {
@@ -104,50 +102,51 @@ func waitFor(ctx context.Context, after func(time.Duration) <-chan time.Time, d 
 	}
 }
 
-// observedValue は、key の設定の観測値を返す。
-// 更新操作を持つ設定と、その更新エンドポイントで観測する設定は、どれも取得条件を持たず常に観測値になるため、
-// 観測不能は不変条件の破れとして panic する。
-func observedValue(o github.ObservationResult, key setting.Key) setting.Value {
-	v, ok := o.Value(key).Value()
-	if !ok {
-		panic("apply: no observed value of " + string(key))
-	}
-	return v
-}
-
 // checkPrecondition は、承認した変更を更新直前の観測と照らし、更新してよいかを判定する。
 // 別のリポジトリの値を承認時の値と比べても意味がないため、同一性を現在値より先に確かめる。
+// 承認時の値は観測値のため、観測不能になった現在値は、承認した変更内容と異なる状況として関係する現在値の変化にする。
 func checkPrecondition(approvedID repository.ID, change changeplan.LogicalChange, observed github.ObservationResult) preconditionCheck {
 	if observed.RepositoryID != approvedID {
 		return preconditionIdentityMismatch
 	}
-	if !observedValue(observed, change.Key).Equal(change.Observed) {
+	if current, ok := observed.Value(change.Key).Value(); !ok || !current.Equal(change.Observed) {
 		return preconditionCurrentValueChanged
 	}
 	return preconditionHolds
 }
 
 // confirmDesiredState は、更新後の観測が期待状態と一致するかを判定する。
+// 期待値と比べる設定が観測不能なら、値を確認できていないため、不一致ではなく確認失敗にする。
 func confirmDesiredState(approvedID repository.ID, change changeplan.LogicalChange, observed github.ObservationResult) desiredStateConfirmation {
 	if observed.RepositoryID != approvedID {
 		return desiredStateIdentityMismatch
 	}
-	if observedValue(observed, change.Key).Equal(change.Desired) {
+	current, ok := observed.Value(change.Key).Value()
+	switch {
+	case !ok:
+		return desiredStateUnavailable
+	case current.Equal(change.Desired):
 		return desiredStateMatches
+	default:
+		return desiredStateMismatch
 	}
-	return desiredStateMismatch
 }
 
 // unexpectedOutsideChanges は、change の更新操作が更新要求を送る endpoint で観測する設定のうち change が変えないものについて、
 // 更新直前と更新後の観測値の差を返す。
 // 観測は設定の領域の単位で読むが、同じ設定の領域でも別の更新エンドポイントの設定は更新操作の影響を受けないため比べない。
+// 予期しない変化は観測値どうしの差のため、片方でも観測不能な設定は、比べる観測値がなく返さない。
 func unexpectedOutsideChanges(endpoint updateEndpoint, change changeplan.LogicalChange, before, after github.ObservationResult) []unexpectedOutsideChange {
 	var changes []unexpectedOutsideChange
 	for _, key := range endpoint.observedSettings() {
 		if key == change.Key {
 			continue
 		}
-		b, a := observedValue(before, key), observedValue(after, key)
+		b, beforeOK := before.Value(key).Value()
+		a, afterOK := after.Value(key).Value()
+		if !beforeOK || !afterOK {
+			continue
+		}
 		if !b.Equal(a) {
 			changes = append(changes, unexpectedOutsideChange{Key: key, Before: b, After: a})
 		}

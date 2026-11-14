@@ -6,17 +6,19 @@ import (
 	"strings"
 
 	"github.com/tmknom/reco/internal/changeplan"
+	"github.com/tmknom/reco/internal/changeplandisplay"
+	"github.com/tmknom/reco/internal/display"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// writeChangePlan は、承認を求める変更計画を CLI 仕様の apply の形式で、changes の並びのまま書く。
-func writeChangePlan(w io.Writer, configPath string, target repository.Reference, changes []changeplan.LogicalChange) error {
+// writeChangePlan は、承認を求める変更計画を CLI 仕様の apply の形式で書く。変更予定の行は plan と同じ形で、計画の並びのまま書く。
+func writeChangePlan(w io.Writer, configPath string, p changeplan.Plan) error {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Configuration: %s\nRepository: %s\n", configPath, target)
-	for _, change := range changes {
-		fmt.Fprintf(&b, "  %s: %s -> %s\n", change.Key, change.Observed.String(), change.Desired.String())
+	fmt.Fprintf(&b, "Configuration: %s\nRepository: %s\n", configPath, p.Target)
+	for _, s := range p.Settings {
+		b.WriteString(changeplandisplay.PlannedChangeText(s))
 	}
 	b.WriteString("\n")
 	_, err := io.WriteString(w, b.String())
@@ -94,7 +96,7 @@ func resultLabel(r changeResult) string {
 func details(record changeRecord) []string {
 	var lines []string
 	if record.updateStarted() {
-		lines = append(lines, "Update request: "+updateOutcomeText(record.update), "Desired state: "+confirmationText(record.confirmation, record.update))
+		lines = append(lines, "Update request: "+updateOutcomeText(record.update), "Desired state: "+confirmationText(record))
 	} else {
 		lines = append(lines, notAttemptedReason(record))
 	}
@@ -146,10 +148,10 @@ func updateOutcomeText(u github.UpdateOutcome) string {
 
 // confirmationText は、更新操作の結果に応じた期待状態の確認結果の表示を返す。
 // 成否不明のときの一致は、更新操作の成否が判明したことにならないため、その旨を添える。
-func confirmationText(d desiredStateConfirmation, update github.UpdateOutcome) string {
-	switch d {
+func confirmationText(record changeRecord) string {
+	switch record.confirmation {
 	case desiredStateMatches:
-		if update == github.UpdateUnknown {
+		if record.update == github.UpdateUnknown {
 			return "matches (update outcome still unknown)"
 		}
 		return "matches"
@@ -159,6 +161,8 @@ func confirmationText(d desiredStateConfirmation, update github.UpdateOutcome) s
 		return "not confirmed (read failed)"
 	case desiredStateIdentityMismatch:
 		return "not confirmed (repository ID changed)"
+	case desiredStateUnavailable:
+		return "not confirmed (" + display.UnavailableReasonText(record.desiredUnavailableReason) + ")"
 	default:
 		return "not checked"
 	}

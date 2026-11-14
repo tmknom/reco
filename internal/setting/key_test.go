@@ -20,6 +20,7 @@ func TestKeyArea(t *testing.T) {
 		{key: DeleteBranchOnMerge, want: AreaGeneral},
 		{key: AllowAutoMerge, want: AreaGeneral},
 		{key: AllowedActions, want: AreaActionsPermissions},
+		{key: SHAPinningRequired, want: AreaActionsPermissions},
 		{key: SelectedActions, want: AreaActionsPermissions},
 		{key: DefaultWorkflowPermissions, want: AreaWorkflowPermissions},
 		{key: CanApprovePullRequestReviews, want: AreaWorkflowPermissions},

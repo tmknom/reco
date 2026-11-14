@@ -93,6 +93,7 @@ Go の package は、2.1節の領域を次の考え方で分けます。
 - Change Execution は Apply と同じ package に置く。承認済み計画を実行する経路を Apply に限定し、ほかの操作から更新機能へ進む依存を作らないため
 - 四つの文脈が共有する語（[ドメインモデル](domain.md) 4.8節）は、どの文脈の package にも依存しない package に置き、文脈ごとの判断を持ち込まない。宣言と観測が同じ定義を使い、片方だけが変わることを防ぐため
 - 複数の操作が同じ文言で示す表示のうち、観測の概念だけで決まるもの（観測不能の `unavailable (<理由>)`）は、操作の package の外の一つの package に置く。操作ごとに文言の写しを持つと、片方だけが変わるため。この package は宣言と変更計画に依存せず、Show が宣言を使わないことを保つ
+- 複数の操作が同じ形で示す表示のうち、変更計画の概念で決まるもの（変更予定の行と `Side effect:`）は、観測の概念だけで決まる表示とは別の、操作の package の外の一つの package に置く。Plan と Apply が同じ変更予定を別々の形で示すことを防ぐため。この package は変更計画に依存するため、Show からは使わない
 
 package 間の依存の制約は、`scripts/golangci-lint/.golangci.yml` の depguard 規則で検査します。
 
@@ -261,7 +262,7 @@ General では、`PATCH /repos/{owner}/{repo}` で省略したフィールドが
 
 Actions 許可ポリシーでは、`PUT /repos/{owner}/{repo}/actions/permissions` で省略した `sha_pinning_required` が保持されることを実際の動作で確認しています（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 3.2）。必須の `enabled` には `true` を送ります。`allowed_actions` の宣言は Actions が有効であることを期待状態に含むためです（[YAML 設定仕様](../spec/configuration.md) 4章）。`sha_pinning_required` は送りません。更新後は `sha_pinning_required` を再取得し、更新直前の値と比べます。Actions が無効のときは `sha_pinning_required` の応答が保存された値を示さないため（GitHub Actions 権限 API 仕様 3.1）、更新直前の値と比べられません。この場合は、無効の状態から有効化と同時にポリシーを変えても `sha_pinning_required` が保持されるという確認結果（GitHub Actions 権限 API 仕様 3.2）を根拠に、保全されるとみなします。
 
-選択方式の Actions 許可条件では、`PUT /repos/{owner}/{repo}/actions/permissions/selected-actions` に3項目をすべて送ります。3項目は一つの設定グループで、どれも期待値を持つためです。省略したフィールドが保持されることは実際の動作で確認していますが（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 4章）、この方式は保持に依拠しません。空の許可パターンは、`null` の扱いが公開ドキュメントにないため、空の配列として送ります。
+選択方式の Actions 許可条件では、`PUT /repos/{owner}/{repo}/actions/permissions/selected-actions` に3項目をすべて送ります。3項目は一つの設定グループで、どれも期待値を持つためです。省略したフィールドが保持されることは実際の動作で確認していますが（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 4章）、この方式は保持に依拠しません。空の許可パターンは、`null` の扱いが公開ドキュメントにないため、空の配列として送ります。この更新エンドポイントで reco が観測する設定は選択方式の Actions 許可条件だけのため、更新後に更新直前の値と比べる設定はありません。
 
 Workflow permissions では、`PUT /repos/{owner}/{repo}/actions/permissions/workflow` で省略したフィールドが保持されることを、公開・非公開のリポジトリで実際の動作により確認しています（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 5.2）。これが、管理する値だけを送る方式の根拠です。観測したもう一方の値を併送しないのは、観測から更新までのあいだに外部主体がその値を変えた場合に、古い値で上書きしてしまうためです。更新後に再取得して更新直前の値と比べるのは、`default_workflow_permissions` と `can_approve_pull_request_reviews` のうち、その論理的な設定変更が変えないほうです。2フィールドは Actions が無効のときも取得・更新でき（GitHub Actions 権限 API 仕様 5.1・5.2）、Actions の有効状態はこの方式の条件になりません。
 
