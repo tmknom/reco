@@ -498,3 +498,212 @@ func TestUpdateWorkflowPermissionsOutcomeUnknown(t *testing.T) {
 		t.Errorf("redirect target received %d requests, want 0", n)
 	}
 }
+
+// TestUpdateAllowedActions は、要求の形と、本文が enabled: true と allowed_actions だけであることを確かめる。
+//
+//trace:checks FR-011
+//trace:checks FR-013
+//trace:checks INV-001
+func TestUpdateAllowedActions(t *testing.T) {
+	cases := []struct {
+		name   string
+		policy setting.AllowedActionsPolicy
+		want   map[string]any
+	}{
+		{name: "all sends only enabled true and allowed_actions all", policy: setting.AllowedActionsAll, want: map[string]any{"enabled": true, "allowed_actions": "all"}},
+		{name: "local_only sends only enabled true and allowed_actions local_only", policy: setting.AllowedActionsLocalOnly, want: map[string]any{"enabled": true, "allowed_actions": "local_only"}},
+		{name: "selected sends only enabled true and allowed_actions selected", policy: setting.AllowedActionsSelected, want: map[string]any{"enabled": true, "allowed_actions": "selected"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotMethod, gotPath string
+			var gotHeader http.Header
+			var gotBody []byte
+			var gotContentLength int64
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				gotMethod, gotPath, gotHeader, gotContentLength = r.Method, r.URL.Path, r.Header, r.ContentLength
+				gotBody, _ = io.ReadAll(r.Body)
+				w.WriteHeader(http.StatusNoContent)
+			})
+
+			outcome, err := c.UpdateAllowedActions(t.Context(), mustReference(t, "owner/repo"), tc.policy)
+			if err != nil || outcome != UpdateSucceeded {
+				t.Fatalf("UpdateAllowedActions() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+			}
+
+			if gotMethod != http.MethodPut || gotPath != actionsPermissionsPath {
+				t.Errorf("request = %s %s, want PUT %s", gotMethod, gotPath, actionsPermissionsPath)
+			}
+			headers := map[string]string{
+				"Authorization":        "Bearer " + testToken,
+				"X-GitHub-Api-Version": "2026-03-10",
+				"Content-Type":         "application/json",
+			}
+			for name, value := range headers {
+				if v := gotHeader.Get(name); v != value {
+					t.Errorf("header %s = %q, want %q", name, v, value)
+				}
+			}
+			if gotContentLength != int64(len(gotBody)) {
+				t.Errorf("Content-Length = %d, want the body length %d", gotContentLength, len(gotBody))
+			}
+			var got map[string]any
+			if err := json.Unmarshal(gotBody, &got); err != nil {
+				t.Fatalf("request body %q is not JSON: %v", gotBody, err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("request body = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestUpdateAllowedActionsRejected は、GitHub が拒否した更新を失敗として返し、error がこの更新操作と対象を示し、再送しないことを確かめる。
+// ステータスごとの種類は TestClassifyFailure が、失敗と成否不明の境界は TestUpdateOutcomeOf が、
+// リダイレクトと応答の喪失の扱いは TestUpdateWorkflowPermissionsOutcomeUnknown が確かめる。
+//
+//trace:checks FR-013
+//trace:checks INV-005
+func TestUpdateAllowedActionsRejected(t *testing.T) {
+	var received atomic.Int32
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		received.Add(1)
+		w.WriteHeader(http.StatusForbidden)
+	})
+
+	outcome, err := c.UpdateAllowedActions(t.Context(), mustReference(t, "owner/repo"), setting.AllowedActionsAll)
+	if outcome != UpdateRejected || !errors.Is(err, ErrForbidden) {
+		t.Fatalf("UpdateAllowedActions() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrForbidden)
+	}
+	if !strings.HasPrefix(err.Error(), "update actions permissions owner/repo: ") {
+		t.Errorf("error = %q, want it to start with the operation and owner/repo", err)
+	}
+	if n := received.Load(); n != 1 {
+		t.Errorf("server received %d requests, want 1", n)
+	}
+}
+
+// TestEncodeSelectedActions は、Selected actions の本文が3項目をすべて含み、許可パターンを受け取った順のまま JSON の規則で送ることを確かめる。
+//
+//trace:checks FR-011
+//trace:checks INV-001
+func TestEncodeSelectedActions(t *testing.T) {
+	cases := []struct {
+		name     string
+		criteria setting.SelectedActionsCriteria
+		want     map[string]any
+	}{
+		{
+			name:     "three items are sent with patterns in the given order",
+			criteria: setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: []string{"z/*", "a/*"}},
+			want:     map[string]any{"github_owned_allowed": true, "verified_allowed": false, "patterns_allowed": []any{"z/*", "a/*"}},
+		},
+		{
+			name:     "false items and empty patterns are not omitted",
+			criteria: setting.SelectedActionsCriteria{GitHubOwnedAllowed: false, VerifiedAllowed: false, PatternsAllowed: []string{}},
+			want:     map[string]any{"github_owned_allowed": false, "verified_allowed": false, "patterns_allowed": []any{}},
+		},
+		{
+			name:     "nil patterns are sent as an empty array",
+			criteria: setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: true, PatternsAllowed: nil},
+			want:     map[string]any{"github_owned_allowed": true, "verified_allowed": true, "patterns_allowed": []any{}},
+		},
+		{
+			// 引用符、バックスラッシュ、ASCII 以外の文字は Go の %q でも JSON として正しく戻る。%q との違いを検出するのは制御文字である
+			name:     "patterns are escaped by the JSON rules",
+			criteria: setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: true, PatternsAllowed: []string{"a\"b\\c", "a\x01b", "日本語/*"}},
+			want:     map[string]any{"github_owned_allowed": true, "verified_allowed": true, "patterns_allowed": []any{"a\"b\\c", "a\x01b", "日本語/*"}},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := encodeSelectedActions(tc.criteria)
+			var got map[string]any
+			if err := json.Unmarshal(body, &got); err != nil {
+				t.Fatalf("encodeSelectedActions() = %q, not JSON: %v", body, err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("encodeSelectedActions() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMustMarshalJSONPanicsOnUnsupportedType(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("mustMarshalJSON() did not panic for a channel")
+		}
+	}()
+	_ = mustMarshalJSON(make(chan int))
+}
+
+// TestUpdateSelectedActions は、要求の形と、本文に encodeSelectedActions の結果を送ることを確かめる。本文の規則は TestEncodeSelectedActions が確かめる。
+//
+//trace:checks FR-011
+//trace:checks FR-013
+func TestUpdateSelectedActions(t *testing.T) {
+	var gotMethod, gotPath string
+	var gotHeader http.Header
+	var gotBody []byte
+	var gotContentLength int64
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath, gotHeader, gotContentLength = r.Method, r.URL.Path, r.Header, r.ContentLength
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	criteria := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: []string{"z/*", "a/*"}}
+	outcome, err := c.UpdateSelectedActions(t.Context(), mustReference(t, "owner/repo"), criteria)
+	if err != nil || outcome != UpdateSucceeded {
+		t.Fatalf("UpdateSelectedActions() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+	}
+
+	if gotMethod != http.MethodPut || gotPath != selectedActionsPath {
+		t.Errorf("request = %s %s, want PUT %s", gotMethod, gotPath, selectedActionsPath)
+	}
+	headers := map[string]string{
+		"Authorization":        "Bearer " + testToken,
+		"X-GitHub-Api-Version": "2026-03-10",
+		"Content-Type":         "application/json",
+	}
+	for name, value := range headers {
+		if v := gotHeader.Get(name); v != value {
+			t.Errorf("header %s = %q, want %q", name, v, value)
+		}
+	}
+	if gotContentLength != int64(len(gotBody)) {
+		t.Errorf("Content-Length = %d, want the body length %d", gotContentLength, len(gotBody))
+	}
+	var got map[string]any
+	if err := json.Unmarshal(gotBody, &got); err != nil {
+		t.Fatalf("request body %q is not JSON: %v", gotBody, err)
+	}
+	want := map[string]any{"github_owned_allowed": true, "verified_allowed": false, "patterns_allowed": []any{"z/*", "a/*"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("request body = %v, want %v", got, want)
+	}
+}
+
+// TestUpdateSelectedActionsRejected は、GitHub が競合として拒否した更新を失敗として返し、error がこの更新操作と対象を示し、再送しないことを確かめる。
+//
+//trace:checks FR-013
+//trace:checks INV-005
+func TestUpdateSelectedActionsRejected(t *testing.T) {
+	var received atomic.Int32
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		received.Add(1)
+		w.WriteHeader(http.StatusConflict)
+	})
+
+	outcome, err := c.UpdateSelectedActions(t.Context(), mustReference(t, "owner/repo"), setting.SelectedActionsCriteria{GitHubOwnedAllowed: true})
+	if outcome != UpdateRejected || !errors.Is(err, ErrConflict) {
+		t.Fatalf("UpdateSelectedActions() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrConflict)
+	}
+	if !strings.HasPrefix(err.Error(), "update selected actions owner/repo: ") {
+		t.Errorf("error = %q, want it to start with the operation and owner/repo", err)
+	}
+	if n := received.Load(); n != 1 {
+		t.Errorf("server received %d requests, want 1", n)
+	}
+}
