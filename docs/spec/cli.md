@@ -224,9 +224,9 @@ Repositories updated: 1
 
 更新は逐次実行します。論理的な設定変更の中では、先行する更新操作の成功を確認してから次の更新操作へ進み、別の論理的な設定変更へは、その期待状態を確認してから進みます。自動ロールバックは行いません。
 
-GitHub が更新を取得の結果に反映するまで時間がかかることがあるため、更新操作が成功したのに期待状態と一致しないときは、間隔を広げながら確認し直し、一致しないまま合計約30秒が経てば `failed` とします（[アーキテクチャ設計](../design/architecture.md) 6.2節）。
+GitHub が更新を取得の結果に反映するまで時間がかかることがあるため、更新操作が成功したのに期待状態と一致しないとき、または期待値と比べる設定を GitHub の取得条件により確認できないときは、間隔を広げながら確認し直し、一致を確認できないまま合計約30秒が経てば `failed` とします（[アーキテクチャ設計](../design/architecture.md) 6.2節）。
 
-一つのリポジトリに複数の変更予定があるときは、承認の前に提示する順も、論理的な設定変更を実行する順も、4章が定める変更予定の表示順に従います。
+一つのリポジトリに複数の変更予定があるときは、承認の前に提示する順も、論理的な設定変更を実行する順も、4章が定める変更予定の表示順に従います。承認の前に提示する変更予定の行は、4章と同じ形で示します。
 
 ### 5.2 結果の表示区分
 
@@ -250,6 +250,10 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 複数の API 更新操作のうち先行操作が成功し、後続操作を開始できなかった場合は、完了済み操作と未開始の操作を示し、変更全体を `failed` とします。更新を一度も開始していない変更は `not attempted` とし、変更前提の不成立と、先行する異常による停止のどちらに当たるかを区別して理由を示します。
 
 `failed` には、更新操作の失敗、更新操作の成否不明、成功応答後の期待状態の確認失敗、成功応答後の期待状態との不一致、成功応答後の変更対象外の設定の予期しない変化のいずれに当たるかを添えて示します。先行操作の成功後に後続操作を開始できなかった場合は、その旨を示します。変更対象外の設定の予期しない変化では、観測した変化を示しますが、reco に起因するとは断定しません。変更対象外の設定には、同じリポジトリのほかの管理設定も含みます。更新要求の応答を確認できない場合は成否不明とし、その後の再観測で期待状態が一致しても、更新操作の成否が判明したことにはならず、`updated` に変更しません。この再観測で変更対象外の設定の変化を観測した場合も、更新操作の結果と分けて示します。成否不明になった原因は、理由の行では区別せず、エラーとして示します。
+
+期待状態の確認失敗には、確認できなかった理由を括弧で添えます。期待値と比べる設定が GitHub の取得条件により観測不能だった場合は、6章の `unavailable` に添える理由と同じ文言を使います。値を確認できていないため、`does not match` とは表示しません。
+
+変更対象外の設定は、管理設定と同じ形の名前で示します。設定宣言に書けない `sha_pinning_required` は `actions.permissions.sha_pinning_required` と示します。この名前は表示のためのもので、[YAML 設定仕様](configuration.md) にこのパスはありません。
 
 更新操作が成功したのに期待状態と一致しない場合、reco は原因を断定しません。設定に既知の原因の候補があれば、`Possible cause:` として可能性の形で添えます。`general.allow_auto_merge` では、GitHub Free の非公開リポジトリで自動マージを利用できず、GitHub が更新を反映しないまま成功を応答する場合があることを示します（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）。更新操作の成否が不明な場合は添えません。
 
@@ -298,6 +302,25 @@ Applying changes...
       Other settings: general.allow_auto_merge changed false -> true (cause not determined)
     general.allow_auto_merge: not attempted
       Stopped: a preceding change did not complete
+
+Note: Some changes may already have been applied. No automatic rollback was performed.
+```
+
+```text
+Applying changes...
+  example/project-a: failed
+    Update request: succeeded
+    Desired state: not confirmed (GitHub Actions is disabled)
+
+Note: Some changes may already have been applied. No automatic rollback was performed.
+```
+
+```text
+Applying changes...
+  example/project-a: failed
+    Update request: succeeded
+    Desired state: matches
+    Other settings: actions.permissions.sha_pinning_required changed false -> true (cause not determined)
 
 Note: Some changes may already have been applied. No automatic rollback was performed.
 ```

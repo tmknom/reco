@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -60,10 +61,12 @@ type response struct {
 	disconnect bool
 }
 
-// recorder は stub が受けた要求の method、本文、Authorization を記録する。
+// recorder は stub が受けた要求の method、パス、本文、Authorization を記録する。
 type recorder struct {
 	mu      sync.Mutex
 	methods []string
+	// requests は要求ごとの「METHOD パス」。
+	requests []string
 	// bodies は要求ごとの JSON 本文。本文のない要求では nil。
 	bodies        []map[string]any
 	authorization string
@@ -73,6 +76,12 @@ func (r *recorder) Methods() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return slices.Clone(r.methods)
+}
+
+func (r *recorder) Requests() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.requests)
 }
 
 func (r *recorder) Bodies() []map[string]any {
@@ -105,6 +114,7 @@ func newSequenceServer(t *testing.T, responses ...response) (*url.URL, *recorder
 		}
 		rec.mu.Lock()
 		rec.methods = append(rec.methods, r.Method)
+		rec.requests = append(rec.requests, r.Method+" "+r.URL.Path)
 		rec.bodies = append(rec.bodies, body)
 		rec.authorization = r.Header.Get("Authorization")
 		resp := response{status: http.StatusInternalServerError}
@@ -153,6 +163,22 @@ func okWorkflowPermissions(defaultWorkflowPermissions string, canApprovePullRequ
 // okActionsPermissions は、Actions permissions または Selected actions の取得の正常応答。
 func okActionsPermissions(body string) response {
 	return response{status: http.StatusOK, body: body}
+}
+
+// okAllowedActions は、Actions が有効で、Actions 許可ポリシーが policy の Actions permissions の取得の正常応答。
+func okAllowedActions(policy string, shaPinningRequired bool) response {
+	return okActionsPermissions(fmt.Sprintf(`{"enabled": true, "allowed_actions": %q, "sha_pinning_required": %t}`, policy, shaPinningRequired))
+}
+
+// okActionsDisabled は、Actions が無効のリポジトリの Actions permissions の取得の正常応答。
+// GitHub は無効のときも sha_pinning_required を返すが、保存された値を示さない。
+func okActionsDisabled() response {
+	return okActionsPermissions(`{"enabled": false, "sha_pinning_required": false}`)
+}
+
+// okSelectedActions は、Selected actions の取得の正常応答。
+func okSelectedActions(githubOwnedAllowed, verifiedAllowed bool, patternsAllowed string) response {
+	return okActionsPermissions(fmt.Sprintf(`{"github_owned_allowed": %t, "verified_allowed": %t, "patterns_allowed": %s}`, githubOwnedAllowed, verifiedAllowed, patternsAllowed))
 }
 
 // actionsPermissionsConfigSource は、allowed_actions だけを policy で宣言する。
@@ -227,6 +253,41 @@ func canApprovePullRequestReviewsChange() changeplan.LogicalChange {
 	return changeplan.LogicalChange{Key: setting.CanApprovePullRequestReviews, Observed: setting.BoolValue(true), Desired: setting.BoolValue(false)}
 }
 
+// allowedActionsChange は、Actions 許可ポリシーを all から local_only にする論理的な設定変更。
+func allowedActionsChange() changeplan.LogicalChange {
+	return changeplan.LogicalChange{
+		Key:      setting.AllowedActions,
+		Observed: setting.AllowedActionsPolicyValue(setting.AllowedActionsAll),
+		Desired:  setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly),
+	}
+}
+
+// allowedActionsMismatch は、allowedActionsChange を導く適用可能な変更予定。
+func allowedActionsMismatch() changeplan.SettingPlan {
+	change := allowedActionsChange()
+	return changeplan.SettingPlan{
+		Key: change.Key, Observed: github.Observed(change.Observed), Desired: change.Desired, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+	}
+}
+
+// selectedActionsChange は、Actions 許可ポリシーが selected のまま、選択方式の Actions 許可条件の verified_allowed だけを
+// false から true にする論理的な設定変更。許可パターンは2つ持ち、順序だけの違いを作れるようにする。
+func selectedActionsChange() changeplan.LogicalChange {
+	return changeplan.LogicalChange{
+		Key:      setting.SelectedActions,
+		Observed: setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{PatternsAllowed: []string{"a/*", "b/*"}}),
+		Desired:  setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{"a/*", "b/*"}}),
+	}
+}
+
+// selectedActionsMismatch は、selectedActionsChange を導く適用可能な変更予定。
+func selectedActionsMismatch() changeplan.SettingPlan {
+	change := selectedActionsChange()
+	return changeplan.SettingPlan{
+		Key: change.Key, Observed: github.Observed(change.Observed), Desired: change.Desired, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+	}
+}
+
 func newPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.Plan {
 	t.Helper()
 	return changeplan.Plan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
@@ -240,7 +301,7 @@ func unknownMismatch() changeplan.SettingPlan {
 	return changeplan.SettingPlan{Key: unknownKey, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
 }
 
-// TestExecutableChanges は、承認を求める前に、すべての論理的な設定変更が実行できる更新操作を持つことを確かめる規則を確かめる。
+// TestExecutableChanges は、承認を求める前に、論理的な設定変更とその更新操作を確定する規則を確かめる。
 //
 //trace:checks INV-002
 //trace:checks FR-009
@@ -254,55 +315,47 @@ func TestExecutableChanges(t *testing.T) {
 		}
 	})
 
-	t.Run("logical change without an update operation after an executable one is an error naming the setting", func(t *testing.T) {
-		got, err := executableChanges(newPlan(t, allowAutoMergeMismatch(), unknownMismatch()))
-		if err == nil || !strings.Contains(err.Error(), string(unknownKey)) {
-			t.Errorf("executableChanges() = %v, %v, want an error containing %q", got, err, unknownKey)
-		}
+	t.Run("logical change without an update operation after an executable one panics before approval", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("executableChanges() did not panic")
+			}
+		}()
+		_, _ = executableChanges(newPlan(t, allowAutoMergeMismatch(), unknownMismatch()))
 	})
 
-	// Actions permissions の設定は更新操作を持たないため、適用可能な不一致でも承認を求める前に止める
-	actionsMismatches := []changeplan.SettingPlan{
-		{
-			Key: setting.AllowedActions, Observed: github.Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsAll)),
-			Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
-		},
-		{
-			Key:      setting.SelectedActions,
-			Observed: github.Observed(setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{PatternsAllowed: []string{}})),
-			Desired:  setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{}}),
-			Result:   changeplan.Mismatch, Applicability: changeplan.Applicable,
-		},
-	}
-	for _, mismatch := range actionsMismatches {
-		t.Run(string(mismatch.Key)+" mismatch is an error naming the setting", func(t *testing.T) {
-			got, err := executableChanges(newPlan(t, mismatch))
-			if err == nil || !strings.Contains(err.Error(), string(mismatch.Key)) {
-				t.Errorf("executableChanges() = %v, %v, want an error containing %q", got, err, mismatch.Key)
-			}
-		})
-	}
+	t.Run("mismatch with an update operation is returned as a logical change", func(t *testing.T) {
+		got, err := executableChanges(newPlan(t, allowedActionsMismatch()))
+		if err != nil {
+			t.Fatalf("executableChanges() error = %v", err)
+		}
+		if want := []changeplan.LogicalChange{allowedActionsChange()}; !reflect.DeepEqual(got, want) {
+			t.Errorf("executableChanges() = %+v, want %+v", got, want)
+		}
+	})
 }
 
 //trace:checks FR-009
 func TestWriteChangePlan(t *testing.T) {
-	target := mustReference(t, "owner/repo")
-
-	t.Run("changes are written in the given order with the configuration and the repository", func(t *testing.T) {
+	t.Run("planned changes are written in the plan order in the plan form without matches", func(t *testing.T) {
 		var out bytes.Buffer
-		changes := []changeplan.LogicalChange{deleteBranchOnMergeChange(), allowAutoMergeChange()}
-		if err := writeChangePlan(&out, "./reco.yaml", target, changes); err != nil {
+		match := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match}
+		p := newPlan(t, deleteBranchOnMergeMismatch(), match, selectedActionsMismatch())
+		if err := writeChangePlan(&out, "./reco.yaml", p); err != nil {
 			t.Fatalf("writeChangePlan() error = %v", err)
 		}
 		want := "Configuration: ./reco.yaml\nRepository: owner/repo\n" +
-			"  general.delete_branch_on_merge: false -> true\n  general.allow_auto_merge: false -> true\n\n"
+			"  general.delete_branch_on_merge: false -> true\n" +
+			"  actions.permissions.selected_actions:\n" +
+			"    github_owned_allowed: false, verified_allowed: false, patterns_allowed: [\"a/*\", \"b/*\"]\n" +
+			"    -> github_owned_allowed: false, verified_allowed: true, patterns_allowed: [\"a/*\", \"b/*\"]\n\n"
 		if out.String() != want {
 			t.Errorf("writeChangePlan() wrote %q, want %q", out.String(), want)
 		}
 	})
 
 	t.Run("write failure is returned", func(t *testing.T) {
-		err := writeChangePlan(failingWriter{}, "./reco.yaml", target, []changeplan.LogicalChange{allowAutoMergeChange()})
+		err := writeChangePlan(failingWriter{}, "./reco.yaml", newPlan(t, allowAutoMergeMismatch()))
 		if !errors.Is(err, errWrite) {
 			t.Errorf("writeChangePlan() error = %v, want %v", err, errWrite)
 		}
@@ -607,9 +660,15 @@ func TestRun(t *testing.T) {
 		if calls != 1 {
 			t.Errorf("approve calls = %d, want 1", calls)
 		}
-		want := []string{"GET", "GET", "GET", "PATCH", "GET", "GET", "GET", "PUT", "GET", "GET"}
-		if !slices.Equal(rec.Methods(), want) {
-			t.Errorf("requests = %v, want %v", rec.Methods(), want)
+		// actions.permissions を宣言しないため、Actions permissions には観測の要求も送らない
+		want := []string{
+			"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions/workflow",
+			"GET /repos/owner/repo", "PATCH /repos/owner/repo", "GET /repos/owner/repo",
+			"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions/workflow", "PUT /repos/owner/repo/actions/permissions/workflow",
+			"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions/workflow",
+		}
+		if !slices.Equal(rec.Requests(), want) {
+			t.Errorf("requests = %v, want %v", rec.Requests(), want)
 		}
 		if !strings.Contains(out.String(), "actions.workflow.default_workflow_permissions: write -> read") ||
 			!strings.Contains(out.String(), "owner/repo: updated") {
@@ -677,6 +736,66 @@ func TestRun(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("selected criteria change is applied without an actions permissions update", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t,
+			okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(false, false, `["a/*"]`),
+			okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(false, false, `["a/*"]`),
+			response{status: http.StatusNoContent},
+			okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(false, true, `["a/*"]`))
+		var out bytes.Buffer
+		calls := 0
+		source := "repositories:\n  - name: owner/repo\n    actions:\n      permissions:\n        allowed_actions: selected\n" +
+			"        selected_actions:\n          github_owned_allowed: false\n          verified_allowed: true\n          patterns_allowed: [\"a/*\"]\n"
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(source)}}
+
+		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		reads := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions", "GET /repos/owner/repo/actions/permissions/selected-actions"}
+		want := slices.Concat(reads, reads, []string{"PUT /repos/owner/repo/actions/permissions/selected-actions"}, reads)
+		if !slices.Equal(rec.Requests(), want) {
+			t.Errorf("requests = %v, want %v", rec.Requests(), want)
+		}
+		if calls != 1 || !strings.Contains(out.String(), "owner/repo: updated") {
+			t.Errorf("approve calls = %d, Out = %q, want one approval and the repository updated", calls, out.String())
+		}
+	})
+
+	t.Run("general, actions permissions, and workflow permissions changes are applied in the configuration order", func(t *testing.T) {
+		const (
+			getRepository         = "GET /repos/owner/repo"
+			getActionsPermissions = "GET /repos/owner/repo/actions/permissions"
+			getWorkflow           = "GET /repos/owner/repo/actions/permissions/workflow"
+		)
+		baseURL, rec := newSequenceServer(t,
+			okRepository(1, false, false), okAllowedActions("all", false), okWorkflowPermissions("write", false),
+			okRepository(1, false, false), okRepository(1, true, false), okRepository(1, true, false),
+			okRepository(1, true, false), okAllowedActions("all", false), response{status: http.StatusNoContent},
+			okRepository(1, true, false), okAllowedActions("local_only", false),
+			okRepository(1, true, false), okWorkflowPermissions("write", false), response{status: http.StatusNoContent},
+			okRepository(1, true, false), okWorkflowPermissions("read", false))
+		var out bytes.Buffer
+		calls := 0
+		source := configSource + "    actions:\n      permissions:\n        allowed_actions: local_only\n      workflow:\n        default_workflow_permissions: read\n"
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(source)}}
+
+		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		want := []string{
+			getRepository, getActionsPermissions, getWorkflow,
+			getRepository, "PATCH /repos/owner/repo", getRepository,
+			getRepository, getActionsPermissions, "PUT /repos/owner/repo/actions/permissions", getRepository, getActionsPermissions,
+			getRepository, getWorkflow, "PUT /repos/owner/repo/actions/permissions/workflow", getRepository, getWorkflow,
+		}
+		if !slices.Equal(rec.Requests(), want) {
+			t.Errorf("requests = %v, want %v", rec.Requests(), want)
+		}
+		if !strings.Contains(out.String(), "owner/repo: updated") {
+			t.Errorf("got Out %q, want the repository updated", out.String())
+		}
+	})
 
 	t.Run("matching actions permissions leave only the general change to apply", func(t *testing.T) {
 		baseURL, rec := newSequenceServer(t,

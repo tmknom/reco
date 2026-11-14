@@ -35,6 +35,8 @@ func (o ObservationResult) Value(key setting.Key) SettingObservation[setting.Val
 		return Observed(setting.BoolValue(o.General.AllowAutoMerge))
 	case setting.AllowedActions:
 		return valueObservation(o.ActionsPermissions.AllowedActions, setting.AllowedActionsPolicyValue)
+	case setting.SHAPinningRequired:
+		return valueObservation(o.ActionsPermissions.SHAPinningRequired, setting.BoolValue)
 	case setting.SelectedActions:
 		return valueObservation(o.ActionsPermissions.SelectedActions, setting.SelectedActionsCriteriaValue)
 	case setting.DefaultWorkflowPermissions:

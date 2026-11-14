@@ -14,25 +14,33 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-func TestObservedValue(t *testing.T) {
-	t.Run("observed value is returned", func(t *testing.T) {
-		got := observedValue(github.ObservationResult{General: github.General{AllowAutoMerge: true}}, setting.AllowAutoMerge)
-		if want := setting.BoolValue(true); !reflect.DeepEqual(got, want) {
-			t.Errorf("observedValue() = %v, want %v", got, want)
-		}
-	})
+// actionsEnabled は、Actions が有効で、Actions 許可ポリシーが selected でない Actions の実行許可の観測結果。
+func actionsEnabled(policy setting.AllowedActionsPolicy, shaPinningRequired bool) *github.ActionsPermissions {
+	return &github.ActionsPermissions{
+		Enabled:            true,
+		AllowedActions:     github.Observed(policy),
+		SHAPinningRequired: github.Observed(shaPinningRequired),
+		SelectedActions:    github.Unavailable[setting.SelectedActionsCriteria](github.UnavailableNotSelected),
+	}
+}
 
-	t.Run("unavailable setting panics", func(t *testing.T) {
-		defer func() {
-			if recover() == nil {
-				t.Error("observedValue() did not panic for an unavailable setting")
-			}
-		}()
-		observed := github.ObservationResult{ActionsPermissions: &github.ActionsPermissions{
-			AllowedActions: github.Unavailable[setting.AllowedActionsPolicy](github.UnavailableActionsDisabled),
-		}}
-		_ = observedValue(observed, setting.AllowedActions)
-	})
+// actionsSelected は、Actions 許可ポリシーが selected で、選択方式の Actions 許可条件が criteria の Actions の実行許可の観測結果。
+func actionsSelected(criteria setting.SelectedActionsCriteria) *github.ActionsPermissions {
+	return &github.ActionsPermissions{
+		Enabled:            true,
+		AllowedActions:     github.Observed(setting.AllowedActionsSelected),
+		SHAPinningRequired: github.Observed(false),
+		SelectedActions:    github.Observed(criteria),
+	}
+}
+
+// actionsDisabled は、Actions が無効のリポジトリの Actions の実行許可の観測結果。
+func actionsDisabled() *github.ActionsPermissions {
+	return &github.ActionsPermissions{
+		AllowedActions:     github.Unavailable[setting.AllowedActionsPolicy](github.UnavailableActionsDisabled),
+		SHAPinningRequired: github.Unavailable[bool](github.UnavailableActionsDisabled),
+		SelectedActions:    github.Unavailable[setting.SelectedActionsCriteria](github.UnavailableActionsDisabled),
+	}
 }
 
 //trace:checks INV-004
@@ -77,6 +85,32 @@ func TestCheckPrecondition(t *testing.T) {
 			}
 		})
 	}
+
+	// 選択方式の Actions 許可条件は、Actions 許可ポリシーが selected でなくなると観測不能になる
+	selectedCases := []struct {
+		name     string
+		observed *github.ActionsPermissions
+		want     preconditionCheck
+	}{
+		{
+			name:     "criteria differing only in the order of patterns hold",
+			observed: actionsSelected(setting.SelectedActionsCriteria{PatternsAllowed: []string{"b/*", "a/*"}}),
+			want:     preconditionHolds,
+		},
+		{
+			name:     "criteria that became unavailable are a current value change",
+			observed: actionsEnabled(setting.AllowedActionsAll, false),
+			want:     preconditionCurrentValueChanged,
+		},
+	}
+	for _, tc := range selectedCases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := github.ObservationResult{RepositoryID: 1, ActionsPermissions: tc.observed}
+			if got := checkPrecondition(1, selectedActionsChange(), observed); got != tc.want {
+				t.Errorf("checkPrecondition() = %v, want %v", got, tc.want)
+			}
+		})
+	}
 }
 
 //trace:checks FR-012
@@ -106,6 +140,31 @@ func TestConfirmDesiredState(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := confirmDesiredState(1, change, tc.observed); got != tc.want {
+				t.Errorf("confirmDesiredState() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	selectedCases := []struct {
+		name     string
+		observed *github.ActionsPermissions
+		want     desiredStateConfirmation
+	}{
+		{
+			name:     "criteria differing from the desired value only in the order of patterns match",
+			observed: actionsSelected(setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{"b/*", "a/*"}}),
+			want:     desiredStateMatches,
+		},
+		{
+			name:     "unavailable criteria are unavailable rather than a mismatch",
+			observed: actionsDisabled(),
+			want:     desiredStateUnavailable,
+		},
+	}
+	for _, tc := range selectedCases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := github.ObservationResult{RepositoryID: 1, ActionsPermissions: tc.observed}
+			if got := confirmDesiredState(1, selectedActionsChange(), observed); got != tc.want {
 				t.Errorf("confirmDesiredState() = %v, want %v", got, tc.want)
 			}
 		})
@@ -211,6 +270,57 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 				WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: true},
 			},
 			want: nil,
+		},
+		{
+			name:     "allowed_actions change reports different sha_pinning_required with both values",
+			change:   allowedActionsChange(),
+			endpoint: actionsPermissionsEndpoint,
+			before:   github.ObservationResult{ActionsPermissions: actionsEnabled(setting.AllowedActionsAll, false)},
+			after:    github.ObservationResult{ActionsPermissions: actionsEnabled(setting.AllowedActionsLocalOnly, true)},
+			want:     []unexpectedOutsideChange{{Key: setting.SHAPinningRequired, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+		},
+		{
+			// 比べられない値を変化なしと推測しない。完了にしないことは、期待状態の確認が観測不能になることで保たれる
+			name:     "sha_pinning_required unavailable after the update is not reported",
+			change:   allowedActionsChange(),
+			endpoint: actionsPermissionsEndpoint,
+			before:   github.ObservationResult{ActionsPermissions: actionsEnabled(setting.AllowedActionsAll, false)},
+			after:    github.ObservationResult{ActionsPermissions: actionsDisabled()},
+			want:     nil,
+		},
+		{
+			name:     "sha_pinning_required unavailable before the update is not reported",
+			change:   allowedActionsChange(),
+			endpoint: actionsPermissionsEndpoint,
+			before:   github.ObservationResult{ActionsPermissions: actionsDisabled()},
+			after:    github.ObservationResult{ActionsPermissions: actionsEnabled(setting.AllowedActionsLocalOnly, true)},
+			want:     nil,
+		},
+		{
+			name:     "sha_pinning_required unavailable both before and after the update is not reported",
+			change:   allowedActionsChange(),
+			endpoint: actionsPermissionsEndpoint,
+			before:   github.ObservationResult{ActionsPermissions: actionsDisabled()},
+			after:    github.ObservationResult{ActionsPermissions: actionsDisabled()},
+			want:     nil,
+		},
+		{
+			name:     "selected_actions change does not compare allowed_actions or sha_pinning_required",
+			change:   selectedActionsChange(),
+			endpoint: selectedActionsEndpoint,
+			before:   github.ObservationResult{ActionsPermissions: &github.ActionsPermissions{AllowedActions: github.Observed(setting.AllowedActionsSelected), SHAPinningRequired: github.Observed(false)}},
+			after:    github.ObservationResult{ActionsPermissions: &github.ActionsPermissions{AllowedActions: github.Observed(setting.AllowedActionsAll), SHAPinningRequired: github.Observed(true)}},
+			want:     nil,
+		},
+		{
+			// apply の実行からは到達しない組。選択方式の Actions 許可条件を変更対象外の設定にする更新エンドポイントがないため、
+			// 比較が値の判定を通ることだけを、一覧に依らない入力で確かめる
+			name:     "outside criteria differing only in the order of patterns are not reported",
+			change:   allowedActionsChange(),
+			endpoint: selectedActionsEndpoint,
+			before:   github.ObservationResult{ActionsPermissions: actionsSelected(setting.SelectedActionsCriteria{PatternsAllowed: []string{"a/*", "b/*"}})},
+			after:    github.ObservationResult{ActionsPermissions: actionsSelected(setting.SelectedActionsCriteria{PatternsAllowed: []string{"b/*", "a/*"}})},
+			want:     nil,
 		},
 	}
 	for _, tc := range cases {
@@ -537,21 +647,6 @@ func TestExecuteChange(t *testing.T) {
 		})
 	}
 
-	t.Run("change without an update operation panics before sending a request", func(t *testing.T) {
-		baseURL, rec := newSequenceServer(t)
-		change := changeplan.LogicalChange{Key: unknownKey, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true)}
-		defer func() {
-			if recover() == nil {
-				t.Error("executeChange() did not panic")
-			}
-			if len(rec.Methods()) != 0 {
-				t.Errorf("requests = %v, want none", rec.Methods())
-			}
-		}()
-
-		executeChange(context.Background(), newClient(baseURL), newPlan(t), change, elapsedAtOnce)
-	})
-
 	t.Run("interruption while waiting to read again after a mismatch is unconfirmed without another read", func(t *testing.T) {
 		baseURL, rec := newSequenceServer(t, okRepository(1, false, false), okRepository(1, true, false), okRepository(1, false, false), okRepository(1, true, false))
 		ctx, cancel := context.WithCancel(context.Background())
@@ -576,6 +671,182 @@ func TestExecuteChange(t *testing.T) {
 			t.Errorf("cause = %v, want it to wrap %v", got.cause, context.Canceled)
 		}
 	})
+}
+
+// TestExecuteChange_ActionsPermissions は、Actions の実行許可の領域の設定を一つの更新操作で変える論理的な設定変更について、
+// 観測と更新の要求の送り先と、観測不能を伴う変更結果を確かめる。
+//
+//trace:checks INV-001
+//trace:checks INV-004
+//trace:checks INV-005
+//trace:checks FR-010
+//trace:checks FR-012
+//trace:checks FR-013
+func TestExecuteChange_ActionsPermissions(t *testing.T) {
+	const (
+		getRepository         = "GET /repos/owner/repo"
+		getActionsPermissions = "GET /repos/owner/repo/actions/permissions"
+		getSelectedActions    = "GET /repos/owner/repo/actions/permissions/selected-actions"
+		putActionsPermissions = "PUT /repos/owner/repo/actions/permissions"
+		putSelectedActions    = "PUT /repos/owner/repo/actions/permissions/selected-actions"
+	)
+	noContent := response{status: http.StatusNoContent}
+	allDelays := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second}
+	cases := []struct {
+		name         string
+		change       changeplan.LogicalChange
+		responses    []response
+		wantRequests []string
+		// wantBodies は要求ごとの本文。nil なら本文を確かめない。
+		wantBodies  []map[string]any
+		wantDelays  []time.Duration
+		wantPrecond preconditionCheck
+		wantUpdate  github.UpdateOutcome
+		wantDesired desiredStateConfirmation
+		wantReason  github.UnavailableReason
+		wantOutside []unexpectedOutsideChange
+		wantResult  changeResult
+		wantCauses  []error
+	}{
+		{
+			name:   "all to local_only reads and updates only actions permissions and completes",
+			change: allowedActionsChange(),
+			responses: []response{
+				okRepository(1, false, false), okAllowedActions("all", false), noContent,
+				okRepository(1, false, false), okAllowedActions("local_only", false),
+			},
+			wantRequests: []string{getRepository, getActionsPermissions, putActionsPermissions, getRepository, getActionsPermissions},
+			wantBodies:   []map[string]any{nil, nil, {"enabled": true, "allowed_actions": "local_only"}, nil, nil},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
+		{
+			name:   "changed sha_pinning_required fails even if the policy matches",
+			change: allowedActionsChange(),
+			responses: []response{
+				okRepository(1, false, false), okAllowedActions("all", false), noContent,
+				okRepository(1, false, false), okAllowedActions("local_only", true),
+			},
+			wantRequests: []string{getRepository, getActionsPermissions, putActionsPermissions, getRepository, getActionsPermissions},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantOutside:  []unexpectedOutsideChange{{Key: setting.SHAPinningRequired, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			wantResult:   failed,
+		},
+		{
+			name:   "actions disabled on all six reads after the update is unavailable rather than a mismatch",
+			change: allowedActionsChange(),
+			responses: []response{
+				okRepository(1, false, false), okAllowedActions("all", false), noContent,
+				okRepository(1, false, false), okActionsDisabled(), okRepository(1, false, false), okActionsDisabled(),
+				okRepository(1, false, false), okActionsDisabled(), okRepository(1, false, false), okActionsDisabled(),
+				okRepository(1, false, false), okActionsDisabled(), okRepository(1, false, false), okActionsDisabled(),
+			},
+			wantRequests: []string{
+				getRepository, getActionsPermissions, putActionsPermissions,
+				getRepository, getActionsPermissions, getRepository, getActionsPermissions, getRepository, getActionsPermissions,
+				getRepository, getActionsPermissions, getRepository, getActionsPermissions, getRepository, getActionsPermissions,
+			},
+			wantDelays:  allDelays,
+			wantPrecond: preconditionHolds,
+			wantUpdate:  github.UpdateSucceeded,
+			wantDesired: desiredStateUnavailable,
+			wantReason:  github.UnavailableActionsDisabled,
+			wantResult:  failed,
+		},
+		{
+			name:   "actions disabled only on the first read after the update is complete once the desired value is read",
+			change: allowedActionsChange(),
+			responses: []response{
+				okRepository(1, false, false), okAllowedActions("all", false), noContent,
+				okRepository(1, false, false), okActionsDisabled(), okRepository(1, false, false), okAllowedActions("local_only", false),
+			},
+			wantRequests: []string{
+				getRepository, getActionsPermissions, putActionsPermissions,
+				getRepository, getActionsPermissions, getRepository, getActionsPermissions,
+			},
+			wantDelays:  allDelays[:1],
+			wantPrecond: preconditionHolds,
+			wantUpdate:  github.UpdateSucceeded,
+			wantDesired: desiredStateMatches,
+			wantResult:  completed,
+		},
+		{
+			name:   "selected criteria change sends only the selected actions update and completes",
+			change: selectedActionsChange(),
+			responses: []response{
+				okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(false, false, `["a/*", "b/*"]`), noContent,
+				okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(false, true, `["a/*", "b/*"]`),
+			},
+			wantRequests: []string{
+				getRepository, getActionsPermissions, getSelectedActions, putSelectedActions,
+				getRepository, getActionsPermissions, getSelectedActions,
+			},
+			wantBodies: []map[string]any{
+				nil, nil, nil, {"github_owned_allowed": false, "verified_allowed": true, "patterns_allowed": []any{"a/*", "b/*"}},
+				nil, nil, nil,
+			},
+			wantPrecond: preconditionHolds,
+			wantUpdate:  github.UpdateSucceeded,
+			wantDesired: desiredStateMatches,
+			wantResult:  completed,
+		},
+		{
+			name:         "selected criteria change with the policy no longer selected sends no update request",
+			change:       selectedActionsChange(),
+			responses:    []response{okRepository(1, false, false), okAllowedActions("all", false)},
+			wantRequests: []string{getRepository, getActionsPermissions},
+			wantPrecond:  preconditionCurrentValueChanged,
+			wantResult:   notAttempted,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, rec := newSequenceServer(t, tc.responses...)
+			delays := &delayRecorder{}
+
+			got := executeChange(context.Background(), newClient(baseURL), newPlan(t), tc.change, delays.after)
+
+			if !slices.Equal(rec.Requests(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", rec.Requests(), tc.wantRequests)
+			}
+			if tc.wantBodies != nil && !reflect.DeepEqual(rec.Bodies(), tc.wantBodies) {
+				t.Errorf("request bodies = %v, want %v", rec.Bodies(), tc.wantBodies)
+			}
+			if !slices.Equal(delays.delays, tc.wantDelays) {
+				t.Errorf("delays = %v, want %v", delays.delays, tc.wantDelays)
+			}
+			if got.precondition != tc.wantPrecond {
+				t.Errorf("precondition = %v, want %v", got.precondition, tc.wantPrecond)
+			}
+			if got.update != tc.wantUpdate {
+				t.Errorf("update = %v, want %v", got.update, tc.wantUpdate)
+			}
+			if got.confirmation != tc.wantDesired {
+				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
+			}
+			if got.desiredUnavailableReason != tc.wantReason {
+				t.Errorf("desiredUnavailableReason = %v, want %v", got.desiredUnavailableReason, tc.wantReason)
+			}
+			if !reflect.DeepEqual(got.unexpectedOutsideChanges, tc.wantOutside) {
+				t.Errorf("unexpectedOutsideChanges = %v, want %v", got.unexpectedOutsideChanges, tc.wantOutside)
+			}
+			if got.result() != tc.wantResult {
+				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)
+			}
+			for _, want := range tc.wantCauses {
+				if !errors.Is(got.cause, want) {
+					t.Errorf("cause = %v, want it to wrap %v", got.cause, want)
+				}
+			}
+			if len(tc.wantCauses) == 0 && got.cause != nil {
+				t.Errorf("cause = %v, want nil", got.cause)
+			}
+		})
+	}
 }
 
 // TestExecuteChanges は、論理的な設定変更を順に実行し、完了以外の変更結果が出たら残りに要求を送らずに止める規則を確かめる。

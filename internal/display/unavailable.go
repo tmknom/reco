@@ -7,14 +7,19 @@ import (
 	"github.com/tmknom/reco/internal/github"
 )
 
-// UnavailableText は観測不能を CLI 仕様の unavailable (<理由>) の形で返す。未定義の理由は不変条件の破れとして panic する。
+// UnavailableReasonText は観測不能の理由を CLI 仕様の文言で返す。未定義の理由は不変条件の破れとして panic する。
 // 定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
-func UnavailableText(reason github.UnavailableReason) string {
+func UnavailableReasonText(reason github.UnavailableReason) string {
 	switch reason {
 	case github.UnavailableActionsDisabled:
-		return "unavailable (GitHub Actions is disabled)"
+		return "GitHub Actions is disabled"
 	case github.UnavailableNotSelected:
-		return `unavailable (allowed_actions is not "selected")`
+		return `allowed_actions is not "selected"`
 	}
 	panic(fmt.Sprintf("display: undefined unavailable reason %d", int(reason)))
+}
+
+// UnavailableText は観測不能を CLI 仕様の unavailable (<理由>) の形で返す。
+func UnavailableText(reason github.UnavailableReason) string {
+	return "unavailable (" + UnavailableReasonText(reason) + ")"
 }

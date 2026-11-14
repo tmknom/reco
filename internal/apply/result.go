@@ -12,8 +12,10 @@ type changeRecord struct {
 	change       changeplan.LogicalChange
 	precondition preconditionCheck
 	// update は updateStarted が真のときだけ意味を持つ。偽のときのゼロ値は、開始しなかった更新操作の結果ではない。
-	update                   github.UpdateOutcome
-	confirmation             desiredStateConfirmation
+	update       github.UpdateOutcome
+	confirmation desiredStateConfirmation
+	// desiredUnavailableReason は confirmation が desiredStateUnavailable のときだけ意味を持つ。
+	desiredUnavailableReason github.UnavailableReason
 	unexpectedOutsideChanges []unexpectedOutsideChange
 	// cause は、変更前提の確認、更新操作、更新後の観測とその前の待機のうち、失敗した操作の error。
 	cause error
@@ -42,7 +44,8 @@ const (
 )
 
 // desiredStateConfirmation は、更新後の観測で期待状態を確かめた結果。
-// desiredStateUnconfirmed と desiredStateIdentityMismatch は、どちらも確認失敗を理由で分けたもの。
+// desiredStateUnconfirmed、desiredStateIdentityMismatch、desiredStateUnavailable は、どれも確認失敗を理由で分けたもの。
+// desiredStateUnavailable は、期待値と比べる設定が取得条件により観測不能だったことを表す。
 type desiredStateConfirmation int
 
 const (
@@ -51,6 +54,7 @@ const (
 	desiredStateMismatch
 	desiredStateUnconfirmed
 	desiredStateIdentityMismatch
+	desiredStateUnavailable
 )
 
 // unexpectedOutsideChange は、変更対象外の設定の予期しない変化。

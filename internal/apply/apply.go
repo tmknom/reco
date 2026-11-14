@@ -51,7 +51,7 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 	if len(changes) == 0 {
 		return writeNoChanges(cfg.Out)
 	}
-	if err := writeChangePlan(cfg.Out, cfg.ConfigPath, p.Target, changes); err != nil {
+	if err := writeChangePlan(cfg.Out, cfg.ConfigPath, p); err != nil {
 		return err
 	}
 	if err := cfg.Approve(ctx); err != nil {
@@ -69,17 +69,15 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 }
 
 // executableChanges は、変更計画の論理的な設定変更を実行順で返す。
-// 実行できる更新操作を持たないものがあれば、承認したあとで実行できないと分かるより前に止めるため、
-// 承認を求める前の error にする。
+// 論理的な設定変更にできない変更予定の拒否は、論理的な設定変更を導く changeplan が持つ。
+// 更新操作は承認の前にすべて引き、欠けていれば、先の変更を更新したあとではなく、更新要求を一つも送る前に止める。
 func executableChanges(p changeplan.Plan) ([]changeplan.LogicalChange, error) {
 	changes, err := p.LogicalChanges()
 	if err != nil {
 		return nil, err
 	}
 	for _, change := range changes {
-		if _, ok := updateOperationOf(change.Key); !ok {
-			return nil, fmt.Errorf("%s: %s cannot be applied: no update operation", p.Target, change.Key)
-		}
+		updateOperationOf(change.Key)
 	}
 	return changes, nil
 }

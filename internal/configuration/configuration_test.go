@@ -92,6 +92,15 @@ func fillDesiredValues(v reflect.Value) int {
 	return n
 }
 
+func TestDesiredState_ValueOfUndeclarableSettingPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("Value() did not panic for a setting that cannot be declared")
+		}
+	}()
+	_, _ = DesiredState{}.Value(setting.SHAPinningRequired)
+}
+
 func TestDesiredState_ValueOfUnknownSettingPanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {

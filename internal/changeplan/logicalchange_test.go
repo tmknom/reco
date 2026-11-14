@@ -50,10 +50,48 @@ func TestPlan_LogicalChanges(t *testing.T) {
 		}
 	})
 
+	policyChange := func(observed, desired setting.AllowedActionsPolicy, effects ...SideEffect) SettingPlan {
+		return SettingPlan{
+			Key: setting.AllowedActions, Observed: github.Observed(setting.AllowedActionsPolicyValue(observed)), Desired: setting.AllowedActionsPolicyValue(desired),
+			Result: Mismatch, Applicability: Applicable, SideEffects: effects,
+		}
+	}
+
+	t.Run("applicable mismatch without side effects becomes a logical change", func(t *testing.T) {
+		got, err := newPlan(policyChange(setting.AllowedActionsAll, setting.AllowedActionsLocalOnly)).LogicalChanges()
+		if err != nil {
+			t.Fatalf("LogicalChanges() error = %v", err)
+		}
+		want := []LogicalChange{{
+			Key:      setting.AllowedActions,
+			Observed: setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly),
+		}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
+		}
+	})
+
+	// 遷移先が selected のポリシーの変更予定は、それ単独では副作用のない不一致だが、YAML 設定仕様の allowed_actions と
+	// selected_actions の組み合わせの規則により同じ計画に必ず並ぶ、選択方式の Actions 許可条件の比較不能な変更予定で拒否される
+	t.Run("policy change to selected with not-comparable criteria is an error", func(t *testing.T) {
+		criteria := SettingPlan{
+			Key: setting.SelectedActions, Observed: github.Unavailable[setting.Value](github.UnavailableNotSelected),
+			Desired: setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{GitHubOwnedAllowed: true}), Result: NotComparable, Applicability: Applicable,
+		}
+		if got, err := newPlan(policyChange(setting.AllowedActionsAll, setting.AllowedActionsSelected), criteria).LogicalChanges(); err == nil {
+			t.Errorf("LogicalChanges() = %+v, error = nil, want an error", got)
+		}
+	})
+
+	lost := SideEffect{Key: setting.SelectedActions, Observed: github.Observed(setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{GitHubOwnedAllowed: true}))}
 	errorCases := []struct {
 		name    string
 		setting SettingPlan
 	}{
+		{
+			name:    "applicable mismatch with a side effect is an error because the lost value cannot be checked before the update",
+			setting: policyChange(setting.AllowedActionsSelected, setting.AllowedActionsAll, lost),
+		},
 		{
 			name:    "not-applicable mismatch is an error",
 			setting: SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: NotApplicable},

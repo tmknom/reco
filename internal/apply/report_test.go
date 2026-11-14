@@ -186,6 +186,15 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 				rollbackNote,
 		},
 		{
+			name: "success with an unavailable desired value shows the unavailable reason",
+			record: changeRecord{
+				change: allowedActionsChange(), precondition: preconditionHolds, update: github.UpdateSucceeded,
+				confirmation: desiredStateUnavailable, desiredUnavailableReason: github.UnavailableActionsDisabled,
+			},
+			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not confirmed (GitHub Actions is disabled)\n\n" +
+				rollbackNote,
+		},
+		{
 			name:   "success with a mismatch shows the possible cause after the desired state",
 			record: changeRecord{change: change, precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateMismatch},
 			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: does not match\n" +

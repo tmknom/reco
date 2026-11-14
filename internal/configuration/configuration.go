@@ -56,6 +56,9 @@ func (d DesiredState) Value(key setting.Key) (value setting.Value, ok bool) {
 		return setting.Value{}, false
 	case setting.CanApprovePullRequestReviews:
 		return optionalBoolValue(d.WorkflowPermissions.CanApprovePullRequestReviews)
+	case setting.SHAPinningRequired:
+		// 宣言を受け付けない設定。(Value{}, false) は期待値の省略と読めるため、返さずに止める。
+		panic("configuration: " + string(key) + " cannot be declared")
 	}
 	panic(fmt.Sprintf("unknown setting %q", key))
 }
