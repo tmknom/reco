@@ -5,6 +5,8 @@
 package configuration
 
 import (
+	"fmt"
+
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -25,6 +27,33 @@ type RepositoryDeclaration struct {
 type DesiredState struct {
 	General             General
 	WorkflowPermissions WorkflowPermissions
+}
+
+// Value は、key の設定の期待値を返す。期待値が省略されていれば ok は偽になる。
+// 未知の設定は不変条件の破れとして panic する。
+// 設定を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+func (d DesiredState) Value(key setting.Key) (value setting.Value, ok bool) {
+	switch key {
+	case setting.DeleteBranchOnMerge:
+		return optionalBoolValue(d.General.DeleteBranchOnMerge)
+	case setting.AllowAutoMerge:
+		return optionalBoolValue(d.General.AllowAutoMerge)
+	case setting.DefaultWorkflowPermissions:
+		if level := d.WorkflowPermissions.DefaultWorkflowPermissions; level != nil {
+			return setting.PermissionLevelValue(*level), true
+		}
+		return setting.Value{}, false
+	case setting.CanApprovePullRequestReviews:
+		return optionalBoolValue(d.WorkflowPermissions.CanApprovePullRequestReviews)
+	}
+	panic(fmt.Sprintf("unknown setting %q", key))
+}
+
+func optionalBoolValue(b *bool) (setting.Value, bool) {
+	if b == nil {
+		return setting.Value{}, false
+	}
+	return setting.BoolValue(*b), true
 }
 
 // General はリポジトリ一般設定の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。

@@ -27,8 +27,8 @@ type Plan struct {
 type SettingPlan struct {
 	Key setting.Key
 	// Observed は計画時の観測値。比較不能の設定では値がない。
-	Observed      SettingValue
-	Desired       SettingValue
+	Observed      setting.Value
+	Desired       setting.Value
 	Result        ReconciliationResult
 	Applicability Applicability
 }

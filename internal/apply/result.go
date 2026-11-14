@@ -42,7 +42,7 @@ const (
 )
 
 // desiredStateConfirmation は、更新後の観測で期待状態を確かめた結果。
-// desiredStateUnconfirmed と desiredStateRepositoryChanged は、どちらも確認失敗を理由で分けたもの。
+// desiredStateUnconfirmed と desiredStateIdentityMismatch は、どちらも確認失敗を理由で分けたもの。
 type desiredStateConfirmation int
 
 const (
@@ -50,13 +50,13 @@ const (
 	desiredStateMatches
 	desiredStateMismatch
 	desiredStateUnconfirmed
-	desiredStateRepositoryChanged
+	desiredStateIdentityMismatch
 )
 
 // unexpectedOutsideChange は、変更対象外の設定の予期しない変化。
 type unexpectedOutsideChange struct {
 	Key           setting.Key
-	Before, After changeplan.SettingValue
+	Before, After setting.Value
 }
 
 // updateStarted は、更新操作を開始したかを返す。

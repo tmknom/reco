@@ -3,7 +3,6 @@ package changeplan
 import (
 	"fmt"
 
-	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
 
@@ -12,8 +11,8 @@ import (
 type LogicalChange struct {
 	Key setting.Key
 	// Observed は計画時の観測値で、承認時の値として変更前提の基準になる。
-	Observed SettingValue
-	Desired  SettingValue
+	Observed setting.Value
+	Desired  setting.Value
 }
 
 // LogicalChanges は、変更予定から論理的な設定変更を導く。
@@ -31,9 +30,4 @@ func (p Plan) LogicalChanges() ([]LogicalChange, error) {
 		changes = append(changes, LogicalChange{Key: s.Key, Observed: s.Observed, Desired: s.Desired})
 	}
 	return changes, nil
-}
-
-// Reconcile は、c の期待値を observed と照合する。observed は c の設定の領域を読み取った観測の結果に限る。
-func (c LogicalChange) Reconcile(observed github.ObservationResult) ReconciliationResult {
-	return compare(ObservedValue(c.Key, observed), c.Desired)
 }

@@ -1,4 +1,4 @@
-// Package setting は、どの設定や設定の領域を指すかの識別と、設定が取り得る値の定義を持つ。
+// Package setting は、どの設定や設定の領域を指すかの識別と、設定の値を持つ。
 package setting
 
 import "fmt"

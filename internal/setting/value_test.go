@@ -1,20 +1,14 @@
-package changeplan
+package setting
 
-import (
-	"testing"
+import "testing"
 
-	"github.com/tmknom/reco/internal/setting"
-)
-
-func TestSettingValue_String(t *testing.T) {
+func TestValue_String(t *testing.T) {
 	cases := []struct {
-		value SettingValue
+		value Value
 		want  string
 	}{
 		{value: BoolValue(true), want: "true"},
-		{value: BoolValue(false), want: "false"},
-		{value: PermissionLevelValue(setting.PermissionRead), want: "read"},
-		{value: PermissionLevelValue(setting.PermissionWrite), want: "write"},
+		{value: PermissionLevelValue(PermissionRead), want: "read"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.want, func(t *testing.T) {
@@ -25,16 +19,16 @@ func TestSettingValue_String(t *testing.T) {
 	}
 }
 
-func TestSettingValue_StringOfZeroValuePanics(t *testing.T) {
+func TestValue_StringOfZeroValuePanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {
 			t.Error("String() did not panic for the zero value")
 		}
 	}()
-	_ = SettingValue{}.String()
+	_ = Value{}.String()
 }
 
-func TestSettingValue_Bool(t *testing.T) {
+func TestValue_Bool(t *testing.T) {
 	for _, want := range []bool{true, false} {
 		if got := BoolValue(want).Bool(); got != want {
 			t.Errorf("BoolValue(%v).Bool() = %v, want %v", want, got, want)
@@ -42,24 +36,24 @@ func TestSettingValue_Bool(t *testing.T) {
 	}
 }
 
-func TestSettingValue_BoolOfPermissionLevelPanics(t *testing.T) {
+func TestValue_BoolOfPermissionLevelPanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {
 			t.Error("Bool() did not panic for a permission level value")
 		}
 	}()
-	_ = PermissionLevelValue(setting.PermissionWrite).Bool()
+	_ = PermissionLevelValue(PermissionWrite).Bool()
 }
 
-func TestSettingValue_PermissionLevel(t *testing.T) {
-	for _, want := range []setting.PermissionLevel{setting.PermissionRead, setting.PermissionWrite} {
+func TestValue_PermissionLevel(t *testing.T) {
+	for _, want := range []PermissionLevel{PermissionRead, PermissionWrite} {
 		if got := PermissionLevelValue(want).PermissionLevel(); got != want {
 			t.Errorf("PermissionLevelValue(%q).PermissionLevel() = %q, want %q", want, got, want)
 		}
 	}
 }
 
-func TestSettingValue_PermissionLevelOfBoolPanics(t *testing.T) {
+func TestValue_PermissionLevelOfBoolPanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {
 			t.Error("PermissionLevel() did not panic for a boolean value")

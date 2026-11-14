@@ -67,7 +67,7 @@ func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan
 		return record
 	}
 	// ID が変わった観測は別のリポジトリの値のため、更新直前の値と比べない。
-	if record.confirmation != desiredStateRepositoryChanged {
+	if record.confirmation != desiredStateIdentityMismatch {
 		record.unexpectedOutsideChanges = unexpectedOutsideChanges(change, before, observed)
 	}
 	return record
@@ -105,7 +105,7 @@ func waitFor(ctx context.Context, after func(time.Duration) <-chan time.Time, d 
 }
 
 // updateOperationFunc は、target の設定を期待値 desired に更新する更新要求を一度送る。
-type updateOperationFunc func(ctx context.Context, client *github.Client, target repository.Reference, desired changeplan.SettingValue) (github.UpdateOutcome, error)
+type updateOperationFunc func(ctx context.Context, client *github.Client, target repository.Reference, desired setting.Value) (github.UpdateOutcome, error)
 
 // updateOperation は、key の論理的な設定変更を実現する更新操作を返す。なければ ok は偽になる。
 // 承認前の判定と実行時の選択が同じ定義を使い、片方だけ設定を足し忘れることがないよう、一つの関数にする。
@@ -117,7 +117,7 @@ func updateOperation(key setting.Key) (update updateOperationFunc, ok bool) {
 	case setting.AllowAutoMerge:
 		return boolUpdate((*github.Client).UpdateAllowAutoMerge), true
 	case setting.DefaultWorkflowPermissions:
-		return func(ctx context.Context, client *github.Client, target repository.Reference, desired changeplan.SettingValue) (github.UpdateOutcome, error) {
+		return func(ctx context.Context, client *github.Client, target repository.Reference, desired setting.Value) (github.UpdateOutcome, error) {
 			return client.UpdateDefaultWorkflowPermissions(ctx, target, desired.PermissionLevel())
 		}, true
 	case setting.CanApprovePullRequestReviews:
@@ -129,7 +129,7 @@ func updateOperation(key setting.Key) (update updateOperationFunc, ok bool) {
 
 // boolUpdate は、真偽値を受ける更新メソッドを、期待値を受ける更新操作にする。
 func boolUpdate(update func(*github.Client, context.Context, repository.Reference, bool) (github.UpdateOutcome, error)) updateOperationFunc {
-	return func(ctx context.Context, client *github.Client, target repository.Reference, desired changeplan.SettingValue) (github.UpdateOutcome, error) {
+	return func(ctx context.Context, client *github.Client, target repository.Reference, desired setting.Value) (github.UpdateOutcome, error) {
 		return update(client, ctx, target, desired.Bool())
 	}
 }
@@ -140,7 +140,7 @@ func checkPrecondition(approvedID repository.ID, change changeplan.LogicalChange
 	if observed.RepositoryID != approvedID {
 		return preconditionIdentityMismatch
 	}
-	if changeplan.ObservedValue(change.Key, observed) != change.Observed {
+	if observed.Value(change.Key) != change.Observed {
 		return preconditionCurrentValueChanged
 	}
 	return preconditionHolds
@@ -149,9 +149,9 @@ func checkPrecondition(approvedID repository.ID, change changeplan.LogicalChange
 // confirmDesiredState は、更新後の観測が期待状態と一致するかを判定する。
 func confirmDesiredState(approvedID repository.ID, change changeplan.LogicalChange, observed github.ObservationResult) desiredStateConfirmation {
 	if observed.RepositoryID != approvedID {
-		return desiredStateRepositoryChanged
+		return desiredStateIdentityMismatch
 	}
-	if change.Reconcile(observed) == changeplan.Match {
+	if observed.Value(change.Key) == change.Desired {
 		return desiredStateMatches
 	}
 	return desiredStateMismatch
@@ -165,7 +165,7 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before, after git
 		if key == change.Key {
 			continue
 		}
-		b, a := changeplan.ObservedValue(key, before), changeplan.ObservedValue(key, after)
+		b, a := before.Value(key), after.Value(key)
 		if b != a {
 			changes = append(changes, unexpectedOutsideChange{Key: key, Before: b, After: a})
 		}

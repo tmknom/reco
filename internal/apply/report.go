@@ -157,7 +157,7 @@ func confirmationText(d desiredStateConfirmation, update github.UpdateOutcome) s
 		return "does not match"
 	case desiredStateUnconfirmed:
 		return "not confirmed (read failed)"
-	case desiredStateRepositoryChanged:
+	case desiredStateIdentityMismatch:
 		return "not confirmed (repository ID changed)"
 	default:
 		return "not checked"
