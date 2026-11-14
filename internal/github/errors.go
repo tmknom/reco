@@ -20,6 +20,9 @@ var (
 	// ErrUnprocessable は、GitHub が要求の内容を処理できないと応答したことを表す。
 	// GitHub は値の検証の失敗にも過剰な要求にも 422 を返すため、文言で原因を断定しない。
 	ErrUnprocessable = errors.New("request not processable")
+	// ErrConflict は、GitHub が要求を対象の現在の状態と両立しないと応答したことを表す。
+	// GitHub は外部主体による直前の変更にも所有者による制限にも 409 を返すため、文言で原因を断定しない。
+	ErrConflict = errors.New("request conflicts with the current state")
 	// ErrRedirect は、リダイレクト応答を受けて追従しなかったことを表す。
 	ErrRedirect = errors.New("redirect not followed")
 	// ErrUnexpectedResponse は、取得や更新の契約に適合しない応答を受けたことを表す。
@@ -43,6 +46,8 @@ func classifyFailure(status int, header http.Header) error {
 		kind = ErrForbidden
 	case status == http.StatusNotFound:
 		kind = ErrNotFound
+	case status == http.StatusConflict:
+		kind = ErrConflict
 	case status == http.StatusUnprocessableEntity:
 		kind = ErrUnprocessable
 	case status == http.StatusTooManyRequests:

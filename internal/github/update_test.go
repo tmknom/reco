@@ -382,8 +382,7 @@ func TestUpdateWorkflowPermissionsRejected(t *testing.T) {
 	}{
 		{name: "403 is rejected as forbidden", status: http.StatusForbidden, want: ErrForbidden},
 		{name: "404 is rejected as not found", status: http.StatusNotFound, want: ErrNotFound},
-		// 409 には専用の失敗の種類がなく、4xx として拒否になる
-		{name: "409 is rejected as unexpected response", status: http.StatusConflict, want: ErrUnexpectedResponse},
+		{name: "409 is rejected as conflict", status: http.StatusConflict, want: ErrConflict},
 		{name: "422 is rejected as unprocessable", status: http.StatusUnprocessableEntity, want: ErrUnprocessable},
 	}
 	for _, tc := range cases {

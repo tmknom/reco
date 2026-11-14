@@ -300,6 +300,27 @@ Workflow permissions:
   can_approve_pull_request_reviews: false
 ```
 
+`allowed_actions` が `selected` のときは、`selected_actions` の3項目を字下げして示します。`patterns_allowed` は、パターンを二重引用符で囲んで並べます。空の集合は `[]` と示します。
+
+```text
+Actions permissions:
+  enabled: true
+  allowed_actions: selected
+  selected_actions:
+    github_owned_allowed: true
+    verified_allowed: false
+    patterns_allowed: ["actions/checkout@v4", "example/*"]
+```
+
+Actions が無効のリポジトリでは、`allowed_actions` と `selected_actions` を取得できません。
+
+```text
+Actions permissions:
+  enabled: false
+  allowed_actions: unavailable (GitHub Actions is disabled)
+  selected_actions: unavailable (GitHub Actions is disabled)
+```
+
 権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。`unavailable` と表示せず、欠けた項目を示してエラーとします。
 
 `enabled` は観測・表示する値ですが、設定宣言に書ける設定ではありません。`allowed_actions` を宣言したときに Actions が有効であることを期待状態に含める扱いは、[YAML 設定仕様](configuration.md) 4章が定めます。`show` の表示は人が読むためのものであり、設定宣言として再利用できる形式ではありません。

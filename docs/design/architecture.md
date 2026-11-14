@@ -118,6 +118,17 @@ API の成功応答を受け取ったことだけでは、必要な設定値を�
 
 リポジトリ ID を返す `GET /repos/{owner}/{repo}` は General の値も返すため、どの観測も General を含みます。Workflow permissions の応答はリポジトリ ID を含まないため（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 5.1）、Workflow permissions は別の読み取り要求で読み、その要求は `GET /repos/{owner}/{repo}` が成功したときだけ送ります。いずれかの要求が失敗すれば観測操作の失敗であり、取得できた値だけの観測結果は作りません。
 
+Actions の実行許可は、二つの読み取り要求で読みます。`GET /repos/{owner}/{repo}/actions/permissions` は `GET /repos/{owner}/{repo}` が成功したときだけ送ります。`GET /repos/{owner}/{repo}/actions/permissions/selected-actions` は、Actions 許可ポリシーを `selected` と観測したときだけ送ります。それ以外のときは GitHub が取得を拒否するためです（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 4章）。一回の観測で複数の設定の領域を読むときは、General、Actions の実行許可、Workflow permissions の順に読み取り要求を送ります。
+
+Actions の実行許可で、取得条件による観測不能として扱うのは次の二つです。
+
+| 取得条件 | 観測不能になる設定 | 根拠 |
+|---|---|---|
+| Actions が無効（`enabled: false`） | Actions 許可ポリシー、`sha_pinning_required`、選択方式の Actions 許可条件 | 応答に `allowed_actions` が含まれず、`sha_pinning_required` は保存された値によらず `false` で返る（GitHub Actions 権限 API 仕様 3.1） |
+| Actions 許可ポリシーが `selected` でない | 選択方式の Actions 許可条件 | 取得が `409` を返し、値は返らない（GitHub Actions 権限 API 仕様 4章） |
+
+Actions が有効のときに `allowed_actions` または `sha_pinning_required` が欠けた応答と、3項目のいずれかが欠けた Selected actions の応答は、取得契約に適合しない応答です。`sha_pinning_required` と Selected actions の3項目は公式ドキュメント上は任意のフィールドですが、欠落の理由を確認できないため、既定値で補いません。`selected` と観測したあとの Selected actions の取得が `409` を返した場合も、観測不能にせず観測操作の失敗とします（[ドメインモデル](domain.md) の現在状態・観測結果・観測失敗）。
+
 Reconciliation は管理範囲内の期待状態と観測結果を比較し、一致（Match）、不一致（Mismatch）、比較不能（Not Comparable）を返します。比較可能な集合値は設定の意味に沿って比較し、例えば許可パターンは要素の順序だけで差分を作りません。Change Execution が変更前提と変更対象外の設定を比べるときも、同じ判定を使います（[ドメインモデル](domain.md) の設定の値）。未観測値を既定値で補わず、観測操作の失敗を比較不能として処理しません。
 
 Change Planning は照合とは別に適用可能性（Applicability）を判断します。不一致でも適用不能な場合があり、比較不能でも必要な条件を確認できれば適用可能な場合があります。照合結果だけから適用可否を導出せず、API の前提条件と未管理設定への影響を考慮します。
