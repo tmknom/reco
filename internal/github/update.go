@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -58,6 +59,50 @@ func (c *Client) UpdateCanApprovePullRequestReviews(ctx context.Context, referen
 func (c *Client) updateWorkflowPermissions(ctx context.Context, reference repository.Reference, body []byte) (UpdateOutcome, error) {
 	status, _, err := c.send(ctx, http.MethodPut, c.workflowPermissionsURL(reference), body, http.StatusNoContent)
 	return describeUpdateOutcome("update workflow permissions", reference, status, err)
+}
+
+// UpdateAllowedActions は reference のリポジトリの Actions 許可ポリシーを policy に更新する。
+// Actions が無効のリポジトリでは、同じ要求が Actions を有効にする。
+// error が nil になるのは UpdateSucceeded のときだけで、呼び出し側は error から結果を導かない。
+func (c *Client) UpdateAllowedActions(ctx context.Context, reference repository.Reference, policy setting.AllowedActionsPolicy) (UpdateOutcome, error) {
+	// policy は英小文字と _ だけの定義済みの値で、%q の表記が JSON の文字列と一致する
+	body := fmt.Appendf(nil, `{"enabled":true,"allowed_actions":%q}`, policy)
+	status, _, err := c.send(ctx, http.MethodPut, c.actionsPermissionsURL(reference), body, http.StatusNoContent)
+	return describeUpdateOutcome("update actions permissions", reference, status, err)
+}
+
+// UpdateSelectedActions は reference のリポジトリの選択方式の Actions 許可条件を criteria に更新する。
+// GitHub は、要求の前提となる設定の状態が成り立たないとき 409 で拒否する（GitHub Actions 権限 API 仕様の Selected actions）。
+// error が nil になるのは UpdateSucceeded のときだけで、呼び出し側は error から結果を導かない。
+func (c *Client) UpdateSelectedActions(ctx context.Context, reference repository.Reference, criteria setting.SelectedActionsCriteria) (UpdateOutcome, error) {
+	status, _, err := c.send(ctx, http.MethodPut, c.selectedActionsURL(reference), encodeSelectedActions(criteria), http.StatusNoContent)
+	return describeUpdateOutcome("update selected actions", reference, status, err)
+}
+
+// encodeSelectedActions は criteria を Selected actions の更新要求の本文にする。
+// 許可パターンは任意の文字列のため、Go の %q ではなく JSON の規則でエスケープする。
+func encodeSelectedActions(criteria setting.SelectedActionsCriteria) []byte {
+	patterns := criteria.PatternsAllowed
+	// encoding/json は nil のスライスを null にするため、空の集合を [] として送るよう長さ 0 のスライスに替える
+	if patterns == nil {
+		patterns = []string{}
+	}
+	return mustMarshalJSON(struct {
+		GitHubOwnedAllowed bool     `json:"github_owned_allowed"`
+		VerifiedAllowed    bool     `json:"verified_allowed"`
+		PatternsAllowed    []string `json:"patterns_allowed"`
+	}{criteria.GitHubOwnedAllowed, criteria.VerifiedAllowed, patterns})
+}
+
+// mustMarshalJSON は v を JSON にする。
+// 本文の型は bool と []string だけを持ち、json.Marshal がどの値でも失敗しないため、失敗を不変条件の破れとして panic する。
+// encoding/json に Must の関数がないため、この包みを置く。
+func mustMarshalJSON(v any) []byte {
+	data, err := json.Marshal(v)
+	if err != nil {
+		panic(fmt.Sprintf("github: marshal request body: %v", err))
+	}
+	return data
 }
 
 // describeUpdateOutcome は更新操作の結果を判定し、失敗と成否不明の error に operation と対象を添える。

@@ -21,7 +21,7 @@ var (
 	// GitHub は値の検証の失敗にも過剰な要求にも 422 を返すため、文言で原因を断定しない。
 	ErrUnprocessable = errors.New("request not processable")
 	// ErrConflict は、GitHub が要求を対象の現在の状態と両立しないと応答したことを表す。
-	// GitHub は外部主体による直前の変更にも所有者による制限にも 409 を返すため、文言で原因を断定しない。
+	// GitHub は要求の前提となる設定の状態が成り立たないときにも、所有 Organization による制限にも 409 を返すため、文言で原因を断定しない。
 	ErrConflict = errors.New("request conflicts with the current state")
 	// ErrRedirect は、リダイレクト応答を受けて追従しなかったことを表す。
 	ErrRedirect = errors.New("redirect not followed")

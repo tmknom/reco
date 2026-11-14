@@ -261,6 +261,8 @@ General では、`PATCH /repos/{owner}/{repo}` で省略したフィールドが
 
 Actions 許可ポリシーでは、`PUT /repos/{owner}/{repo}/actions/permissions` で省略した `sha_pinning_required` が保持されることを実際の動作で確認しています（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 3.2）。必須の `enabled` には `true` を送ります。`allowed_actions` の宣言は Actions が有効であることを期待状態に含むためです（[YAML 設定仕様](../spec/configuration.md) 4章）。`sha_pinning_required` は送りません。更新後は `sha_pinning_required` を再取得し、更新直前の値と比べます。Actions が無効のときは `sha_pinning_required` の応答が保存された値を示さないため（GitHub Actions 権限 API 仕様 3.1）、更新直前の値と比べられません。この場合は、無効の状態から有効化と同時にポリシーを変えても `sha_pinning_required` が保持されるという確認結果（GitHub Actions 権限 API 仕様 3.2）を根拠に、保全されるとみなします。
 
+選択方式の Actions 許可条件では、`PUT /repos/{owner}/{repo}/actions/permissions/selected-actions` に3項目をすべて送ります。3項目は一つの設定グループで、どれも期待値を持つためです。省略したフィールドが保持されることは実際の動作で確認していますが（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 4章）、この方式は保持に依拠しません。空の許可パターンは、`null` の扱いが公開ドキュメントにないため、空の配列として送ります。
+
 Workflow permissions では、`PUT /repos/{owner}/{repo}/actions/permissions/workflow` で省略したフィールドが保持されることを、公開・非公開のリポジトリで実際の動作により確認しています（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 5.2）。これが、管理する値だけを送る方式の根拠です。観測したもう一方の値を併送しないのは、観測から更新までのあいだに外部主体がその値を変えた場合に、古い値で上書きしてしまうためです。更新後に再取得して更新直前の値と比べるのは、`default_workflow_permissions` と `can_approve_pull_request_reviews` のうち、その論理的な設定変更が変えないほうです。2フィールドは Actions が無効のときも取得・更新でき（GitHub Actions 権限 API 仕様 5.1・5.2）、Actions の有効状態はこの方式の条件になりません。
 
 この方式が保護するのは reco 自身の更新操作による未管理設定の変更であり、外部主体による競合や GitHub 側の独立した変化ではありません。
@@ -275,7 +277,7 @@ Workflow permissions では、`PUT /repos/{owner}/{repo}/actions/permissions/wor
 
 ### 5.4 非原子的な更新と中間状態
 
-選択方式の Actions 許可条件の取得・更新には、Actions 許可ポリシー（`allowed_actions`）が `selected` であるという前提があります。`all` / `local_only` のとき、GitHub は選択方式の Actions 許可条件の取得を `409` で拒否します（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 4章）。そのため `all` / `local_only` から `selected` へ変更する際は、Actions 許可ポリシーを先に更新するしかなく、二つの更新操作の間に中間状態が生じます。
+選択方式の Actions 許可条件の取得・更新には、Actions 許可ポリシー（`allowed_actions`）が `selected` であるという前提があります。`all` / `local_only` のときと Actions が無効のとき、GitHub は選択方式の Actions 許可条件の取得も更新も `409` で拒否します（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 4章）。そのため `all` / `local_only` から `selected` へ変更する際は、Actions 許可ポリシーを先に更新するしかなく、二つの更新操作の間に中間状態が生じます。
 
 Change Planning は、予定する中間状態、各更新操作の前提、未管理設定への影響を踏まえて実行可能性と順序を判断します。Change Execution は操作直前に、先行操作による予定どおりの変化と、外部からの予定外の変化を区別します。比較不能な選択方式の Actions 許可条件は推測しません。
 
