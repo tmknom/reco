@@ -3,6 +3,8 @@ package apply
 import (
 	"context"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
@@ -13,7 +15,7 @@ import (
 // executeChanges は、承認した論理的な設定変更を順に実行する。
 // INV-005 のため、完了以外の変更結果が出たら、残りには要求を一つも送らず、
 // change だけを持つ記録 (先行する異常による停止) を返す。戻り値は changes と同じ長さ、同じ並びになる。
-func executeChanges(ctx context.Context, client *github.Client, p changeplan.Plan, changes []changeplan.LogicalChange) []changeRecord {
+func executeChanges(ctx context.Context, client *github.Client, p changeplan.Plan, changes []changeplan.LogicalChange, after func(time.Duration) <-chan time.Time) []changeRecord {
 	records := make([]changeRecord, len(changes))
 	stopped := false
 	for i, change := range changes {
@@ -21,7 +23,7 @@ func executeChanges(ctx context.Context, client *github.Client, p changeplan.Pla
 			records[i] = changeRecord{change: change}
 			continue
 		}
-		records[i] = executeChange(ctx, client, p, change)
+		records[i] = executeChange(ctx, client, p, change, after)
 		stopped = records[i].result() != completed
 	}
 	return records
@@ -29,7 +31,7 @@ func executeChanges(ctx context.Context, client *github.Client, p changeplan.Pla
 
 // executeChange は、承認した論理的な設定変更を実行し、変更結果を導く事実を返す。
 // 更新直前に観測して変更前提を確かめ、成立したときだけ更新要求を一度だけ送る。再送はしない。
-func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan, change changeplan.LogicalChange) changeRecord {
+func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan, change changeplan.LogicalChange, after func(time.Duration) <-chan time.Time) changeRecord {
 	update, ok := updateOperation(change.Key)
 	if !ok {
 		// executableChanges が承認を求める前に確かめた不変条件の破れのため、要求を送る前に止める。
@@ -53,18 +55,53 @@ func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan
 	}
 
 	// 更新が成功したときは確認のため、成否不明のときは診断のために観測する。
-	after, err := client.ObserveRepository(ctx, p.Target, change.Key.Area())
+	// 診断の観測は、成否が判明しない以上、観測し直しても判断を変えないため一度だけにする。
+	var retryDelays []time.Duration
+	if record.update == github.UpdateSucceeded {
+		retryDelays = confirmationRetryDelays[:]
+	}
+	observed, confirmation, err := observeAfterUpdate(ctx, client, p, change, retryDelays, after)
+	record.confirmation = confirmation
 	if err != nil {
-		record.confirmation = desiredStateUnconfirmed
 		record.cause = errors.Join(record.cause, err)
 		return record
 	}
-	record.confirmation = confirmDesiredState(p.RepositoryID, change, after)
 	// ID が変わった観測は別のリポジトリの値のため、更新直前の値と比べない。
 	if record.confirmation != desiredStateRepositoryChanged {
-		record.unexpectedOutsideChanges = unexpectedOutsideChanges(change, before, after)
+		record.unexpectedOutsideChanges = unexpectedOutsideChanges(change, before, observed)
 	}
 	return record
+}
+
+// confirmationRetryDelays は、期待状態と一致しないときに観測し直す前に待つ時間を、観測し直す順に並べたもの。
+var confirmationRetryDelays = [...]time.Duration{1 * time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second}
+
+// observeAfterUpdate は、更新後の観測を行い、期待状態の確認結果と、それを与えた観測を返す。
+// GitHub は正常応答のあとすぐには更新を反映しないことがあるため、期待状態と一致しないあいだは、
+// retryDelays の時間ずつ待って、retryDelays を使い切るまで観測し直す。
+func observeAfterUpdate(ctx context.Context, client *github.Client, p changeplan.Plan, change changeplan.LogicalChange, retryDelays []time.Duration, after func(time.Duration) <-chan time.Time) (github.ObservationResult, desiredStateConfirmation, error) {
+	for i := 0; ; i++ {
+		observed, err := client.ObserveRepository(ctx, p.Target, change.Key.Area())
+		if err != nil {
+			return github.ObservationResult{}, desiredStateUnconfirmed, err
+		}
+		confirmation := confirmDesiredState(p.RepositoryID, change, observed)
+		if confirmation != desiredStateMismatch || i == len(retryDelays) {
+			return observed, confirmation, nil
+		}
+		if err := waitFor(ctx, after, retryDelays[i]); err != nil {
+			return github.ObservationResult{}, desiredStateUnconfirmed, fmt.Errorf("wait before reading %s again after the update: %w", p.Target, err)
+		}
+	}
+}
+
+func waitFor(ctx context.Context, after func(time.Duration) <-chan time.Time, d time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-after(d):
+		return nil
+	}
 }
 
 // updateOperationFunc は、target の設定を期待値 desired に更新する更新要求を一度送る。

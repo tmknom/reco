@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"time"
 
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
@@ -25,7 +26,9 @@ type Config struct {
 	Selection *repository.Reference
 	Out       io.Writer
 	// Approve は、変更計画を提示したあとに利用者の対話承認を求める。承認されたときだけ nil を返す。
-	Approve       func(ctx context.Context) error
+	Approve func(ctx context.Context) error
+	// After は、時間の経過を知らせる。更新が反映されるのを待つために使う。
+	After         func(d time.Duration) <-chan time.Time
 	GitHubOptions []github.Option
 }
 
@@ -60,7 +63,7 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 	if _, err := io.WriteString(cfg.Out, "Applying changes...\n"); err != nil {
 		return err
 	}
-	records := executeChanges(ctx, client, p, changes)
+	records := executeChanges(ctx, client, p, changes, cfg.After)
 	writeErr := writeChangeReport(cfg.Out, p.Target, records)
 	return errors.Join(changesError(records, p.Target), writeErr)
 }
