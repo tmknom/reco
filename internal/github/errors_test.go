@@ -50,10 +50,11 @@ func TestClassifyFailure(t *testing.T) {
 		{name: "403 without rate limit headers is forbidden", status: 403, header: http.Header{}, want: ErrForbidden},
 		{name: "403 with retry-after is rate limited", status: 403, header: http.Header{"Retry-After": {"60"}}, want: ErrRateLimited},
 		{name: "404 is not found", status: 404, want: ErrNotFound},
+		{name: "409 is conflict", status: 409, want: ErrConflict},
 		{name: "422 is unprocessable", status: 422, want: ErrUnprocessable},
 		{name: "429 without rate limit headers is rate limited", status: 429, header: http.Header{}, want: ErrRateLimited},
 	}
-	kinds := []error{ErrRedirect, ErrUnauthorized, ErrForbidden, ErrRateLimited, ErrNotFound, ErrUnprocessable, ErrUnexpectedResponse, ErrCommunicationFailure}
+	kinds := []error{ErrRedirect, ErrUnauthorized, ErrForbidden, ErrRateLimited, ErrNotFound, ErrConflict, ErrUnprocessable, ErrUnexpectedResponse, ErrCommunicationFailure}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := classifyFailure(tc.status, tc.header)

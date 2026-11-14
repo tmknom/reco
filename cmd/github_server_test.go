@@ -18,6 +18,8 @@ const (
 const (
 	repositoryBody          = `{"id": 1, "allow_auto_merge": true, "delete_branch_on_merge": false}`
 	workflowPermissionsBody = `{"default_workflow_permissions": "read", "can_approve_pull_request_reviews": false}`
+	actionsPermissionsBody  = `{"enabled": true, "allowed_actions": "selected", "sha_pinning_required": false}`
+	selectedActionsBody     = `{"github_owned_allowed": true, "verified_allowed": false, "patterns_allowed": ["example/*"]}`
 )
 
 // receivedRequest は、GitHub の stub が受け取った要求のうちテストが確かめる値。

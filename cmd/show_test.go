@@ -22,8 +22,10 @@ func TestShow_Success(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			server, opts := newGitHubServerByPath(t, map[string]stubResponse{
-				"/repos/owner/repo": {status: http.StatusOK, body: repositoryBody},
-				"/repos/owner/repo/actions/permissions/workflow": {status: http.StatusOK, body: workflowPermissionsBody},
+				"/repos/owner/repo":                                      {status: http.StatusOK, body: repositoryBody},
+				"/repos/owner/repo/actions/permissions":                  {status: http.StatusOK, body: actionsPermissionsBody},
+				"/repos/owner/repo/actions/permissions/selected-actions": {status: http.StatusOK, body: selectedActionsBody},
+				"/repos/owner/repo/actions/permissions/workflow":         {status: http.StatusOK, body: workflowPermissionsBody},
 			})
 
 			code, stdout, stderr := runExecute(t, Environment{Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue, "GITHUB_TOKEN": githubEnvValue})}, opts, tc.args...)
@@ -36,13 +38,19 @@ func TestShow_Success(t *testing.T) {
 			if stderr != "" {
 				t.Errorf("got stderr %q, want empty", stderr)
 			}
-			got := server.receivedRequests()
-			if len(got) == 0 {
-				t.Fatal("got no requests, want requests with GH_TOKEN")
+			wantPaths := []string{
+				"/repos/owner/repo",
+				"/repos/owner/repo/actions/permissions",
+				"/repos/owner/repo/actions/permissions/selected-actions",
+				"/repos/owner/repo/actions/permissions/workflow",
 			}
-			for _, r := range got {
-				if !strings.Contains(r.authorization, ghEnvValue) {
-					t.Errorf("got request %+v, want GH_TOKEN", r)
+			got := server.receivedRequests()
+			if len(got) != len(wantPaths) {
+				t.Fatalf("got requests %+v, want paths %v", got, wantPaths)
+			}
+			for i, r := range got {
+				if r.method != http.MethodGet || r.path != wantPaths[i] || !strings.Contains(r.authorization, ghEnvValue) {
+					t.Errorf("got request %d %+v, want GET %s with GH_TOKEN", i, r, wantPaths[i])
 				}
 			}
 			for _, token := range []string{ghEnvValue, githubEnvValue} {
