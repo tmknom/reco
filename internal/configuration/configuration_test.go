@@ -45,7 +45,7 @@ func TestDesiredState_Value(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got, ok := tc.desired.Value(tc.key)
-			if got != tc.want || ok != tc.wantOK {
+			if !reflect.DeepEqual(got, tc.want) || ok != tc.wantOK {
 				t.Errorf("Value(%q) = %v, %v, want %v, %v", tc.key, got, ok, tc.want, tc.wantOK)
 			}
 		})

@@ -140,7 +140,7 @@ func checkPrecondition(approvedID repository.ID, change changeplan.LogicalChange
 	if observed.RepositoryID != approvedID {
 		return preconditionIdentityMismatch
 	}
-	if observed.Value(change.Key) != change.Observed {
+	if !observed.Value(change.Key).Equal(change.Observed) {
 		return preconditionCurrentValueChanged
 	}
 	return preconditionHolds
@@ -151,7 +151,7 @@ func confirmDesiredState(approvedID repository.ID, change changeplan.LogicalChan
 	if observed.RepositoryID != approvedID {
 		return desiredStateIdentityMismatch
 	}
-	if observed.Value(change.Key) == change.Desired {
+	if observed.Value(change.Key).Equal(change.Desired) {
 		return desiredStateMatches
 	}
 	return desiredStateMismatch
@@ -166,7 +166,7 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before, after git
 			continue
 		}
 		b, a := before.Value(key), after.Value(key)
-		if b != a {
+		if !b.Equal(a) {
 			changes = append(changes, unexpectedOutsideChange{Key: key, Before: b, After: a})
 		}
 	}

@@ -44,7 +44,7 @@ func managedAreas(desired configuration.DesiredState) []setting.Area {
 
 func newSettingPlan(key setting.Key, observed, desired setting.Value) SettingPlan {
 	result := Match
-	if observed != desired {
+	if !observed.Equal(desired) {
 		result = Mismatch
 	}
 	return SettingPlan{Key: key, Observed: observed, Desired: desired, Result: result}

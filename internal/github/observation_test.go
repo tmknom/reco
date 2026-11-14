@@ -929,7 +929,7 @@ func TestObservationResult_Value(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(string(tc.key)+" returns its observed value", func(t *testing.T) {
 			for i, observed := range observations {
-				if got := observed.Value(tc.key); got != tc.want[i] {
+				if got := observed.Value(tc.key); !reflect.DeepEqual(got, tc.want[i]) {
 					t.Errorf("observations[%d].Value(%q) = %v, want %v", i, tc.key, got, tc.want[i])
 				}
 			}

@@ -171,7 +171,7 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := unexpectedOutsideChanges(tc.change, tc.before, tc.after); !slices.Equal(got, tc.want) {
+			if got := unexpectedOutsideChanges(tc.change, tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("unexpectedOutsideChanges() = %v, want %v", got, tc.want)
 			}
 		})
@@ -458,7 +458,7 @@ func TestExecuteChange(t *testing.T) {
 
 			got := executeChange(context.Background(), newClient(baseURL), p, tc.change, delays.after)
 
-			if got.change != tc.change {
+			if !reflect.DeepEqual(got.change, tc.change) {
 				t.Errorf("change = %+v, want %+v", got.change, tc.change)
 			}
 			if !slices.Equal(rec.Methods(), tc.wantMethods) {
@@ -476,7 +476,7 @@ func TestExecuteChange(t *testing.T) {
 			if got.confirmation != tc.wantDesired {
 				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
 			}
-			if !slices.Equal(got.unexpectedOutsideChanges, tc.wantOutside) {
+			if !reflect.DeepEqual(got.unexpectedOutsideChanges, tc.wantOutside) {
 				t.Errorf("unexpectedOutsideChanges = %v, want %v", got.unexpectedOutsideChanges, tc.wantOutside)
 			}
 			if got.result() != tc.wantResult {
@@ -713,7 +713,7 @@ func TestExecuteChanges(t *testing.T) {
 				t.Fatalf("executeChanges() returned %d records, want %d", len(got), len(changes))
 			}
 			for i, record := range got {
-				if record.change != changes[i] {
+				if !reflect.DeepEqual(record.change, changes[i]) {
 					t.Errorf("records[%d].change = %+v, want %+v", i, record.change, changes[i])
 				}
 				if record.precondition != tc.wantPrecond[i] {

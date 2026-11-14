@@ -69,7 +69,7 @@ func TestGenerate(t *testing.T) {
 			{Key: setting.DeleteBranchOnMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
 			{Key: setting.AllowAutoMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
 		}
-		if !slices.Equal(got.Settings, want) {
+		if !reflect.DeepEqual(got.Settings, want) {
 			t.Errorf("Settings = %+v, want %+v", got.Settings, want)
 		}
 	})
@@ -195,7 +195,7 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 				Result: Mismatch, Applicability: Applicable,
 			},
 		}
-		if !slices.Equal(got.Settings, want) {
+		if !reflect.DeepEqual(got.Settings, want) {
 			t.Errorf("Settings = %+v, want %+v", got.Settings, want)
 		}
 	})

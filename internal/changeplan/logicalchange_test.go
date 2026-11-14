@@ -1,7 +1,7 @@
 package changeplan
 
 import (
-	"slices"
+	"reflect"
 	"testing"
 
 	"github.com/tmknom/reco/internal/setting"
@@ -29,7 +29,7 @@ func TestPlan_LogicalChanges(t *testing.T) {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
 		want := []LogicalChange{{Key: setting.AllowAutoMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true)}}
-		if !slices.Equal(got, want) {
+		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
 		}
 	})
@@ -44,7 +44,7 @@ func TestPlan_LogicalChanges(t *testing.T) {
 			{Key: setting.DeleteBranchOnMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true)},
 			{Key: setting.AllowAutoMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true)},
 		}
-		if !slices.Equal(got, want) {
+		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
 		}
 	})
