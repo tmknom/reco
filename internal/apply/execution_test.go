@@ -120,56 +120,64 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 	cases := []struct {
 		name          string
 		change        changeplan.LogicalChange
+		endpoint      updateEndpoint
 		before, after github.ObservationResult
 		want          []unexpectedOutsideChange
 	}{
 		{
-			name:   "same settings have no change",
-			change: allowAutoMergeChange(),
-			before: github.ObservationResult{General: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false}},
-			after:  github.ObservationResult{General: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false}},
-			want:   nil,
+			name:     "same settings have no change",
+			change:   allowAutoMergeChange(),
+			endpoint: repositoryEndpoint,
+			before:   github.ObservationResult{General: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false}},
+			after:    github.ObservationResult{General: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false}},
+			want:     nil,
 		},
 		{
-			name:   "allow_auto_merge change reports different delete_branch_on_merge with both values",
-			change: allowAutoMergeChange(),
-			before: github.ObservationResult{General: github.General{DeleteBranchOnMerge: false}},
-			after:  github.ObservationResult{General: github.General{DeleteBranchOnMerge: true}},
-			want:   []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			name:     "allow_auto_merge change reports different delete_branch_on_merge with both values",
+			change:   allowAutoMergeChange(),
+			endpoint: repositoryEndpoint,
+			before:   github.ObservationResult{General: github.General{DeleteBranchOnMerge: false}},
+			after:    github.ObservationResult{General: github.General{DeleteBranchOnMerge: true}},
+			want:     []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
 		},
 		{
-			name:   "allow_auto_merge change does not report its own setting",
-			change: allowAutoMergeChange(),
-			before: github.ObservationResult{General: github.General{AllowAutoMerge: false}},
-			after:  github.ObservationResult{General: github.General{AllowAutoMerge: true}},
-			want:   nil,
+			name:     "allow_auto_merge change does not report its own setting",
+			change:   allowAutoMergeChange(),
+			endpoint: repositoryEndpoint,
+			before:   github.ObservationResult{General: github.General{AllowAutoMerge: false}},
+			after:    github.ObservationResult{General: github.General{AllowAutoMerge: true}},
+			want:     nil,
 		},
 		{
-			name:   "delete_branch_on_merge change reports different allow_auto_merge with both values",
-			change: deleteBranchOnMergeChange(),
-			before: github.ObservationResult{General: github.General{AllowAutoMerge: false}},
-			after:  github.ObservationResult{General: github.General{AllowAutoMerge: true}},
-			want:   []unexpectedOutsideChange{{Key: setting.AllowAutoMerge, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			name:     "delete_branch_on_merge change reports different allow_auto_merge with both values",
+			change:   deleteBranchOnMergeChange(),
+			endpoint: repositoryEndpoint,
+			before:   github.ObservationResult{General: github.General{AllowAutoMerge: false}},
+			after:    github.ObservationResult{General: github.General{AllowAutoMerge: true}},
+			want:     []unexpectedOutsideChange{{Key: setting.AllowAutoMerge, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
 		},
 		{
-			name:   "delete_branch_on_merge change does not report its own setting",
-			change: deleteBranchOnMergeChange(),
-			before: github.ObservationResult{General: github.General{DeleteBranchOnMerge: false}},
-			after:  github.ObservationResult{General: github.General{DeleteBranchOnMerge: true}},
-			want:   nil,
+			name:     "delete_branch_on_merge change does not report its own setting",
+			change:   deleteBranchOnMergeChange(),
+			endpoint: repositoryEndpoint,
+			before:   github.ObservationResult{General: github.General{DeleteBranchOnMerge: false}},
+			after:    github.ObservationResult{General: github.General{DeleteBranchOnMerge: true}},
+			want:     nil,
 		},
 		{
-			name:   "default_workflow_permissions change reports different can_approve_pull_request_reviews with both values",
-			change: defaultWorkflowPermissionsChange(),
-			before: github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: false}},
-			after:  github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: true}},
-			want:   []unexpectedOutsideChange{{Key: setting.CanApprovePullRequestReviews, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			name:     "default_workflow_permissions change reports different can_approve_pull_request_reviews with both values",
+			change:   defaultWorkflowPermissionsChange(),
+			endpoint: workflowPermissionsEndpoint,
+			before:   github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: false}},
+			after:    github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: true}},
+			want:     []unexpectedOutsideChange{{Key: setting.CanApprovePullRequestReviews, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
 		},
 		{
-			name:   "can_approve_pull_request_reviews change reports different default_workflow_permissions with both values",
-			change: canApprovePullRequestReviewsChange(),
-			before: github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: true}},
-			after:  github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: false}},
+			name:     "can_approve_pull_request_reviews change reports different default_workflow_permissions with both values",
+			change:   canApprovePullRequestReviewsChange(),
+			endpoint: workflowPermissionsEndpoint,
+			before:   github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: true}},
+			after:    github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: false}},
 			want: []unexpectedOutsideChange{{
 				Key:    setting.DefaultWorkflowPermissions,
 				Before: setting.PermissionLevelValue(setting.PermissionRead),
@@ -177,8 +185,9 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			}},
 		},
 		{
-			name:   "workflow permissions change does not compare general settings",
-			change: defaultWorkflowPermissionsChange(),
+			name:     "workflow permissions change does not compare general settings",
+			change:   defaultWorkflowPermissionsChange(),
+			endpoint: workflowPermissionsEndpoint,
 			before: github.ObservationResult{
 				General:             github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false},
 				WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite},
@@ -189,10 +198,24 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			},
 			want: nil,
 		},
+		{
+			name:     "general change does not compare workflow permissions settings",
+			change:   allowAutoMergeChange(),
+			endpoint: repositoryEndpoint,
+			before: github.ObservationResult{
+				General:             github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false},
+				WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: false},
+			},
+			after: github.ObservationResult{
+				General:             github.General{AllowAutoMerge: true, DeleteBranchOnMerge: false},
+				WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: true},
+			},
+			want: nil,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := unexpectedOutsideChanges(tc.change, tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
+			if got := unexpectedOutsideChanges(tc.endpoint, tc.change, tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("unexpectedOutsideChanges() = %v, want %v", got, tc.want)
 			}
 		})
@@ -551,63 +574,6 @@ func TestExecuteChange(t *testing.T) {
 		}
 		if !errors.Is(got.cause, context.Canceled) {
 			t.Errorf("cause = %v, want it to wrap %v", got.cause, context.Canceled)
-		}
-	})
-}
-
-// TestUpdateOperation は、論理的な設定変更の設定から、それを実現する更新操作を選ぶ規則を確かめる。
-//
-//trace:checks INV-001
-//trace:checks FR-011
-func TestUpdateOperation(t *testing.T) {
-	noContent := response{status: http.StatusNoContent}
-	cases := []struct {
-		name     string
-		key      setting.Key
-		desired  setting.Value
-		response response
-		wantBody map[string]any
-	}{
-		{
-			name: "delete_branch_on_merge sends only delete_branch_on_merge", key: setting.DeleteBranchOnMerge, desired: setting.BoolValue(true),
-			response: okRepository(1, true, true), wantBody: map[string]any{"delete_branch_on_merge": true},
-		},
-		{
-			name: "allow_auto_merge sends only allow_auto_merge", key: setting.AllowAutoMerge, desired: setting.BoolValue(true),
-			response: okRepository(1, true, true), wantBody: map[string]any{"allow_auto_merge": true},
-		},
-		{
-			name: "default_workflow_permissions sends only default_workflow_permissions", key: setting.DefaultWorkflowPermissions,
-			desired:  setting.PermissionLevelValue(setting.PermissionRead),
-			response: noContent, wantBody: map[string]any{"default_workflow_permissions": "read"},
-		},
-		{
-			name: "can_approve_pull_request_reviews sends only can_approve_pull_request_reviews", key: setting.CanApprovePullRequestReviews,
-			desired:  setting.BoolValue(false),
-			response: noContent, wantBody: map[string]any{"can_approve_pull_request_reviews": false},
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			baseURL, rec := newSequenceServer(t, tc.response)
-			update, ok := updateOperation(tc.key)
-			if !ok {
-				t.Fatalf("updateOperation(%q) ok = false, want true", tc.key)
-			}
-
-			if _, err := update(context.Background(), newClient(baseURL), mustReference(t, "owner/repo"), tc.desired); err != nil {
-				t.Fatalf("update() error = %v", err)
-			}
-
-			if want := []map[string]any{tc.wantBody}; !reflect.DeepEqual(rec.Bodies(), want) {
-				t.Errorf("request bodies = %v, want %v", rec.Bodies(), want)
-			}
-		})
-	}
-
-	t.Run("setting without an update operation is not ok", func(t *testing.T) {
-		if _, ok := updateOperation(unknownKey); ok {
-			t.Errorf("updateOperation(%q) ok = true, want false", unknownKey)
 		}
 	})
 }

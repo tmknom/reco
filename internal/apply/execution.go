@@ -32,7 +32,7 @@ func executeChanges(ctx context.Context, client *github.Client, p changeplan.Pla
 // executeChange は、承認した論理的な設定変更を実行し、変更結果を導く事実を返す。
 // 更新直前に観測して変更前提を確かめ、成立したときだけ更新要求を一度だけ送る。再送はしない。
 func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan, change changeplan.LogicalChange, after func(time.Duration) <-chan time.Time) changeRecord {
-	update, ok := updateOperation(change.Key)
+	update, ok := updateOperationOf(change.Key)
 	if !ok {
 		// executableChanges が承認を求める前に確かめた不変条件の破れのため、要求を送る前に止める。
 		panic("apply: no update operation for " + string(change.Key))
@@ -49,7 +49,7 @@ func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan
 		return record
 	}
 
-	record.update, record.cause = update(ctx, client, p.Target, change.Desired)
+	record.update, record.cause = update.send(ctx, client, p.Target, change.Desired)
 	if record.update == github.UpdateRejected {
 		return record
 	}
@@ -68,7 +68,7 @@ func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan
 	}
 	// ID が変わった観測は別のリポジトリの値のため、更新直前の値と比べない。
 	if record.confirmation != desiredStateIdentityMismatch {
-		record.unexpectedOutsideChanges = unexpectedOutsideChanges(change, before, observed)
+		record.unexpectedOutsideChanges = unexpectedOutsideChanges(update.endpoint, change, before, observed)
 	}
 	return record
 }
@@ -104,38 +104,8 @@ func waitFor(ctx context.Context, after func(time.Duration) <-chan time.Time, d 
 	}
 }
 
-// updateOperationFunc は、target の設定を期待値 desired に更新する更新要求を一度送る。
-type updateOperationFunc func(ctx context.Context, client *github.Client, target repository.Reference, desired setting.Value) (github.UpdateOutcome, error)
-
-// updateOperation は、key の論理的な設定変更を実現する更新操作を返す。なければ ok は偽になる。
-// 承認前の判定と実行時の選択が同じ定義を使い、片方だけ設定を足し忘れることがないよう、一つの関数にする。
-// 承認前の判定が client と期待値を要しないよう、それらを引数で受ける関数値で返す。
-func updateOperation(key setting.Key) (update updateOperationFunc, ok bool) {
-	switch key {
-	case setting.DeleteBranchOnMerge:
-		return boolUpdate((*github.Client).UpdateDeleteBranchOnMerge), true
-	case setting.AllowAutoMerge:
-		return boolUpdate((*github.Client).UpdateAllowAutoMerge), true
-	case setting.DefaultWorkflowPermissions:
-		return func(ctx context.Context, client *github.Client, target repository.Reference, desired setting.Value) (github.UpdateOutcome, error) {
-			return client.UpdateDefaultWorkflowPermissions(ctx, target, desired.PermissionLevel())
-		}, true
-	case setting.CanApprovePullRequestReviews:
-		return boolUpdate((*github.Client).UpdateCanApprovePullRequestReviews), true
-	default:
-		return nil, false
-	}
-}
-
-// boolUpdate は、真偽値を受ける更新メソッドを、期待値を受ける更新操作にする。
-func boolUpdate(update func(*github.Client, context.Context, repository.Reference, bool) (github.UpdateOutcome, error)) updateOperationFunc {
-	return func(ctx context.Context, client *github.Client, target repository.Reference, desired setting.Value) (github.UpdateOutcome, error) {
-		return update(client, ctx, target, desired.Bool())
-	}
-}
-
 // observedValue は、key の設定の観測値を返す。
-// 更新操作を持つ設定と、それと同じ設定の領域に属する設定は、どれも取得条件を持たず常に観測値になるため、
+// 更新操作を持つ設定と、その更新エンドポイントで観測する設定は、どれも取得条件を持たず常に観測値になるため、
 // 観測不能は不変条件の破れとして panic する。
 func observedValue(o github.ObservationResult, key setting.Key) setting.Value {
 	v, ok := o.Value(key).Value()
@@ -168,11 +138,12 @@ func confirmDesiredState(approvedID repository.ID, change changeplan.LogicalChan
 	return desiredStateMismatch
 }
 
-// unexpectedOutsideChanges は、change と同じ更新エンドポイントで観測する設定のうち change が変えないものについて、
+// unexpectedOutsideChanges は、change の更新操作が更新要求を送る endpoint で観測する設定のうち change が変えないものについて、
 // 更新直前と更新後の観測値の差を返す。
-func unexpectedOutsideChanges(change changeplan.LogicalChange, before, after github.ObservationResult) []unexpectedOutsideChange {
+// 観測は設定の領域の単位で読むが、同じ設定の領域でも別の更新エンドポイントの設定は更新操作の影響を受けないため比べない。
+func unexpectedOutsideChanges(endpoint updateEndpoint, change changeplan.LogicalChange, before, after github.ObservationResult) []unexpectedOutsideChange {
 	var changes []unexpectedOutsideChange
-	for _, key := range setting.KeysIn(change.Key.Area()) {
+	for _, key := range endpoint.observedSettings() {
 		if key == change.Key {
 			continue
 		}

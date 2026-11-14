@@ -12,13 +12,6 @@ func TestKeys_FollowsConfigurationOrder(t *testing.T) {
 	}
 }
 
-func TestKeysIn_ReturnsKeysOfAreaInKeysOrder(t *testing.T) {
-	want := []Key{DefaultWorkflowPermissions, CanApprovePullRequestReviews}
-	if got := KeysIn(AreaWorkflowPermissions); !slices.Equal(got, want) {
-		t.Errorf("KeysIn(AreaWorkflowPermissions) = %v, want %v", got, want)
-	}
-}
-
 func TestKeyArea(t *testing.T) {
 	tests := []struct {
 		key  Key

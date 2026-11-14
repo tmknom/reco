@@ -21,17 +21,6 @@ func Keys() []Key {
 	return []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowedActions, SelectedActions, DefaultWorkflowPermissions, CanApprovePullRequestReviews}
 }
 
-// KeysIn は、Keys のうち area に属する設定を Keys の並びで返す。
-func KeysIn(area Area) []Key {
-	var keys []Key
-	for _, key := range Keys() {
-		if key.Area() == area {
-			keys = append(keys, key)
-		}
-	}
-	return keys
-}
-
 // Area は、k が属する設定の領域を返す。未知の設定は不変条件の破れとして panic する。
 // 定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func (k Key) Area() Area {
