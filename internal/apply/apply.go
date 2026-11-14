@@ -77,7 +77,7 @@ func executableChanges(p changeplan.Plan) ([]changeplan.LogicalChange, error) {
 		return nil, err
 	}
 	for _, change := range changes {
-		if _, ok := updateOperation(change.Key); !ok {
+		if _, ok := updateOperationOf(change.Key); !ok {
 			return nil, fmt.Errorf("%s: %s cannot be applied: no update operation", p.Target, change.Key)
 		}
 	}
