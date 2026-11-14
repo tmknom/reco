@@ -173,15 +173,15 @@ func elapsedAtOnce(d time.Duration) <-chan time.Time {
 
 // allowAutoMergeChange は、allow_auto_merge を false から true にする論理的な設定変更。
 func allowAutoMergeChange() changeplan.LogicalChange {
-	return changeplan.LogicalChange{Key: setting.AllowAutoMerge, Observed: changeplan.BoolValue(false), Desired: changeplan.BoolValue(true)}
+	return changeplan.LogicalChange{Key: setting.AllowAutoMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true)}
 }
 
 // allowAutoMergeMismatch は、allowAutoMergeChange を導く適用可能な変更予定。
 func allowAutoMergeMismatch() changeplan.SettingPlan {
 	return changeplan.SettingPlan{
 		Key:           setting.AllowAutoMerge,
-		Observed:      changeplan.BoolValue(false),
-		Desired:       changeplan.BoolValue(true),
+		Observed:      setting.BoolValue(false),
+		Desired:       setting.BoolValue(true),
 		Result:        changeplan.Mismatch,
 		Applicability: changeplan.Applicable,
 	}
@@ -189,15 +189,15 @@ func allowAutoMergeMismatch() changeplan.SettingPlan {
 
 // deleteBranchOnMergeChange は、delete_branch_on_merge を false から true にする論理的な設定変更。
 func deleteBranchOnMergeChange() changeplan.LogicalChange {
-	return changeplan.LogicalChange{Key: setting.DeleteBranchOnMerge, Observed: changeplan.BoolValue(false), Desired: changeplan.BoolValue(true)}
+	return changeplan.LogicalChange{Key: setting.DeleteBranchOnMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true)}
 }
 
 // deleteBranchOnMergeMismatch は、deleteBranchOnMergeChange を導く適用可能な変更予定。
 func deleteBranchOnMergeMismatch() changeplan.SettingPlan {
 	return changeplan.SettingPlan{
 		Key:           setting.DeleteBranchOnMerge,
-		Observed:      changeplan.BoolValue(false),
-		Desired:       changeplan.BoolValue(true),
+		Observed:      setting.BoolValue(false),
+		Desired:       setting.BoolValue(true),
 		Result:        changeplan.Mismatch,
 		Applicability: changeplan.Applicable,
 	}
@@ -207,14 +207,14 @@ func deleteBranchOnMergeMismatch() changeplan.SettingPlan {
 func defaultWorkflowPermissionsChange() changeplan.LogicalChange {
 	return changeplan.LogicalChange{
 		Key:      setting.DefaultWorkflowPermissions,
-		Observed: changeplan.PermissionLevelValue(setting.PermissionWrite),
-		Desired:  changeplan.PermissionLevelValue(setting.PermissionRead),
+		Observed: setting.PermissionLevelValue(setting.PermissionWrite),
+		Desired:  setting.PermissionLevelValue(setting.PermissionRead),
 	}
 }
 
 // canApprovePullRequestReviewsChange は、can_approve_pull_request_reviews を true から false にする論理的な設定変更。
 func canApprovePullRequestReviewsChange() changeplan.LogicalChange {
-	return changeplan.LogicalChange{Key: setting.CanApprovePullRequestReviews, Observed: changeplan.BoolValue(true), Desired: changeplan.BoolValue(false)}
+	return changeplan.LogicalChange{Key: setting.CanApprovePullRequestReviews, Observed: setting.BoolValue(true), Desired: setting.BoolValue(false)}
 }
 
 func newPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.Plan {
@@ -227,7 +227,7 @@ const unknownKey setting.Key = "general.unknown"
 
 // unknownMismatch は、実行できる更新操作を持たない設定の適用可能な変更予定。
 func unknownMismatch() changeplan.SettingPlan {
-	return changeplan.SettingPlan{Key: unknownKey, Observed: changeplan.BoolValue(false), Desired: changeplan.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
+	return changeplan.SettingPlan{Key: unknownKey, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
 }
 
 // TestExecutableChanges は、承認を求める前に、すべての論理的な設定変更が実行できる更新操作を持つことを確かめる規則を確かめる。
@@ -235,7 +235,7 @@ func unknownMismatch() changeplan.SettingPlan {
 //trace:checks INV-002
 //trace:checks FR-009
 func TestExecutableChanges(t *testing.T) {
-	match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: changeplan.BoolValue(true), Desired: changeplan.BoolValue(true), Result: changeplan.Match}
+	match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: setting.BoolValue(true), Desired: setting.BoolValue(true), Result: changeplan.Match}
 
 	t.Run("all matches have no change", func(t *testing.T) {
 		got, err := executableChanges(newPlan(t, match))
@@ -295,7 +295,7 @@ func TestApplyPlan(t *testing.T) {
 		baseURL, rec := newSequenceServer(t)
 		var out bytes.Buffer
 		calls := 0
-		match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: changeplan.BoolValue(true), Desired: changeplan.BoolValue(true), Result: changeplan.Match}
+		match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: setting.BoolValue(true), Desired: setting.BoolValue(true), Result: changeplan.Match}
 
 		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, match))
 

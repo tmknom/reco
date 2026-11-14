@@ -133,7 +133,7 @@ func TestNotAttemptedReason_StartedUpdatePanics(t *testing.T) {
 func TestWriteChangeReport_SingleChange(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 	change := allowAutoMergeChange()
-	outside := []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: changeplan.BoolValue(false), After: changeplan.BoolValue(true)}}
+	outside := []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: setting.BoolValue(false), After: setting.BoolValue(true)}}
 	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed.\n"
 
 	cases := []struct {
@@ -181,7 +181,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 		},
 		{
 			name:   "success with a changed repository ID",
-			record: changeRecord{change: change, precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateRepositoryChanged},
+			record: changeRecord{change: change, precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateIdentityMismatch},
 			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not confirmed (repository ID changed)\n\n" +
 				rollbackNote,
 		},
@@ -207,8 +207,8 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 				change: canApprovePullRequestReviewsChange(), precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateMatches,
 				unexpectedOutsideChanges: []unexpectedOutsideChange{{
 					Key:    setting.DefaultWorkflowPermissions,
-					Before: changeplan.PermissionLevelValue(setting.PermissionRead),
-					After:  changeplan.PermissionLevelValue(setting.PermissionWrite),
+					Before: setting.PermissionLevelValue(setting.PermissionRead),
+					After:  setting.PermissionLevelValue(setting.PermissionWrite),
 				}},
 			},
 			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: matches\n" +
@@ -272,7 +272,7 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 			records: []changeRecord{
 				{
 					change: deleteBranchOnMergeChange(), precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateMatches,
-					unexpectedOutsideChanges: []unexpectedOutsideChange{{Key: setting.AllowAutoMerge, Before: changeplan.BoolValue(false), After: changeplan.BoolValue(true)}},
+					unexpectedOutsideChanges: []unexpectedOutsideChange{{Key: setting.AllowAutoMerge, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
 				},
 				stopped,
 			},

@@ -474,3 +474,42 @@ func TestObserveRepositoryAreasFailure(t *testing.T) {
 		}
 	})
 }
+
+func TestObservationResult_Value(t *testing.T) {
+	// 観測結果ごとに真偽値の設定を一つだけ真にし、どの設定も観測結果を通した値の並びがほかの設定とも定数とも異なるようにする。
+	// 別の設定の値や定数を返す誤りを検出するため。
+	observations := []ObservationResult{
+		{General: General{DeleteBranchOnMerge: true}, WorkflowPermissions: &WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite}},
+		{General: General{AllowAutoMerge: true}, WorkflowPermissions: &WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead}},
+		{WorkflowPermissions: &WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: true}},
+	}
+	yes, no := setting.BoolValue(true), setting.BoolValue(false)
+	write, read := setting.PermissionLevelValue(setting.PermissionWrite), setting.PermissionLevelValue(setting.PermissionRead)
+	cases := []struct {
+		key  setting.Key
+		want []setting.Value
+	}{
+		{key: setting.DeleteBranchOnMerge, want: []setting.Value{yes, no, no}},
+		{key: setting.AllowAutoMerge, want: []setting.Value{no, yes, no}},
+		{key: setting.DefaultWorkflowPermissions, want: []setting.Value{write, read, write}},
+		{key: setting.CanApprovePullRequestReviews, want: []setting.Value{no, no, yes}},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.key)+" returns its observed value", func(t *testing.T) {
+			for i, observed := range observations {
+				if got := observed.Value(tc.key); got != tc.want[i] {
+					t.Errorf("observations[%d].Value(%q) = %v, want %v", i, tc.key, got, tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestObservationResult_ValueOfUnknownSettingPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("Value() did not panic for an unknown setting")
+		}
+	}()
+	_ = ObservationResult{}.Value("general.unknown")
+}

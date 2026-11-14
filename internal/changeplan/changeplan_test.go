@@ -66,8 +66,8 @@ func TestGenerate(t *testing.T) {
 			t.Errorf("RepositoryID = %d, want 7", got.RepositoryID)
 		}
 		want := []SettingPlan{
-			{Key: setting.DeleteBranchOnMerge, Observed: BoolValue(false), Desired: BoolValue(true), Result: Mismatch, Applicability: Applicable},
-			{Key: setting.AllowAutoMerge, Observed: BoolValue(false), Desired: BoolValue(true), Result: Mismatch, Applicability: Applicable},
+			{Key: setting.DeleteBranchOnMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
+			{Key: setting.AllowAutoMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
 		}
 		if !slices.Equal(got.Settings, want) {
 			t.Errorf("Settings = %+v, want %+v", got.Settings, want)
@@ -189,9 +189,9 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 			t.Errorf("requests = %v, want %v", paths, want)
 		}
 		want := []SettingPlan{
-			{Key: setting.AllowAutoMerge, Observed: BoolValue(false), Desired: BoolValue(true), Result: Mismatch, Applicability: Applicable},
+			{Key: setting.AllowAutoMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
 			{
-				Key: setting.DefaultWorkflowPermissions, Observed: PermissionLevelValue(setting.PermissionWrite), Desired: PermissionLevelValue(setting.PermissionRead),
+				Key: setting.DefaultWorkflowPermissions, Observed: setting.PermissionLevelValue(setting.PermissionWrite), Desired: setting.PermissionLevelValue(setting.PermissionRead),
 				Result: Mismatch, Applicability: Applicable,
 			},
 		}

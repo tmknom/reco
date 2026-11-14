@@ -22,6 +22,23 @@ type ObservationResult struct {
 	WorkflowPermissions *WorkflowPermissions
 }
 
+// Value は、key の設定の観測値を返す。o は key の設定の領域を読み取った観測の結果に限り、
+// 読み取らなかった領域の値は補わずに nil 参照で止まる。未知の設定は不変条件の破れとして panic する。
+// 設定を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+func (o ObservationResult) Value(key setting.Key) setting.Value {
+	switch key {
+	case setting.DeleteBranchOnMerge:
+		return setting.BoolValue(o.General.DeleteBranchOnMerge)
+	case setting.AllowAutoMerge:
+		return setting.BoolValue(o.General.AllowAutoMerge)
+	case setting.DefaultWorkflowPermissions:
+		return setting.PermissionLevelValue(o.WorkflowPermissions.DefaultWorkflowPermissions)
+	case setting.CanApprovePullRequestReviews:
+		return setting.BoolValue(o.WorkflowPermissions.CanApprovePullRequestReviews)
+	}
+	panic(fmt.Sprintf("unknown setting %q", key))
+}
+
 // WorkflowPermissions はワークフロー権限のうち、reco が観測する値である。
 type WorkflowPermissions struct {
 	DefaultWorkflowPermissions   setting.PermissionLevel

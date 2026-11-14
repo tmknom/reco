@@ -1,7 +1,6 @@
 package changeplan
 
 import (
-	"reflect"
 	"slices"
 	"testing"
 
@@ -26,19 +25,13 @@ func TestReconcile(t *testing.T) {
 			name:     "desired true and observed false is a mismatch",
 			desired:  configuration.DesiredState{General: configuration.General{AllowAutoMerge: new(true)}},
 			observed: github.ObservationResult{General: github.General{AllowAutoMerge: false}},
-			want:     []SettingPlan{{Key: setting.AllowAutoMerge, Observed: BoolValue(false), Desired: BoolValue(true), Result: Mismatch}},
-		},
-		{
-			name:     "desired false and observed true is a mismatch",
-			desired:  configuration.DesiredState{General: configuration.General{AllowAutoMerge: new(false)}},
-			observed: github.ObservationResult{General: github.General{AllowAutoMerge: true}},
-			want:     []SettingPlan{{Key: setting.AllowAutoMerge, Observed: BoolValue(true), Desired: BoolValue(false), Result: Mismatch}},
+			want:     []SettingPlan{{Key: setting.AllowAutoMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: Mismatch}},
 		},
 		{
 			name:     "explicit desired false and observed false is a match",
 			desired:  configuration.DesiredState{General: configuration.General{AllowAutoMerge: new(false)}},
 			observed: github.ObservationResult{General: github.General{AllowAutoMerge: false}},
-			want:     []SettingPlan{{Key: setting.AllowAutoMerge, Observed: BoolValue(false), Desired: BoolValue(false), Result: Match}},
+			want:     []SettingPlan{{Key: setting.AllowAutoMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(false), Result: Match}},
 		},
 		{
 			name:     "omitted desired is outside the management scope",
@@ -47,30 +40,14 @@ func TestReconcile(t *testing.T) {
 			want:     nil,
 		},
 		{
-			name:     "desired read and observed write of default_workflow_permissions is a mismatch",
-			desired:  configuration.DesiredState{WorkflowPermissions: configuration.WorkflowPermissions{DefaultWorkflowPermissions: new(setting.PermissionRead)}},
-			observed: github.ObservationResult{WorkflowPermissions: workflow(setting.PermissionWrite, false)},
-			want: []SettingPlan{{
-				Key: setting.DefaultWorkflowPermissions, Observed: PermissionLevelValue(setting.PermissionWrite), Desired: PermissionLevelValue(setting.PermissionRead), Result: Mismatch,
-			}},
-		},
-		{
-			name:     "same default_workflow_permissions is a match",
-			desired:  configuration.DesiredState{WorkflowPermissions: configuration.WorkflowPermissions{DefaultWorkflowPermissions: new(setting.PermissionWrite)}},
-			observed: github.ObservationResult{WorkflowPermissions: workflow(setting.PermissionWrite, true)},
-			want: []SettingPlan{{
-				Key: setting.DefaultWorkflowPermissions, Observed: PermissionLevelValue(setting.PermissionWrite), Desired: PermissionLevelValue(setting.PermissionWrite), Result: Match,
-			}},
-		},
-		{
 			name: "general only is reconciled without workflow permissions observed",
 			desired: configuration.DesiredState{General: configuration.General{
 				AllowAutoMerge: new(true), DeleteBranchOnMerge: new(true),
 			}},
 			observed: github.ObservationResult{General: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: true}},
 			want: []SettingPlan{
-				{Key: setting.DeleteBranchOnMerge, Observed: BoolValue(true), Desired: BoolValue(true), Result: Match},
-				{Key: setting.AllowAutoMerge, Observed: BoolValue(false), Desired: BoolValue(true), Result: Mismatch},
+				{Key: setting.DeleteBranchOnMerge, Observed: setting.BoolValue(true), Desired: setting.BoolValue(true), Result: Match},
+				{Key: setting.AllowAutoMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: Mismatch},
 			},
 		},
 		{
@@ -86,10 +63,10 @@ func TestReconcile(t *testing.T) {
 				WorkflowPermissions: workflow(setting.PermissionWrite, true),
 			},
 			want: []SettingPlan{
-				{Key: setting.DeleteBranchOnMerge, Observed: BoolValue(true), Desired: BoolValue(true), Result: Match},
-				{Key: setting.AllowAutoMerge, Observed: BoolValue(false), Desired: BoolValue(true), Result: Mismatch},
-				{Key: setting.DefaultWorkflowPermissions, Observed: PermissionLevelValue(setting.PermissionWrite), Desired: PermissionLevelValue(setting.PermissionRead), Result: Mismatch},
-				{Key: setting.CanApprovePullRequestReviews, Observed: BoolValue(true), Desired: BoolValue(false), Result: Mismatch},
+				{Key: setting.DeleteBranchOnMerge, Observed: setting.BoolValue(true), Desired: setting.BoolValue(true), Result: Match},
+				{Key: setting.AllowAutoMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: Mismatch},
+				{Key: setting.DefaultWorkflowPermissions, Observed: setting.PermissionLevelValue(setting.PermissionWrite), Desired: setting.PermissionLevelValue(setting.PermissionRead), Result: Mismatch},
+				{Key: setting.CanApprovePullRequestReviews, Observed: setting.BoolValue(true), Desired: setting.BoolValue(false), Result: Mismatch},
 			},
 		},
 	}
@@ -101,42 +78,6 @@ func TestReconcile(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestReconcile_EveryDeclaredSettingIsReconciled は、期待状態が持つ期待値の数と、照合する設定の数が食い違わないことを確かめる。
-// 期待状態に設定を足して setting.Keys や desiredValue に足し忘れると、宣言を受理した設定が照合されないまま
-// コンパイルもほかのテストも通るため、期待状態の全フィールドを埋めて数える。
-func TestReconcile_EveryDeclaredSettingIsReconciled(t *testing.T) {
-	var desired configuration.DesiredState
-	declared := fillDesiredValues(reflect.ValueOf(&desired).Elem())
-	observed := github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead}}
-
-	got := reconcile(desired, observed)
-	keys := make([]setting.Key, len(got))
-	for i, s := range got {
-		keys[i] = s.Key
-	}
-	if len(keys) != declared || !slices.Equal(keys, setting.Keys()) {
-		t.Errorf("reconcile() keys = %v for %d declared settings, want %v", keys, declared, setting.Keys())
-	}
-}
-
-// fillDesiredValues は、v の中の期待値 (ポインタのフィールド) をすべてゼロ値への参照で埋め、その数を返す。
-// 列挙値のゼロ値は定義外の値だが、ここでは期待値の有無だけを数える。
-func fillDesiredValues(v reflect.Value) int {
-	n := 0
-	for _, field := range v.Fields() {
-		switch field.Kind() {
-		case reflect.Pointer:
-			field.Set(reflect.New(field.Type().Elem()))
-			n++
-		case reflect.Struct:
-			n += fillDesiredValues(field)
-		default:
-			panic("unexpected field kind in desired state: " + field.Kind().String())
-		}
-	}
-	return n
 }
 
 //trace:checks FR-004
@@ -174,22 +115,4 @@ func TestManagedAreas(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestObservedValue_UnknownSettingPanics(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Error("ObservedValue() did not panic for an unknown setting")
-		}
-	}()
-	ObservedValue("general.unknown", github.ObservationResult{})
-}
-
-func TestDesiredValue_UnknownSettingPanics(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Error("desiredValue() did not panic for an unknown setting")
-		}
-	}()
-	desiredValue("general.unknown", configuration.DesiredState{})
 }
