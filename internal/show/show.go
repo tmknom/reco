@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/tmknom/reco/internal/display"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
@@ -54,24 +55,12 @@ func writeActionsPermissions(b *strings.Builder, p github.ActionsPermissions) {
 	if policy, ok := p.AllowedActions.Value(); ok {
 		fmt.Fprintf(b, "  allowed_actions: %s\n", policy)
 	} else {
-		fmt.Fprintf(b, "  allowed_actions: %s\n", unavailableText(p.AllowedActions.UnavailableReason()))
+		fmt.Fprintf(b, "  allowed_actions: %s\n", display.UnavailableText(p.AllowedActions.UnavailableReason()))
 	}
 	if criteria, ok := p.SelectedActions.Value(); ok {
 		fmt.Fprintf(b, "  selected_actions:\n    github_owned_allowed: %t\n    verified_allowed: %t\n    patterns_allowed: %s\n",
 			criteria.GitHubOwnedAllowed, criteria.VerifiedAllowed, criteria.PatternsAllowedString())
 	} else {
-		fmt.Fprintf(b, "  selected_actions: %s\n", unavailableText(p.SelectedActions.UnavailableReason()))
+		fmt.Fprintf(b, "  selected_actions: %s\n", display.UnavailableText(p.SelectedActions.UnavailableReason()))
 	}
-}
-
-// unavailableText は観測不能を CLI 仕様の unavailable (<理由>) の形で返す。未定義の理由は不変条件の破れとして panic する。
-// 定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
-func unavailableText(reason github.UnavailableReason) string {
-	switch reason {
-	case github.UnavailableActionsDisabled:
-		return "unavailable (GitHub Actions is disabled)"
-	case github.UnavailableNotSelected:
-		return `unavailable (allowed_actions is not "selected")`
-	}
-	panic(fmt.Sprintf("show: undefined unavailable reason %d", int(reason)))
 }

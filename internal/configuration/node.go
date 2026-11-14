@@ -116,17 +116,54 @@ func (d document) mappingEntries(n *yaml.Node, path string, required, optional [
 	return entries, nil
 }
 
-func (d document) sequenceItems(n *yaml.Node, path string) ([]*yaml.Node, error) {
+// sequenceContent は、n がシーケンスであることを確かめ、空のシーケンスも受理して要素を返す。
+func (d document) sequenceContent(n *yaml.Node, path string) ([]*yaml.Node, error) {
 	if err := d.checkNode(n, path); err != nil {
 		return nil, err
 	}
 	if n.Kind != yaml.SequenceNode {
 		return nil, invalid(n, path, "must be a sequence")
 	}
-	if len(n.Content) == 0 {
+	return n.Content, nil
+}
+
+func (d document) sequenceItems(n *yaml.Node, path string) ([]*yaml.Node, error) {
+	items, err := d.sequenceContent(n, path)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
 		return nil, invalid(n, path, "must not be empty")
 	}
-	return n.Content, nil
+	return items, nil
+}
+
+// patternsAllowedValue は、許可パターンの並びを宣言の順のまま返す。
+// 空のシーケンスは「許可パターンなし」の期待値で、省略 (nil) と区別するため、空でも nil にしない。
+// yaml.Node.Value はエスケープを解釈した後の文字列のため、重複はそのまま比べる。
+func (d document) patternsAllowedValue(n *yaml.Node, path string) ([]string, error) {
+	items, err := d.sequenceContent(n, path)
+	if err != nil {
+		return nil, err
+	}
+	patterns := make([]string, 0, len(items))
+	seen := make(map[string]int, len(items))
+	for i, item := range items {
+		itemPath := fmt.Sprintf("%s[%d]", path, i)
+		s, err := d.stringValue(item, itemPath)
+		if err != nil {
+			return nil, err
+		}
+		if s == "" || strings.TrimSpace(s) != s {
+			return nil, invalid(item, itemPath, "must not be empty or have leading or trailing whitespace; got %q", s)
+		}
+		if j, ok := seen[s]; ok {
+			return nil, invalid(item, itemPath, "duplicate pattern %q; same as %s[%d]", s, path, j)
+		}
+		seen[s] = i
+		patterns = append(patterns, s)
+	}
+	return patterns, nil
 }
 
 // boolValue は、タグを明示しない引用符なし小文字の true / false だけを受理する。
@@ -153,6 +190,19 @@ func (d document) permissionLevelValue(n *yaml.Node, path string) (setting.Permi
 		return "", invalid(n, path, "must be read or write; got %q", s)
 	}
 	return level, nil
+}
+
+// allowedActionsPolicyValue は、文字列のうち定義された Actions 許可ポリシーの値に完全一致するものだけを受理する。
+func (d document) allowedActionsPolicyValue(n *yaml.Node, path string) (setting.AllowedActionsPolicy, error) {
+	s, err := d.stringValue(n, path)
+	if err != nil {
+		return "", err
+	}
+	policy, ok := setting.ParseAllowedActionsPolicy(s)
+	if !ok {
+		return "", invalid(n, path, "must be all, local_only, or selected; got %q", s)
+	}
+	return policy, nil
 }
 
 func (d document) stringValue(n *yaml.Node, path string) (string, error) {

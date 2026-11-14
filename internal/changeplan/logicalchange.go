@@ -16,8 +16,8 @@ type LogicalChange struct {
 }
 
 // LogicalChanges は、変更予定から論理的な設定変更を導く。
-// 管理設定はどれも単独で更新できるため、変更予定と論理的な設定変更は一対一になる。
 // 比較不能な変更予定は、変更前提の基準になる観測値がないため、適用可能と判断されていても error にする。
+// 論理的な設定変更にするのは不一致の変更予定だけで、どれも単独の管理設定の変更として実現できるため、変更予定と論理的な設定変更は一対一になる。
 func (p Plan) LogicalChanges() ([]LogicalChange, error) {
 	var changes []LogicalChange
 	for _, s := range p.Settings {
@@ -27,7 +27,9 @@ func (p Plan) LogicalChanges() ([]LogicalChange, error) {
 		if s.Applicability != Applicable || s.Result != Mismatch {
 			return nil, fmt.Errorf("%s: %s cannot be applied", p.Target, s.Key)
 		}
-		changes = append(changes, LogicalChange{Key: s.Key, Observed: s.Observed, Desired: s.Desired})
+		// 不一致は観測値があるときだけ生じるため、値の有無は確かめない
+		observed, _ := s.Observed.Value()
+		changes = append(changes, LogicalChange{Key: s.Key, Observed: observed, Desired: s.Desired})
 	}
 	return changes, nil
 }

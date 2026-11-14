@@ -9,8 +9,10 @@ import (
 	"strings"
 
 	"github.com/tmknom/reco/internal/changeplan"
+	"github.com/tmknom/reco/internal/display"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
+	"github.com/tmknom/reco/internal/setting"
 )
 
 // Config は Run の入力。
@@ -50,9 +52,7 @@ func writeChangePlan(w io.Writer, configPath string, p changeplan.Plan) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Configuration: %s\n\nRepository: %s\n", configPath, p.Target)
 	for _, s := range p.Settings {
-		if s.Result == changeplan.Mismatch {
-			fmt.Fprintf(&b, "  %s: %s -> %s\n", s.Key, s.Observed.String(), s.Desired.String())
-		}
+		writePlannedChange(&b, s)
 	}
 	fmt.Fprintf(&b, "\nPlan: %s to update, %s, %s\n",
 		pluralize(1, "repository", "repositories"),
@@ -60,6 +60,46 @@ func writeChangePlan(w io.Writer, configPath string, p changeplan.Plan) error {
 		pluralize(notComparables, "not-comparable setting", "not-comparable settings"))
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+// writePlannedChange は、変更予定を CLI 仕様の確認済みの差分か比較不能な設定予定の形で書き、副作用をその下に添える。一致は書かない。
+// 比較不能の現在値は確認できていないため、確認済みの差分の形 (現在値 -> 期待値) で書かない。
+func writePlannedChange(b *strings.Builder, s changeplan.SettingPlan) {
+	switch s.Result {
+	case changeplan.Match:
+		return
+	case changeplan.Mismatch:
+		observed, _ := s.Observed.Value()
+		if s.Key == setting.SelectedActions {
+			// 3項目を並べた値は長く、1行では -> を見つけにくいため、現在値と期待値を別の行に書く
+			fmt.Fprintf(b, "  %s:\n    %s\n    -> %s\n", s.Key, observed.String(), s.Desired.String())
+		} else {
+			fmt.Fprintf(b, "  %s: %s -> %s\n", s.Key, observed.String(), s.Desired.String())
+		}
+	case changeplan.NotComparable:
+		desired := s.Desired.String()
+		if s.EnablesActions() {
+			desired += " (enables GitHub Actions)"
+		}
+		fmt.Fprintf(b, "  %s\n    Current: %s\n    Desired: %s\n", s.Key, display.UnavailableText(s.Observed.UnavailableReason()), desired)
+	}
+	for _, effect := range s.SideEffects {
+		fmt.Fprintf(b, "    Side effect: %s\n", sideEffectText(effect))
+	}
+}
+
+// sideEffectText は、副作用を CLI 仕様の Side effect: の文言で返す。
+// 副作用は、Actions 許可ポリシーの変更で選択方式の Actions 許可条件が失われることだけのため、文言はその設定に限り、
+// ほかの設定の副作用は誤った文言で黙って示さないよう、不変条件の破れとして panic する。
+// 失われる値を観測できなかったときは、値を推測せずに失われる可能性だけを示す。
+func sideEffectText(effect changeplan.SideEffect) string {
+	if effect.Key != setting.SelectedActions {
+		panic("plan: no side effect wording for " + string(effect.Key))
+	}
+	if lost, ok := effect.Observed.Value(); ok {
+		return "GitHub discards the current selected_actions (" + lost.String() + ")"
+	}
+	return `GitHub may discard selected_actions if allowed_actions was "selected" before GitHub Actions was disabled (current values are unavailable)`
 }
 
 func pluralize(n int, singular, plural string) string {

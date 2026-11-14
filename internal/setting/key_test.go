@@ -6,7 +6,7 @@ import (
 )
 
 func TestKeys_FollowsConfigurationOrder(t *testing.T) {
-	want := []Key{DeleteBranchOnMerge, AllowAutoMerge, DefaultWorkflowPermissions, CanApprovePullRequestReviews}
+	want := []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowedActions, SelectedActions, DefaultWorkflowPermissions, CanApprovePullRequestReviews}
 	if got := Keys(); !slices.Equal(got, want) {
 		t.Errorf("Keys() = %v, want %v", got, want)
 	}
@@ -26,6 +26,8 @@ func TestKeyArea(t *testing.T) {
 	}{
 		{key: DeleteBranchOnMerge, want: AreaGeneral},
 		{key: AllowAutoMerge, want: AreaGeneral},
+		{key: AllowedActions, want: AreaActionsPermissions},
+		{key: SelectedActions, want: AreaActionsPermissions},
 		{key: DefaultWorkflowPermissions, want: AreaWorkflowPermissions},
 		{key: CanApprovePullRequestReviews, want: AreaWorkflowPermissions},
 	}

@@ -14,6 +14,27 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
+func TestObservedValue(t *testing.T) {
+	t.Run("observed value is returned", func(t *testing.T) {
+		got := observedValue(github.ObservationResult{General: github.General{AllowAutoMerge: true}}, setting.AllowAutoMerge)
+		if want := setting.BoolValue(true); !reflect.DeepEqual(got, want) {
+			t.Errorf("observedValue() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("unavailable setting panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("observedValue() did not panic for an unavailable setting")
+			}
+		}()
+		observed := github.ObservationResult{ActionsPermissions: &github.ActionsPermissions{
+			AllowedActions: github.Unavailable[setting.AllowedActionsPolicy](github.UnavailableActionsDisabled),
+		}}
+		_ = observedValue(observed, setting.AllowedActions)
+	})
+}
+
 //trace:checks INV-004
 //trace:checks FR-010
 func TestCheckPrecondition(t *testing.T) {

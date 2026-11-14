@@ -24,6 +24,43 @@ func TestPlan_Count(t *testing.T) {
 	}
 }
 
+//trace:checks FR-007
+func TestSettingPlan_EnablesActions(t *testing.T) {
+	cases := []struct {
+		name string
+		plan SettingPlan
+		want bool
+	}{
+		{
+			name: "allowed_actions unavailable because actions is disabled enables actions",
+			plan: SettingPlan{Key: setting.AllowedActions, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Result: NotComparable},
+			want: true,
+		},
+		{
+			name: "allowed_actions with an observed policy does not enable actions",
+			plan: SettingPlan{Key: setting.AllowedActions, Observed: github.Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsAll)), Result: Mismatch},
+			want: false,
+		},
+		{
+			name: "allowed_actions unavailable for another reason does not enable actions",
+			plan: SettingPlan{Key: setting.AllowedActions, Observed: github.Unavailable[setting.Value](github.UnavailableNotSelected), Result: NotComparable},
+			want: false,
+		},
+		{
+			name: "selected_actions unavailable because actions is disabled does not enable actions",
+			plan: SettingPlan{Key: setting.SelectedActions, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Result: NotComparable},
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.plan.EnablesActions(); got != tc.want {
+				t.Errorf("EnablesActions() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
 const twoRepositoriesSource = `repositories:
   - name: owner/first
     general:
@@ -66,8 +103,8 @@ func TestGenerate(t *testing.T) {
 			t.Errorf("RepositoryID = %d, want 7", got.RepositoryID)
 		}
 		want := []SettingPlan{
-			{Key: setting.DeleteBranchOnMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
-			{Key: setting.AllowAutoMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
+			{Key: setting.DeleteBranchOnMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
+			{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
 		}
 		if !reflect.DeepEqual(got.Settings, want) {
 			t.Errorf("Settings = %+v, want %+v", got.Settings, want)
@@ -189,9 +226,9 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 			t.Errorf("requests = %v, want %v", paths, want)
 		}
 		want := []SettingPlan{
-			{Key: setting.AllowAutoMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
+			{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
 			{
-				Key: setting.DefaultWorkflowPermissions, Observed: setting.PermissionLevelValue(setting.PermissionWrite), Desired: setting.PermissionLevelValue(setting.PermissionRead),
+				Key: setting.DefaultWorkflowPermissions, Observed: github.Observed(setting.PermissionLevelValue(setting.PermissionWrite)), Desired: setting.PermissionLevelValue(setting.PermissionRead),
 				Result: Mismatch, Applicability: Applicable,
 			},
 		}
@@ -211,6 +248,75 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 		client := github.New("test-token", github.WithBaseURL(baseURL))
 
 		got, err := Generate(context.Background(), client, file(workflowSource), nil)
+		if !errors.Is(err, github.ErrForbidden) {
+			t.Errorf("Generate() error = %v, want %v", err, github.ErrForbidden)
+		}
+		if !reflect.DeepEqual(got, Plan{}) {
+			t.Errorf("Generate() = %+v, want the zero plan", got)
+		}
+	})
+}
+
+const actionsPermissionsSource = `repositories:
+  - name: owner/repo
+    actions:
+      permissions:
+        allowed_actions: all
+`
+
+//trace:checks FR-004
+//trace:checks FR-005
+//trace:checks FR-006
+//trace:checks FR-007
+func TestGenerate_ActionsPermissions(t *testing.T) {
+	file := ConfigurationFile{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(actionsPermissionsSource)}}, Name: "reco.yaml", Path: "./reco.yaml"}
+	const repositoryBody = `{"id": 7, "allow_auto_merge": false, "delete_branch_on_merge": false}`
+
+	t.Run("declared policy is observed, judged applicable, and carries the side effect", func(t *testing.T) {
+		var paths []string
+		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
+			paths = append(paths, r.Method+" "+r.URL.Path)
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/actions/permissions/selected-actions"):
+				_, _ = w.Write([]byte(`{"github_owned_allowed": true, "verified_allowed": false, "patterns_allowed": ["example/*"]}`))
+			case strings.HasSuffix(r.URL.Path, "/actions/permissions"):
+				_, _ = w.Write([]byte(`{"enabled": true, "allowed_actions": "selected", "sha_pinning_required": false}`))
+			default:
+				_, _ = w.Write([]byte(repositoryBody))
+			}
+		})
+		client := github.New("test-token", github.WithBaseURL(baseURL))
+
+		got, err := Generate(context.Background(), client, file, nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		wantPaths := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions", "GET /repos/owner/repo/actions/permissions/selected-actions"}
+		if !slices.Equal(paths, wantPaths) {
+			t.Errorf("requests = %v, want %v", paths, wantPaths)
+		}
+		criteria := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{"example/*"}}
+		want := []SettingPlan{{
+			Key: setting.AllowedActions, Observed: github.Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected)),
+			Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), Result: Mismatch, Applicability: Applicable,
+			SideEffects: []SideEffect{{Key: setting.SelectedActions, Observed: github.Observed(setting.SelectedActionsCriteriaValue(criteria))}},
+		}}
+		if !reflect.DeepEqual(got.Settings, want) {
+			t.Errorf("Settings = %+v, want %+v", got.Settings, want)
+		}
+	})
+
+	t.Run("actions permissions observation failure is returned without a plan", func(t *testing.T) {
+		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, "/actions/permissions") {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			_, _ = w.Write([]byte(repositoryBody))
+		})
+		client := github.New("test-token", github.WithBaseURL(baseURL))
+
+		got, err := Generate(context.Background(), client, file, nil)
 		if !errors.Is(err, github.ErrForbidden) {
 			t.Errorf("Generate() error = %v, want %v", err, github.ErrForbidden)
 		}

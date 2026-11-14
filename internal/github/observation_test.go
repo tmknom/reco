@@ -915,16 +915,16 @@ func TestObservationResult_Value(t *testing.T) {
 		{General: General{AllowAutoMerge: true}, WorkflowPermissions: &WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead}},
 		{WorkflowPermissions: &WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: true}},
 	}
-	yes, no := setting.BoolValue(true), setting.BoolValue(false)
-	write, read := setting.PermissionLevelValue(setting.PermissionWrite), setting.PermissionLevelValue(setting.PermissionRead)
+	yes, no := Observed(setting.BoolValue(true)), Observed(setting.BoolValue(false))
+	write, read := Observed(setting.PermissionLevelValue(setting.PermissionWrite)), Observed(setting.PermissionLevelValue(setting.PermissionRead))
 	cases := []struct {
 		key  setting.Key
-		want []setting.Value
+		want []SettingObservation[setting.Value]
 	}{
-		{key: setting.DeleteBranchOnMerge, want: []setting.Value{yes, no, no}},
-		{key: setting.AllowAutoMerge, want: []setting.Value{no, yes, no}},
-		{key: setting.DefaultWorkflowPermissions, want: []setting.Value{write, read, write}},
-		{key: setting.CanApprovePullRequestReviews, want: []setting.Value{no, no, yes}},
+		{key: setting.DeleteBranchOnMerge, want: []SettingObservation[setting.Value]{yes, no, no}},
+		{key: setting.AllowAutoMerge, want: []SettingObservation[setting.Value]{no, yes, no}},
+		{key: setting.DefaultWorkflowPermissions, want: []SettingObservation[setting.Value]{write, read, write}},
+		{key: setting.CanApprovePullRequestReviews, want: []SettingObservation[setting.Value]{no, no, yes}},
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.key)+" returns its observed value", func(t *testing.T) {
@@ -932,6 +932,51 @@ func TestObservationResult_Value(t *testing.T) {
 				if got := observed.Value(tc.key); !reflect.DeepEqual(got, tc.want[i]) {
 					t.Errorf("observations[%d].Value(%q) = %v, want %v", i, tc.key, got, tc.want[i])
 				}
+			}
+		})
+	}
+}
+
+//trace:checks FR-004
+//trace:checks QR-002
+func TestObservationResult_ValueOfActionsPermissions(t *testing.T) {
+	// 観測値の設定グループの許可パターンは、応答の並びと重複のまま運ばれることを確かめるため、順不同で重複を含める。
+	criteria := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{"b/*", "a/*", "b/*"}}
+	cases := []struct {
+		name     string
+		observed ActionsPermissions
+		key      setting.Key
+		want     SettingObservation[setting.Value]
+	}{
+		{
+			name:     "allowed_actions returns the observed policy",
+			observed: ActionsPermissions{Enabled: true, AllowedActions: Observed(setting.AllowedActionsLocalOnly), SelectedActions: Unavailable[setting.SelectedActionsCriteria](UnavailableNotSelected)},
+			key:      setting.AllowedActions,
+			want:     Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly)),
+		},
+		{
+			name:     "allowed_actions keeps the unavailable reason",
+			observed: ActionsPermissions{AllowedActions: Unavailable[setting.AllowedActionsPolicy](UnavailableActionsDisabled), SelectedActions: Unavailable[setting.SelectedActionsCriteria](UnavailableActionsDisabled)},
+			key:      setting.AllowedActions,
+			want:     Unavailable[setting.Value](UnavailableActionsDisabled),
+		},
+		{
+			name:     "selected_actions returns the observed criteria as is",
+			observed: ActionsPermissions{Enabled: true, AllowedActions: Observed(setting.AllowedActionsSelected), SelectedActions: Observed(criteria)},
+			key:      setting.SelectedActions,
+			want:     Observed(setting.SelectedActionsCriteriaValue(criteria)),
+		},
+		{
+			name:     "selected_actions keeps the unavailable reason",
+			observed: ActionsPermissions{Enabled: true, AllowedActions: Observed(setting.AllowedActionsAll), SelectedActions: Unavailable[setting.SelectedActionsCriteria](UnavailableNotSelected)},
+			key:      setting.SelectedActions,
+			want:     Unavailable[setting.Value](UnavailableNotSelected),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := (ObservationResult{ActionsPermissions: &tc.observed}).Value(tc.key); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Value(%q) = %+v, want %+v", tc.key, got, tc.want)
 			}
 		})
 	}

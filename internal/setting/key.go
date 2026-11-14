@@ -9,6 +9,8 @@ type Key string
 const (
 	DeleteBranchOnMerge          Key = "general.delete_branch_on_merge"
 	AllowAutoMerge               Key = "general.allow_auto_merge"
+	AllowedActions               Key = "actions.permissions.allowed_actions"
+	SelectedActions              Key = "actions.permissions.selected_actions"
 	DefaultWorkflowPermissions   Key = "actions.workflow.default_workflow_permissions"
 	CanApprovePullRequestReviews Key = "actions.workflow.can_approve_pull_request_reviews"
 )
@@ -16,7 +18,7 @@ const (
 // Keys は、reco が宣言を受け付ける設定を YAML 設定仕様の章と表の並びで返す。
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
 func Keys() []Key {
-	return []Key{DeleteBranchOnMerge, AllowAutoMerge, DefaultWorkflowPermissions, CanApprovePullRequestReviews}
+	return []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowedActions, SelectedActions, DefaultWorkflowPermissions, CanApprovePullRequestReviews}
 }
 
 // KeysIn は、Keys のうち area に属する設定を Keys の並びで返す。
@@ -36,6 +38,8 @@ func (k Key) Area() Area {
 	switch k {
 	case DeleteBranchOnMerge, AllowAutoMerge:
 		return AreaGeneral
+	case AllowedActions, SelectedActions:
+		return AreaActionsPermissions
 	case DefaultWorkflowPermissions, CanApprovePullRequestReviews:
 		return AreaWorkflowPermissions
 	}

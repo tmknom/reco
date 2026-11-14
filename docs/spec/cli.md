@@ -109,6 +109,17 @@ Repository: example/project-a
 Plan: 1 repository to update, 1 known change, 0 not-comparable settings
 ```
 
+設定グループの確認済みの差分は、3項目を並べた値が長いため、設定の行の下に現在値と、`->` に続けて期待値を1行ずつ示します。
+
+```text
+Repository: example/project-a
+  actions.permissions.selected_actions:
+    github_owned_allowed: true, verified_allowed: false, patterns_allowed: []
+    -> github_owned_allowed: true, verified_allowed: true, patterns_allowed: ["actions/checkout@v4", "example/*"]
+
+Plan: 1 repository to update, 1 known change, 0 not-comparable settings
+```
+
 ```text
 $ reco plan
 No changes.
@@ -122,13 +133,26 @@ Repository: example/project-a
   actions.permissions.allowed_actions
     Current: unavailable (GitHub Actions is disabled)
     Desired: local_only (enables GitHub Actions)
+    Side effect: GitHub may discard selected_actions if allowed_actions was "selected" before GitHub Actions was disabled (current values are unavailable)
 
 Plan: 1 repository to update, 0 known changes, 1 not-comparable setting
 ```
 
+`(enables GitHub Actions)` は、Actions が無効のリポジトリの `allowed_actions` にだけ添えます。選択方式の Actions 許可条件は、`allowed_actions` が `selected` でないリポジトリでは現在値を取得できないため、`allowed_actions` を `selected` へ変える変更予定と並べて、比較不能な設定予定として示します。
+
+```text
+Repository: example/project-a
+  actions.permissions.allowed_actions: all -> selected
+  actions.permissions.selected_actions
+    Current: unavailable (allowed_actions is not "selected")
+    Desired: github_owned_allowed: true, verified_allowed: true, patterns_allowed: ["example/*"]
+
+Plan: 1 repository to update, 1 known change, 1 not-comparable setting
+```
+
 安全な変更に必要な条件を確認できない場合は、照合結果に加えて `Applicability: not applicable (<理由>)` を示し、集計の後に `Plan cannot be applied.` と表示します。
 
-宣言した変更に伴って GitHub が管理範囲外の設定を削除する場合は、変更予定に `Side effect:` として失われる設定と現在値を添えます。この変更は適用可能であり、利用者が承認すれば実行します。現在は、Actions 許可ポリシーを `selected` から `all` / `local_only` へ変え、既存の選択方式の Actions 許可条件が失われる場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。Actions が無効のリポジトリで `all` / `local_only` を宣言した場合は、無効にする前のポリシーが `selected` であれば同じく失われますが、無効の間は値もポリシーも取得できないため、失われる可能性があることだけを示します。`Side effect:` は変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。
+宣言した変更に伴って GitHub が管理範囲外の設定を削除する場合は、変更予定に `Side effect:` として失われる設定と現在値を添えます。この変更は適用可能であり、利用者が承認すれば実行します。現在は、Actions 許可ポリシーを `selected` から `all` / `local_only` へ変え、既存の選択方式の Actions 許可条件が失われる場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。Actions が無効のリポジトリで `all` / `local_only` を宣言した場合は、無効にする前のポリシーが `selected` であれば同じく失われますが、無効の間は値もポリシーも取得できないため、失われる可能性があることだけを示します。遷移先が `selected` の変更には添えません。3項目は宣言した値で上書きされ、管理範囲内の変更になるためです。`Side effect:` は、副作用を伴う変更予定の最後の行として示します。変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。
 
 ```text
 Repository: example/project-a

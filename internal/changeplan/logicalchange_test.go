@@ -4,14 +4,15 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
 
 //trace:checks INV-002
 //trace:checks FR-008
 func TestPlan_LogicalChanges(t *testing.T) {
-	match := SettingPlan{Key: setting.AllowAutoMerge, Observed: setting.BoolValue(true), Desired: setting.BoolValue(true), Result: Match}
-	mismatch := SettingPlan{Key: setting.AllowAutoMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
+	match := SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: Match}
+	mismatch := SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
 	newPlan := func(settings ...SettingPlan) Plan {
 		return Plan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
 	}
@@ -35,7 +36,7 @@ func TestPlan_LogicalChanges(t *testing.T) {
 	})
 
 	t.Run("applicable mismatches of both settings become logical changes in the plan order", func(t *testing.T) {
-		deleteBranch := SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
+		deleteBranch := SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
 		got, err := newPlan(deleteBranch, mismatch).LogicalChanges()
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
@@ -55,15 +56,15 @@ func TestPlan_LogicalChanges(t *testing.T) {
 	}{
 		{
 			name:    "not-applicable mismatch is an error",
-			setting: SettingPlan{Key: setting.AllowAutoMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: NotApplicable},
+			setting: SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: NotApplicable},
 		},
 		{
 			name:    "applicable not-comparable planned change is an error because it has no observed value",
-			setting: SettingPlan{Key: setting.AllowAutoMerge, Desired: setting.BoolValue(true), Result: NotComparable, Applicability: Applicable},
+			setting: SettingPlan{Key: setting.AllowedActions, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), Result: NotComparable, Applicability: Applicable},
 		},
 		{
 			name:    "mismatch without an applicability judgment is an error",
-			setting: SettingPlan{Key: setting.AllowAutoMerge, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: ApplicabilityNotJudged},
+			setting: SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: ApplicabilityNotJudged},
 		},
 	}
 	for _, tc := range errorCases {

@@ -150,6 +150,16 @@ func okWorkflowPermissions(defaultWorkflowPermissions string, canApprovePullRequ
 		`{"default_workflow_permissions": %q, "can_approve_pull_request_reviews": %t}`, defaultWorkflowPermissions, canApprovePullRequestReviews)}
 }
 
+// okActionsPermissions は、Actions permissions または Selected actions の取得の正常応答。
+func okActionsPermissions(body string) response {
+	return response{status: http.StatusOK, body: body}
+}
+
+// actionsPermissionsConfigSource は、allowed_actions だけを policy で宣言する。
+func actionsPermissionsConfigSource(policy string) string {
+	return "repositories:\n  - name: owner/repo\n    actions:\n      permissions:\n        allowed_actions: " + policy + "\n"
+}
+
 func newClient(baseURL *url.URL) *github.Client {
 	return github.New("test-token", github.WithBaseURL(baseURL))
 }
@@ -180,7 +190,7 @@ func allowAutoMergeChange() changeplan.LogicalChange {
 func allowAutoMergeMismatch() changeplan.SettingPlan {
 	return changeplan.SettingPlan{
 		Key:           setting.AllowAutoMerge,
-		Observed:      setting.BoolValue(false),
+		Observed:      github.Observed(setting.BoolValue(false)),
 		Desired:       setting.BoolValue(true),
 		Result:        changeplan.Mismatch,
 		Applicability: changeplan.Applicable,
@@ -196,7 +206,7 @@ func deleteBranchOnMergeChange() changeplan.LogicalChange {
 func deleteBranchOnMergeMismatch() changeplan.SettingPlan {
 	return changeplan.SettingPlan{
 		Key:           setting.DeleteBranchOnMerge,
-		Observed:      setting.BoolValue(false),
+		Observed:      github.Observed(setting.BoolValue(false)),
 		Desired:       setting.BoolValue(true),
 		Result:        changeplan.Mismatch,
 		Applicability: changeplan.Applicable,
@@ -227,7 +237,7 @@ const unknownKey setting.Key = "general.unknown"
 
 // unknownMismatch は、実行できる更新操作を持たない設定の適用可能な変更予定。
 func unknownMismatch() changeplan.SettingPlan {
-	return changeplan.SettingPlan{Key: unknownKey, Observed: setting.BoolValue(false), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
+	return changeplan.SettingPlan{Key: unknownKey, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
 }
 
 // TestExecutableChanges は、承認を求める前に、すべての論理的な設定変更が実行できる更新操作を持つことを確かめる規則を確かめる。
@@ -235,7 +245,7 @@ func unknownMismatch() changeplan.SettingPlan {
 //trace:checks INV-002
 //trace:checks FR-009
 func TestExecutableChanges(t *testing.T) {
-	match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: setting.BoolValue(true), Desired: setting.BoolValue(true), Result: changeplan.Match}
+	match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match}
 
 	t.Run("all matches have no change", func(t *testing.T) {
 		got, err := executableChanges(newPlan(t, match))
@@ -250,6 +260,28 @@ func TestExecutableChanges(t *testing.T) {
 			t.Errorf("executableChanges() = %v, %v, want an error containing %q", got, err, unknownKey)
 		}
 	})
+
+	// Actions permissions の設定は更新操作を持たないため、適用可能な不一致でも承認を求める前に止める
+	actionsMismatches := []changeplan.SettingPlan{
+		{
+			Key: setting.AllowedActions, Observed: github.Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsAll)),
+			Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+		},
+		{
+			Key:      setting.SelectedActions,
+			Observed: github.Observed(setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{PatternsAllowed: []string{}})),
+			Desired:  setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{}}),
+			Result:   changeplan.Mismatch, Applicability: changeplan.Applicable,
+		},
+	}
+	for _, mismatch := range actionsMismatches {
+		t.Run(string(mismatch.Key)+" mismatch is an error naming the setting", func(t *testing.T) {
+			got, err := executableChanges(newPlan(t, mismatch))
+			if err == nil || !strings.Contains(err.Error(), string(mismatch.Key)) {
+				t.Errorf("executableChanges() = %v, %v, want an error containing %q", got, err, mismatch.Key)
+			}
+		})
+	}
 }
 
 //trace:checks FR-009
@@ -295,7 +327,7 @@ func TestApplyPlan(t *testing.T) {
 		baseURL, rec := newSequenceServer(t)
 		var out bytes.Buffer
 		calls := 0
-		match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: setting.BoolValue(true), Desired: setting.BoolValue(true), Result: changeplan.Match}
+		match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match}
 
 		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, match))
 
@@ -601,6 +633,68 @@ func TestRun(t *testing.T) {
 		}
 		if !strings.Contains(out.String(), "owner/repo: updated") {
 			t.Errorf("got Out %q, want the repository to be updated", out.String())
+		}
+	})
+
+	rejected := []struct {
+		name      string
+		source    string
+		responses []response
+	}{
+		{
+			name:   "selected to all is rejected before approval",
+			source: actionsPermissionsConfigSource("all"),
+			responses: []response{
+				okRepository(1, false, false), okActionsPermissions(`{"enabled": true, "allowed_actions": "selected", "sha_pinning_required": false}`),
+				okActionsPermissions(`{"github_owned_allowed": true, "verified_allowed": true, "patterns_allowed": []}`),
+			},
+		},
+		{
+			name:   "not-comparable policy of disabled actions is rejected before approval",
+			source: actionsPermissionsConfigSource("local_only"),
+			responses: []response{
+				okRepository(1, false, false), okActionsPermissions(`{"enabled": false}`),
+			},
+		},
+	}
+	for _, tc := range rejected {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, rec := newSequenceServer(t, tc.responses...)
+			var out bytes.Buffer
+			calls := 0
+			files := fstest.MapFS{"reco.yaml": {Data: []byte(tc.source)}}
+
+			err := Run(context.Background(), newConfig(files, &out, baseURL, &calls))
+
+			if err == nil || !strings.Contains(err.Error(), string(setting.AllowedActions)) {
+				t.Errorf("Run() error = %v, want an error containing %q", err, setting.AllowedActions)
+			}
+			if calls != 0 || out.Len() != 0 {
+				t.Errorf("approve calls = %d, Out = %q, want no approval and no output", calls, out.String())
+			}
+			if slices.ContainsFunc(rec.Methods(), func(m string) bool { return m != http.MethodGet }) {
+				t.Errorf("requests = %v, want only GET", rec.Methods())
+			}
+		})
+	}
+
+	t.Run("matching actions permissions leave only the general change to apply", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t,
+			okRepository(1, false, false), okActionsPermissions(`{"enabled": true, "allowed_actions": "all", "sha_pinning_required": false}`),
+			okRepository(1, false, false), okRepository(1, true, false), okRepository(1, true, false))
+		var out bytes.Buffer
+		calls := 0
+		source := configSource + "    actions:\n      permissions:\n        allowed_actions: all\n"
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(source)}}
+
+		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		if want := []string{"GET", "GET", "GET", "PATCH", "GET"}; !slices.Equal(rec.Methods(), want) {
+			t.Errorf("requests = %v, want %v", rec.Methods(), want)
+		}
+		if calls != 1 || !strings.Contains(out.String(), "owner/repo: updated") {
+			t.Errorf("approve calls = %d, Out = %q, want one approval and the repository updated", calls, out.String())
 		}
 	})
 

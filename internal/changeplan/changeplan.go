@@ -24,13 +24,22 @@ type Plan struct {
 }
 
 // SettingPlan は、一つの管理設定についての計画。
+// Result は Observed と Desired から決まる。判定は Result で行い、Observed は値と理由の取り出しに使う。
 type SettingPlan struct {
 	Key setting.Key
-	// Observed は計画時の観測値。比較不能の設定では値がない。
-	Observed      setting.Value
+	// Observed は計画時の設定の観測結果。観測不能のときだけ比較不能になり、その理由が比較できない理由になる。
+	Observed      github.SettingObservation[setting.Value]
 	Desired       setting.Value
 	Result        ReconciliationResult
 	Applicability Applicability
+	// SideEffects は変更予定に伴う副作用。副作用がなければ nil。
+	SideEffects []SideEffect
+}
+
+// EnablesActions は、この変更予定が GitHub Actions を有効にするかを返す。
+// Actions 許可ポリシーの期待値は Actions が有効であることを含むため、Actions が無効で観測不能だったポリシーの変更予定が当たる。
+func (s SettingPlan) EnablesActions() bool {
+	return s.Key == setting.AllowedActions && s.Result == NotComparable && s.Observed.UnavailableReason() == github.UnavailableActionsDisabled
 }
 
 // Count は、照合結果が r の設定の数を返す。
@@ -71,7 +80,8 @@ func Generate(ctx context.Context, client *github.Client, file ConfigurationFile
 	}
 	settings := reconcile(target.Desired, observed)
 	for i := range settings {
-		settings[i].Applicability = judgeApplicability(settings[i].Result)
+		settings[i].Applicability = judgeApplicability(settings[i])
+		settings[i].SideEffects = sideEffects(settings[i], observed)
 	}
 	return Plan{Target: target.Reference, RepositoryID: observed.RepositoryID, Settings: settings}, nil
 }
