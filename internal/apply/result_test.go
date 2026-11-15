@@ -144,3 +144,39 @@ func TestChangeRecord_Result(t *testing.T) {
 		})
 	}
 }
+
+// TestRepositoryRecord_Result は、対象リポジトリごとの集約の四つの区別を確かめる。
+//
+//trace:checks FR-013
+//trace:checks INV-005
+func TestRepositoryRecord_Result(t *testing.T) {
+	failed := changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{started(github.UpdateRejected)}}
+	unconfirmed := changeRecord{change: deleteBranchOnMergeChange(), operations: []operationRecord{{precondition: preconditionUnconfirmed}}}
+	cases := []struct {
+		name    string
+		changes []changeRecord
+		want    repositoryResult
+	}{
+		{name: "no logical change is no change", want: repositoryNoChange},
+		{name: "all complete is completed", changes: []changeRecord{completedRecord(deleteBranchOnMergeChange()), completedRecord(allowAutoMergeChange())}, want: repositoryCompleted},
+		{name: "complete then failed is not completed", changes: []changeRecord{completedRecord(deleteBranchOnMergeChange()), failed}, want: repositoryNotCompleted},
+		{
+			name:    "precondition not confirmed then stopped is not completed because the precondition was checked",
+			changes: []changeRecord{unconfirmed, {change: allowAutoMergeChange()}},
+			want:    repositoryNotCompleted,
+		},
+		{
+			name:    "all stopped without checking any precondition is stopped",
+			changes: []changeRecord{{change: deleteBranchOnMergeChange()}, {change: allowAutoMergeChange()}},
+			want:    repositoryStopped,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			record := repositoryRecord{target: mustReference(t, "owner/repo"), changes: tc.changes}
+			if got := record.result(); got != tc.want {
+				t.Errorf("result() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

@@ -312,7 +312,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
-			if err := writeChangeReport(&out, target, []changeRecord{tc.record}); err != nil {
+			if err := writeChangeReport(&out, []repositoryRecord{{target: target, changes: []changeRecord{tc.record}}}); err != nil {
 				t.Fatalf("writeChangeReport() error = %v", err)
 			}
 			if out.String() != tc.want {
@@ -322,7 +322,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 	}
 
 	t.Run("write failure is returned", func(t *testing.T) {
-		err := writeChangeReport(failingWriter{}, target, []changeRecord{{change: change}})
+		err := writeChangeReport(failingWriter{}, []repositoryRecord{{target: target, changes: []changeRecord{completedRecord(change)}}})
 		if !errors.Is(err, errWrite) {
 			t.Errorf("writeChangeReport() error = %v, want %v", err, errWrite)
 		}
@@ -440,7 +440,7 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
-			if err := writeChangeReport(&out, target, tc.records); err != nil {
+			if err := writeChangeReport(&out, []repositoryRecord{{target: target, changes: tc.records}}); err != nil {
 				t.Fatalf("writeChangeReport() error = %v", err)
 			}
 			if out.String() != tc.want {
@@ -448,4 +448,174 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestWriteChangeReport_Repositories は、選択したすべての対象リポジトリを宣言順に示す規則、変更不要と停止の行、
+// Apply complete. の条件と数え方、対象リポジトリをまたぐ注記の判定を確かめる。期待値は CLI 仕様の apply の表示例から導く。
+//
+//trace:checks FR-013
+//trace:checks INV-005
+//trace:checks QR-002
+func TestWriteChangeReport_Repositories(t *testing.T) {
+	a, b, c := mustReference(t, "example/project-a"), mustReference(t, "example/project-b"), mustReference(t, "example/project-c")
+	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed.\n"
+	const stoppedByRepository = "    Stopped: a preceding repository did not complete\n"
+	mismatched := changeRecord{change: deleteBranchOnMergeChange(), operations: []operationRecord{started(github.UpdateSucceeded)}, confirmation: desiredStateMismatch}
+	rejected := changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{started(github.UpdateRejected)}, cause: github.ErrForbidden}
+	valueChanged := changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowAutoMerge}}}
+	stoppedAutoMerge := changeRecord{change: allowAutoMergeChange()}
+	stoppedBranch := changeRecord{change: deleteBranchOnMergeChange()}
+
+	cases := []struct {
+		name    string
+		records []repositoryRecord
+		want    string
+	}{
+		{
+			name: "complete, no change and complete report two repositories updated",
+			records: []repositoryRecord{
+				{target: a, changes: []changeRecord{completedRecord(allowAutoMergeChange())}},
+				{target: b},
+				{target: c, changes: []changeRecord{completedRecord(defaultWorkflowPermissionsChange())}},
+			},
+			want: "  example/project-a: updated\n  example/project-b: no change\n  example/project-c: updated\n\n" +
+				"Apply complete.\nRepositories updated: 2\n",
+		},
+		{
+			name: "no change after a failure stays no change and the repository after it is stopped",
+			records: []repositoryRecord{
+				{target: a, changes: []changeRecord{mismatched}},
+				{target: b},
+				{target: c, changes: []changeRecord{stoppedAutoMerge}},
+			},
+			want: "  example/project-a: failed\n    Update request: succeeded\n    Desired state: does not match\n" +
+				"  example/project-b: no change\n" +
+				"  example/project-c: not attempted\n" + stoppedByRepository + "\n" +
+				rollbackNote,
+		},
+		{
+			// 最後の対象リポジトリだけで Apply complete. を判定する実装を失敗させる
+			name: "failure followed only by no change is not reported as apply complete",
+			records: []repositoryRecord{
+				{target: a, changes: []changeRecord{mismatched}},
+				{target: b},
+			},
+			want: "  example/project-a: failed\n    Update request: succeeded\n    Desired state: does not match\n" +
+				"  example/project-b: no change\n\n" +
+				rollbackNote,
+		},
+		{
+			name: "stopped repository with two changes is shown as one line with the reason",
+			records: []repositoryRecord{
+				{target: a, changes: []changeRecord{rejected}},
+				{target: b, changes: []changeRecord{stoppedBranch, stoppedAutoMerge}},
+			},
+			want: "  example/project-a: failed\n    Update request: rejected\n    Desired state: not checked\n" +
+				"  example/project-b: not attempted\n" + stoppedByRepository + "\n" +
+				rollbackNote,
+		},
+		{
+			name: "stop by a preceding change and by a preceding repository are worded differently",
+			records: []repositoryRecord{
+				{target: a, changes: []changeRecord{{change: deleteBranchOnMergeChange(), operations: []operationRecord{started(github.UpdateRejected)}}, stoppedAutoMerge}},
+				{target: b, changes: []changeRecord{stoppedAutoMerge}},
+			},
+			want: "  example/project-a\n" +
+				"    general.delete_branch_on_merge: failed\n      Update request: rejected\n      Desired state: not checked\n" +
+				"    general.allow_auto_merge: not attempted\n      Stopped: a preceding change did not complete\n" +
+				"  example/project-b: not attempted\n" + stoppedByRepository + "\n" +
+				rollbackNote,
+		},
+		{
+			name: "complete, failed and stopped is not reported as apply complete",
+			records: []repositoryRecord{
+				{target: a, changes: []changeRecord{completedRecord(allowAutoMergeChange())}},
+				{target: b, changes: []changeRecord{rejected}},
+				{target: c, changes: []changeRecord{stoppedAutoMerge}},
+			},
+			want: "  example/project-a: updated\n" +
+				"  example/project-b: failed\n    Update request: rejected\n    Desired state: not checked\n" +
+				"  example/project-c: not attempted\n" + stoppedByRepository + "\n" +
+				rollbackNote,
+		},
+		{
+			// 完了以外を含む対象リポジトリは更新を開始していないが、先に完了した対象リポジトリの変更が残る
+			name: "precondition failure after a completed repository has the rollback note",
+			records: []repositoryRecord{
+				{target: a, changes: []changeRecord{completedRecord(allowAutoMergeChange())}},
+				{target: b, changes: []changeRecord{valueChanged}},
+				{target: c, changes: []changeRecord{stoppedAutoMerge}},
+			},
+			want: "  example/project-a: updated\n" +
+				"  example/project-b: not attempted\n    Precondition: general.allow_auto_merge changed since approval\n" +
+				"  example/project-c: not attempted\n" + stoppedByRepository + "\n" +
+				rollbackNote,
+		},
+		{
+			name: "precondition failure in the first repository then a stopped one has no note because no update started",
+			records: []repositoryRecord{
+				{target: a, changes: []changeRecord{valueChanged}},
+				{target: b, changes: []changeRecord{stoppedAutoMerge}},
+			},
+			want: "  example/project-a: not attempted\n    Precondition: general.allow_auto_merge changed since approval\n" +
+				"  example/project-b: not attempted\n" + stoppedByRepository,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			if err := writeChangeReport(&out, tc.records); err != nil {
+				t.Fatalf("writeChangeReport() error = %v", err)
+			}
+			if out.String() != tc.want {
+				t.Errorf("writeChangeReport() wrote %q, want %q", out.String(), tc.want)
+			}
+		})
+	}
+}
+
+// TestRepositoriesError は、宣言順で最初の完了以外の変更結果だけを error にし、停止した対象リポジトリの error を足さない規則を確かめる。
+//
+//trace:checks FR-013
+//trace:checks INV-005
+func TestRepositoriesError(t *testing.T) {
+	first, second, third := mustReference(t, "owner/first"), mustReference(t, "owner/second"), mustReference(t, "owner/third")
+	rejected := changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{started(github.UpdateRejected)}, cause: github.ErrForbidden}
+	valueChanged := changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowAutoMerge}}}
+
+	t.Run("complete and no change have no error", func(t *testing.T) {
+		records := []repositoryRecord{{target: first, changes: []changeRecord{completedRecord(allowAutoMergeChange())}}, {target: second}}
+		if err := repositoriesError(records); err != nil {
+			t.Errorf("repositoriesError() = %v, want nil", err)
+		}
+	})
+
+	t.Run("failure after no change wraps its cause and does not name the stopped repository", func(t *testing.T) {
+		records := []repositoryRecord{
+			{target: first},
+			{target: second, changes: []changeRecord{rejected}},
+			{target: third, changes: []changeRecord{{change: deleteBranchOnMergeChange()}}},
+		}
+		err := repositoriesError(records)
+		if !errors.Is(err, github.ErrForbidden) {
+			t.Errorf("repositoriesError() = %v, want it to wrap %v", err, github.ErrForbidden)
+		}
+		if err == nil || !strings.Contains(err.Error(), string(setting.AllowAutoMerge)) {
+			t.Errorf("repositoriesError() = %v, want it to name %q", err, setting.AllowAutoMerge)
+		}
+		if err != nil && strings.Contains(err.Error(), string(setting.DeleteBranchOnMerge)) {
+			t.Errorf("repositoriesError() = %v, want it not to name the stopped %q", err, setting.DeleteBranchOnMerge)
+		}
+	})
+
+	t.Run("precondition failure without a cause names its own repository", func(t *testing.T) {
+		records := []repositoryRecord{
+			{target: first, changes: []changeRecord{completedRecord(allowAutoMergeChange())}},
+			{target: second, changes: []changeRecord{valueChanged}},
+		}
+		err := repositoriesError(records)
+		if err == nil || !strings.Contains(err.Error(), second.String()) || strings.Contains(err.Error(), first.String()) {
+			t.Errorf("repositoriesError() = %v, want an error naming %s and not %s", err, second, first)
+		}
+	})
 }

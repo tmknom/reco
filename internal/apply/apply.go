@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"slices"
 	"time"
 
 	"github.com/tmknom/reco/internal/changeplan"
+	"github.com/tmknom/reco/internal/changeplandisplay"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
 )
@@ -43,19 +45,18 @@ func Run(ctx context.Context, cfg Config) error {
 	return applyPlan(ctx, cfg, client, p)
 }
 
+// applyPlan は、選択したすべての対象リポジトリの論理的な設定変更を確定してから、変更計画の全体に承認を一度だけ求め、宣言順に実行する。
 func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changeplan.Plan) error {
-	r, err := soleRepositoryPlan(p)
+	repositories, err := executableChanges(p)
 	if err != nil {
 		return err
 	}
-	changes, err := executableChanges(r)
-	if err != nil {
+	text := changeplandisplay.ChangePlanText(cfg.ConfigPath, p)
+	if !slices.ContainsFunc(p.Repositories, changeplan.RepositoryPlan.HasPlannedChanges) {
+		_, err := io.WriteString(cfg.Out, text)
 		return err
 	}
-	if len(changes) == 0 {
-		return writeNoChanges(cfg.Out)
-	}
-	if err := writeChangePlan(cfg.Out, cfg.ConfigPath, r); err != nil {
+	if _, err := io.WriteString(cfg.Out, text+"\n"); err != nil {
 		return err
 	}
 	if err := cfg.Approve(ctx); err != nil {
@@ -67,39 +68,35 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 	if _, err := io.WriteString(cfg.Out, "Applying changes...\n"); err != nil {
 		return err
 	}
-	records := executeChanges(ctx, client, r, changes, cfg.After, &updateInterval{})
-	writeErr := writeChangeReport(cfg.Out, r.Target, records)
-	return errors.Join(changesError(records, r.Target), writeErr)
+	records := executeRepositories(ctx, client, repositories, cfg.After)
+	writeErr := writeChangeReport(cfg.Out, records)
+	return errors.Join(repositoriesError(records), writeErr)
 }
 
-// ErrMultipleRepositories は、対象リポジトリが2件以上の変更計画を apply が実行できないことを表す。
-var ErrMultipleRepositories = errors.New("apply can update only one repository at a time")
-
-// soleRepositoryPlan は、変更計画のただ一つのリポジトリの計画を返す。
-// 複数の対象リポジトリの実行と結果の表示を持たないため、2件以上は先頭だけを黙って実行せず error にする。
-// リポジトリの計画を持たない変更計画は changeplan が生成しないため、不変条件の破れとして panic する。
-func soleRepositoryPlan(p changeplan.Plan) (changeplan.RepositoryPlan, error) {
-	switch n := len(p.Repositories); {
-	case n == 0:
-		panic("apply: change plan has no repository plan")
-	case n > 1:
-		return changeplan.RepositoryPlan{}, fmt.Errorf("%d repositories are selected: %w; no changes made", n, ErrMultipleRepositories)
-	}
-	return p.Repositories[0], nil
+// repositoryChanges は、承認の前に確定した、一つの対象リポジトリのリポジトリの計画と、その論理的な設定変更の実行順の並び。
+// 変更不要の対象リポジトリは changes が空になる。
+type repositoryChanges struct {
+	plan    changeplan.RepositoryPlan
+	changes []changeplan.LogicalChange
 }
 
-// executableChanges は、リポジトリの計画の論理的な設定変更を実行順で返す。
+// executableChanges は、選択したすべての対象リポジトリについて、論理的な設定変更を実行順で返す。
+// 戻り値は変更計画のリポジトリの計画と同じ長さ、同じ並びで、変更不要の対象リポジトリも changes が空の要素として含む。
 // 論理的な設定変更にできない変更予定の拒否は、論理的な設定変更を導く changeplan が持つ。
-// 更新操作は承認の前にすべて引き、欠けていれば、先の変更を更新したあとではなく、更新要求を一つも送る前に止める。
-func executableChanges(r changeplan.RepositoryPlan) ([]changeplan.LogicalChange, error) {
-	changes, err := r.LogicalChanges()
-	if err != nil {
-		return nil, err
-	}
-	for _, change := range changes {
-		for _, operation := range change.Operations {
-			updateSenderOf(operation.Key)
+// INV-002 のため、すべての対象リポジトリの更新操作を承認の前に引き、欠けていれば、先の対象リポジトリを更新したあとではなく、更新要求を一つも送る前に止める。
+func executableChanges(p changeplan.Plan) ([]repositoryChanges, error) {
+	repositories := make([]repositoryChanges, len(p.Repositories))
+	for i, r := range p.Repositories {
+		changes, err := r.LogicalChanges()
+		if err != nil {
+			return nil, err
 		}
+		for _, change := range changes {
+			for _, operation := range change.Operations {
+				updateSenderOf(operation.Key)
+			}
+		}
+		repositories[i] = repositoryChanges{plan: r, changes: changes}
 	}
-	return changes, nil
+	return repositories, nil
 }

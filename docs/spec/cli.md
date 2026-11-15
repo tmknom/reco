@@ -227,30 +227,41 @@ Repositories checked: 2
 ```text
 $ reco apply
 Configuration: ./reco.yaml
+
 Repository: example/project-a
   general.allow_auto_merge: false -> true
+
+Repository: example/project-c
+  actions.workflow.default_workflow_permissions: write -> read
+
+Plan: 2 repositories to update, 2 known changes, 0 not-comparable settings
+Repositories checked: 3
 
 Apply these changes? [y/N]: y
 Applying changes...
   example/project-a: updated
+  example/project-b: no change
+  example/project-c: updated
 
 Apply complete.
-Repositories updated: 1
+Repositories updated: 2
 ```
+
+承認の前には、変更計画を4章の `plan` と同じ形で提示します。承認は、提示した変更計画の全体に一度だけ求めます。
 
 承認が得られなければ更新を開始せず、理由を表示して終了コード `1` とします。拒否した場合は `Apply cancelled. No changes made.` のように、更新が開始されていないことを伝えます。一部の更新後に停止した場合は `No changes made.` と表示しません。
 
 承認後は、承認した対象と変更内容を差し替えません。各更新直前にリポジトリ ID・関係する現在値・適用条件を確認できない場合や、関係する予定外の変化を検出した場合は、理由を報告して当該操作と後続の更新を開始しません。更新操作に未管理設定の既存値を含める必要がある場合も、その値を維持できると確認できなければ当該操作を開始しません。
 
-更新は逐次実行します。論理的な設定変更の中では、先行する更新操作の成功を確認してから次の更新操作へ進み、別の論理的な設定変更へは、その期待状態を確認してから進みます。自動ロールバックは行いません。
+更新は逐次実行します。論理的な設定変更の中では、先行する更新操作の成功を確認してから次の更新操作へ進み、別の論理的な設定変更へは、その期待状態を確認してから進みます。複数のリポジトリに変更予定があるときは、設定宣言の `repositories` の並びで一つずつ更新し、あるリポジトリのすべての論理的な設定変更が完了したときだけ、次のリポジトリへ進みます。完了しなかった論理的な設定変更があれば、残りのリポジトリには、更新要求も、更新直前の確認のための読み取り要求も送りません。変更不要のリポジトリには、変更計画を作るための観測のあと、要求を送りません。自動ロールバックは行いません。
 
-更新要求のあいだは1秒以上空けます。そのため `apply` の所要時間は、2つ目以降の更新操作ごとに1秒以上延びます。このあいだに中断（`SIGINT`、`SIGTERM`）を受けた場合は、次の更新操作を開始しません（[アーキテクチャ設計](../design/architecture.md) 6.2節）。
+更新要求のあいだは1秒以上空けます。そのため `apply` の所要時間は、2つ目以降の更新操作ごとに1秒以上延びます。別のリポジトリの更新要求とのあいだも同じです。このあいだに中断（`SIGINT`、`SIGTERM`）を受けた場合は、次の更新操作を開始しません（[アーキテクチャ設計](../design/architecture.md) 6.2節）。
 
 GitHub が更新を取得の結果に反映するまで時間がかかることがあるため、更新操作が成功したのに期待状態と一致しないとき、または期待値と比べる設定を GitHub の取得条件により確認できないときは、間隔を広げながら確認し直し、一致を確認できないまま合計約30秒が経てば `failed` とします（[アーキテクチャ設計](../design/architecture.md) 6.2節）。
 
 一つの論理的な設定変更が二つの更新操作からなるときは、後続の更新操作の直前の確認にも同じ遅れが現れ得ます。先行する更新操作が成功したのに、その更新操作が変えた設定が更新前の値のままのときは、同じ間隔で確認し直します。合計約30秒が経っても変わらなければ、後続の更新操作を開始せずに `failed` とします。先行する更新操作の更新要求は再送しません。
 
-一つのリポジトリに複数の変更予定があるときは、承認の前に提示する順も、論理的な設定変更を実行する順も、4章が定める変更予定の表示順に従います。承認の前に提示する変更予定の行は、4章と同じ形で示します。
+一つのリポジトリに複数の変更予定があるときは、承認の前に提示する順も、論理的な設定変更を実行する順も、4章が定める変更予定の表示順に従います。
 
 ### 5.2 結果の表示区分
 
@@ -261,13 +272,17 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 | `not attempted` | 当該の論理的な設定変更について、更新操作を一度も開始していない。開始直前の前提不成立で開始できなかった場合と、先行する異常によって実行を止めた場合を含む |
 | `no change` | 管理範囲内の設定が期待状態と一致することを確認でき、更新が不要だった |
 
-結果は、リポジトリごとに次のとおり表示します。
+選択したすべてのリポジトリを、設定宣言の `repositories` の並びで示します。結果は、リポジトリごとに次のとおり表示します。
 
+- **変更不要だった**：リポジトリの行に `no change` を表示する。先行するリポジトリが完了しなかった場合も同じである
 - **すべての論理的な設定変更が完了した**：リポジトリの行に `updated` を表示する
-- **論理的な設定変更が1件で、完了しなかった**：リポジトリの行に `failed` または `not attempted` と理由を表示する
-- **論理的な設定変更が2件以上で、完了しなかったものを含む**：リポジトリの行に結果を表示せず、論理的な設定変更ごとに結果を実行順に表示し、完了しなかったものに理由を添える
+- **論理的な設定変更が1件で、完了しなかった（先行するリポジトリが完了しなかった場合を除く）**：リポジトリの行に `failed` または `not attempted` と理由を表示する
+- **論理的な設定変更が2件以上で、完了しなかったものを含む（先行するリポジトリが完了しなかった場合を除く）**：リポジトリの行に結果を表示せず、論理的な設定変更ごとに結果を実行順に表示し、完了しなかったものに理由を添える
+- **先行するリポジトリが完了しなかったため、どの論理的な設定変更も開始しなかった**：論理的な設定変更の数によらず、リポジトリの行に `not attempted` と理由を表示する
 
-いずれかの論理的な設定変更で更新操作を開始しており、完了しなかった論理的な設定変更があるときは、変更結果の末尾に注記（`Note:`）を添えます。開始した更新操作に成否不明があれば自動で再送していないことを、なければ自動ロールバックを行っていないことを示します。二つの更新操作からなる論理的な設定変更では、どちらの更新操作も判定に含めます。
+すべてのリポジトリが `updated` または `no change` のときに限り、`Apply complete.` と、`updated` のリポジトリの数を `Repositories updated:` として示します。`no change` のリポジトリは数に含めません。
+
+いずれかの論理的な設定変更で更新操作を開始しており、完了しなかった論理的な設定変更があるときは、変更結果の末尾に注記（`Note:`）を添えます。開始した更新操作に成否不明があれば自動で再送していないことを、なければ自動ロールバックを行っていないことを示します。二つの更新操作からなる論理的な設定変更では、どちらの更新操作も判定に含めます。この判定は、選択したすべてのリポジトリの論理的な設定変更について行います。先に完了したリポジトリのあとで別のリポジトリが完了しなかった場合も、適用済みの変更が残るため注記を添えます。
 
 選択方式の Actions 許可条件は、3項目を個別の変更として表示せず、一体の設定グループとして扱います。Actions 許可ポリシーを `selected` へ変える変更と組み合わせて一つの論理的な設定変更となる場合は、変更結果を管理設定ごとの行に分けず、その変更全体について一つ示します。承認の前に提示する変更予定は、管理設定ごとの行のままです。
 
@@ -277,7 +292,7 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 後続の更新操作を変更前提の不成立で開始できなかった場合は、`not started` の行の次に `Precondition:` の行で理由を示します。先行する更新操作が変えた設定が予定どおりの値でなかった場合は、`Precondition: <設定> is not the value expected after the preceding update` と示します。GitHub の反映が遅れている場合も、外部主体が値を変えた場合もこの表示になり、原因は断定しません。先行する更新操作が成功しなかったために開始しなかった場合は、理由の行を足しません。先行する更新操作が成功していれば、後続を開始できなかった場合も後続が失敗した場合も、更新後の確認を一度だけ行い、その結果と変更対象外の設定の予期しない変化を示します。この確認で期待状態との一致を確認しても、必要な更新操作の成功を確認していないため、`updated` に変更しません。最初の更新操作が拒否され、更新後の確認を行わなかった場合は `Desired state: not checked` と示します。
 
-更新を一度も開始していない変更は `not attempted` とし、変更前提の不成立と、先行する異常による停止のどちらに当たるかを区別して理由を示します。
+更新を一度も開始していない変更は `not attempted` とし、変更前提の不成立と、先行する異常による停止のどちらに当たるかを区別して理由を示します。先行する異常による停止は、同じリポジトリの先行する論理的な設定変更が完了しなかった場合（`Stopped: a preceding change did not complete`）と、先行するリポジトリが完了しなかった場合（`Stopped: a preceding repository did not complete`）を文言で区別します。
 
 変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を示します（`Precondition: <設定> changed since approval`）。`Side effect:` で示した設定の値が承認の前に示した値から変わっていた場合は、その設定を示します。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。複数の設定が変わっていた場合は、論理的な設定変更が変える設定を優先して一つだけ示します。
 
@@ -299,6 +314,7 @@ Applying changes...
       Update request: succeeded
       Desired state: not confirmed (read failed)
   example/project-b: not attempted
+    Stopped: a preceding repository did not complete
 
 Error: unable to confirm the desired state for example/project-a
 Note: Some changes may already have been applied. No automatic rollback was performed.
@@ -310,6 +326,7 @@ Applying changes...
     Update request: unknown
     Desired state: matches (update outcome still unknown)
   example/project-b: not attempted
+    Stopped: a preceding repository did not complete
 
 Error: unable to confirm an update result for example/project-a: redirect not followed (HTTP 307)
 Note: No automatic retry was performed.
@@ -404,6 +421,33 @@ Applying changes...
 Note: Some changes may already have been applied. No automatic rollback was performed.
 ```
 
+先行するリポジトリが完了しなかった場合は次のとおりです。
+
+```text
+Applying changes...
+  example/project-a: failed
+    Update request: succeeded
+    Desired state: does not match
+  example/project-b: no change
+  example/project-c: not attempted
+    Stopped: a preceding repository did not complete
+
+Note: Some changes may already have been applied. No automatic rollback was performed.
+```
+
+先に完了したリポジトリのあとで、別のリポジトリの変更前提が成立しなかった場合は次のとおりです。
+
+```text
+Applying changes...
+  example/project-a: updated
+  example/project-b: not attempted
+    Precondition: general.allow_auto_merge changed since approval
+  example/project-c: not attempted
+    Stopped: a preceding repository did not complete
+
+Note: Some changes may already have been applied. No automatic rollback was performed.
+```
+
 異常時の表示では、確認済みの操作結果、成否が不明な範囲、未実行の変更を区別します。
 
 ## 6. `show`：現在状態の表示
@@ -473,6 +517,8 @@ Actions permissions:
 | 入力不正、認証・権限・API 通信の失敗、対象の不一致や確認不能 | `1` |
 | GitHub API の HTTP リダイレクト応答（読み取り・更新） | `1` |
 | 更新成功応答後の再観測失敗・期待状態との不一致・変更対象外の設定の予期しない変化 | `1` |
+
+複数のリポジトリを選択した `apply` は、すべてのリポジトリが変更完了または変更不要のときに限り `0` を返します。
 
 `apply` の変更失敗時には、既に実行された操作の影響が GitHub 上に残る可能性があります。終了コード `1` だけから、変更が一切行われなかったとは判断できません。
 

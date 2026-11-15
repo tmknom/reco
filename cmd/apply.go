@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -24,7 +22,7 @@ func newApplyCmd(env Environment, deps dependencies) *cobra.Command {
 				return err
 			}
 			dir, name := resolveConfigPath(env.WorkDir, config.path)
-			err = apply.Run(c.Context(), apply.Config{
+			return apply.Run(c.Context(), apply.Config{
 				Token:      token,
 				ConfigDir:  os.DirFS(dir),
 				ConfigName: name,
@@ -37,10 +35,6 @@ func newApplyCmd(env Environment, deps dependencies) *cobra.Command {
 				After:         deps.after,
 				GitHubOptions: deps.githubOptions,
 			})
-			if errors.Is(err, apply.ErrMultipleRepositories) {
-				return fmt.Errorf("%w; select one with --repo", err)
-			}
-			return err
 		},
 	}
 	c.Flags().Var(config, "config", "path to the configuration file")
