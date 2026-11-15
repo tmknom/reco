@@ -368,6 +368,39 @@ func TestApply_CanceledWhileWaitingForApproval(t *testing.T) {
 	}
 }
 
+// apply は複数の対象リポジトリの実行を持たないため、--repo を省略して2件を選ぶと、
+// 全件を観測したあと、変更計画を示さず承認も求めずに --repo での選び方を示して止まる。
+//
+//trace:checks FR-008
+//trace:checks INV-003
+func TestApply_MultipleRepositoriesFailBeforeApproval(t *testing.T) {
+	workDir := t.TempDir()
+	writeConfig(t, workDir, "reco.yaml", declaredTwoRepositories)
+	server, opts := newGitHubServer(t, http.StatusOK, mismatchedRepositoryBody)
+
+	env := Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue}), Stdin: unreadableReader{t}, StdinIsTerminal: true}
+	code, stdout, stderr := runExecute(t, env, opts, "apply")
+	if code != 1 {
+		t.Errorf("got exit code %d, want 1", code)
+	}
+	if stdout != "" {
+		t.Errorf("got stdout %q, want no change plan", stdout)
+	}
+	if strings.Contains(stderr, approvalPrompt) {
+		t.Errorf("got stderr with the approval prompt, want none")
+	}
+	records := errorRecords(t, stderr)
+	if len(records) != 1 || records[0]["msg"] != "command failed" {
+		t.Fatalf("got ERROR records %v, want one command failed record", records)
+	}
+	if msg, _ := records[0]["error"].(string); !strings.Contains(msg, "--repo") {
+		t.Errorf("got error %q, want it to show how to select one with --repo", msg)
+	}
+	if got := methodsOf(server.receivedRequests()); !slices.Equal(got, []string{http.MethodGet, http.MethodGet}) {
+		t.Errorf("got requests %v, want the two observation GETs only", got)
+	}
+}
+
 //trace:checks INV-002
 //trace:checks FR-003
 func TestApply_FailsBeforeApproval(t *testing.T) {

@@ -14,6 +14,7 @@ import (
 	"testing/fstest"
 
 	"github.com/tmknom/reco/internal/github"
+	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
 )
 
@@ -80,10 +81,43 @@ func TestGenerate(t *testing.T) {
 	}
 	declared := fstest.MapFS{"reco.yaml": {Data: []byte(twoRepositoriesSource)}}
 
-	t.Run("selected declaration is observed and reconciled", func(t *testing.T) {
-		var gotPath string
+	t.Run("no selection observes all declarations in the declared order", func(t *testing.T) {
+		var paths []string
 		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
-			gotPath = r.URL.Path
+			paths = append(paths, r.Method+" "+r.URL.Path)
+			id := "1"
+			if r.URL.Path == "/repos/owner/second" {
+				id = "2"
+			}
+			_, _ = w.Write([]byte(`{"id": ` + id + `, "allow_auto_merge": true, "delete_branch_on_merge": true}`))
+		})
+		client := github.New("test-token", github.WithBaseURL(baseURL))
+
+		got, err := Generate(context.Background(), client, file(declared), nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		if want := []string{"GET /repos/owner/first", "GET /repos/owner/second"}; !slices.Equal(paths, want) {
+			t.Errorf("requests = %v, want %v", paths, want)
+		}
+		var targets []string
+		var ids []repository.ID
+		for _, r := range got.Repositories {
+			targets = append(targets, r.Target.String())
+			ids = append(ids, r.RepositoryID)
+		}
+		if want := []string{"owner/first", "owner/second"}; !slices.Equal(targets, want) {
+			t.Errorf("targets = %v, want %v", targets, want)
+		}
+		if want := []repository.ID{1, 2}; !slices.Equal(ids, want) {
+			t.Errorf("repository IDs = %v, want %v", ids, want)
+		}
+	})
+
+	t.Run("selected declaration is the only one observed and reconciled", func(t *testing.T) {
+		var paths []string
+		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
+			paths = append(paths, r.Method+" "+r.URL.Path)
 			_, _ = w.Write([]byte(`{"id": 7, "allow_auto_merge": false, "delete_branch_on_merge": false}`))
 		})
 		client := github.New("test-token", github.WithBaseURL(baseURL))
@@ -93,8 +127,8 @@ func TestGenerate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Generate() error = %v", err)
 		}
-		if !strings.Contains(gotPath, "owner/second") {
-			t.Errorf("got request path %q, want it to contain the selected declaration", gotPath)
+		if want := []string{"GET /repos/owner/second"}; !slices.Equal(paths, want) {
+			t.Errorf("requests = %v, want %v", paths, want)
 		}
 		want := []RepositoryPlan{{
 			Target:       mustReference(t, "owner/second"),
@@ -126,14 +160,16 @@ func TestGenerate(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid configuration is rejected before any request", func(t *testing.T) {
+	t.Run("invalid declaration of an unselected repository is rejected before any request", func(t *testing.T) {
 		requested := false
 		baseURL := newGitHubServer(t, func(http.ResponseWriter, *http.Request) { requested = true })
 		client := github.New("test-token", github.WithBaseURL(baseURL))
-		files := fstest.MapFS{"reco.yaml": {Data: []byte("repositories: []\n")}}
+		const src = "repositories:\n  - name: owner/first\n    general:\n      allow_auto_merge: true\n  - name: owner/second\n    general:\n      allow_auto_merge: yes\n"
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(src)}}
 
-		if _, err := Generate(context.Background(), client, file(files), nil); err == nil {
-			t.Fatal("Generate() error = nil, want an error")
+		_, err := Generate(context.Background(), client, file(files), new(mustReference(t, "owner/first")))
+		if err == nil || !strings.Contains(err.Error(), "./reco.yaml") {
+			t.Errorf("Generate() error = %v, want a configuration error naming the configuration path", err)
 		}
 		if requested {
 			t.Error("GitHub received a request, want none")
@@ -154,19 +190,36 @@ func TestGenerate(t *testing.T) {
 		}
 	})
 
-	t.Run("observation failure is returned as is", func(t *testing.T) {
-		baseURL := newGitHubServer(t, func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusUnauthorized)
+	//trace:checks FR-008
+	t.Run("observation failure of the second repository stops before the third and returns no plan", func(t *testing.T) {
+		var paths []string
+		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
+			paths = append(paths, r.Method+" "+r.URL.Path)
+			if r.URL.Path == "/repos/owner/second" {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			_, _ = w.Write([]byte(`{"id": 1, "allow_auto_merge": false, "delete_branch_on_merge": false}`))
 		})
 		client := github.New("test-token", github.WithBaseURL(baseURL))
-		sel := mustReference(t, "owner/first")
+		const src = "repositories:\n" +
+			"  - name: owner/first\n    general:\n      allow_auto_merge: true\n" +
+			"  - name: owner/second\n    general:\n      allow_auto_merge: true\n" +
+			"  - name: owner/third\n    general:\n      allow_auto_merge: true\n"
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(src)}}
 
-		_, err := Generate(context.Background(), client, file(declared), &sel)
-		if !errors.Is(err, github.ErrUnauthorized) {
-			t.Errorf("Generate() error = %v, want %v", err, github.ErrUnauthorized)
+		got, err := Generate(context.Background(), client, file(files), nil)
+		if !errors.Is(err, github.ErrForbidden) {
+			t.Errorf("Generate() error = %v, want %v", err, github.ErrForbidden)
 		}
-		if err == nil || !strings.HasPrefix(err.Error(), "fetch repository") {
-			t.Errorf("Generate() error = %v, want it to start with %q", err, "fetch repository")
+		if err == nil || !strings.HasPrefix(err.Error(), "fetch repository owner/second") {
+			t.Errorf("Generate() error = %v, want it to start with %q", err, "fetch repository owner/second")
+		}
+		if !reflect.DeepEqual(got, Plan{}) {
+			t.Errorf("Generate() = %+v, want the zero plan", got)
+		}
+		if want := []string{"GET /repos/owner/first", "GET /repos/owner/second"}; !slices.Equal(paths, want) {
+			t.Errorf("requests = %v, want %v", paths, want)
 		}
 	})
 }
@@ -235,6 +288,31 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 		}
 		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
 			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
+		}
+	})
+
+	t.Run("each repository reads only the areas of its own management scope", func(t *testing.T) {
+		var paths []string
+		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
+			paths = append(paths, r.Method+" "+r.URL.Path)
+			if strings.HasSuffix(r.URL.Path, "/actions/permissions/workflow") {
+				_, _ = w.Write([]byte(`{"default_workflow_permissions": "read", "can_approve_pull_request_reviews": false}`))
+				return
+			}
+			_, _ = w.Write([]byte(repositoryBody))
+		})
+		client := github.New("test-token", github.WithBaseURL(baseURL))
+		const src = "repositories:\n" +
+			"  - name: owner/first\n    general:\n      allow_auto_merge: true\n" +
+			"  - name: owner/second\n    actions:\n      workflow:\n        default_workflow_permissions: read\n" +
+			"  - name: owner/third\n    general:\n      allow_auto_merge: true\n"
+
+		if _, err := Generate(context.Background(), client, file(src), nil); err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		want := []string{"GET /repos/owner/first", "GET /repos/owner/second", "GET /repos/owner/second/actions/permissions/workflow", "GET /repos/owner/third"}
+		if !slices.Equal(paths, want) {
+			t.Errorf("requests = %v, want %v", paths, want)
 		}
 	})
 

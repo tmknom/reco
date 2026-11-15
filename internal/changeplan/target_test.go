@@ -1,6 +1,7 @@
 package changeplan
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/tmknom/reco/internal/configuration"
@@ -24,62 +25,63 @@ func repositoryDeclaration(t *testing.T, name string, desired bool) configuratio
 	}
 }
 
+func referencesOf(declarations []configuration.RepositoryDeclaration) []repository.Reference {
+	var references []repository.Reference
+	for _, d := range declarations {
+		references = append(references, d.Reference)
+	}
+	return references
+}
+
 //trace:checks FR-002
-func TestSelectTarget(t *testing.T) {
-	first := repositoryDeclaration(t, "owner/repo", true)
-	second := repositoryDeclaration(t, "owner/second", false)
+func TestSelectTargets(t *testing.T) {
+	// 宣言は名前順と逆に並べ、並べ替える実装を失敗させる。
+	first := repositoryDeclaration(t, "owner/second", true)
+	second := repositoryDeclaration(t, "owner/repo", false)
 
-	t.Run("no selection and one declaration selects it", func(t *testing.T) {
-		d := configuration.Declaration{Repositories: []configuration.RepositoryDeclaration{first}}
-		got, err := selectTarget(d, nil)
-		if err != nil {
-			t.Fatalf("selectTarget() error = %v", err)
-		}
-		if got.Reference != first.Reference {
-			t.Errorf("selectTarget() = %v, want %v", got.Reference, first.Reference)
-		}
-	})
-
-	t.Run("no selection and two declarations is an error", func(t *testing.T) {
+	t.Run("no selection returns all declarations in the declared order", func(t *testing.T) {
 		d := configuration.Declaration{Repositories: []configuration.RepositoryDeclaration{first, second}}
-		_, err := selectTarget(d, nil)
-		want := "2 repositories are declared; select one repository (only one can be processed at a time)"
-		if err == nil || err.Error() != want {
-			t.Errorf("selectTarget() error = %v, want %q", err, want)
+		got, err := selectTargets(d, nil)
+		if err != nil {
+			t.Fatalf("selectTargets() error = %v", err)
+		}
+		if want := []repository.Reference{first.Reference, second.Reference}; !slices.Equal(referencesOf(got), want) {
+			t.Errorf("selectTargets() = %v, want %v", referencesOf(got), want)
 		}
 	})
 
 	t.Run("selection differing only in letter case returns the declared spelling", func(t *testing.T) {
 		d := configuration.Declaration{Repositories: []configuration.RepositoryDeclaration{first}}
-		sel := mustReference(t, "Owner/REPO")
-		got, err := selectTarget(d, &sel)
+		sel := mustReference(t, "Owner/SECOND")
+		got, err := selectTargets(d, &sel)
 		if err != nil {
-			t.Fatalf("selectTarget() error = %v", err)
+			t.Fatalf("selectTargets() error = %v", err)
 		}
-		if got.Reference != first.Reference {
-			t.Errorf("selectTarget() = %v, want the declared %v", got.Reference, first.Reference)
+		if want := []repository.Reference{first.Reference}; !slices.Equal(referencesOf(got), want) {
+			t.Errorf("selectTargets() = %v, want the declared %v", referencesOf(got), want)
 		}
 	})
 
-	t.Run("selection matching the second declaration selects it", func(t *testing.T) {
-		d := configuration.Declaration{Repositories: []configuration.RepositoryDeclaration{first, second}}
+	t.Run("selection matching the middle declaration returns only it", func(t *testing.T) {
+		third := repositoryDeclaration(t, "owner/third", true)
+		d := configuration.Declaration{Repositories: []configuration.RepositoryDeclaration{first, second, third}}
 		sel := second.Reference
-		got, err := selectTarget(d, &sel)
+		got, err := selectTargets(d, &sel)
 		if err != nil {
-			t.Fatalf("selectTarget() error = %v", err)
+			t.Fatalf("selectTargets() error = %v", err)
 		}
-		if got.Reference != second.Reference {
-			t.Errorf("selectTarget() = %v, want %v", got.Reference, second.Reference)
+		if want := []repository.Reference{second.Reference}; !slices.Equal(referencesOf(got), want) {
+			t.Errorf("selectTargets() = %v, want %v", referencesOf(got), want)
 		}
 	})
 
 	t.Run("undeclared selection is an error naming it", func(t *testing.T) {
 		d := configuration.Declaration{Repositories: []configuration.RepositoryDeclaration{first, second}}
 		sel := mustReference(t, "owner/other")
-		_, err := selectTarget(d, &sel)
+		_, err := selectTargets(d, &sel)
 		want := "repository owner/other is not declared"
 		if err == nil || err.Error() != want {
-			t.Errorf("selectTarget() error = %v, want %q", err, want)
+			t.Errorf("selectTargets() error = %v, want %q", err, want)
 		}
 	})
 }

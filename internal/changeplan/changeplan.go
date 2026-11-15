@@ -69,25 +69,38 @@ type ConfigurationFile struct {
 	Path string
 }
 
-// Generate は、selection で選んだ対象の変更計画を生成する。
+// Generate は、selection で選んだ対象の変更計画を生成する。selection が nil なら宣言された全リポジトリを選ぶ。
 // 観測操作の失敗は、比較不能にせず、文言が対象名を含むため包み直さずに返す。
 func Generate(ctx context.Context, client *github.Client, file ConfigurationFile, selection *repository.Reference) (Plan, error) {
 	declaration, err := configuration.Load(file.Dir, file.Name)
 	if err != nil {
 		return Plan{}, fmt.Errorf("load configuration %s: %w", file.Path, err)
 	}
-	target, err := selectTarget(declaration, selection)
+	targets, err := selectTargets(declaration, selection)
 	if err != nil {
 		return Plan{}, err
 	}
+	repositories := make([]RepositoryPlan, 0, len(targets))
+	for _, target := range targets {
+		r, err := generateRepositoryPlan(ctx, client, target)
+		if err != nil {
+			return Plan{}, err
+		}
+		repositories = append(repositories, r)
+	}
+	return Plan{Repositories: repositories}, nil
+}
+
+// generateRepositoryPlan は、一つの対象リポジトリを計画時に観測し、リポジトリの計画を生成する。
+func generateRepositoryPlan(ctx context.Context, client *github.Client, target configuration.RepositoryDeclaration) (RepositoryPlan, error) {
 	observed, err := client.ObserveRepository(ctx, target.Reference, managedAreas(target.Desired)...)
 	if err != nil {
-		return Plan{}, err
+		return RepositoryPlan{}, err
 	}
 	settings := reconcile(target.Desired, observed)
 	for i := range settings {
 		settings[i].Applicability = judgeApplicability(settings[i])
 		settings[i].SideEffects = sideEffects(settings[i], observed)
 	}
-	return Plan{Repositories: []RepositoryPlan{{Target: target.Reference, RepositoryID: observed.RepositoryID, Settings: settings}}}, nil
+	return RepositoryPlan{Target: target.Reference, RepositoryID: observed.RepositoryID, Settings: settings}, nil
 }

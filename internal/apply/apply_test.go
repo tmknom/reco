@@ -412,14 +412,19 @@ func TestExecutableChanges(t *testing.T) {
 
 // TestSoleRepositoryPlan は、複数の対象リポジトリの実行を持たない apply が、変更計画のリポジトリの計画を一つに限る規則を確かめる。
 func TestSoleRepositoryPlan(t *testing.T) {
-	t.Run("two repository plans return an error naming the count", func(t *testing.T) {
+	t.Run("two repository plans return ErrMultipleRepositories naming the count", func(t *testing.T) {
 		p := newPlan(t, allowAutoMergeMismatch())
 		p.Repositories = append(p.Repositories, changeplan.RepositoryPlan{Target: mustReference(t, "owner/other"), RepositoryID: 2})
 
 		_, err := soleRepositoryPlan(p)
 
-		if err == nil || !strings.Contains(err.Error(), "2 repositories") {
-			t.Errorf("soleRepositoryPlan() error = %v, want an error naming 2 repositories", err)
+		if !errors.Is(err, ErrMultipleRepositories) {
+			t.Errorf("soleRepositoryPlan() error = %v, want %v", err, ErrMultipleRepositories)
+		}
+		for _, want := range []string{"2 repositories", "no changes made"} {
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("soleRepositoryPlan() error = %v, want it to contain %q", err, want)
+			}
 		}
 	})
 

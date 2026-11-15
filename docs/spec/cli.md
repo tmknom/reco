@@ -107,6 +107,7 @@ Repository: example/project-a
   general.allow_auto_merge: false -> true
 
 Plan: 1 repository to update, 1 known change, 0 not-comparable settings
+Repositories checked: 1
 ```
 
 設定グループの確認済みの差分は、3項目を並べた値が長いため、設定の行の下に現在値と、`->` に続けて期待値を1行ずつ示します。
@@ -118,12 +119,29 @@ Repository: example/project-a
     -> github_owned_allowed: true, verified_allowed: true, patterns_allowed: ["actions/checkout@v4", "example/*"]
 
 Plan: 1 repository to update, 1 known change, 0 not-comparable settings
+Repositories checked: 1
 ```
 
 ```text
 $ reco plan
 No changes.
 Repositories checked: 2
+```
+
+変更予定のあるリポジトリは、設定宣言の `repositories` の並びで、リポジトリごとに `Repository:` の節として示し、節のあいだを空行で区切ります。変更不要のリポジトリは節を持ちません。集計の次の行の `Repositories checked:` は、変更予定の有無によらず、選択したリポジトリの数を示します。次の例は、3件を宣言して `--repo` を省略し、`example/project-b` が変更不要だった場合です。
+
+```text
+$ reco plan
+Configuration: ./reco.yaml
+
+Repository: example/project-a
+  general.allow_auto_merge: false -> true
+
+Repository: example/project-c
+  actions.workflow.default_workflow_permissions: write -> read
+
+Plan: 2 repositories to update, 2 known changes, 0 not-comparable settings
+Repositories checked: 3
 ```
 
 比較不能な設定予定は、現在値を推測せずに示します。Actions が無効のリポジトリでは `allowed_actions` の現在値を取得できませんが、宣言したポリシーで Actions を有効にする変更として適用できます（[YAML 設定仕様](configuration.md) 4章）。
@@ -136,6 +154,7 @@ Repository: example/project-a
     Side effect: GitHub may discard selected_actions if allowed_actions was "selected" before GitHub Actions was disabled (current values are unavailable)
 
 Plan: 1 repository to update, 0 known changes, 1 not-comparable setting
+Repositories checked: 1
 ```
 
 `(enables GitHub Actions)` は、Actions が無効のリポジトリの `allowed_actions` にだけ添えます。選択方式の Actions 許可条件は、`allowed_actions` が `selected` でないリポジトリでは現在値を取得できないため、`allowed_actions` を `selected` へ変える変更予定と並べて、比較不能な設定予定として示します。
@@ -148,6 +167,7 @@ Repository: example/project-a
     Desired: github_owned_allowed: true, verified_allowed: true, patterns_allowed: ["example/*"]
 
 Plan: 1 repository to update, 1 known change, 1 not-comparable setting
+Repositories checked: 1
 ```
 
 安全な変更に必要な条件を確認できない場合は、照合結果に加えて `Applicability: not applicable (<理由>)` を示し、集計の後に `Plan cannot be applied.` と表示します。

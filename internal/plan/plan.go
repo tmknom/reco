@@ -67,10 +67,11 @@ func writeChangePlan(w io.Writer, configPath string, p changeplan.Plan) error {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "Configuration: %s\n%s", configPath, sections.String())
-	fmt.Fprintf(&b, "\nPlan: %s to update, %s, %s\n",
+	fmt.Fprintf(&b, "\nPlan: %s to update, %s, %s\nRepositories checked: %d\n",
 		pluralize(repositories, "repository", "repositories"),
 		pluralize(changes, "known change", "known changes"),
-		pluralize(notComparables, "not-comparable setting", "not-comparable settings"))
+		pluralize(notComparables, "not-comparable setting", "not-comparable settings"),
+		len(p.Repositories))
 	_, err := io.WriteString(w, b.String())
 	return err
 }
