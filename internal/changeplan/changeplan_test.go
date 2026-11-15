@@ -17,9 +17,9 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-func TestPlan_Count(t *testing.T) {
-	p := Plan{Settings: []SettingPlan{{Result: Mismatch}, {Result: Match}, {Result: Mismatch}, {Result: NotComparable}}}
-	if got := p.Count(Mismatch); got != 2 {
+func TestRepositoryPlan_Count(t *testing.T) {
+	r := RepositoryPlan{Settings: []SettingPlan{{Result: Mismatch}, {Result: Match}, {Result: Mismatch}, {Result: NotComparable}}}
+	if got := r.Count(Mismatch); got != 2 {
 		t.Errorf("Count(Mismatch) = %d, want 2", got)
 	}
 }
@@ -96,18 +96,16 @@ func TestGenerate(t *testing.T) {
 		if !strings.Contains(gotPath, "owner/second") {
 			t.Errorf("got request path %q, want it to contain the selected declaration", gotPath)
 		}
-		if want := mustReference(t, "owner/second"); got.Target != want {
-			t.Errorf("Target = %v, want %v", got.Target, want)
-		}
-		if got.RepositoryID != 7 {
-			t.Errorf("RepositoryID = %d, want 7", got.RepositoryID)
-		}
-		want := []SettingPlan{
-			{Key: setting.DeleteBranchOnMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
-			{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
-		}
-		if !reflect.DeepEqual(got.Settings, want) {
-			t.Errorf("Settings = %+v, want %+v", got.Settings, want)
+		want := []RepositoryPlan{{
+			Target:       mustReference(t, "owner/second"),
+			RepositoryID: 7,
+			Settings: []SettingPlan{
+				{Key: setting.DeleteBranchOnMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
+				{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
+			},
+		}}
+		if !reflect.DeepEqual(got.Repositories, want) {
+			t.Errorf("Repositories = %+v, want %+v", got.Repositories, want)
 		}
 	})
 
@@ -232,8 +230,11 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 				Result: Mismatch, Applicability: Applicable,
 			},
 		}
-		if !reflect.DeepEqual(got.Settings, want) {
-			t.Errorf("Settings = %+v, want %+v", got.Settings, want)
+		if len(got.Repositories) != 1 {
+			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
+		}
+		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
+			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
 		}
 	})
 
@@ -301,8 +302,11 @@ func TestGenerate_ActionsPermissions(t *testing.T) {
 			Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), Result: Mismatch, Applicability: Applicable,
 			SideEffects: []SideEffect{{Key: setting.SelectedActions, Observed: github.Observed(setting.SelectedActionsCriteriaValue(criteria))}},
 		}}
-		if !reflect.DeepEqual(got.Settings, want) {
-			t.Errorf("Settings = %+v, want %+v", got.Settings, want)
+		if len(got.Repositories) != 1 {
+			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
+		}
+		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
+			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
 		}
 	})
 

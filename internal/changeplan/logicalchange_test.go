@@ -20,25 +20,25 @@ func TestLogicalChange_Keys(t *testing.T) {
 //trace:checks INV-004
 //trace:checks FR-008
 //trace:checks FR-011
-func TestPlan_LogicalChanges(t *testing.T) {
+func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	match := SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: Match}
 	mismatch := SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
-	newPlan := func(settings ...SettingPlan) Plan {
-		return Plan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
+	newRepositoryPlan := func(settings ...SettingPlan) RepositoryPlan {
+		return RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
 	}
 	relevant := func(key setting.Key, atApproval github.SettingObservation[setting.Value]) RelevantSetting {
 		return RelevantSetting{Key: key, AtApproval: atApproval}
 	}
 
 	t.Run("all matches have no logical change", func(t *testing.T) {
-		got, err := newPlan(match).LogicalChanges()
+		got, err := newRepositoryPlan(match).LogicalChanges()
 		if err != nil || len(got) != 0 {
 			t.Errorf("LogicalChanges() = %+v, error = %v, want none without error", got, err)
 		}
 	})
 
 	t.Run("applicable mismatch becomes a logical change relevant to its own observed value", func(t *testing.T) {
-		got, err := newPlan(match, mismatch).LogicalChanges()
+		got, err := newRepositoryPlan(match, mismatch).LogicalChanges()
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
@@ -53,7 +53,7 @@ func TestPlan_LogicalChanges(t *testing.T) {
 
 	t.Run("applicable mismatches of both settings become logical changes in the plan order", func(t *testing.T) {
 		deleteBranch := SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
-		got, err := newPlan(deleteBranch, mismatch).LogicalChanges()
+		got, err := newRepositoryPlan(deleteBranch, mismatch).LogicalChanges()
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
@@ -83,7 +83,7 @@ func TestPlan_LogicalChanges(t *testing.T) {
 	}
 
 	t.Run("applicable mismatch without side effects becomes a logical change", func(t *testing.T) {
-		got, err := newPlan(policyChange(setting.AllowedActionsAll, setting.AllowedActionsLocalOnly)).LogicalChanges()
+		got, err := newRepositoryPlan(policyChange(setting.AllowedActionsAll, setting.AllowedActionsLocalOnly)).LogicalChanges()
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
@@ -98,7 +98,7 @@ func TestPlan_LogicalChanges(t *testing.T) {
 
 	t.Run("mismatch with a side effect is also relevant to the lost value shown before approval", func(t *testing.T) {
 		lost := SideEffect{Key: setting.SelectedActions, Observed: github.Observed(criteria)}
-		got, err := newPlan(policyChange(setting.AllowedActionsSelected, setting.AllowedActionsAll, lost)).LogicalChanges()
+		got, err := newRepositoryPlan(policyChange(setting.AllowedActionsSelected, setting.AllowedActionsAll, lost)).LogicalChanges()
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
@@ -119,7 +119,7 @@ func TestPlan_LogicalChanges(t *testing.T) {
 			Key: setting.AllowedActions, Observed: disabled, Desired: policy(setting.AllowedActionsLocalOnly), Result: NotComparable, Applicability: Applicable,
 			SideEffects: []SideEffect{{Key: setting.SelectedActions, Observed: disabled}},
 		}
-		got, err := newPlan(enable).LogicalChanges()
+		got, err := newRepositoryPlan(enable).LogicalChanges()
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
@@ -150,7 +150,7 @@ func TestPlan_LogicalChanges(t *testing.T) {
 	}
 
 	t.Run("policy to selected and the criteria not comparable become one logical change of two updates at the policy position", func(t *testing.T) {
-		got, err := newPlan(mismatch, policyChange(setting.AllowedActionsAll, setting.AllowedActionsSelected), notComparableCriteria(github.UnavailableNotSelected), workflow).LogicalChanges()
+		got, err := newRepositoryPlan(mismatch, policyChange(setting.AllowedActionsAll, setting.AllowedActionsSelected), notComparableCriteria(github.UnavailableNotSelected), workflow).LogicalChanges()
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
@@ -172,7 +172,7 @@ func TestPlan_LogicalChanges(t *testing.T) {
 
 	t.Run("policy enabling actions with selected and the criteria not comparable become one logical change of two updates", func(t *testing.T) {
 		enableSelected := SettingPlan{Key: setting.AllowedActions, Observed: disabled, Desired: policy(setting.AllowedActionsSelected), Result: NotComparable, Applicability: Applicable}
-		got, err := newPlan(enableSelected, notComparableCriteria(github.UnavailableActionsDisabled)).LogicalChanges()
+		got, err := newRepositoryPlan(enableSelected, notComparableCriteria(github.UnavailableActionsDisabled)).LogicalChanges()
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
@@ -220,7 +220,7 @@ func TestPlan_LogicalChanges(t *testing.T) {
 					t.Error("LogicalChanges() did not panic")
 				}
 			}()
-			_, _ = newPlan(tc.settings...).LogicalChanges()
+			_, _ = newRepositoryPlan(tc.settings...).LogicalChanges()
 		})
 	}
 
@@ -228,7 +228,7 @@ func TestPlan_LogicalChanges(t *testing.T) {
 		// 対の1つ目が適用可能でも、2つ目の適用可能性も確かめる
 		notApplicable := notComparableCriteria(github.UnavailableNotSelected)
 		notApplicable.Applicability = NotApplicable
-		if got, err := newPlan(mismatch, policyChange(setting.AllowedActionsAll, setting.AllowedActionsSelected), notApplicable).LogicalChanges(); err == nil {
+		if got, err := newRepositoryPlan(mismatch, policyChange(setting.AllowedActionsAll, setting.AllowedActionsSelected), notApplicable).LogicalChanges(); err == nil {
 			t.Errorf("LogicalChanges() = %+v, error = nil, want an error", got)
 		}
 	})
@@ -249,7 +249,7 @@ func TestPlan_LogicalChanges(t *testing.T) {
 	for _, tc := range errorCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// 適用可能な変更予定と並べ、ほかの変更予定があっても承認の対象にしないことを確かめる
-			if got, err := newPlan(mismatch, tc.setting).LogicalChanges(); err == nil {
+			if got, err := newRepositoryPlan(mismatch, tc.setting).LogicalChanges(); err == nil {
 				t.Errorf("LogicalChanges() = %+v, error = nil, want an error", got)
 			}
 		})

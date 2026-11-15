@@ -46,15 +46,15 @@ func (c LogicalChange) Keys() []setting.Key {
 // 遷移先が selected のポリシーの変更予定と、選択方式の Actions 許可条件の比較不能な変更予定は、ポリシーの位置で一つの論理的な設定変更にまとめ、
 // ポリシー、許可条件の順に二つの更新操作で実現する。
 // 対にならない形は、設定宣言の組み合わせの規則と観測の取得条件のどちらかが破れたときにしか生じないため、不変条件の破れとして panic する。
-func (p Plan) LogicalChanges() ([]LogicalChange, error) {
-	for _, s := range p.Settings {
+func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
+	for _, s := range r.Settings {
 		if s.Result != Match && s.Applicability != Applicable {
-			return nil, fmt.Errorf("%s: %s cannot be applied", p.Target, s.Key)
+			return nil, fmt.Errorf("%s: %s cannot be applied", r.Target, s.Key)
 		}
 	}
-	criteria, paired := p.criteriaFollowingPolicy()
+	criteria, paired := r.criteriaFollowingPolicy()
 	var changes []LogicalChange
-	for _, s := range p.Settings {
+	for _, s := range r.Settings {
 		switch {
 		case s.Result == Match:
 			continue
@@ -82,9 +82,9 @@ func (p Plan) LogicalChanges() ([]LogicalChange, error) {
 
 // criteriaFollowingPolicy は、遷移先が selected のポリシーの変更予定に続けて更新する、選択方式の Actions 許可条件の比較不能な変更予定を返す。
 // 二つが対で計画にあるときだけ真を返す。
-func (p Plan) criteriaFollowingPolicy() (SettingPlan, bool) {
-	policy, hasPolicy := p.settingPlanOf(setting.AllowedActions)
-	criteria, hasCriteria := p.settingPlanOf(setting.SelectedActions)
+func (r RepositoryPlan) criteriaFollowingPolicy() (SettingPlan, bool) {
+	policy, hasPolicy := r.settingPlanOf(setting.AllowedActions)
+	criteria, hasCriteria := r.settingPlanOf(setting.SelectedActions)
 	if !hasPolicy || !hasCriteria || policy.Result == Match || !targetsSelectedPolicy(policy) || criteria.Result != NotComparable {
 		return SettingPlan{}, false
 	}
@@ -92,8 +92,8 @@ func (p Plan) criteriaFollowingPolicy() (SettingPlan, bool) {
 }
 
 // settingPlanOf は、key の管理設定の計画を返す。管理範囲になければ偽を返す。
-func (p Plan) settingPlanOf(key setting.Key) (SettingPlan, bool) {
-	for _, s := range p.Settings {
+func (r RepositoryPlan) settingPlanOf(key setting.Key) (SettingPlan, bool) {
+	for _, s := range r.Settings {
 		if s.Key == key {
 			return s, true
 		}

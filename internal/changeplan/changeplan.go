@@ -12,8 +12,14 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// Plan は変更計画。対象の選択が一つのリポジトリに限るため、リポジトリの計画を兼ねる。
+// Plan は変更計画。
 type Plan struct {
+	// Repositories は、選択した対象リポジトリごとのリポジトリの計画。一つ以上を持ち、並びは設定宣言の並び。
+	Repositories []RepositoryPlan
+}
+
+// RepositoryPlan は、一つの対象リポジトリについてのリポジトリの計画。
+type RepositoryPlan struct {
 	// Target は宣言の name。
 	Target repository.Reference
 	// RepositoryID は計画時の観測で得た、Target が指す実体の ID。承認されると、変更前提の同一性の基準になる。
@@ -42,11 +48,11 @@ func (s SettingPlan) EnablesActions() bool {
 	return s.Key == setting.AllowedActions && s.Result == NotComparable && s.Observed.UnavailableReason() == github.UnavailableActionsDisabled
 }
 
-// Count は、照合結果が r の設定の数を返す。
-func (p Plan) Count(r ReconciliationResult) int {
+// Count は、照合結果が result の設定の数を返す。
+func (r RepositoryPlan) Count(result ReconciliationResult) int {
 	n := 0
-	for _, s := range p.Settings {
-		if s.Result == r {
+	for _, s := range r.Settings {
+		if s.Result == result {
 			n++
 		}
 	}
@@ -83,5 +89,5 @@ func Generate(ctx context.Context, client *github.Client, file ConfigurationFile
 		settings[i].Applicability = judgeApplicability(settings[i])
 		settings[i].SideEffects = sideEffects(settings[i], observed)
 	}
-	return Plan{Target: target.Reference, RepositoryID: observed.RepositoryID, Settings: settings}, nil
+	return Plan{Repositories: []RepositoryPlan{{Target: target.Reference, RepositoryID: observed.RepositoryID, Settings: settings}}}, nil
 }
