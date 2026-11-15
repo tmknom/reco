@@ -3,6 +3,7 @@ package apply
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/tmknom/reco/internal/changeplan"
@@ -42,7 +43,7 @@ func writeChangeReport(w io.Writer, target repository.Reference, records []chang
 	default:
 		fmt.Fprintf(&b, "  %s\n", target)
 		for _, record := range records {
-			fmt.Fprintf(&b, "    %s: %s\n", record.change.Key, resultLabel(record.result()))
+			fmt.Fprintf(&b, "    %s: %s\n", changeLabel(record.change), resultLabel(record.result()))
 			if record.result() != completed {
 				writeDetails(&b, "      ", details(record))
 			}
@@ -74,11 +75,21 @@ func changesError(records []changeRecord, target repository.Reference) error {
 			continue
 		}
 		if record.cause != nil {
-			return fmt.Errorf("change %s %s: %w", record.change.Key, resultLabel(result), record.cause)
+			return fmt.Errorf("change %s %s: %w", changeLabel(record.change), resultLabel(result), record.cause)
 		}
-		return fmt.Errorf("%s: change %s %s: %s", target, record.change.Key, resultLabel(result), strings.Join(details(record), "; "))
+		return fmt.Errorf("%s: change %s %s: %s", target, changeLabel(record.change), resultLabel(result), strings.Join(details(record), "; "))
 	}
 	return nil
+}
+
+// changeLabel は、変更結果で論理的な設定変更を示す名前を返す。変える管理設定の名前を、更新操作の順に " + " でつなぐ。
+func changeLabel(change changeplan.LogicalChange) string {
+	keys := change.Keys()
+	names := make([]string, len(keys))
+	for i, key := range keys {
+		names[i] = string(key)
+	}
+	return strings.Join(names, " + ")
 }
 
 func resultLabel(r changeResult) string {
@@ -96,7 +107,8 @@ func resultLabel(r changeResult) string {
 func details(record changeRecord) []string {
 	var lines []string
 	if record.updateStarted() {
-		lines = append(lines, "Update request: "+updateOutcomeText(record.update), "Desired state: "+confirmationText(record))
+		lines = append(lines, updateRequestLines(record)...)
+		lines = append(lines, "Desired state: "+confirmationText(record))
 	} else {
 		lines = append(lines, notAttemptedReason(record))
 	}
@@ -109,28 +121,61 @@ func details(record changeRecord) []string {
 	return lines
 }
 
+// updateRequestLines は、開始した論理的な設定変更の更新操作の結果を表示の行で返す。
+// 更新操作が一つなら、どの更新操作かを示さずに 1 行で示す。
+// 二つ以上なら更新操作ごとに 1 行を実行順に示し、開始しなかった更新操作は、変更前提を確かめていれば不成立の理由の行を続ける。
+func updateRequestLines(record changeRecord) []string {
+	if len(record.change.Operations) == 1 {
+		return []string{"Update request: " + updateOutcomeText(record.operation(0).update)}
+	}
+	var lines []string
+	for i, operation := range record.change.Operations {
+		o := record.operation(i)
+		if o.started() {
+			lines = append(lines, fmt.Sprintf("Update request (%s): %s", operation.Key, updateOutcomeText(o.update)))
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("Update request (%s): not started", operation.Key))
+		if o.precondition != preconditionNotChecked {
+			lines = append(lines, preconditionText(record.change, i, o))
+		}
+	}
+	return lines
+}
+
 // possibleCause は、設定に既知の原因の候補を返す。候補がなければ空文字列を返す。
 func possibleCause(record changeRecord) string {
-	if record.update != github.UpdateSucceeded || record.confirmation != desiredStateMismatch || record.change.Key != setting.AllowAutoMerge {
+	if !record.updatesSucceeded() || record.confirmation != desiredStateMismatch || !slices.Equal(record.change.Keys(), []setting.Key{setting.AllowAutoMerge}) {
 		return ""
 	}
 	return "auto-merge is not available for private repositories on GitHub Free, where GitHub may accept the update without applying it"
 }
 
 // notAttemptedReason は、未実行の理由を、先行する異常による停止と変更前提の不成立に分けて表示の 1 行で返す。
-// 未実行の記録だけを受け取るため、更新操作を開始した記録は不変条件の破れとして panic する。
 func notAttemptedReason(record changeRecord) string {
-	switch record.precondition {
-	case preconditionNotChecked:
+	if len(record.operations) == 0 {
 		return "Stopped: a preceding change did not complete"
+	}
+	return preconditionText(record.change, 0, record.operations[0])
+}
+
+// preconditionText は、change の index 番目の更新操作の変更前提が成立しなかった理由を表示の 1 行で返す。
+// 後続の更新操作の関係する現在値の変化は、先行する更新操作の反映の遅れでも外部主体の変更でも起き、
+// 値が承認のあとに変わったとは限らないため、予定どおりの値でないことを示す。
+// 不成立の記録だけを受け取るため、変更前提が成立した記録と確かめていない記録は不変条件の破れとして panic する。
+func preconditionText(change changeplan.LogicalChange, index int, o operationRecord) string {
+	switch o.precondition {
 	case preconditionUnconfirmed:
 		return "Precondition: not confirmed (read failed)"
 	case preconditionIdentityMismatch:
 		return "Precondition: repository ID differs from the approved repository"
 	case preconditionCurrentValueChanged:
-		return "Precondition: " + string(record.changedSetting) + " changed since approval"
+		if index == 0 {
+			return "Precondition: " + string(o.changedSetting) + " changed since approval"
+		}
+		return "Precondition: " + string(o.changedSetting) + " is not the value expected after the preceding update"
 	default:
-		panic(fmt.Sprintf("apply: %s has no reason for not attempting the update", record.change.Key))
+		panic(fmt.Sprintf("apply: %s has no reason for not starting the update", change.Operations[index].Key))
 	}
 }
 
@@ -151,7 +196,7 @@ func updateOutcomeText(u github.UpdateOutcome) string {
 func confirmationText(record changeRecord) string {
 	switch record.confirmation {
 	case desiredStateMatches:
-		if record.update == github.UpdateUnknown {
+		if record.hasUnknownOutcome() {
 			return "matches (update outcome still unknown)"
 		}
 		return "matches"
@@ -182,7 +227,7 @@ func changeNote(records []changeRecord) string {
 	for _, record := range records {
 		if record.updateStarted() {
 			started = true
-			unknown = unknown || record.update == github.UpdateUnknown
+			unknown = unknown || record.hasUnknownOutcome()
 		}
 	}
 	if !started || allCompleted(records) {

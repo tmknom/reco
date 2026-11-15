@@ -10,11 +10,11 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// TestUpdateOperationOf は、論理的な設定変更の設定から、それを実現する更新操作を選ぶ規則を確かめる。
+// TestUpdateSenderOf は、更新操作が変える設定から、その更新要求の送り方を選ぶ規則を確かめる。
 //
 //trace:checks INV-001
 //trace:checks FR-011
-func TestUpdateOperationOf(t *testing.T) {
+func TestUpdateSenderOf(t *testing.T) {
 	noContent := response{status: http.StatusNoContent}
 	cases := []struct {
 		name        string
@@ -57,7 +57,7 @@ func TestUpdateOperationOf(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			baseURL, rec := newSequenceServer(t, tc.response)
-			update := updateOperationOf(tc.key)
+			update := updateSenderOf(tc.key)
 
 			if _, err := update.send(context.Background(), newClient(baseURL), mustReference(t, "owner/repo"), tc.desired); err != nil {
 				t.Fatalf("send() error = %v", err)
@@ -75,10 +75,10 @@ func TestUpdateOperationOf(t *testing.T) {
 	t.Run("setting that cannot be declared panics", func(t *testing.T) {
 		defer func() {
 			if recover() == nil {
-				t.Errorf("updateOperationOf(%q) did not panic", setting.SHAPinningRequired)
+				t.Errorf("updateSenderOf(%q) did not panic", setting.SHAPinningRequired)
 			}
 		}()
-		_ = updateOperationOf(setting.SHAPinningRequired)
+		_ = updateSenderOf(setting.SHAPinningRequired)
 	})
 }
 
@@ -91,7 +91,7 @@ func TestUpdateEndpointObservedSettings(t *testing.T) {
 	// その設定を比べ漏らすため、宣言を受け付けるすべての設定を回して検出する。
 	t.Run("every declarable setting is observed at the update endpoint of its update operation", func(t *testing.T) {
 		for _, key := range setting.Keys() {
-			if got := updateOperationOf(key).endpoint.observedSettings(); !slices.Contains(got, key) {
+			if got := updateSenderOf(key).endpoint.observedSettings(); !slices.Contains(got, key) {
 				t.Errorf("observedSettings() of the update endpoint of %q = %v, want it to contain %q", key, got, key)
 			}
 		}
@@ -100,7 +100,7 @@ func TestUpdateEndpointObservedSettings(t *testing.T) {
 	// 観測は変える設定の領域の単位で読むため、領域の外の設定を比べると、更新要求を送ったあとで観測値がなく止まる。
 	t.Run("every observed setting at an update endpoint is in the area of the setting it updates", func(t *testing.T) {
 		for _, key := range setting.Keys() {
-			for _, observed := range updateOperationOf(key).endpoint.observedSettings() {
+			for _, observed := range updateSenderOf(key).endpoint.observedSettings() {
 				if observed.Area() != key.Area() {
 					t.Errorf("%q observed at the update endpoint of %q is in area %v, want %v", observed, key, observed.Area(), key.Area())
 				}

@@ -9,19 +9,32 @@ import (
 // changeRecord は、承認した論理的な設定変更を実行して得た、変更結果を導く事実。
 // change だけを持つ値は、先行する異常によって何も確かめずに止めた論理的な設定変更を表す。
 type changeRecord struct {
-	change       changeplan.LogicalChange
-	precondition preconditionCheck
-	// changedSetting は precondition が preconditionCurrentValueChanged のときだけ意味を持つ、変わっていた関係する現在値の設定。
-	// 副作用として提示した設定が変わっていた場合は、change.Key と異なる。
-	changedSetting setting.Key
-	// update は updateStarted が真のときだけ意味を持つ。偽のときのゼロ値は、開始しなかった更新操作の結果ではない。
-	update       github.UpdateOutcome
+	change changeplan.LogicalChange
+	// operations は、変更前提を確かめた更新操作の記録を、change.Operations の先頭から並べたもの。
+	// 変更前提を確かめなかった更新操作の記録は持たない。
+	operations   []operationRecord
 	confirmation desiredStateConfirmation
 	// desiredUnavailableReason は confirmation が desiredStateUnavailable のときだけ意味を持つ。
 	desiredUnavailableReason github.UnavailableReason
 	unexpectedOutsideChanges []unexpectedOutsideChange
 	// cause は、変更前提の確認、更新操作、更新後の観測とその前の待機のうち、失敗した操作の error。
 	cause error
+}
+
+// operationRecord は、論理的な設定変更を構成する一つの更新操作について、変更前提の確認結果と更新操作の結果。
+type operationRecord struct {
+	precondition preconditionCheck
+	// changedSetting は precondition が preconditionCurrentValueChanged のときだけ意味を持つ、変わっていた関係する現在値の設定。
+	// 副作用として提示した設定や、先行する更新操作が変えた設定が変わっていた場合は、この更新操作が変える設定と異なる。
+	changedSetting setting.Key
+	// update は started が真のときだけ意味を持つ。偽のときのゼロ値は、開始しなかった更新操作の結果ではない。
+	update github.UpdateOutcome
+}
+
+// started は、この更新操作を開始したかを返す。
+// 変更前提が成立したときに限り、必ず更新操作を一度開始するため、前提の成立と同値になる。
+func (o operationRecord) started() bool {
+	return o.precondition == preconditionHolds
 }
 
 // changeResult は、論理的な設定変更の変更結果。
@@ -66,10 +79,52 @@ type unexpectedOutsideChange struct {
 	Before, After setting.Value
 }
 
-// updateStarted は、更新操作を開始したかを返す。
-// executeChange は変更前提が成立したときに限り、必ず更新操作を一度開始するため、前提の成立と同値になる。
+// operation は、i 番目の更新操作の記録を返す。変更前提を確かめなかった更新操作は、ゼロ値 (preconditionNotChecked) を返す。
+func (r changeRecord) operation(i int) operationRecord {
+	if i < len(r.operations) {
+		return r.operations[i]
+	}
+	return operationRecord{}
+}
+
+// updateStarted は、論理的な設定変更の更新操作を一つでも開始したかを返す。
+// 更新操作は先頭から順に開始するため、先頭の更新操作を開始したかと同値になる。
 func (r changeRecord) updateStarted() bool {
-	return r.precondition == preconditionHolds
+	return r.operation(0).started()
+}
+
+// updatesSucceeded は、論理的な設定変更のすべての更新操作が成功したかを返す。
+// 開始しなかった更新操作が残っていれば、成功していない。
+func (r changeRecord) updatesSucceeded() bool {
+	if len(r.operations) != len(r.change.Operations) {
+		return false
+	}
+	for _, operation := range r.operations {
+		if operation.update != github.UpdateSucceeded {
+			return false
+		}
+	}
+	return true
+}
+
+// mayHaveChangedState は、GitHub の状態を変えた可能性のある更新操作 (成功か成否不明) があるかを返す。
+func (r changeRecord) mayHaveChangedState() bool {
+	for _, operation := range r.operations {
+		if operation.started() && operation.update != github.UpdateRejected {
+			return true
+		}
+	}
+	return false
+}
+
+// hasUnknownOutcome は、開始した更新操作に成否不明があるかを返す。
+func (r changeRecord) hasUnknownOutcome() bool {
+	for _, operation := range r.operations {
+		if operation.started() && operation.update == github.UpdateUnknown {
+			return true
+		}
+	}
+	return false
 }
 
 // result は、変更結果を導く。
@@ -77,7 +132,7 @@ func (r changeRecord) result() changeResult {
 	switch {
 	case !r.updateStarted():
 		return notAttempted
-	case r.update == github.UpdateSucceeded && r.confirmation == desiredStateMatches && len(r.unexpectedOutsideChanges) == 0:
+	case r.updatesSucceeded() && r.confirmation == desiredStateMatches && len(r.unexpectedOutsideChanges) == 0:
 		return completed
 	default:
 		return failed

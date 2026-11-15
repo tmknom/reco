@@ -212,9 +212,14 @@ func relevantTo(key setting.Key, observed setting.Value) []changeplan.RelevantSe
 	return []changeplan.RelevantSetting{{Key: key, AtApproval: github.Observed(observed)}}
 }
 
+// singleUpdate は、key を desired にする更新操作一つからなる論理的な設定変更。
+func singleUpdate(key setting.Key, desired setting.Value, relevant []changeplan.RelevantSetting) changeplan.LogicalChange {
+	return changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{{Key: key, Desired: desired, RelevantSettings: relevant}}}
+}
+
 // allowAutoMergeChange は、allow_auto_merge を false から true にする論理的な設定変更。
 func allowAutoMergeChange() changeplan.LogicalChange {
-	return changeplan.LogicalChange{Key: setting.AllowAutoMerge, Desired: setting.BoolValue(true), RelevantSettings: relevantTo(setting.AllowAutoMerge, setting.BoolValue(false))}
+	return singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), relevantTo(setting.AllowAutoMerge, setting.BoolValue(false)))
 }
 
 // allowAutoMergeMismatch は、allowAutoMergeChange を導く適用可能な変更予定。
@@ -230,7 +235,7 @@ func allowAutoMergeMismatch() changeplan.SettingPlan {
 
 // deleteBranchOnMergeChange は、delete_branch_on_merge を false から true にする論理的な設定変更。
 func deleteBranchOnMergeChange() changeplan.LogicalChange {
-	return changeplan.LogicalChange{Key: setting.DeleteBranchOnMerge, Desired: setting.BoolValue(true), RelevantSettings: relevantTo(setting.DeleteBranchOnMerge, setting.BoolValue(false))}
+	return singleUpdate(setting.DeleteBranchOnMerge, setting.BoolValue(true), relevantTo(setting.DeleteBranchOnMerge, setting.BoolValue(false)))
 }
 
 // deleteBranchOnMergeMismatch は、deleteBranchOnMergeChange を導く適用可能な変更予定。
@@ -246,50 +251,50 @@ func deleteBranchOnMergeMismatch() changeplan.SettingPlan {
 
 // defaultWorkflowPermissionsChange は、default_workflow_permissions を write から read にする論理的な設定変更。
 func defaultWorkflowPermissionsChange() changeplan.LogicalChange {
-	return changeplan.LogicalChange{
-		Key:              setting.DefaultWorkflowPermissions,
-		Desired:          setting.PermissionLevelValue(setting.PermissionRead),
-		RelevantSettings: relevantTo(setting.DefaultWorkflowPermissions, setting.PermissionLevelValue(setting.PermissionWrite)),
-	}
+	return singleUpdate(
+		setting.DefaultWorkflowPermissions,
+		setting.PermissionLevelValue(setting.PermissionRead),
+		relevantTo(setting.DefaultWorkflowPermissions, setting.PermissionLevelValue(setting.PermissionWrite)),
+	)
 }
 
 // canApprovePullRequestReviewsChange は、can_approve_pull_request_reviews を true から false にする論理的な設定変更。
 func canApprovePullRequestReviewsChange() changeplan.LogicalChange {
-	return changeplan.LogicalChange{Key: setting.CanApprovePullRequestReviews, Desired: setting.BoolValue(false), RelevantSettings: relevantTo(setting.CanApprovePullRequestReviews, setting.BoolValue(true))}
+	return singleUpdate(setting.CanApprovePullRequestReviews, setting.BoolValue(false), relevantTo(setting.CanApprovePullRequestReviews, setting.BoolValue(true)))
 }
 
 // allowedActionsChange は、Actions 許可ポリシーを all から local_only にする、副作用のない論理的な設定変更。
 func allowedActionsChange() changeplan.LogicalChange {
-	return changeplan.LogicalChange{
-		Key:              setting.AllowedActions,
-		Desired:          setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly),
-		RelevantSettings: relevantTo(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsAll)),
-	}
+	return singleUpdate(
+		setting.AllowedActions,
+		setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly),
+		relevantTo(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsAll)),
+	)
 }
 
 // allowedActionsMismatch は、allowedActionsChange を導く適用可能な変更予定。
 func allowedActionsMismatch() changeplan.SettingPlan {
-	change := allowedActionsChange()
+	operation := allowedActionsChange().Operations[0]
 	return changeplan.SettingPlan{
-		Key: change.Key, Observed: change.RelevantSettings[0].AtApproval, Desired: change.Desired, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+		Key: operation.Key, Observed: operation.RelevantSettings[0].AtApproval, Desired: operation.Desired, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 	}
 }
 
 // selectedActionsChange は、Actions 許可ポリシーが selected のまま、選択方式の Actions 許可条件の verified_allowed だけを
 // false から true にする論理的な設定変更。許可パターンは2つ持ち、順序だけの違いを作れるようにする。
 func selectedActionsChange() changeplan.LogicalChange {
-	return changeplan.LogicalChange{
-		Key:              setting.SelectedActions,
-		Desired:          setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{"a/*", "b/*"}}),
-		RelevantSettings: relevantTo(setting.SelectedActions, setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{PatternsAllowed: []string{"a/*", "b/*"}})),
-	}
+	return singleUpdate(
+		setting.SelectedActions,
+		setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{"a/*", "b/*"}}),
+		relevantTo(setting.SelectedActions, setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{PatternsAllowed: []string{"a/*", "b/*"}})),
+	)
 }
 
 // selectedActionsMismatch は、selectedActionsChange を導く適用可能な変更予定。
 func selectedActionsMismatch() changeplan.SettingPlan {
-	change := selectedActionsChange()
+	operation := selectedActionsChange().Operations[0]
 	return changeplan.SettingPlan{
-		Key: change.Key, Observed: change.RelevantSettings[0].AtApproval, Desired: change.Desired, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+		Key: operation.Key, Observed: operation.RelevantSettings[0].AtApproval, Desired: operation.Desired, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 	}
 }
 
@@ -299,14 +304,10 @@ var lostCriteria = setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, Pat
 // selectedToAllChange は、Actions 許可ポリシーを selected から all にし、lostCriteria を失わせる副作用を伴う論理的な設定変更。
 // 失われる値も変更前提の基準に並ぶ。
 func selectedToAllChange() changeplan.LogicalChange {
-	return changeplan.LogicalChange{
-		Key:     setting.AllowedActions,
-		Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsAll),
-		RelevantSettings: []changeplan.RelevantSetting{
-			{Key: setting.AllowedActions, AtApproval: github.Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected))},
-			{Key: setting.SelectedActions, AtApproval: github.Observed(setting.SelectedActionsCriteriaValue(lostCriteria))},
-		},
-	}
+	return singleUpdate(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), []changeplan.RelevantSetting{
+		{Key: setting.AllowedActions, AtApproval: github.Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected))},
+		{Key: setting.SelectedActions, AtApproval: github.Observed(setting.SelectedActionsCriteriaValue(lostCriteria))},
+	})
 }
 
 // enableActionsNotComparable は、Actions が無効のリポジトリで Actions 許可ポリシーを local_only と宣言した、
@@ -321,14 +322,40 @@ func enableActionsNotComparable() changeplan.SettingPlan {
 
 // enableActionsChange は、enableActionsNotComparable から導く論理的な設定変更。基準はどちらも Actions が無効による観測不能。
 func enableActionsChange() changeplan.LogicalChange {
-	return changeplan.LogicalChange{
-		Key:     setting.AllowedActions,
-		Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly),
-		RelevantSettings: []changeplan.RelevantSetting{
-			{Key: setting.AllowedActions, AtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
-			{Key: setting.SelectedActions, AtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
+	return singleUpdate(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly), []changeplan.RelevantSetting{
+		{Key: setting.AllowedActions, AtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
+		{Key: setting.SelectedActions, AtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
+	})
+}
+
+// declaredCriteria は、toSelectedChange と enableSelectedChange が宣言する選択方式の Actions 許可条件。
+// github_owned_allowed を false にし、GitHub がポリシーの更新で戻す値 (github_owned_allowed: true、verified_allowed: false、patterns_allowed: []) と
+// 3項目とも異ならせる。許可パターンは2つ持ち、順序だけの違いを作れるようにする。
+var declaredCriteria = setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{"a/*", "b/*"}}
+
+// toSelectedChange は、Actions 許可ポリシーを local_only から selected にし、選択方式の Actions 許可条件を declaredCriteria にする、
+// 二つの更新操作からなる論理的な設定変更。2つ目の基準は、1つ目による予定どおりの変化を反映したポリシーだけである。
+func toSelectedChange() changeplan.LogicalChange {
+	return changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{
+		{
+			Key: setting.AllowedActions, Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected),
+			RelevantSettings: relevantTo(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly)),
 		},
+		{
+			Key: setting.SelectedActions, Desired: setting.SelectedActionsCriteriaValue(declaredCriteria),
+			RelevantSettings: relevantTo(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected)),
+		},
+	}}
+}
+
+// enableSelectedChange は、Actions が無効のリポジトリで Actions を有効にして Actions 許可ポリシーを selected にし、
+// 選択方式の Actions 許可条件を declaredCriteria にする、二つの更新操作からなる論理的な設定変更。
+func enableSelectedChange() changeplan.LogicalChange {
+	change := toSelectedChange()
+	change.Operations[0].RelevantSettings = []changeplan.RelevantSetting{
+		{Key: setting.AllowedActions, AtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
 	}
+	return change
 }
 
 func newPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.Plan {
@@ -813,24 +840,57 @@ func TestRun(t *testing.T) {
 		}
 	})
 
-	t.Run("policy change to selected is rejected before approval", func(t *testing.T) {
-		baseURL, rec := newSequenceServer(t, okRepository(1, false, false), okAllowedActions("all", false))
+	// 計画時の観測から導いた2つの更新操作の基準が、それぞれの直前の観測で成立することを確かめる
+	selectedSource := "repositories:\n  - name: owner/repo\n    actions:\n      permissions:\n        allowed_actions: selected\n" +
+		"        selected_actions:\n          github_owned_allowed: false\n          verified_allowed: true\n          patterns_allowed: [\"a/*\"]\n"
+	putSelectedActions := "PUT /repos/owner/repo/actions/permissions/selected-actions"
+	readSelected := []string{getRepository, getActionsPermissions, getSelectedActions}
+	readNotSelected := []string{getRepository, getActionsPermissions}
+	// 1つ目のあとに GitHub が戻した3項目と、宣言した3項目
+	afterFirst := []response{okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(true, false, `[]`)}
+	afterSecond := []response{okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(false, true, `["a/*"]`)}
+
+	t.Run("policy change to selected is applied in two updates after showing both settings and a single approval", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t, slices.Concat(
+			[]response{okRepository(1, false, false), okAllowedActions("all", false)},
+			[]response{okRepository(1, false, false), okAllowedActions("all", false), {status: http.StatusNoContent}},
+			afterFirst, []response{{status: http.StatusNoContent}}, afterSecond)...)
 		var out bytes.Buffer
 		calls := 0
-		source := "repositories:\n  - name: owner/repo\n    actions:\n      permissions:\n        allowed_actions: selected\n" +
-			"        selected_actions:\n          github_owned_allowed: false\n          verified_allowed: true\n          patterns_allowed: [\"a/*\"]\n"
-		files := fstest.MapFS{"reco.yaml": {Data: []byte(source)}}
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(selectedSource)}}
 
-		err := Run(context.Background(), newConfig(files, &out, baseURL, &calls))
-
-		if err == nil || !strings.Contains(err.Error(), string(setting.AllowedActions)) {
-			t.Errorf("Run() error = %v, want an error containing %q", err, setting.AllowedActions)
+		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
+			t.Fatalf("Run() error = %v", err)
 		}
-		if calls != 0 || out.Len() != 0 {
-			t.Errorf("approve calls = %d, Out = %q, want no approval and no output", calls, out.String())
-		}
-		if want := []string{getRepository, getActionsPermissions}; !slices.Equal(rec.Requests(), want) {
+		want := slices.Concat(readNotSelected, readNotSelected, []string{putActionsPermissions}, readSelected, []string{putSelectedActions}, readSelected)
+		if !slices.Equal(rec.Requests(), want) {
 			t.Errorf("requests = %v, want %v", rec.Requests(), want)
+		}
+		if calls != 1 || !strings.Contains(out.String(), "actions.permissions.allowed_actions: all -> selected\n  actions.permissions.selected_actions\n") ||
+			!strings.Contains(out.String(), "owner/repo: updated") {
+			t.Errorf("approve calls = %d, Out = %q, want one approval, both planned settings, and the repository updated", calls, out.String())
+		}
+	})
+
+	t.Run("policy of disabled actions to selected is applied in two updates after a single approval", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t, slices.Concat(
+			[]response{okRepository(1, false, false), okActionsDisabled()},
+			[]response{okRepository(1, false, false), okActionsDisabled(), {status: http.StatusNoContent}},
+			afterFirst, []response{{status: http.StatusNoContent}}, afterSecond)...)
+		var out bytes.Buffer
+		calls := 0
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(selectedSource)}}
+
+		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		want := slices.Concat(readNotSelected, readNotSelected, []string{putActionsPermissions}, readSelected, []string{putSelectedActions}, readSelected)
+		if !slices.Equal(rec.Requests(), want) {
+			t.Errorf("requests = %v, want %v", rec.Requests(), want)
+		}
+		if calls != 1 || strings.Count(out.String(), "Current: unavailable (GitHub Actions is disabled)") != 2 ||
+			!strings.Contains(out.String(), "(enables GitHub Actions)") || !strings.Contains(out.String(), "owner/repo: updated") {
+			t.Errorf("approve calls = %d, Out = %q, want one approval, both not-comparable settings, and the repository updated", calls, out.String())
 		}
 	})
 

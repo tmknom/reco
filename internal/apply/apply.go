@@ -77,7 +77,9 @@ func executableChanges(p changeplan.Plan) ([]changeplan.LogicalChange, error) {
 		return nil, err
 	}
 	for _, change := range changes {
-		updateOperationOf(change.Key)
+		for _, operation := range change.Operations {
+			updateSenderOf(operation.Key)
+		}
 	}
 	return changes, nil
 }

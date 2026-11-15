@@ -80,7 +80,7 @@ func TestSameObservation(t *testing.T) {
 //trace:checks INV-004
 //trace:checks FR-010
 func TestCheckPrecondition(t *testing.T) {
-	change := allowAutoMergeChange()
+	operation := allowAutoMergeChange().Operations[0]
 	cases := []struct {
 		name        string
 		observed    github.ObservationResult
@@ -116,7 +116,7 @@ func TestCheckPrecondition(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got, changed := checkPrecondition(1, change, tc.observed); got != tc.want || changed != tc.wantChanged {
+			if got, changed := checkPrecondition(1, operation, tc.observed); got != tc.want || changed != tc.wantChanged {
 				t.Errorf("checkPrecondition() = %v, %q, want %v, %q", got, changed, tc.want, tc.wantChanged)
 			}
 		})
@@ -124,12 +124,30 @@ func TestCheckPrecondition(t *testing.T) {
 
 	// 関係する現在値の設定が複数並ぶ変更と、承認時に予定した値が観測不能の変更。値の比べ方は TestSameObservation が確かめる
 	actionsCases := []struct {
-		name        string
-		change      changeplan.LogicalChange
+		name   string
+		change changeplan.LogicalChange
+		// index は、確かめる更新操作の change.Operations の添字。
+		index       int
 		observed    *github.ActionsPermissions
 		want        preconditionCheck
 		wantChanged setting.Key
 	}{
+		{
+			// 2つ目がすべて上書きする3項目は基準に並ばないため、GitHub が戻した値でも成立する
+			name:     "second update to selected holds with the policy selected and the criteria GitHub set back",
+			change:   toSelectedChange(),
+			index:    1,
+			observed: actionsSelected(setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{}}),
+			want:     preconditionHolds,
+		},
+		{
+			name:        "second update to selected with the policy not selected is a current value change of allowed_actions",
+			change:      toSelectedChange(),
+			index:       1,
+			observed:    actionsEnabled(setting.AllowedActionsLocalOnly, false),
+			want:        preconditionCurrentValueChanged,
+			wantChanged: setting.AllowedActions,
+		},
 		{
 			name:        "selected to all with criteria other than shown before approval is a current value change of selected_actions",
 			change:      selectedToAllChange(),
@@ -154,19 +172,19 @@ func TestCheckPrecondition(t *testing.T) {
 	for _, tc := range actionsCases {
 		t.Run(tc.name, func(t *testing.T) {
 			observed := github.ObservationResult{RepositoryID: 1, ActionsPermissions: tc.observed}
-			if got, changed := checkPrecondition(1, tc.change, observed); got != tc.want || changed != tc.wantChanged {
+			if got, changed := checkPrecondition(1, tc.change.Operations[tc.index], observed); got != tc.want || changed != tc.wantChanged {
 				t.Errorf("checkPrecondition() = %v, %q, want %v, %q", got, changed, tc.want, tc.wantChanged)
 			}
 		})
 	}
 
-	t.Run("logical change without relevant settings panics", func(t *testing.T) {
+	t.Run("update operation without relevant settings panics", func(t *testing.T) {
 		defer func() {
 			if recover() == nil {
 				t.Error("checkPrecondition() did not panic")
 			}
 		}()
-		empty := changeplan.LogicalChange{Key: setting.AllowAutoMerge, Desired: setting.BoolValue(true)}
+		empty := changeplan.UpdateOperation{Key: setting.AllowAutoMerge, Desired: setting.BoolValue(true)}
 		checkPrecondition(1, empty, github.ObservationResult{RepositoryID: 1})
 	})
 }
@@ -197,43 +215,395 @@ func TestConfirmDesiredState(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := confirmDesiredState(1, change, tc.observed); got != tc.want {
-				t.Errorf("confirmDesiredState() = %v, want %v", got, tc.want)
+			if got, reason := confirmDesiredState(1, change, tc.observed); got != tc.want || reason != 0 {
+				t.Errorf("confirmDesiredState() = %v, %v, want %v without a reason", got, reason, tc.want)
 			}
 		})
 	}
 
 	selectedCases := []struct {
-		name     string
-		observed *github.ActionsPermissions
-		want     desiredStateConfirmation
+		name       string
+		change     changeplan.LogicalChange
+		observed   *github.ActionsPermissions
+		want       desiredStateConfirmation
+		wantReason github.UnavailableReason
 	}{
 		{
 			name:     "criteria differing from the desired value only in the order of patterns match",
+			change:   selectedActionsChange(),
 			observed: actionsSelected(setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{"b/*", "a/*"}}),
 			want:     desiredStateMatches,
 		},
 		{
-			name:     "unavailable criteria are unavailable rather than a mismatch",
-			observed: actionsDisabled(),
-			want:     desiredStateUnavailable,
+			name:       "unavailable criteria are unavailable rather than a mismatch",
+			change:     selectedActionsChange(),
+			observed:   actionsDisabled(),
+			want:       desiredStateUnavailable,
+			wantReason: github.UnavailableActionsDisabled,
+		},
+		{
+			name:     "policy and criteria both desired, with criteria differing only in the order of patterns, match",
+			change:   toSelectedChange(),
+			observed: actionsSelected(setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{"b/*", "a/*"}}),
+			want:     desiredStateMatches,
+		},
+		{
+			name:     "selected policy with the criteria GitHub set back is a mismatch of the second desired value",
+			change:   toSelectedChange(),
+			observed: actionsSelected(setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{}}),
+			want:     desiredStateMismatch,
+		},
+		{
+			// ドメインモデルの期待状態の確認結果。観測できた値に期待値と異なるものがあれば、観測不能が残っても不一致になる
+			name:     "policy other than selected is a mismatch even though the criteria are unavailable",
+			change:   toSelectedChange(),
+			observed: actionsEnabled(setting.AllowedActionsAll, false),
+			want:     desiredStateMismatch,
+		},
+		{
+			// 計画が作らない並び。観測不能の設定が先に並んでも、観測できた値の不一致が優先されることを確かめる
+			name: "mismatch after an unavailable desired value in the order of updates is still a mismatch",
+			change: changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{
+				toSelectedChange().Operations[1], toSelectedChange().Operations[0],
+			}},
+			observed: actionsEnabled(setting.AllowedActionsAll, false),
+			want:     desiredStateMismatch,
+		},
+		{
+			name:       "actions disabled is unavailable for both desired values with the reason",
+			change:     toSelectedChange(),
+			observed:   actionsDisabled(),
+			want:       desiredStateUnavailable,
+			wantReason: github.UnavailableActionsDisabled,
 		},
 	}
 	for _, tc := range selectedCases {
 		t.Run(tc.name, func(t *testing.T) {
 			observed := github.ObservationResult{RepositoryID: 1, ActionsPermissions: tc.observed}
-			if got := confirmDesiredState(1, selectedActionsChange(), observed); got != tc.want {
-				t.Errorf("confirmDesiredState() = %v, want %v", got, tc.want)
+			if got, reason := confirmDesiredState(1, tc.change, observed); got != tc.want || reason != tc.wantReason {
+				t.Errorf("confirmDesiredState() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)
 			}
 		})
 	}
 }
 
-// TestUnexpectedOutsideChanges は、論理的な設定変更が変えない設定を、管理範囲によらず比べる規則を確かめる。
+// TestPrecedingUpdateNotReflected は、後続の更新操作の直前の観測が、先行する更新操作の直前の状態のままかの規則を確かめる。
+// 真のときだけ反映の遅れの可能性として観測し直すため、偽の側に倒れる形を確かめる。
+//
+//trace:checks INV-004
+//trace:checks INV-005
+func TestPrecedingUpdateNotReflected(t *testing.T) {
+	cases := []struct {
+		name     string
+		change   changeplan.LogicalChange
+		index    int
+		observed *github.ActionsPermissions
+		want     bool
+	}{
+		{
+			name:     "first update has no preceding update even if the observation is the value before it",
+			change:   toSelectedChange(),
+			index:    0,
+			observed: actionsEnabled(setting.AllowedActionsLocalOnly, false),
+			want:     false,
+		},
+		{
+			name:     "policy still local_only as before the first update is not reflected",
+			change:   toSelectedChange(),
+			index:    1,
+			observed: actionsEnabled(setting.AllowedActionsLocalOnly, false),
+			want:     true,
+		},
+		{
+			name:     "actions still disabled as before the first update is not reflected",
+			change:   enableSelectedChange(),
+			index:    1,
+			observed: actionsDisabled(),
+			want:     true,
+		},
+		{
+			name:     "policy selected is reflected",
+			change:   toSelectedChange(),
+			index:    1,
+			observed: actionsSelected(setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{}}),
+			want:     false,
+		},
+		{
+			name:     "policy neither the value before the first update nor selected is not a delay",
+			change:   toSelectedChange(),
+			index:    1,
+			observed: actionsEnabled(setting.AllowedActionsAll, false),
+			want:     false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := github.ObservationResult{RepositoryID: 1, ActionsPermissions: tc.observed}
+			if got := precedingUpdateNotReflected(1, tc.change.Operations[:tc.index], observed); got != tc.want {
+				t.Errorf("precedingUpdateNotReflected() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestObserveBeforeUpdate は、2つ目の更新操作の直前の観測で、1つ目の反映の遅れを待って観測し直す規則を確かめる。
+// 観測し直すのは読み取りだけで、開始してよいのは最後の観測で変更前提が成立したときだけである。
+//
+//trace:checks INV-004
+//trace:checks INV-005
+//trace:checks FR-010
+func TestObserveBeforeUpdate(t *testing.T) {
+	const (
+		getRepository         = "GET /repos/owner/repo"
+		getActionsPermissions = "GET /repos/owner/repo/actions/permissions"
+		getSelectedActions    = "GET /repos/owner/repo/actions/permissions/selected-actions"
+	)
+	selected := []response{okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(true, false, `[]`)}
+	localOnly := []response{okRepository(1, false, false), okAllowedActions("local_only", false)}
+	readSelected := []string{getRepository, getActionsPermissions, getSelectedActions}
+	readNotSelected := []string{getRepository, getActionsPermissions}
+	repeat := func(n int, rs []response) []response {
+		var out []response
+		for range n {
+			out = append(out, rs...)
+		}
+		return out
+	}
+	repeatRequests := func(n int, rs []string) []string {
+		var out []string
+		for range n {
+			out = append(out, rs...)
+		}
+		return out
+	}
+	allDelays := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second}
+	cases := []struct {
+		name         string
+		change       changeplan.LogicalChange
+		responses    []response
+		wantRequests []string
+		wantDelays   []time.Duration
+		want         operationRecord
+		wantErr      bool
+	}{
+		{
+			name:         "policy already selected holds without waiting",
+			change:       toSelectedChange(),
+			responses:    selected,
+			wantRequests: readSelected,
+			want:         operationRecord{precondition: preconditionHolds},
+		},
+		{
+			name:         "policy still before the first update and then selected holds after waiting once",
+			change:       toSelectedChange(),
+			responses:    append(slices.Clone(localOnly), selected...),
+			wantRequests: append(slices.Clone(readNotSelected), readSelected...),
+			wantDelays:   allDelays[:1],
+			want:         operationRecord{precondition: preconditionHolds},
+		},
+		{
+			name:         "policy still before the first update on all six reads is a current value change of allowed_actions",
+			change:       toSelectedChange(),
+			responses:    repeat(6, localOnly),
+			wantRequests: repeatRequests(6, readNotSelected),
+			wantDelays:   allDelays,
+			want:         operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions},
+		},
+		{
+			name:         "policy neither before the first update nor selected is a current value change without waiting",
+			change:       toSelectedChange(),
+			responses:    []response{okRepository(1, false, false), okAllowedActions("all", false)},
+			wantRequests: readNotSelected,
+			want:         operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions},
+		},
+		{
+			name:         "failed read is unconfirmed without waiting",
+			change:       toSelectedChange(),
+			responses:    []response{okRepository(1, false, false), {status: http.StatusInternalServerError}},
+			wantRequests: readNotSelected,
+			want:         operationRecord{precondition: preconditionUnconfirmed},
+			wantErr:      true,
+		},
+		{
+			name:         "different ID is an identity mismatch without waiting even if the policy is before the first update",
+			change:       toSelectedChange(),
+			responses:    []response{okRepository(2, false, false), okAllowedActions("local_only", false)},
+			wantRequests: readNotSelected,
+			want:         operationRecord{precondition: preconditionIdentityMismatch},
+		},
+		{
+			name:         "actions still disabled as before the first update and then selected holds after waiting once",
+			change:       enableSelectedChange(),
+			responses:    append([]response{okRepository(1, false, false), okActionsDisabled()}, selected...),
+			wantRequests: append(slices.Clone(readNotSelected), readSelected...),
+			wantDelays:   allDelays[:1],
+			want:         operationRecord{precondition: preconditionHolds},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, rec := newSequenceServer(t, tc.responses...)
+			delays := &delayRecorder{}
+
+			_, got, err := observeBeforeUpdate(context.Background(), newClient(baseURL), newPlan(t), tc.change, 1, observationAreas(tc.change), delays.after)
+
+			if !slices.Equal(rec.Requests(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", rec.Requests(), tc.wantRequests)
+			}
+			if !slices.Equal(delays.delays, tc.wantDelays) {
+				t.Errorf("delays = %v, want %v", delays.delays, tc.wantDelays)
+			}
+			if got != tc.want {
+				t.Errorf("observeBeforeUpdate() = %+v, want %+v", got, tc.want)
+			}
+			if (err != nil) != tc.wantErr {
+				t.Errorf("observeBeforeUpdate() error = %v, want error %v", err, tc.wantErr)
+			}
+		})
+	}
+
+	t.Run("interruption while waiting to read again is unconfirmed without another read", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t, append(slices.Clone(localOnly), selected...)...)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		interrupted := func(time.Duration) <-chan time.Time {
+			cancel()
+			return make(chan time.Time)
+		}
+		change := toSelectedChange()
+
+		_, got, err := observeBeforeUpdate(ctx, newClient(baseURL), newPlan(t), change, 1, observationAreas(change), interrupted)
+
+		if !slices.Equal(rec.Requests(), readNotSelected) {
+			t.Errorf("requests = %v, want %v", rec.Requests(), readNotSelected)
+		}
+		if got != (operationRecord{precondition: preconditionUnconfirmed}) {
+			t.Errorf("observeBeforeUpdate() = %+v, want unconfirmed", got)
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("observeBeforeUpdate() error = %v, want it to wrap %v", err, context.Canceled)
+		}
+	})
+}
+
+// TestObservationAreas は、更新直前と更新後の観測で読む設定の領域を、更新操作と基準の設定から導く規則を確かめる。
+func TestObservationAreas(t *testing.T) {
+	cases := []struct {
+		name    string
+		change  changeplan.LogicalChange
+		want    []setting.Area
+		notWant []setting.Area
+	}{
+		{
+			name:    "general change reads only the general area",
+			change:  allowAutoMergeChange(),
+			want:    []setting.Area{setting.AllowAutoMerge.Area()},
+			notWant: []setting.Area{setting.AllowedActions.Area()},
+		},
+		{
+			name:   "change to selected reads the actions permissions area",
+			change: toSelectedChange(),
+			want:   []setting.Area{setting.AllowedActions.Area()},
+		},
+		{
+			// どの変更予定にも生じない組。基準の設定の領域を読まないと、観測結果にその値がないことを確かめる
+			name:   "relevant setting in another area is also read",
+			change: singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), relevantTo(setting.DefaultWorkflowPermissions, setting.PermissionLevelValue(setting.PermissionRead))),
+			want:   []setting.Area{setting.AllowAutoMerge.Area(), setting.DefaultWorkflowPermissions.Area()},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := observationAreas(tc.change)
+			for _, area := range tc.want {
+				if !slices.Contains(got, area) {
+					t.Errorf("observationAreas() = %v, want it to contain %v", got, area)
+				}
+			}
+			for _, area := range tc.notWant {
+				if slices.Contains(got, area) {
+					t.Errorf("observationAreas() = %v, want it not to contain %v", got, area)
+				}
+			}
+		})
+	}
+}
+
+// TestUnexpectedOutsideChanges は、二つの更新操作からなる論理的な設定変更で、変更対象外の設定を
+// その設定が影響を受け得る最初の更新操作の直前の観測と比べる規則を確かめる。
 //
 //trace:checks INV-001
 //trace:checks FR-012
 func TestUnexpectedOutsideChanges(t *testing.T) {
+	selectedWith := func(shaPinningRequired bool, criteria setting.SelectedActionsCriteria) github.ObservationResult {
+		permissions := actionsSelected(criteria)
+		permissions.SHAPinningRequired = github.Observed(shaPinningRequired)
+		return github.ObservationResult{ActionsPermissions: permissions}
+	}
+	localOnly := func(shaPinningRequired bool) github.ObservationResult {
+		return github.ObservationResult{ActionsPermissions: actionsEnabled(setting.AllowedActionsLocalOnly, shaPinningRequired)}
+	}
+	setBack := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{}}
+	cases := []struct {
+		name   string
+		change changeplan.LogicalChange
+		before []github.ObservationResult
+		after  github.ObservationResult
+		want   []unexpectedOutsideChange
+	}{
+		{
+			name:   "sha_pinning_required is compared with the read before the first update rather than the second",
+			change: toSelectedChange(),
+			before: []github.ObservationResult{localOnly(false), selectedWith(true, setBack)},
+			after:  selectedWith(true, declaredCriteria),
+			want:   []unexpectedOutsideChange{{Key: setting.SHAPinningRequired, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+		},
+		{
+			name:   "sha_pinning_required unavailable before the first update is not compared even if read before the second",
+			change: enableSelectedChange(),
+			before: []github.ObservationResult{{ActionsPermissions: actionsDisabled()}, selectedWith(false, setBack)},
+			after:  selectedWith(true, declaredCriteria),
+			want:   nil,
+		},
+		{
+			name:   "only the first update started compares its endpoint with the read before it",
+			change: toSelectedChange(),
+			before: []github.ObservationResult{localOnly(false)},
+			after:  selectedWith(true, setBack),
+			want:   []unexpectedOutsideChange{{Key: setting.SHAPinningRequired, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+		},
+		{
+			// 計画が作らない並び。同じ更新エンドポイントの更新操作が並んでも、後の直前の観測を基準にしないことを確かめる
+			name: "two updates to the same endpoint compare only with the read before the first of them",
+			change: changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{
+				allowedActionsChange().Operations[0], allowedActionsChange().Operations[0],
+			}},
+			before: []github.ObservationResult{localOnly(false), localOnly(true)},
+			after:  localOnly(false),
+			want:   nil,
+		},
+		{
+			name:   "policy and criteria changed by the logical change are not compared",
+			change: toSelectedChange(),
+			before: []github.ObservationResult{localOnly(false), selectedWith(false, setBack)},
+			after:  selectedWith(false, declaredCriteria),
+			want:   nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := unexpectedOutsideChanges(tc.change, tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("unexpectedOutsideChanges() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestOutsideChangesAt は、論理的な設定変更が変えない設定を、管理範囲によらず比べる規則を確かめる。
+//
+//trace:checks INV-001
+//trace:checks FR-012
+func TestOutsideChangesAt(t *testing.T) {
 	cases := []struct {
 		name          string
 		change        changeplan.LogicalChange
@@ -383,8 +753,8 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := unexpectedOutsideChanges(tc.endpoint, tc.change, tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("unexpectedOutsideChanges() = %v, want %v", got, tc.want)
+			if got := outsideChangesAt(tc.endpoint, tc.change.Keys(), tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("outsideChangesAt() = %v, want %v", got, tc.want)
 			}
 		})
 	}
@@ -679,11 +1049,11 @@ func TestExecuteChange(t *testing.T) {
 			if !slices.Equal(delays.delays, tc.wantDelays) {
 				t.Errorf("delays = %v, want %v", delays.delays, tc.wantDelays)
 			}
-			if got.precondition != tc.wantPrecond {
-				t.Errorf("precondition = %v, want %v", got.precondition, tc.wantPrecond)
+			if got.operation(0).precondition != tc.wantPrecond {
+				t.Errorf("precondition = %v, want %v", got.operation(0).precondition, tc.wantPrecond)
 			}
-			if got.update != tc.wantUpdate {
-				t.Errorf("update = %v, want %v", got.update, tc.wantUpdate)
+			if got.operation(0).update != tc.wantUpdate {
+				t.Errorf("update = %v, want %v", got.operation(0).update, tc.wantUpdate)
 			}
 			if got.confirmation != tc.wantDesired {
 				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
@@ -719,8 +1089,8 @@ func TestExecuteChange(t *testing.T) {
 		if want := []string{"GET", "PATCH", "GET"}; !slices.Equal(rec.Methods(), want) {
 			t.Errorf("requests = %v, want %v", rec.Methods(), want)
 		}
-		if got.update != github.UpdateSucceeded {
-			t.Errorf("update = %v, want %v", got.update, github.UpdateSucceeded)
+		if got.operation(0).update != github.UpdateSucceeded {
+			t.Errorf("update = %v, want %v", got.operation(0).update, github.UpdateSucceeded)
 		}
 		if got.confirmation != desiredStateUnconfirmed {
 			t.Errorf("confirmation = %v, want %v", got.confirmation, desiredStateUnconfirmed)
@@ -918,14 +1288,14 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 			if !slices.Equal(delays.delays, tc.wantDelays) {
 				t.Errorf("delays = %v, want %v", delays.delays, tc.wantDelays)
 			}
-			if got.precondition != tc.wantPrecond {
-				t.Errorf("precondition = %v, want %v", got.precondition, tc.wantPrecond)
+			if got.operation(0).precondition != tc.wantPrecond {
+				t.Errorf("precondition = %v, want %v", got.operation(0).precondition, tc.wantPrecond)
 			}
-			if got.changedSetting != tc.wantChanged {
-				t.Errorf("changedSetting = %q, want %q", got.changedSetting, tc.wantChanged)
+			if got.operation(0).changedSetting != tc.wantChanged {
+				t.Errorf("changedSetting = %q, want %q", got.operation(0).changedSetting, tc.wantChanged)
 			}
-			if got.update != tc.wantUpdate {
-				t.Errorf("update = %v, want %v", got.update, tc.wantUpdate)
+			if got.operation(0).update != tc.wantUpdate {
+				t.Errorf("update = %v, want %v", got.operation(0).update, tc.wantUpdate)
 			}
 			if got.confirmation != tc.wantDesired {
 				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
@@ -945,6 +1315,213 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 				}
 			}
 			if len(tc.wantCauses) == 0 && got.cause != nil {
+				t.Errorf("cause = %v, want nil", got.cause)
+			}
+		})
+	}
+}
+
+// TestExecuteChange_TwoUpdates は、二つの更新操作からなる論理的な設定変更について、
+// 更新操作ごとの直前の観測と変更前提、先行する更新操作が成功したときだけ後続へ進むこと、更新後の確認のつなぎ目を確かめる。
+//
+//trace:checks INV-001
+//trace:checks INV-004
+//trace:checks INV-005
+//trace:checks FR-010
+//trace:checks FR-012
+//trace:checks FR-013
+func TestExecuteChange_TwoUpdates(t *testing.T) {
+	const (
+		getRepository         = "GET /repos/owner/repo"
+		getActionsPermissions = "GET /repos/owner/repo/actions/permissions"
+		getSelectedActions    = "GET /repos/owner/repo/actions/permissions/selected-actions"
+		putActionsPermissions = "PUT /repos/owner/repo/actions/permissions"
+		putSelectedActions    = "PUT /repos/owner/repo/actions/permissions/selected-actions"
+	)
+	noContent := response{status: http.StatusNoContent}
+	redirect := response{status: http.StatusTemporaryRedirect, location: "https://example.com/"}
+	beforeFirst := []response{okRepository(1, false, false), okAllowedActions("local_only", false)}
+	// GitHub がポリシーの更新で戻した3項目。宣言した declaredCriteria と3項目とも異なる
+	setBack := okSelectedActions(true, false, `[]`)
+	beforeSecond := []response{okRepository(1, false, false), okAllowedActions("selected", false), setBack}
+	// 宣言した値と許可パターンの順序だけが異なる
+	afterBoth := []response{okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(false, true, `["b/*", "a/*"]`)}
+	readNotSelected := []string{getRepository, getActionsPermissions}
+	readSelected := []string{getRepository, getActionsPermissions, getSelectedActions}
+	join := func(parts ...[]response) []response { return slices.Concat(parts...) }
+	requests := func(parts ...[]string) []string { return slices.Concat(parts...) }
+	firstBody := map[string]any{"enabled": true, "allowed_actions": "selected"}
+	secondBody := map[string]any{"github_owned_allowed": false, "verified_allowed": true, "patterns_allowed": []any{"a/*", "b/*"}}
+	holds := func(update github.UpdateOutcome) operationRecord {
+		return operationRecord{precondition: preconditionHolds, update: update}
+	}
+	cases := []struct {
+		name         string
+		change       changeplan.LogicalChange
+		responses    []response
+		wantRequests []string
+		// wantBodies は要求ごとの本文。nil なら本文を確かめない。
+		wantBodies     []map[string]any
+		wantDelays     []time.Duration
+		wantOperations []operationRecord
+		wantDesired    desiredStateConfirmation
+		wantOutside    []unexpectedOutsideChange
+		wantResult     changeResult
+		wantCause      error
+	}{
+		{
+			// 遷移元が local_only で github_owned_allowed: false を宣言した遷移も、ほかの遷移と同じ扱いで実行する
+			name:         "local_only to selected sends both updates in order and completes",
+			change:       toSelectedChange(),
+			responses:    join(beforeFirst, []response{noContent}, beforeSecond, []response{noContent}, afterBoth),
+			wantRequests: requests(readNotSelected, []string{putActionsPermissions}, readSelected, []string{putSelectedActions}, readSelected),
+			wantBodies: []map[string]any{
+				nil, nil, firstBody,
+				nil, nil, nil, secondBody,
+				nil, nil, nil,
+			},
+			wantOperations: []operationRecord{holds(github.UpdateSucceeded), holds(github.UpdateSucceeded)},
+			wantDesired:    desiredStateMatches,
+			wantResult:     completed,
+		},
+		{
+			// 1つ目が状態を変えているため、後続を開始しなくても一度だけ観測して確認結果と変更対象外の設定を与える
+			name:   "policy other than selected before the second update fails without the second update and reads once after it",
+			change: toSelectedChange(),
+			responses: join(beforeFirst, []response{noContent, okRepository(1, false, false), okAllowedActions("all", false)},
+				[]response{okRepository(1, false, false), okAllowedActions("all", false)}),
+			wantRequests:   requests(readNotSelected, []string{putActionsPermissions}, readNotSelected, readNotSelected),
+			wantOperations: []operationRecord{holds(github.UpdateSucceeded), {precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions}},
+			wantDesired:    desiredStateMismatch,
+			wantResult:     failed,
+		},
+		{
+			name:   "failed read before the second update fails without the second update and reads once after it",
+			change: toSelectedChange(),
+			responses: join(beforeFirst, []response{noContent, okRepository(1, false, false), {status: http.StatusInternalServerError}},
+				beforeSecond),
+			wantRequests:   requests(readNotSelected, []string{putActionsPermissions}, readNotSelected, readSelected),
+			wantOperations: []operationRecord{holds(github.UpdateSucceeded), {precondition: preconditionUnconfirmed}},
+			wantDesired:    desiredStateMismatch,
+			wantResult:     failed,
+			wantCause:      github.ErrUnexpectedResponse,
+		},
+		{
+			name:           "rejected first update sends no read before the second",
+			change:         toSelectedChange(),
+			responses:      join(beforeFirst, []response{{status: http.StatusForbidden, body: `{"message": "Forbidden"}`}}),
+			wantRequests:   requests(readNotSelected, []string{putActionsPermissions}),
+			wantOperations: []operationRecord{holds(github.UpdateRejected)},
+			wantResult:     failed,
+			wantCause:      github.ErrForbidden,
+		},
+		{
+			// 診断の観測で selected が見えても、成否不明の更新の後続を開始しない
+			name:           "unknown first update reads once for diagnosis and does not start the second even if selected is read",
+			change:         toSelectedChange(),
+			responses:      join(beforeFirst, []response{redirect}, beforeSecond),
+			wantRequests:   requests(readNotSelected, []string{putActionsPermissions}, readSelected),
+			wantOperations: []operationRecord{holds(github.UpdateUnknown)},
+			wantDesired:    desiredStateMismatch,
+			wantResult:     failed,
+			wantCause:      github.ErrRedirect,
+		},
+		{
+			// 1つ目の更新エンドポイントの sha_pinning_required を1つ目の直前と比べる機会を残す
+			name:   "rejected second update reads once after it and reports sha_pinning_required changed from before the first",
+			change: toSelectedChange(),
+			responses: join(beforeFirst, []response{noContent}, beforeSecond, []response{{status: http.StatusConflict, body: `{"message": "Conflict"}`}},
+				[]response{okRepository(1, false, false), okAllowedActions("selected", true), setBack}),
+			wantRequests:   requests(readNotSelected, []string{putActionsPermissions}, readSelected, []string{putSelectedActions}, readSelected),
+			wantOperations: []operationRecord{holds(github.UpdateSucceeded), holds(github.UpdateRejected)},
+			wantDesired:    desiredStateMismatch,
+			wantOutside:    []unexpectedOutsideChange{{Key: setting.SHAPinningRequired, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			wantResult:     failed,
+			wantCause:      github.ErrConflict,
+		},
+		{
+			name:           "unknown second update reads once for diagnosis",
+			change:         toSelectedChange(),
+			responses:      join(beforeFirst, []response{noContent}, beforeSecond, []response{redirect}, afterBoth),
+			wantRequests:   requests(readNotSelected, []string{putActionsPermissions}, readSelected, []string{putSelectedActions}, readSelected),
+			wantOperations: []operationRecord{holds(github.UpdateSucceeded), holds(github.UpdateUnknown)},
+			wantDesired:    desiredStateMatches,
+			wantResult:     failed,
+			wantCause:      github.ErrRedirect,
+		},
+		{
+			name:   "sha_pinning_required changed from the read before the first update fails even if unchanged since the second",
+			change: toSelectedChange(),
+			responses: join(beforeFirst, []response{noContent},
+				[]response{okRepository(1, false, false), okAllowedActions("selected", true), setBack}, []response{noContent},
+				[]response{okRepository(1, false, false), okAllowedActions("selected", true), okSelectedActions(false, true, `["a/*", "b/*"]`)}),
+			wantRequests:   requests(readNotSelected, []string{putActionsPermissions}, readSelected, []string{putSelectedActions}, readSelected),
+			wantOperations: []operationRecord{holds(github.UpdateSucceeded), holds(github.UpdateSucceeded)},
+			wantDesired:    desiredStateMatches,
+			wantOutside:    []unexpectedOutsideChange{{Key: setting.SHAPinningRequired, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			wantResult:     failed,
+		},
+		{
+			name:   "policy read as before the first update and then selected starts the second without sending the first again",
+			change: toSelectedChange(),
+			responses: join(beforeFirst, []response{noContent},
+				[]response{okRepository(1, false, false), okAllowedActions("local_only", false)}, beforeSecond, []response{noContent}, afterBoth),
+			wantRequests: requests(readNotSelected, []string{putActionsPermissions},
+				readNotSelected, readSelected, []string{putSelectedActions}, readSelected),
+			wantDelays:     []time.Duration{time.Second},
+			wantOperations: []operationRecord{holds(github.UpdateSucceeded), holds(github.UpdateSucceeded)},
+			wantDesired:    desiredStateMatches,
+			wantResult:     completed,
+		},
+		{
+			// 1つ目の直前は sha_pinning_required が観測不能で比べる観測値がなく、更新後に true でも予期しない変化にしない
+			name:   "disabled to selected enables actions with the policy in one update and completes",
+			change: enableSelectedChange(),
+			responses: join([]response{okRepository(1, false, false), okActionsDisabled(), noContent}, beforeSecond, []response{noContent},
+				[]response{okRepository(1, false, false), okAllowedActions("selected", true), okSelectedActions(false, true, `["a/*", "b/*"]`)}),
+			wantRequests: requests(readNotSelected, []string{putActionsPermissions}, readSelected, []string{putSelectedActions}, readSelected),
+			wantBodies: []map[string]any{
+				nil, nil, firstBody,
+				nil, nil, nil, secondBody,
+				nil, nil, nil,
+			},
+			wantOperations: []operationRecord{holds(github.UpdateSucceeded), holds(github.UpdateSucceeded)},
+			wantDesired:    desiredStateMatches,
+			wantResult:     completed,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, rec := newSequenceServer(t, tc.responses...)
+			delays := &delayRecorder{}
+
+			got := executeChange(context.Background(), newClient(baseURL), newPlan(t), tc.change, delays.after)
+
+			if !slices.Equal(rec.Requests(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", rec.Requests(), tc.wantRequests)
+			}
+			if tc.wantBodies != nil && !reflect.DeepEqual(rec.Bodies(), tc.wantBodies) {
+				t.Errorf("request bodies = %v, want %v", rec.Bodies(), tc.wantBodies)
+			}
+			if !slices.Equal(delays.delays, tc.wantDelays) {
+				t.Errorf("delays = %v, want %v", delays.delays, tc.wantDelays)
+			}
+			if !slices.Equal(got.operations, tc.wantOperations) {
+				t.Errorf("operations = %+v, want %+v", got.operations, tc.wantOperations)
+			}
+			if got.confirmation != tc.wantDesired {
+				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
+			}
+			if !reflect.DeepEqual(got.unexpectedOutsideChanges, tc.wantOutside) {
+				t.Errorf("unexpectedOutsideChanges = %v, want %v", got.unexpectedOutsideChanges, tc.wantOutside)
+			}
+			if got.result() != tc.wantResult {
+				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)
+			}
+			if tc.wantCause != nil && !errors.Is(got.cause, tc.wantCause) {
+				t.Errorf("cause = %v, want it to wrap %v", got.cause, tc.wantCause)
+			}
+			if tc.wantCause == nil && got.cause != nil {
 				t.Errorf("cause = %v, want nil", got.cause)
 			}
 		})
@@ -1055,6 +1632,19 @@ func TestExecuteChanges(t *testing.T) {
 			wantPrecond: []preconditionCheck{preconditionHolds, preconditionHolds, preconditionNotChecked},
 			wantResults: []changeResult{completed, failed, notAttempted},
 		},
+		{
+			name:    "failed change of two updates stops the workflow permissions change without a read or an update",
+			changes: []changeplan.LogicalChange{toSelectedChange(), defaultWorkflowPermissionsChange()},
+			responses: []response{
+				okRepository(1, false, false), okAllowedActions("local_only", false), noContent,
+				okRepository(1, false, false), okAllowedActions("all", false),
+				okRepository(1, false, false), okAllowedActions("all", false),
+			},
+			wantMethods: []string{"GET", "GET", "PUT", "GET", "GET", "GET", "GET"},
+			wantBodies:  []map[string]any{nil, nil, {"enabled": true, "allowed_actions": "selected"}, nil, nil, nil, nil},
+			wantPrecond: []preconditionCheck{preconditionHolds, preconditionNotChecked},
+			wantResults: []changeResult{failed, notAttempted},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1076,8 +1666,8 @@ func TestExecuteChanges(t *testing.T) {
 				if !reflect.DeepEqual(record.change, changes[i]) {
 					t.Errorf("records[%d].change = %+v, want %+v", i, record.change, changes[i])
 				}
-				if record.precondition != tc.wantPrecond[i] {
-					t.Errorf("records[%d].precondition = %v, want %v", i, record.precondition, tc.wantPrecond[i])
+				if record.operation(0).precondition != tc.wantPrecond[i] {
+					t.Errorf("records[%d].precondition = %v, want %v", i, record.operation(0).precondition, tc.wantPrecond[i])
 				}
 				if record.result() != tc.wantResults[i] {
 					t.Errorf("records[%d].result() = %v, want %v", i, record.result(), tc.wantResults[i])
