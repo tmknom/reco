@@ -445,7 +445,7 @@ func TestObserveBeforeUpdate(t *testing.T) {
 			baseURL, rec := newSequenceServer(t, tc.responses...)
 			delays := &delayRecorder{}
 
-			_, got, err := observeBeforeUpdate(context.Background(), newClient(baseURL), newPlan(t), tc.change, 1, observationAreas(tc.change), delays.after)
+			_, got, err := observeBeforeUpdate(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, 1, observationAreas(tc.change), delays.after)
 
 			if !slices.Equal(rec.Requests(), tc.wantRequests) {
 				t.Errorf("requests = %v, want %v", rec.Requests(), tc.wantRequests)
@@ -472,7 +472,7 @@ func TestObserveBeforeUpdate(t *testing.T) {
 		}
 		change := toSelectedChange()
 
-		_, got, err := observeBeforeUpdate(ctx, newClient(baseURL), newPlan(t), change, 1, observationAreas(change), interrupted)
+		_, got, err := observeBeforeUpdate(ctx, newClient(baseURL), newRepositoryPlan(t), change, 1, observationAreas(change), interrupted)
 
 		if !slices.Equal(rec.Requests(), readNotSelected) {
 			t.Errorf("requests = %v, want %v", rec.Requests(), readNotSelected)
@@ -1035,7 +1035,7 @@ func TestExecuteChange(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			baseURL, rec := newSequenceServer(t, tc.responses...)
-			p := newPlan(t)
+			p := newRepositoryPlan(t)
 			delays := &delayRecorder{}
 
 			got := executeChange(context.Background(), newClient(baseURL), p, tc.change, delays.after)
@@ -1084,7 +1084,7 @@ func TestExecuteChange(t *testing.T) {
 			return make(chan time.Time)
 		}
 
-		got := executeChange(ctx, newClient(baseURL), newPlan(t), allowAutoMergeChange(), interrupted)
+		got := executeChange(ctx, newClient(baseURL), newRepositoryPlan(t), allowAutoMergeChange(), interrupted)
 
 		if want := []string{"GET", "PATCH", "GET"}; !slices.Equal(rec.Methods(), want) {
 			t.Errorf("requests = %v, want %v", rec.Methods(), want)
@@ -1277,7 +1277,7 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 			baseURL, rec := newSequenceServer(t, tc.responses...)
 			delays := &delayRecorder{}
 
-			got := executeChange(context.Background(), newClient(baseURL), newPlan(t), tc.change, delays.after)
+			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, delays.after)
 
 			if !slices.Equal(rec.Requests(), tc.wantRequests) {
 				t.Errorf("requests = %v, want %v", rec.Requests(), tc.wantRequests)
@@ -1495,7 +1495,7 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 			baseURL, rec := newSequenceServer(t, tc.responses...)
 			delays := &delayRecorder{}
 
-			got := executeChange(context.Background(), newClient(baseURL), newPlan(t), tc.change, delays.after)
+			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, delays.after)
 
 			if !slices.Equal(rec.Requests(), tc.wantRequests) {
 				t.Errorf("requests = %v, want %v", rec.Requests(), tc.wantRequests)
@@ -1651,7 +1651,7 @@ func TestExecuteChanges(t *testing.T) {
 			baseURL, rec := newSequenceServer(t, tc.responses...)
 			changes := tc.changes
 
-			got := executeChanges(context.Background(), newClient(baseURL), newPlan(t), changes, elapsedAtOnce)
+			got := executeChanges(context.Background(), newClient(baseURL), newRepositoryPlan(t), changes, elapsedAtOnce)
 
 			if !slices.Equal(rec.Methods(), tc.wantMethods) {
 				t.Errorf("requests = %v, want %v", rec.Methods(), tc.wantMethods)

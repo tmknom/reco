@@ -101,7 +101,7 @@ func TestWriteChangePlan(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
-			p := changeplan.Plan{Target: target, RepositoryID: 1, Settings: tc.settings}
+			p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{{Target: target, RepositoryID: 1, Settings: tc.settings}}}
 			if err := writeChangePlan(&out, "./reco.yaml", p); err != nil {
 				t.Fatalf("writeChangePlan() error = %v", err)
 			}
@@ -162,7 +162,7 @@ func TestWriteChangePlan_ActionsPermissions(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
-			p := changeplan.Plan{Target: target, RepositoryID: 1, Settings: tc.settings}
+			p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{{Target: target, RepositoryID: 1, Settings: tc.settings}}}
 			if err := writeChangePlan(&out, "./reco.yaml", p); err != nil {
 				t.Fatalf("writeChangePlan() error = %v", err)
 			}
@@ -173,14 +173,65 @@ func TestWriteChangePlan_ActionsPermissions(t *testing.T) {
 	}
 }
 
+// 期待値は CLI 仕様 4章の表示例と数え方から導く。節の並べ方は期待値に固定せず、数だけを確かめる。
+//
+//trace:checks FR-007
+func TestWriteChangePlan_Repositories(t *testing.T) {
+	first, second := mustReference(t, "owner/first"), mustReference(t, "owner/second")
+	match := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(false), Result: changeplan.Match}
+	mismatch := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
+	notComparable := changeplan.SettingPlan{
+		Key: setting.AllowedActions, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled),
+		Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
+	}
+
+	t.Run("two unchanged repositories report the number checked", func(t *testing.T) {
+		var out bytes.Buffer
+		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{
+			{Target: first, RepositoryID: 1, Settings: []changeplan.SettingPlan{match}},
+			{Target: second, RepositoryID: 2, Settings: []changeplan.SettingPlan{match}},
+		}}
+		if err := writeChangePlan(&out, "./reco.yaml", p); err != nil {
+			t.Fatalf("writeChangePlan() error = %v", err)
+		}
+		if want := "No changes.\nRepositories checked: 2\n"; out.String() != want {
+			t.Errorf("writeChangePlan() wrote %q, want %q", out.String(), want)
+		}
+	})
+
+	t.Run("counts are totaled over the repositories to update", func(t *testing.T) {
+		var out bytes.Buffer
+		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{
+			{Target: first, RepositoryID: 1, Settings: []changeplan.SettingPlan{mismatch, notComparable}},
+			{Target: second, RepositoryID: 2, Settings: []changeplan.SettingPlan{mismatch}},
+		}}
+		if err := writeChangePlan(&out, "./reco.yaml", p); err != nil {
+			t.Fatalf("writeChangePlan() error = %v", err)
+		}
+		if want := "\nPlan: 2 repositories to update, 2 known changes, 1 not-comparable setting\n"; !strings.Contains(out.String(), want) {
+			t.Errorf("writeChangePlan() wrote %q, want it to contain %q", out.String(), want)
+		}
+	})
+
+	t.Run("no repository plan panics as a broken invariant", func(t *testing.T) {
+		defer func() {
+			got, ok := recover().(string)
+			if !ok || !strings.Contains(got, "no repository plan") {
+				t.Errorf("writeChangePlan() panicked with %q, want a message naming no repository plan", got)
+			}
+		}()
+		_ = writeChangePlan(&bytes.Buffer{}, "./reco.yaml", changeplan.Plan{})
+	})
+}
+
 func TestWriteChangePlan_WriteFailure(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 
 	t.Run("write failure is returned", func(t *testing.T) {
-		p := changeplan.Plan{Target: target, Settings: []changeplan.SettingPlan{{
+		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{{Target: target, Settings: []changeplan.SettingPlan{{
 			Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
 			Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
-		}}}
+		}}}}}
 		err := writeChangePlan(failingWriter{}, "./reco.yaml", p)
 		if !errors.Is(err, errWrite) {
 			t.Errorf("writeChangePlan() error = %v, want %v", err, errWrite)
@@ -188,7 +239,7 @@ func TestWriteChangePlan_WriteFailure(t *testing.T) {
 	})
 
 	t.Run("no-change write failure is returned", func(t *testing.T) {
-		err := writeChangePlan(failingWriter{}, "./reco.yaml", changeplan.Plan{Target: target})
+		err := writeChangePlan(failingWriter{}, "./reco.yaml", changeplan.Plan{Repositories: []changeplan.RepositoryPlan{{Target: target}}})
 		if !errors.Is(err, errWrite) {
 			t.Errorf("writeChangePlan() error = %v, want %v", err, errWrite)
 		}

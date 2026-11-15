@@ -44,14 +44,18 @@ func Run(ctx context.Context, cfg Config) error {
 }
 
 func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changeplan.Plan) error {
-	changes, err := executableChanges(p)
+	r, err := soleRepositoryPlan(p)
+	if err != nil {
+		return err
+	}
+	changes, err := executableChanges(r)
 	if err != nil {
 		return err
 	}
 	if len(changes) == 0 {
 		return writeNoChanges(cfg.Out)
 	}
-	if err := writeChangePlan(cfg.Out, cfg.ConfigPath, p); err != nil {
+	if err := writeChangePlan(cfg.Out, cfg.ConfigPath, r); err != nil {
 		return err
 	}
 	if err := cfg.Approve(ctx); err != nil {
@@ -63,16 +67,29 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 	if _, err := io.WriteString(cfg.Out, "Applying changes...\n"); err != nil {
 		return err
 	}
-	records := executeChanges(ctx, client, p, changes, cfg.After)
-	writeErr := writeChangeReport(cfg.Out, p.Target, records)
-	return errors.Join(changesError(records, p.Target), writeErr)
+	records := executeChanges(ctx, client, r, changes, cfg.After)
+	writeErr := writeChangeReport(cfg.Out, r.Target, records)
+	return errors.Join(changesError(records, r.Target), writeErr)
 }
 
-// executableChanges は、変更計画の論理的な設定変更を実行順で返す。
+// soleRepositoryPlan は、変更計画のただ一つのリポジトリの計画を返す。
+// 複数の対象リポジトリの実行と結果の表示を持たないため、2件以上は先頭だけを黙って実行せず error にする。
+// リポジトリの計画を持たない変更計画は changeplan が生成しないため、不変条件の破れとして panic する。
+func soleRepositoryPlan(p changeplan.Plan) (changeplan.RepositoryPlan, error) {
+	switch n := len(p.Repositories); {
+	case n == 0:
+		panic("apply: change plan has no repository plan")
+	case n > 1:
+		return changeplan.RepositoryPlan{}, fmt.Errorf("%d repositories are selected; select one repository (apply can update only one at a time); no changes made", n)
+	}
+	return p.Repositories[0], nil
+}
+
+// executableChanges は、リポジトリの計画の論理的な設定変更を実行順で返す。
 // 論理的な設定変更にできない変更予定の拒否は、論理的な設定変更を導く changeplan が持つ。
 // 更新操作は承認の前にすべて引き、欠けていれば、先の変更を更新したあとではなく、更新要求を一つも送る前に止める。
-func executableChanges(p changeplan.Plan) ([]changeplan.LogicalChange, error) {
-	changes, err := p.LogicalChanges()
+func executableChanges(r changeplan.RepositoryPlan) ([]changeplan.LogicalChange, error) {
+	changes, err := r.LogicalChanges()
 	if err != nil {
 		return nil, err
 	}

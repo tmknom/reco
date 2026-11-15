@@ -16,7 +16,7 @@ import (
 // executeChanges は、承認した論理的な設定変更を順に実行する。
 // INV-005 のため、完了以外の変更結果が出たら、残りには要求を一つも送らず、
 // change だけを持つ記録 (先行する異常による停止) を返す。戻り値は changes と同じ長さ、同じ並びになる。
-func executeChanges(ctx context.Context, client *github.Client, p changeplan.Plan, changes []changeplan.LogicalChange, after func(time.Duration) <-chan time.Time) []changeRecord {
+func executeChanges(ctx context.Context, client *github.Client, r changeplan.RepositoryPlan, changes []changeplan.LogicalChange, after func(time.Duration) <-chan time.Time) []changeRecord {
 	records := make([]changeRecord, len(changes))
 	stopped := false
 	for i, change := range changes {
@@ -24,7 +24,7 @@ func executeChanges(ctx context.Context, client *github.Client, p changeplan.Pla
 			records[i] = changeRecord{change: change}
 			continue
 		}
-		records[i] = executeChange(ctx, client, p, change, after)
+		records[i] = executeChange(ctx, client, r, change, after)
 		stopped = records[i].result() != completed
 	}
 	return records
@@ -33,13 +33,13 @@ func executeChanges(ctx context.Context, client *github.Client, p changeplan.Pla
 // executeChange は、承認した論理的な設定変更を実行し、変更結果を導く事実を返す。
 // 更新操作を順に、直前に観測して変更前提を確かめ、成立したときだけ更新要求を一度だけ送る。再送はしない。
 // INV-005 のため、先行する更新操作が成功したときだけ後続の更新操作の変更前提を確かめる。
-func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan, change changeplan.LogicalChange, after func(time.Duration) <-chan time.Time) changeRecord {
+func executeChange(ctx context.Context, client *github.Client, r changeplan.RepositoryPlan, change changeplan.LogicalChange, after func(time.Duration) <-chan time.Time) changeRecord {
 	record := changeRecord{change: change}
 	areas := observationAreas(change)
 	// before[i] は change.Operations[i] の直前の観測。変更対象外の設定の更新前の値を与える。
 	var before []github.ObservationResult
 	for i, operation := range change.Operations {
-		observed, checked, err := observeBeforeUpdate(ctx, client, p, change, i, areas, after)
+		observed, checked, err := observeBeforeUpdate(ctx, client, r, change, i, areas, after)
 		record.operations = append(record.operations, checked)
 		if err != nil {
 			record.cause = err
@@ -49,7 +49,7 @@ func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan
 		}
 		before = append(before, observed)
 		var updateErr error
-		record.operations[i].update, updateErr = updateSenderOf(operation.Key).send(ctx, client, p.Target, operation.Desired)
+		record.operations[i].update, updateErr = updateSenderOf(operation.Key).send(ctx, client, r.Target, operation.Desired)
 		record.cause = errors.Join(record.cause, updateErr)
 		if record.operations[i].update != github.UpdateSucceeded {
 			break
@@ -67,7 +67,7 @@ func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan
 	if record.updatesSucceeded() {
 		retryDelays = reobservationDelays[:]
 	}
-	observed, confirmation, reason, err := observeAfterUpdate(ctx, client, p, change, areas, retryDelays, after)
+	observed, confirmation, reason, err := observeAfterUpdate(ctx, client, r, change, areas, retryDelays, after)
 	record.confirmation = confirmation
 	record.desiredUnavailableReason = reason
 	if err != nil {
@@ -86,19 +86,19 @@ func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan
 // 観測が先行する更新操作の直前の状態のままのあいだに限り、reobservationDelays の時間ずつ待って観測し直す。
 // その状態は後続の更新操作の基準 (予定どおりの変化) を満たさないため、観測し直すのは変更前提が成立しないときだけになる。
 // 観測し直すのは読み取りだけで、返す確認結果は常に最後の観測に対する checkPrecondition の結果である。
-func observeBeforeUpdate(ctx context.Context, client *github.Client, p changeplan.Plan, change changeplan.LogicalChange, index int, areas []setting.Area, after func(time.Duration) <-chan time.Time) (github.ObservationResult, operationRecord, error) {
+func observeBeforeUpdate(ctx context.Context, client *github.Client, r changeplan.RepositoryPlan, change changeplan.LogicalChange, index int, areas []setting.Area, after func(time.Duration) <-chan time.Time) (github.ObservationResult, operationRecord, error) {
 	operation := change.Operations[index]
 	for i := 0; ; i++ {
-		observed, err := client.ObserveRepository(ctx, p.Target, areas...)
+		observed, err := client.ObserveRepository(ctx, r.Target, areas...)
 		if err != nil {
 			return github.ObservationResult{}, operationRecord{precondition: preconditionUnconfirmed}, err
 		}
-		check, changed := checkPrecondition(p.RepositoryID, operation, observed)
-		if !precedingUpdateNotReflected(p.RepositoryID, change.Operations[:index], observed) || i == len(reobservationDelays) {
+		check, changed := checkPrecondition(r.RepositoryID, operation, observed)
+		if !precedingUpdateNotReflected(r.RepositoryID, change.Operations[:index], observed) || i == len(reobservationDelays) {
 			return observed, operationRecord{precondition: check, changedSetting: changed}, nil
 		}
 		if err := waitFor(ctx, after, reobservationDelays[i]); err != nil {
-			return github.ObservationResult{}, operationRecord{precondition: preconditionUnconfirmed}, fmt.Errorf("wait before reading %s again before the next update: %w", p.Target, err)
+			return github.ObservationResult{}, operationRecord{precondition: preconditionUnconfirmed}, fmt.Errorf("wait before reading %s again before the next update: %w", r.Target, err)
 		}
 	}
 }
@@ -157,18 +157,18 @@ func appendArea(areas []setting.Area, area setting.Area) []setting.Area {
 // observeAfterUpdate は、更新後の観測を行い、期待状態の確認結果とその観測不能の理由、それを与えた観測を返す。
 // GitHub は正常応答のあとすぐには更新を反映しないことがあるため、期待状態と一致しないあいだと、期待値と比べる設定が観測不能のあいだは、
 // retryDelays の時間ずつ待って、retryDelays を使い切るまで観測し直す。
-func observeAfterUpdate(ctx context.Context, client *github.Client, p changeplan.Plan, change changeplan.LogicalChange, areas []setting.Area, retryDelays []time.Duration, after func(time.Duration) <-chan time.Time) (github.ObservationResult, desiredStateConfirmation, github.UnavailableReason, error) {
+func observeAfterUpdate(ctx context.Context, client *github.Client, r changeplan.RepositoryPlan, change changeplan.LogicalChange, areas []setting.Area, retryDelays []time.Duration, after func(time.Duration) <-chan time.Time) (github.ObservationResult, desiredStateConfirmation, github.UnavailableReason, error) {
 	for i := 0; ; i++ {
-		observed, err := client.ObserveRepository(ctx, p.Target, areas...)
+		observed, err := client.ObserveRepository(ctx, r.Target, areas...)
 		if err != nil {
 			return github.ObservationResult{}, desiredStateUnconfirmed, 0, err
 		}
-		confirmation, reason := confirmDesiredState(p.RepositoryID, change, observed)
+		confirmation, reason := confirmDesiredState(r.RepositoryID, change, observed)
 		if (confirmation != desiredStateMismatch && confirmation != desiredStateUnavailable) || i == len(retryDelays) {
 			return observed, confirmation, reason, nil
 		}
 		if err := waitFor(ctx, after, retryDelays[i]); err != nil {
-			return github.ObservationResult{}, desiredStateUnconfirmed, 0, fmt.Errorf("wait before reading %s again after the update: %w", p.Target, err)
+			return github.ObservationResult{}, desiredStateUnconfirmed, 0, fmt.Errorf("wait before reading %s again after the update: %w", r.Target, err)
 		}
 	}
 }

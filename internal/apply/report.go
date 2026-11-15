@@ -14,11 +14,12 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// writeChangePlan は、承認を求める変更計画を CLI 仕様の apply の形式で書く。変更予定の行は plan と同じ形で、計画の並びのまま書く。
-func writeChangePlan(w io.Writer, configPath string, p changeplan.Plan) error {
+// writeChangePlan は、承認を求める変更計画のただ一つのリポジトリの計画を、CLI 仕様の apply の形式で書く。変更予定の行は plan と同じ形で、計画の並びのまま書く。
+// 対象リポジトリが一つの変更計画しか承認に進まないため、リポジトリの計画を受ける。
+func writeChangePlan(w io.Writer, configPath string, r changeplan.RepositoryPlan) error {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Configuration: %s\nRepository: %s\n", configPath, p.Target)
-	for _, s := range p.Settings {
+	fmt.Fprintf(&b, "Configuration: %s\nRepository: %s\n", configPath, r.Target)
+	for _, s := range r.Settings {
 		b.WriteString(changeplandisplay.PlannedChangeText(s))
 	}
 	b.WriteString("\n")
