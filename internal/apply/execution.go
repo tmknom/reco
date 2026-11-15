@@ -9,6 +9,7 @@ import (
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
+	"github.com/tmknom/reco/internal/setting"
 )
 
 // executeChanges は、承認した論理的な設定変更を順に実行する。
@@ -39,7 +40,7 @@ func executeChange(ctx context.Context, client *github.Client, p changeplan.Plan
 		record.cause = err
 		return record
 	}
-	record.precondition = checkPrecondition(p.RepositoryID, change, before)
+	record.precondition, record.changedSetting = checkPrecondition(p.RepositoryID, change, before)
 	if record.precondition != preconditionHolds {
 		return record
 	}
@@ -103,16 +104,38 @@ func waitFor(ctx context.Context, after func(time.Duration) <-chan time.Time, d 
 }
 
 // checkPrecondition は、承認した変更を更新直前の観測と照らし、更新してよいかを判定する。
-// 別のリポジトリの値を承認時の値と比べても意味がないため、同一性を現在値より先に確かめる。
-// 承認時の値は観測値のため、観測不能になった現在値は、承認した変更内容と異なる状況として関係する現在値の変化にする。
-func checkPrecondition(approvedID repository.ID, change changeplan.LogicalChange, observed github.ObservationResult) preconditionCheck {
+// 関係する現在値の変化のときは、変わっていた設定のうち基準の並びで最初のものも返す。
+// 並びの先頭は変更が変える設定で、それが変わっていれば、続く副作用の設定の変化はその帰結にすぎないため。
+// 別のリポジトリの値を承認時に予定した値と比べても意味がないため、同一性を現在値より先に確かめる。
+// 基準のない変更を成立にすると何も確かめずに更新するため、不変条件の破れとして panic する。
+func checkPrecondition(approvedID repository.ID, change changeplan.LogicalChange, observed github.ObservationResult) (preconditionCheck, setting.Key) {
+	if len(change.RelevantSettings) == 0 {
+		panic("apply: " + string(change.Key) + " has no relevant settings to check before the update")
+	}
 	if observed.RepositoryID != approvedID {
-		return preconditionIdentityMismatch
+		return preconditionIdentityMismatch, ""
 	}
-	if current, ok := observed.Value(change.Key).Value(); !ok || !current.Equal(change.Observed) {
-		return preconditionCurrentValueChanged
+	for _, relevant := range change.RelevantSettings {
+		if !sameObservation(relevant.AtApproval, observed.Value(relevant.Key)) {
+			return preconditionCurrentValueChanged, relevant.Key
+		}
 	}
-	return preconditionHolds
+	return preconditionHolds, ""
+}
+
+// sameObservation は、承認時に予定した値と更新直前の設定の観測結果が、ドメインモデルの承認と変更前提の意味で同じかを返す。
+// 観測不能の理由は観測値に対して読めないため、両方が観測不能のときだけ理由を比べる。
+func sameObservation(atApproval, current github.SettingObservation[setting.Value]) bool {
+	approvedValue, approvedObserved := atApproval.Value()
+	currentValue, currentObserved := current.Value()
+	switch {
+	case approvedObserved && currentObserved:
+		return approvedValue.Equal(currentValue)
+	case !approvedObserved && !currentObserved:
+		return atApproval.UnavailableReason() == current.UnavailableReason()
+	default:
+		return false
+	}
 }
 
 // confirmDesiredState は、更新後の観測が期待状態と一致するかを判定する。

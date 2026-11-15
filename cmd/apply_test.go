@@ -234,6 +234,60 @@ func TestApply_NotApproved(t *testing.T) {
 	}
 }
 
+// streamWrite は、taggedWriter が記録した一回の書き込み。
+type streamWrite struct {
+	stream, text string
+}
+
+// taggedWriter は、stdout と stderr に渡し、ストリームをまたいだ書き込みの順を一つの並びに残す。
+type taggedWriter struct {
+	stream string
+	writes *[]streamWrite
+}
+
+func (w taggedWriter) Write(p []byte) (int, error) {
+	*w.writes = append(*w.writes, streamWrite{stream: w.stream, text: string(p)})
+	return len(p), nil
+}
+
+// TestApply_SideEffectOnStdoutBeforeApprovalPrompt は、副作用を伴う変更計画で、Side effect: を stdout に、
+// 承認プロンプトを stderr に、この順で書くことを確かめる。
+//
+//trace:checks FR-009
+//trace:checks INV-001
+//trace:checks INV-003
+func TestApply_SideEffectOnStdoutBeforeApprovalPrompt(t *testing.T) {
+	workDir := t.TempDir()
+	writeConfig(t, workDir, "reco.yaml", `repositories:
+  - name: owner/repo
+    actions:
+      permissions:
+        allowed_actions: all
+`)
+	server, opts := newGitHubServerByPath(t, map[string]stubResponse{
+		"/repos/owner/repo":                                      {http.StatusOK, repositoryBody},
+		"/repos/owner/repo/actions/permissions":                  {http.StatusOK, actionsPermissionsBody},
+		"/repos/owner/repo/actions/permissions/selected-actions": {http.StatusOK, selectedActionsBody},
+	})
+	var writes []streamWrite
+	env := Environment{
+		WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue}), Stdin: strings.NewReader("n\n"), StdinIsTerminal: true,
+		Stdout: taggedWriter{stream: "stdout", writes: &writes}, Stderr: taggedWriter{stream: "stderr", writes: &writes},
+	}
+
+	if code := execute(context.Background(), []string{"apply"}, env, opts...); code != 1 {
+		t.Errorf("got exit code %d, want 1", code)
+	}
+	sideEffect := slices.IndexFunc(writes, func(w streamWrite) bool { return w.stream == "stdout" && strings.Contains(w.text, "Side effect:") })
+	prompt := slices.IndexFunc(writes, func(w streamWrite) bool { return w.stream == "stderr" && strings.Contains(w.text, approvalPrompt) })
+	if sideEffect < 0 || prompt < 0 || sideEffect > prompt {
+		t.Errorf("got writes %+v, want Side effect: on stdout before the approval prompt on stderr", writes)
+	}
+	if got := methodsOf(server.receivedRequests()); slices.Contains(got, http.MethodPut) {
+		t.Errorf("got requests %v, want no PUT", got)
+	}
+}
+
 //trace:checks INV-003
 func TestApply_CanceledWhileWaitingForApproval(t *testing.T) {
 	workDir := t.TempDir()

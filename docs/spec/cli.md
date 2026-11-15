@@ -249,6 +249,8 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 複数の API 更新操作のうち先行操作が成功し、後続操作を開始できなかった場合は、完了済み操作と未開始の操作を示し、変更全体を `failed` とします。更新を一度も開始していない変更は `not attempted` とし、変更前提の不成立と、先行する異常による停止のどちらに当たるかを区別して理由を示します。
 
+変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を示します（`Precondition: <設定> changed since approval`）。`Side effect:` で示した設定の値が承認の前に示した値から変わっていた場合は、その設定を示します。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。複数の設定が変わっていた場合は、論理的な設定変更が変える設定を優先して一つだけ示します。
+
 `failed` には、更新操作の失敗、更新操作の成否不明、成功応答後の期待状態の確認失敗、成功応答後の期待状態との不一致、成功応答後の変更対象外の設定の予期しない変化のいずれに当たるかを添えて示します。先行操作の成功後に後続操作を開始できなかった場合は、その旨を示します。変更対象外の設定の予期しない変化では、観測した変化を示しますが、reco に起因するとは断定しません。変更対象外の設定には、同じリポジトリのほかの管理設定も含みます。更新要求の応答を確認できない場合は成否不明とし、その後の再観測で期待状態が一致しても、更新操作の成否が判明したことにはならず、`updated` に変更しません。この再観測で変更対象外の設定の変化を観測した場合も、更新操作の結果と分けて示します。成否不明になった原因は、理由の行では区別せず、エラーとして示します。
 
 期待状態の確認失敗には、確認できなかった理由を括弧で添えます。期待値と比べる設定が GitHub の取得条件により観測不能だった場合は、6章の `unavailable` に添える理由と同じ文言を使います。値を確認できていないため、`does not match` とは表示しません。
@@ -323,6 +325,12 @@ Applying changes...
     Other settings: actions.permissions.sha_pinning_required changed false -> true (cause not determined)
 
 Note: Some changes may already have been applied. No automatic rollback was performed.
+```
+
+```text
+Applying changes...
+  example/project-a: not attempted
+    Precondition: actions.permissions.selected_actions changed since approval
 ```
 
 異常時の表示では、確認済みの操作結果、成否が不明な範囲、未実行の変更を区別します。

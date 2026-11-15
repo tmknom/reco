@@ -153,8 +153,13 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 		},
 		{
 			name:   "not attempted because the current value changed",
-			record: changeRecord{change: change, precondition: preconditionCurrentValueChanged},
+			record: changeRecord{change: change, precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowAutoMerge},
 			want:   "  owner/repo: not attempted\n    Precondition: general.allow_auto_merge changed since approval\n",
+		},
+		{
+			name:   "not attempted because the value shown as a side effect changed names that setting rather than allowed_actions",
+			record: changeRecord{change: selectedToAllChange(), precondition: preconditionCurrentValueChanged, changedSetting: setting.SelectedActions},
+			want:   "  owner/repo: not attempted\n    Precondition: actions.permissions.selected_actions changed since approval\n",
 		},
 		{
 			name:   "not attempted because the precondition is not confirmed",
@@ -304,7 +309,7 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 		},
 		{
 			name:    "complete then precondition failure has the rollback note",
-			records: []changeRecord{completedRecord(deleteBranchOnMergeChange()), {change: allowAutoMergeChange(), precondition: preconditionCurrentValueChanged}},
+			records: []changeRecord{completedRecord(deleteBranchOnMergeChange()), {change: allowAutoMergeChange(), precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowAutoMerge}},
 			want: "  owner/repo\n" +
 				"    general.delete_branch_on_merge: updated\n" +
 				"    general.allow_auto_merge: not attempted\n      Precondition: general.allow_auto_merge changed since approval\n\n" +

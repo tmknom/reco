@@ -128,7 +128,7 @@ func notAttemptedReason(record changeRecord) string {
 	case preconditionIdentityMismatch:
 		return "Precondition: repository ID differs from the approved repository"
 	case preconditionCurrentValueChanged:
-		return "Precondition: " + string(record.change.Key) + " changed since approval"
+		return "Precondition: " + string(record.changedSetting) + " changed since approval"
 	default:
 		panic(fmt.Sprintf("apply: %s has no reason for not attempting the update", record.change.Key))
 	}
