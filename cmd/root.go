@@ -73,6 +73,8 @@ func newRootCmd(env Environment, level *slog.LevelVar, opts ...github.Option) *c
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	// cobra の既定の出力は "reco version X" のため、CLI 仕様が定めるバージョンだけの出力に変える
+	root.SetVersionTemplate("{{.Version}}\n")
 	root.PersistentFlags().TextVar(level, "log-level", level, "diagnostic log `LEVEL`: debug, info, warn, or error")
 	root.AddCommand(newApplyCmd(env, opts...))
 	root.AddCommand(newPlanCmd(env, opts...))

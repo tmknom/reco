@@ -1,0 +1,80 @@
+version: 2
+
+# project_name は、次の箇所と同じ値にする。変えるときは同時に変える。
+#   - .github/workflows/release.yml の APP_NAME
+project_name: reco
+
+builds:
+  - id: cli
+    main: .
+    # 既定値もプロジェクト名だが、アーカイブの確認がバイナリ名を APP_NAME と照合するため、project_name から取ることを明示する
+    binary: "{{ .ProjectName }}"
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # 動作する CPU の下限を決める GOAMD64 と GOARM64 は、GoReleaser がターゲットごとにこの値で設定する。既定値と同じ値を明示する
+    goamd64:
+      - v1
+    goarm64:
+      - v8.0
+    # GoReleaser は runner の環境変数（go env -w の設定ファイルも含む）を引き継ぐため、
+    # ビルドに関わる変数は既定値でも明示し、その値が runner の設定に左右されないようにする。
+    # GOFLAGS は空にし、ビルドのフラグは flags だけで決める。
+    # 依存モジュールの完全性は go.sum との照合が保証し、-mod=readonly により go.sum にないモジュールはビルドを止める。
+    # GOPROXY 以下は、取得元を公開のプロキシとチェックサム DB に揃え、プロキシにないモジュールを VCS から直接取得しないようにする。
+    # 変えるときは、release.yml の test ジョブの env も同時に変える
+    env:
+      - CGO_ENABLED=0
+      - GOTOOLCHAIN=local
+      - GOFLAGS=
+      - GOEXPERIMENT=
+      - GOFIPS140=off
+      - GOPROXY=https://proxy.golang.org
+      - GOSUMDB=sum.golang.org
+      - GOPRIVATE=
+      - GONOPROXY=
+      - GONOSUMDB=
+      - GOINSECURE=
+    flags:
+      - -trimpath
+      - -mod=readonly
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: distributions
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+
+# アーカイブごとに <アーカイブ名>.sbom.json を生成する。sbom は checksum より先に動くため、SBOM も SHA256SUMS に列挙される。
+# 既定の引数の --enrich all は、ライセンスなどの情報をネットワークから取得するため外し、アーカイブの中身だけから作る。
+# env を指定すると GoReleaser の既定値 SYFT_FILE_METADATA_CATALOGER_ENABLED が外れるが、Syft 1.x にない設定のため影響しない
+sboms:
+  - id: archive
+    artifacts: archive
+    cmd: syft
+    args:
+      - $artifact
+      - --output
+      - spdx-json=$document
+    env:
+      - SYFT_CHECK_FOR_APP_UPDATE=false
+
+checksum:
+  name_template: SHA256SUMS
+  algorithm: sha256
+
+changelog:
+  disable: true

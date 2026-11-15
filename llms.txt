@@ -10,6 +10,7 @@ Identify and read task-related sections below:
 - Modify YAML configuration handling → Read **Specifications** section (Configuration, Requirements)
 - Make design decisions or evaluate scope → Read **Project Overview** section
 - Edit documents under `docs/` → Read **Contributing** section
+- Modify the release workflow, `.goreleaser.yaml`, or `Dockerfile` → Read **Contributing** section (Release Workflow)
 
 ## Specifications
 
@@ -37,3 +38,4 @@ Identify and read task-related sections below:
 ## Contributing
 
 - [Documentation Policy](docs/contributing/docs-policy.md): Responsibilities and sources of truth of each document, identifiers (`FR`, `QR`, `INV`), Relationships (`alignment`, `grounding`, `checks`), and consistency checks on change - Use when adding or changing requirements, identifiers, or Relationship tables, or when editing specs and designs
+- [Release Workflow](docs/contributing/release.md): Tag-triggered release to GitHub Releases and GHCR (job order and permissions, artifacts, build settings, container image, provenance attestation, partial publication and re-runs, user-side verification, pinning of actions and tools) - Use when modifying `.github/workflows/release.yml`, `.goreleaser.yaml`, or `Dockerfile`, or when cutting a release

@@ -1,29 +1,789 @@
 name: Release
 on:
-  workflow_dispatch:
-    inputs:
-      bump-level:
-        type: choice
-        required: true
-        description: Bump up to [auto / patch / minor / major]
-        options:
-          - auto
-          - patch
-          - minor
-          - major
-        default: auto
-
-concurrency: ${{ github.workflow }}
+  push:
+    tags:
+      - v[0-9]+.[0-9]+.[0-9]+
 
 permissions: {}
 
+# リリースを同時に実行せず、実行中の公開を後続の実行が取り消さないようにする
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+# APP_NAME は、次の箇所と同じ値にする。変えるときは同時に変える。
+#   - .goreleaser.yaml の project_name
+env:
+  APP_NAME: reco
+  VERSION: ${{ github.ref_name }}
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+  IMAGE_TAG: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+  SIGNER_WORKFLOW: ${{ github.repository }}/.github/workflows/release.yml
+
 jobs:
-  call:
-    uses: tmknom/release-workflows/.github/workflows/go.yml@054477d584943025c18980ad9bdff2c71bd803da # v0.12.6
-    with:
-      bump-level: ${{ inputs.bump-level }}
+  # リリースできない状態のタグでは、テストやビルドの前に止める
+  preflight:
+    # 再実行では actor が最初の実行者のまま変わらないため、再実行した者も triggering_actor で確かめる。
+    # 「Re-run failed jobs」では成功済みのジョブの if が評価し直されないため、全ジョブに同じ条件を置く
+    if: ${{ github.actor_id == github.repository_owner_id && github.triggering_actor == github.repository_owner }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # packages: read は、GHCR にログインして既存のタグを確かめるのに要る
     permissions:
-      contents: write
+      contents: read
+      packages: read
+    steps:
+      # main の履歴と比べるため、すべての履歴を取得する
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # git merge-base --is-ancestor は、祖先でなければ 1 を、origin/main がないなどの失敗では 128 を返す。
+      # 失敗を「main にない」と報告しないよう、終了コードで分ける
+      - name: Verify tag
+        run: |
+          set -euo pipefail
+          status=0
+          git merge-base --is-ancestor "${GITHUB_SHA}" origin/main || status=$?
+          if [[ "${status}" -eq 1 ]]; then
+            echo "::error::The tag ${VERSION} does not point to a commit on main"
+            exit 1
+          elif [[ "${status}" -ne 0 ]]; then
+            echo "::error::git merge-base failed with exit code ${status}"
+            exit 1
+          fi
+          echo "The tag ${VERSION} points to ${GITHUB_SHA} on main"
+
+      # 存在しない場合も、認証や通信の障害でも終了コードは 1 になるため、エラーメッセージで「存在しない」を判定する。
+      # それ以外の失敗は、確認できなかったものとして止める
+      - name: Verify no release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if err="$(gh release view "${VERSION}" --repo "${GITHUB_REPOSITORY}" 2>&1 > /dev/null)"; then
+            echo "::error::The release ${VERSION} already exists"
+            exit 1
+          fi
+          if [[ "${err}" != "release not found" ]]; then
+            echo "::error::Could not check the release ${VERSION}: ${err}"
+            exit 1
+          fi
+          echo "The release ${VERSION} does not exist"
+
+      # 匿名では非公開のパッケージのタグを検出できないため、ログインしてから確かめる
+      - name: Log in to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # container ジョブの「Verify no image exists」と同じ判定にする
+      - name: Verify no image exists
+        run: |
+          set -euo pipefail
+          if err="$(docker buildx imagetools inspect "${IMAGE_TAG}" 2>&1 > /dev/null)"; then
+            echo "::error::The image tag ${VERSION} already exists"
+            exit 1
+          fi
+          if [[ "${err}" != "ERROR: ${IMAGE_TAG}: not found" ]]; then
+            echo "::error::Could not check the image tag ${VERSION}: ${err}"
+            exit 1
+          fi
+          echo "The image tag ${VERSION} does not exist"
+
+  test:
+    needs: [preflight]
+    if: ${{ github.actor_id == github.repository_owner_id && github.triggering_actor == github.repository_owner }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      # 配布するバイナリと同じ条件でテストし、依存モジュールの取得元も揃えるよう、.goreleaser.yaml の builds の env と同じ値にする。
+      # GOFLAGS には、GoReleaser の flags のうち -mod=readonly だけを書き、実行ファイルに記録するパスを変える -trimpath は加えない
+      - name: Test
+        env:
+          CGO_ENABLED: "0"
+          GOTOOLCHAIN: local
+          GOFLAGS: -mod=readonly
+          GOEXPERIMENT: ""
+          GOFIPS140: "off"
+          GOPROXY: https://proxy.golang.org
+          GOSUMDB: sum.golang.org
+          GOPRIVATE: ""
+          GONOPROXY: ""
+          GONOSUMDB: ""
+          GOINSECURE: ""
+        run: |
+          set -euo pipefail
+          go mod download
+          go mod verify
+          go vet ./...
+          go test -count=1 ./...
+
+  build:
+    needs: [test]
+    if: ${{ github.actor_id == github.repository_owner_id && github.triggering_actor == github.repository_owner }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # GoReleaser がタグからバージョンを決めるため、すべての履歴とタグを取得する
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      # GoReleaser と Syft は、アーカイブの SHA-256 で固定してからインストールする。
+      # インストール用の Action は、実行時に取得するバイナリをワークフロー側で固定できないため使わない。
+      # 更新するときの署名の確認手順は、docs/contributing/release.md の「外部 Action とツールの固定」にある
+      - name: Set up GoReleaser
+        env:
+          GORELEASER_VERSION: 2.20.2
+          GORELEASER_SHA256: f3d24969a7389a46613875711d15a96d8f6ef1553d84c6ace09d69ac1e7d44c0
+        run: |
+          set -euo pipefail
+          archive="${RUNNER_TEMP}/goreleaser_${GORELEASER_VERSION}_Linux_x86_64.tar.gz"
+          curl -fsSL --proto '=https' -o "${archive}" \
+            "https://github.com/goreleaser/goreleaser/releases/download/v${GORELEASER_VERSION}/goreleaser_Linux_x86_64.tar.gz"
+          echo "${GORELEASER_SHA256}  ${archive}" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/goreleaser"
+          tar -xzf "${archive}" -C "${RUNNER_TEMP}/goreleaser" goreleaser
+          echo "${RUNNER_TEMP}/goreleaser" >> "${GITHUB_PATH}"
+
+      # GoReleaser が SBOM の生成に呼び出す Syft を入れる
+      - name: Set up Syft
+        env:
+          SYFT_VERSION: 1.57.1
+          SYFT_SHA256: bf52519eb57f675d47c07d43213cb6dff6449f3d6d1147ff6701ed91f44eef0c
+        run: |
+          set -euo pipefail
+          archive="${RUNNER_TEMP}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL --proto '=https' -o "${archive}" \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          echo "${SYFT_SHA256}  ${archive}" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/syft"
+          tar -xzf "${archive}" -C "${RUNNER_TEMP}/syft" syft
+          echo "${RUNNER_TEMP}/syft" >> "${GITHUB_PATH}"
+
+      # 同じコミットに複数のタグがあると GoReleaser は最も大きいバージョンを選ぶため、起動したタグを明示する
+      - name: Build
+        env:
+          GOTOOLCHAIN: local
+          GORELEASER_CURRENT_TAG: ${{ env.VERSION }}
+        run: |
+          set -euo pipefail
+          goreleaser --version
+          syft version
+          goreleaser check
+          goreleaser release --clean --skip=publish,announce
+
+      # 照合したファイルをそのままアップロードするよう、バイナリの実行は最後の sha256sum -c より前に済ませる
+      - name: Verify archives
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          version_number="${VERSION#v}"
+          expected="$(printf "${APP_NAME}_${version_number}_%s\n" \
+            darwin_amd64.tar.gz darwin_arm64.tar.gz \
+            linux_amd64.tar.gz linux_arm64.tar.gz \
+            windows_amd64.zip windows_arm64.zip | sort)"
+          expected_sboms="$(sed 's/$/.sbom.json/' <<< "${expected}")"
+          expected_listed="$(printf '%s\n' ${expected} ${expected_sboms} | sort)"
+          archives="$(find . -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' \) -printf '%f\n' | sort)"
+          sboms="$(find . -maxdepth 1 -type f -name '*.sbom.json' -printf '%f\n' | sort)"
+          listed="$(awk '{print $2}' SHA256SUMS | sort)"
+          if [[ "${archives}" != "${expected}" ]]; then
+            echo "::error::Archives in dist/ do not match the expected six archives"
+            diff <(echo "${expected}") <(echo "${archives}") || true
+            exit 1
+          fi
+          if [[ "${sboms}" != "${expected_sboms}" ]]; then
+            echo "::error::SBOMs in dist/ do not match the expected six SBOMs"
+            diff <(echo "${expected_sboms}") <(echo "${sboms}") || true
+            exit 1
+          fi
+          if [[ "${listed}" != "${expected_listed}" ]]; then
+            echo "::error::SHA256SUMS does not list exactly the six archives and six SBOMs"
+            diff <(echo "${expected_listed}") <(echo "${listed}") || true
+            exit 1
+          fi
+
+          # 実行権限はバイナリの存在を確かめてから調べる。バイナリがないと tar が失敗し、原因がわかりにくくなるため
+          for archive in ${expected}; do
+            if [[ "${archive}" == *.zip ]]; then
+              entries="$(unzip -Z1 "${archive}" | sort)"
+              want="$(printf '%s\n' LICENSE "${APP_NAME}.exe")"
+            else
+              entries="$(tar -tzf "${archive}" | sort)"
+              want="$(printf '%s\n' LICENSE "${APP_NAME}")"
+            fi
+            if [[ "${entries}" != "${want}" ]]; then
+              echo "::error::Unexpected entries in ${archive}"
+              echo "${entries}"
+              exit 1
+            fi
+            if [[ "${archive}" == *.tar.gz ]]; then
+              mode="$(tar -tvzf "${archive}" "${APP_NAME}" | awk '{print $1}')"
+              if [[ "${mode}" != -rwx* ]]; then
+                echo "::error::${APP_NAME} in ${archive} is not executable: ${mode}"
+                exit 1
+              fi
+            fi
+          done
+
+          # SBOM が対象のアーカイブを記述していることだけを確かめ、記載内容の正確さは確かめない
+          for archive in ${expected}; do
+            digest="$(sha256sum "${archive}" | awk '{print $1}')"
+            if ! jq -e --arg name "${archive}" --arg digest "${digest}" \
+              '(.spdxVersion | startswith("SPDX-")) and .name == $name and
+                any(.packages[]; .name == $name and any(.checksums[]?; .algorithm == "SHA256" and .checksumValue == $digest))' \
+              "${archive}.sbom.json" > /dev/null; then
+              echo "::error::${archive}.sbom.json does not describe ${archive}"
+              exit 1
+            fi
+          done
+
+          # ldflags は全ターゲットで共通の設定のため、runner と同じ linux_amd64 の1件で埋め込みを確かめる。
+          # dist/ を汚さないよう、展開先は dist/ の外にする
+          extract="${RUNNER_TEMP}/linux_amd64"
+          mkdir -p "${extract}"
+          tar -xzf "${APP_NAME}_${version_number}_linux_amd64.tar.gz" -C "${extract}"
+          actual="$("${extract}/${APP_NAME}" --version)"
+          if [[ "${actual}" != "${version_number}" ]]; then
+            echo "::error::--version printed ${actual}, but ${version_number} is expected"
+            exit 1
+          fi
+          echo "linux_amd64 --version: ${actual}"
+
+          sha256sum -c SHA256SUMS
+
+      - name: Upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sbom.json
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+
+  # GoReleaser やビルド中に動くコードに OIDC の権限を渡さないよう、署名は Checkout もビルドもしない別ジョブで行う
+  attest:
+    needs: [build]
+    if: ${{ github.actor_id == github.repository_owner_id && github.triggering_actor == github.repository_owner }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # artifact-metadata: write は、レジストリに push するときの storage record にだけ要るため与えない
+    permissions:
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/release-assets
+
+      # 署名する digest が、後続のジョブが公開する Artifact のアーカイブと SBOM に一致することを確かめる
+      - name: Verify checksums
+        working-directory: ${{ runner.temp }}/release-assets
+        run: sha256sum -c SHA256SUMS
+
+      # subject は SHA256SUMS に列挙されたアーカイブと SBOM で、SHA256SUMS 自体は含まれない。
+      # actions/attest には Build Provenance を指定する入力がなく、predicate の入力を省いたときに Build Provenance を作る。
+      # predicate-type を渡すと独自の predicate として扱われ、predicate の本体も自分で書く必要がある。
+      # 既定の挙動が変わっても公開しないよう、検証する側で --predicate-type に SLSA Provenance v1 を明示する
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: ${{ runner.temp }}/release-assets/SHA256SUMS
+
+  # GHCR への公開は取り消しにくいため、来歴の署名が成功してから行う
+  container:
+    needs: [build, attest]
+    if: ${{ github.actor_id == github.repository_owner_id && github.triggering_actor == github.repository_owner }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # レジストリへ Attestation を保存するには packages: write が要るため、イメージの署名は別ジョブにせずここで行う。
+    # attestations: write は読み取りも含むため、Linux 向けアーカイブの Attestation の検証にも使う。
+    # artifact-metadata: write は storage record にだけ要るため与えない
+    permissions:
+      contents: read
       packages: write
       id-token: write
       attestations: write
+    outputs:
+      image: ${{ steps.image.outputs.ref }}
+    steps:
+      # ベースイメージの参照を読むため、Dependabot が digest を更新する固定用のファイルだけを取得する。リポジトリのコードは実行しない
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: /Dockerfile
+          sparse-checkout-cone-mode: false
+
+      # ビルドに使う Dockerfile は、リポジトリのファイルを使わずにここで書き出す。
+      # Dockerfile に RUN や syntax ディレクティブなどが加わると、ビルド中に実行したコマンドの結果や外部から取得したファイルが、
+      # 配布アーカイブのような検証を経ずに署名付きのイメージに入るため、内容をワークフロー定義に固定する。
+      # ベースイメージも署名付きのイメージの中身を決めるため、名前は BASE_IMAGE としてワークフロー定義に固定し、固定用のファイルからは digest だけを取り出す。
+      # 別のベースイメージへ移るときは、BASE_IMAGE と固定用のファイルを同時に変える。固定用のファイル自体は BuildKit に渡さない
+      - name: Prepare Dockerfile
+        env:
+          BASE_IMAGE: gcr.io/distroless/static-debian13:nonroot
+          BASE_IMAGE_FILE: Dockerfile
+        run: |
+          set -euo pipefail
+          # コメント行と空行を除くと、digest で固定した FROM の 1 行だけであることを確かめる
+          from="$(grep -Ev '^[[:space:]]*(#|$)' "${BASE_IMAGE_FILE}" || true)"
+          pattern='^FROM ([^$[:space:]@]+)@(sha256:[0-9a-f]{64})$'
+          if [[ ! "${from}" =~ ${pattern} ]]; then
+            echo "::error::${BASE_IMAGE_FILE} must contain only one FROM line pinned by digest: ${from}"
+            exit 1
+          fi
+          base_name="${BASH_REMATCH[1]}"
+          base_digest="${BASH_REMATCH[2]}"
+          if [[ "${base_name}" != "${BASE_IMAGE}" ]]; then
+            echo "::error::${BASE_IMAGE_FILE} uses ${base_name}, but ${BASE_IMAGE} is expected"
+            exit 1
+          fi
+          cat > "${RUNNER_TEMP}/Dockerfile" << EOF
+          FROM ${BASE_IMAGE}@${base_digest}
+          ARG TARGETARCH
+          COPY --chmod=0755 \${TARGETARCH}/${APP_NAME} /usr/local/bin/${APP_NAME}
+          USER nonroot:nonroot
+          ENTRYPOINT ["/usr/local/bin/${APP_NAME}"]
+          EOF
+          cat "${RUNNER_TEMP}/Dockerfile"
+
+      - name: Download
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/release-assets
+
+      # GHCR への公開も取り消しにくいため、イメージに入れるバイナリを取り出す Linux 向けアーカイブの来歴を、release と同じ条件で確かめる。
+      # gh attestation verify はファイルの digest だけで Attestation を照合するため、署名された subject の名前も確かめる
+      - name: Verify Linux archives
+        working-directory: ${{ runner.temp }}/release-assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha256sum -c SHA256SUMS
+          for arch in amd64 arm64; do
+            file="${APP_NAME}_${VERSION#v}_linux_${arch}.tar.gz"
+            digest="$(sha256sum "${file}" | awk '{print $1}')"
+            gh attestation verify "${file}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --predicate-type https://slsa.dev/provenance/v1 \
+              --signer-workflow "${SIGNER_WORKFLOW}" \
+              --signer-digest "${GITHUB_SHA}" \
+              --source-ref "${GITHUB_REF}" \
+              --source-digest "${GITHUB_SHA}" \
+              --deny-self-hosted-runners \
+              --format json |
+              jq -e --arg name "${file}" --arg digest "${digest}" \
+                'any(.[].verificationResult.statement.subject[]; .name == $name and .digest.sha256 == $digest)' > /dev/null
+            echo "Attestation verified: ${file}"
+          done
+
+      # ビルドコンテキストには、配布アーカイブから取り出した Linux バイナリだけを置く
+      - name: Prepare build context
+        working-directory: ${{ runner.temp }}/release-assets
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            mkdir -p "${RUNNER_TEMP}/context/${arch}"
+            tar -xzf "${APP_NAME}_${VERSION#v}_linux_${arch}.tar.gz" \
+              -C "${RUNNER_TEMP}/context/${arch}" "${APP_NAME}"
+          done
+
+      - name: Log in to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # 「Re-run failed jobs」では preflight が実行されないため、公開した後に失敗したこのジョブを再実行すると、同じタグへ再び公開してしまう。
+      # 上書きを防ぐよう、公開の直前にも preflight と同じ判定でタグの存在を確かめる
+      - name: Verify no image exists
+        run: |
+          set -euo pipefail
+          if err="$(docker buildx imagetools inspect "${IMAGE_TAG}" 2>&1 > /dev/null)"; then
+            echo "::error::The image tag ${VERSION} already exists"
+            exit 1
+          fi
+          if [[ "${err}" != "ERROR: ${IMAGE_TAG}: not found" ]]; then
+            echo "::error::Could not check the image tag ${VERSION}: ${err}"
+            exit 1
+          fi
+          echo "The image tag ${VERSION} does not exist"
+
+      # docker/build-push-action は既定で、ビルドの記録（ビルドのログや設定、BuildKit の Provenance をまとめた .dockerbuild ファイル）を
+      # Actions Artifact としてアップロードする。調査のための記録で公開には使わず、受け渡す Artifact を release-assets だけにするよう止める。
+      # url の Release は後の release ジョブで公開するため、公開されるまでは参照先がない。
+      # created は、イメージの設定の created（BuildKit がビルドの時刻を入れる）と異なる値が並ぶため付けない。
+      # description は機械的に生成できないため付けない。
+      # base.name と base.digest は、固定しているのがベースイメージの Image Index の digest で、
+      # プラットフォームごとのイメージの設定に入るラベルの値としては、そのイメージの直接のベースを指さないため付けない
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
+        with:
+          context: ${{ runner.temp }}/context
+          file: ${{ runner.temp }}/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE_TAG }}
+          labels: |
+            org.opencontainers.image.title=${{ env.APP_NAME }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+
+      # 後続のジョブは、ここで作る digest 付きの参照だけを使い、イメージ名と digest から参照を組み立て直さない
+      - name: Output image reference
+        id: image
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::The image digest is not in the form of sha256:<hex>: ${DIGEST}"
+            exit 1
+          fi
+          echo "ref=${IMAGE_NAME}@${DIGEST}" >> "${GITHUB_OUTPUT}"
+          echo "Image reference: ${IMAGE_NAME}@${DIGEST}"
+
+      # subject はタグではなく Image Index の digest にする。タグは付け替えられるため。
+      # predicate の入力は Attest build provenance と同じく省き、検証する側で --predicate-type を明示する。
+      # storage record は組織の linked artifacts ページに保存先を記録する機能で、artifact-metadata: write を要するため作らない
+      - name: Attest image
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+
+  # GHCR に公開したイメージを digest で取得し、runner の CPU アーキテクチャごとに検証する。
+  # Image Index から runner の CPU アーキテクチャに合うイメージが選ばれるため、amd64 と arm64 の runner で1回ずつ実行する
+  verify-image:
+    needs: [container]
+    if: ${{ github.actor_id == github.repository_owner_id && github.triggering_actor == github.repository_owner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: amd64, runner: ubuntu-24.04}
+          - {arch: arm64, runner: ubuntu-24.04-arm}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    # パッケージは Public のため、GHCR へのログインと packages: read は要らない。
+    # attestations: read は、gh attestation verify が GitHub の Attestation API から取得するのに要る
+    permissions:
+      attestations: read
+    steps:
+      - name: Download
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/release-assets
+
+      - name: Verify image
+        working-directory: ${{ runner.temp }}/release-assets
+        env:
+          ARCH: ${{ matrix.arch }}
+          IMAGE_REF: ${{ needs.container.outputs.image }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version_number="${VERSION#v}"
+          sha256sum -c SHA256SUMS
+          # 出力の参照名を誤ると空文字になるため、受け取った参照の形を確かめる
+          if [[ ! "${IMAGE_REF}" =~ ^"${IMAGE_NAME}"@sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::The image reference is not in the form of ${IMAGE_NAME}@sha256:<hex>: ${IMAGE_REF}"
+            exit 1
+          fi
+
+          # QEMU によるエミュレーションで別の CPU アーキテクチャのイメージを確かめないよう、
+          # runner の CPU アーキテクチャが matrix の arch と一致することを確かめる
+          host="$(docker version --format '{{.Server.Arch}}')"
+          if [[ "${host}" != "${ARCH}" ]]; then
+            echo "::error::The runner is ${host}, but ${ARCH} is expected"
+            exit 1
+          fi
+
+          # イメージを実行する前に、来歴とバイナリを確かめる。
+          # 検証するのは Image Index の digest である。プラットフォーム別のマニフェストには Attestation がない。
+          # gh attestation verify は TTY がないと成功しても何も出力しないため、結果を出力する
+          gh attestation verify "oci://${IMAGE_REF}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --predicate-type https://slsa.dev/provenance/v1 \
+            --signer-workflow "${SIGNER_WORKFLOW}" \
+            --signer-digest "${GITHUB_SHA}" \
+            --source-ref "${GITHUB_REF}" \
+            --source-digest "${GITHUB_SHA}" \
+            --deny-self-hosted-runners
+          echo "Attestation verified: ${IMAGE_REF}"
+
+          # イメージ内のバイナリが、配布アーカイブ内のバイナリとバイト単位で一致することを確かめる。
+          # 実行ユーザーは、プラットフォームを指定して作ったコンテナの設定から読む
+          cid="$(docker create --platform "linux/${ARCH}" "${IMAGE_REF}")"
+          docker cp "${cid}:/usr/local/bin/${APP_NAME}" "${RUNNER_TEMP}/from-image"
+          user="$(docker container inspect --format '{{.Config.User}}' "${cid}")"
+          docker rm "${cid}"
+          mkdir "${RUNNER_TEMP}/from-archive"
+          tar -xzf "${APP_NAME}_${version_number}_linux_${ARCH}.tar.gz" \
+            -C "${RUNNER_TEMP}/from-archive" "${APP_NAME}"
+          cmp "${RUNNER_TEMP}/from-image" "${RUNNER_TEMP}/from-archive/${APP_NAME}"
+          echo "linux_${ARCH} binary matches the archive"
+          if [[ "${user}" != "nonroot:nonroot" ]]; then
+            echo "::error::The image runs as ${user}, but nonroot:nonroot is expected"
+            exit 1
+          fi
+
+          got="$(docker run --rm --platform "linux/${ARCH}" "${IMAGE_REF}" --version)"
+          if [[ "${got}" != "${version_number}" ]]; then
+            echo "::error::--version printed ${got}, but ${version_number} is expected"
+            exit 1
+          fi
+          echo "linux_${ARCH} image --version: ${got}"
+
+  # GitHub Release の公開は正式リリースの完了点のため、GHCR に公開したイメージの検証が成功してから行う
+  release:
+    needs: [attest, container, verify-image]
+    if: ${{ github.actor_id == github.repository_owner_id && github.triggering_actor == github.repository_owner }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # attestations: read は、gh attestation verify が GitHub の Attestation API から取得するのに要る
+    permissions:
+      contents: write
+      attestations: read
+    steps:
+      # contents: write を持つため Checkout せず、受け取ったファイルをデータとして登録するだけにする
+      - name: Download
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/release-assets
+
+      # SHA256SUMS との照合だけでは、アーカイブと SHA256SUMS が一緒に差し替えられた場合を検出できないため、
+      # 公開するアーカイブと SBOM が、このワークフローによって同じコミットとタグで署名されたものであることを確かめる。
+      # 対象は Publish release が登録するのと同じ、SHA256SUMS に列挙されたファイルである
+      - name: Verify assets
+        working-directory: ${{ runner.temp }}/release-assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # 列挙が空だと検証が1回も走らずに成功し、重複があると別のファイルが欠けるため、
+          # 期待するアーカイブ 6 件と SBOM 6 件に一致することを確かめる
+          archives="$(printf "${APP_NAME}_${VERSION#v}_%s\n" \
+            darwin_amd64.tar.gz darwin_arm64.tar.gz \
+            linux_amd64.tar.gz linux_arm64.tar.gz \
+            windows_amd64.zip windows_arm64.zip)"
+          sboms="$(sed 's/$/.sbom.json/' <<< "${archives}")"
+          expected="$(printf '%s\n' ${archives} ${sboms} | sort)"
+          listed="$(awk '{print $2}' SHA256SUMS | sort)"
+          if [[ "${listed}" != "${expected}" ]]; then
+            echo "::error::SHA256SUMS does not list exactly the six archives and six SBOMs"
+            diff <(echo "${expected}") <(echo "${listed}") || true
+            exit 1
+          fi
+          sha256sum -c SHA256SUMS
+
+          # gh attestation verify はファイルの digest だけで Attestation を照合するため、
+          # 署名された subject の名前もファイル名と一致することを確かめ、ファイル同士の中身の入れ替えを検出する。
+          # 成功しても何も出力しないため、結果を出力する
+          for file in ${expected}; do
+            digest="$(sha256sum "${file}" | awk '{print $1}')"
+            gh attestation verify "${file}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --predicate-type https://slsa.dev/provenance/v1 \
+              --signer-workflow "${SIGNER_WORKFLOW}" \
+              --signer-digest "${GITHUB_SHA}" \
+              --source-ref "${GITHUB_REF}" \
+              --source-digest "${GITHUB_SHA}" \
+              --deny-self-hosted-runners \
+              --format json |
+              jq -e --arg name "${file}" --arg digest "${digest}" \
+                'any(.[].verificationResult.statement.subject[]; .name == $name and .digest.sha256 == $digest)' > /dev/null
+            echo "Attestation verified: ${file}"
+          done
+
+      # 公開の前提となる、イメージの参照、タグの参照先、同じタグの Release の有無を確かめる。
+      # タグの付け替えを検出できる時間を短くするため、Publish release の直前に置く
+      - name: Verify release target
+        env:
+          IMAGE_REF: ${{ needs.container.outputs.image }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # 出力の参照名を誤ると空文字になるため、container-image.txt に書く参照の形を確かめる
+          if [[ ! "${IMAGE_REF}" =~ ^"${IMAGE_NAME}"@sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::The image reference is not in the form of ${IMAGE_NAME}@sha256:<hex>: ${IMAGE_REF}"
+            exit 1
+          fi
+
+          # Release はタグの指すコミットに付くため、タグが付け替えられていればビルドと異なるコミットに付いてしまう。
+          # 確かめた直後の付け替えまでは防げず、post-verify が公開後にもう一度確かめる
+          sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/refs/tags/${VERSION}" --jq .sha)"
+          if [[ "${sha}" != "${GITHUB_SHA}" ]]; then
+            echo "::error::The tag ${VERSION} points to ${sha}, but ${GITHUB_SHA} is expected"
+            exit 1
+          fi
+
+          # アセットを指定した gh release create は Draft を作ってから公開するため、途中で失敗すると Draft が残る可能性がある。
+          # Draft があっても gh release create が失敗するとは限らないため、Draft も含めて同じタグの Release がないことを確かめる
+          ids="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" --jq ".[] | select(.tag_name == \"${VERSION}\") | .id")"
+          if [[ -n "${ids}" ]]; then
+            echo "::error::A release for ${VERSION} already exists, including drafts: ${ids//$'\n'/ }"
+            exit 1
+          fi
+
+          # gh release create は make_latest を指定せず、API の既定値 true により、公開した Release はバージョンの大小にかかわらず Latest になる。
+          # 古いバージョンを後から公開する場面はまれなため、Latest は自動で付け直さず、警告を出して手動の対応に任せる。
+          # 確認は警告のためだけなので、Latest を取得できなくても止めない
+          latest="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name 2> /dev/null || true)"
+          if [[ -n "${latest}" && "$(printf '%s\n' "${latest}" "${VERSION}" | sort -V | tail -n 1)" != "${VERSION}" ]]; then
+            echo "::warning::${VERSION} is lower than the current latest release ${latest}, but it will become Latest. Set ${latest} as Latest again by hand if needed"
+          fi
+          echo "The release ${VERSION} can be published for ${GITHUB_SHA}"
+
+      # 登録するファイルはディレクトリの中身すべてにせず SHA256SUMS の列挙から取り、照合も署名もしていないファイルが黙って公開されるのを防ぐ。
+      # --verify-tag はタグがなければ失敗させ、gh がタグを新しく作ることを防ぐ。
+      # タグがあれば --target はタグの作成に使われず、Release のメタデータ（target_commitish）に記録されるだけである。省くと既定ブランチの名前が記録される
+      - name: Publish release
+        working-directory: ${{ runner.temp }}/release-assets
+        env:
+          IMAGE_REF: ${{ needs.container.outputs.image }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "${IMAGE_REF}" > container-image.txt
+          # プロセス置換の失敗は set -e で止まらないため、件数を確かめてから公開する
+          mapfile -t files < <(awk '{print $2}' SHA256SUMS)
+          if [[ "${#files[@]}" -ne 12 ]]; then
+            echo "::error::SHA256SUMS lists ${#files[@]} files, but 12 are expected"
+            exit 1
+          fi
+          gh release create "${VERSION}" --repo "${GITHUB_REPOSITORY}" --verify-tag --target "${GITHUB_SHA}" \
+            --title "${VERSION}" --generate-notes "${files[@]}" SHA256SUMS container-image.txt
+
+  # 公開した GitHub Release と GHCR のイメージを取得し直し、正規の成果物と照合する。このジョブの成功をもってワークフローの成功とする。
+  # 失敗した時点で Release は公開済みだが、自動では取り消さない
+  post-verify:
+    needs: [container, release]
+    if: ${{ github.actor_id == github.repository_owner_id && github.triggering_actor == github.repository_owner }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # パッケージは Public のため、GHCR へのログインと packages: read は要らない。
+    # attestations: read は、gh attestation verify が GitHub の Attestation API から取得するのに要る
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - name: Download
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/release-assets
+
+      - name: Verify release
+        env:
+          IMAGE_REF: ${{ needs.container.outputs.image }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          expected="${RUNNER_TEMP}/release-assets"
+          published="${RUNNER_TEMP}/published"
+
+          # Release が公開済みで、タグがビルドしたコミットを指したままである。
+          # コミットの API に refs/tags/ 付きの ref を渡すと、軽量タグでも注釈付きタグでも、指しているコミットの SHA が得られる。
+          # タグ名だけを渡さないのは、同じ名前のブランチがあると参照先が曖昧になるため
+          draft="$(gh release view "${VERSION}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
+          if [[ "${draft}" != "false" ]]; then
+            echo "::error::The release ${VERSION} is still a draft"
+            exit 1
+          fi
+          sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/refs/tags/${VERSION}" --jq .sha)"
+          if [[ "${sha}" != "${GITHUB_SHA}" ]]; then
+            echo "::error::The tag ${VERSION} points to ${sha}, but ${GITHUB_SHA} is expected"
+            exit 1
+          fi
+          echo "The release ${VERSION} is published and the tag points to ${sha}"
+
+          # 公開されたアセットが、正規の成果物に release と同じ方法で作った container-image.txt を加えたものと過不足なく一致する
+          echo "${IMAGE_REF}" > "${expected}/container-image.txt"
+          gh release download "${VERSION}" --repo "${GITHUB_REPOSITORY}" --dir "${published}"
+          diff -r "${expected}" "${published}"
+          echo "Release assets match the canonical artifacts:"
+          ls -1 "${published}"
+
+          # GHCR のバージョンタグが、container-image.txt に記録した参照と同じイメージを指している
+          got="${IMAGE_NAME}@$(docker buildx imagetools inspect "${IMAGE_TAG}" --format '{{.Manifest.Digest}}')"
+          if [[ "${got}" != "${IMAGE_REF}" ]]; then
+            echo "::error::${IMAGE_TAG} points to ${got}, but ${IMAGE_REF} is expected"
+            exit 1
+          fi
+          echo "${IMAGE_TAG} points to ${got}"
+
+          # 公開されたアセットから、利用者と同じ手順で来歴を検証できる。
+          # 利用者の手順に合わせ、--predicate-type は gh の既定値に任せ、--signer-digest と --source-digest も付けない。
+          # コミットとの対応は、diff -r とタグの参照先の確認で確かめている。
+          # アセットの名前は diff -r で照合済みのため、subject の名前は確かめない。
+          # gh attestation verify は TTY がないと成功しても何も出力しないため、結果を出力する
+          cd "${published}"
+          for file in ./*.tar.gz ./*.zip ./*.sbom.json; do
+            gh attestation verify "${file}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --signer-workflow "${SIGNER_WORKFLOW}" \
+              --source-ref "${GITHUB_REF}" \
+              --deny-self-hosted-runners
+            echo "Attestation verified: ${file#./}"
+          done
+          gh attestation verify "oci://$(cat container-image.txt)" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --signer-workflow "${SIGNER_WORKFLOW}" \
+            --source-ref "${GITHUB_REF}" \
+            --deny-self-hosted-runners
+          echo "Attestation verified: $(cat container-image.txt)"
