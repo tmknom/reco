@@ -69,3 +69,13 @@ cover: ## measure test coverage excluding main.go and require 100% under interna
 .PHONY: clean
 clean: ## remove build artifacts
 	rm -rf $(DIST_DIR)
+
+# Targets: Release
+# 共有 Makefile の release/* は workflow_dispatch でリリースを起動する前提のため、reco では使わない
+.PHONY: release
+release: ## choose the bump level interactively and push the next release tag
+	@scripts/release/tag.sh
+
+.PHONY: test/scripts
+test/scripts: ## run tests of shell scripts
+	scripts/release/tag_test.sh
