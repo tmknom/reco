@@ -346,7 +346,8 @@ func TestPrecedingUpdateNotReflected(t *testing.T) {
 	}
 }
 
-// TestObserveBeforeUpdate は、2つ目の更新操作の直前の観測で、1つ目の反映の遅れを待って観測し直す規則を確かめる。
+// TestObserveBeforeUpdate は、2つ目の更新操作の直前の観測で、更新要求の間隔を観測より前に待つ規則と、
+// 1つ目の反映の遅れを待って観測し直す規則を確かめる。
 // 観測し直すのは読み取りだけで、開始してよいのは最後の観測で変更前提が成立したときだけである。
 //
 //trace:checks INV-004
@@ -378,46 +379,46 @@ func TestObserveBeforeUpdate(t *testing.T) {
 	}
 	allDelays := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second}
 	cases := []struct {
-		name         string
-		change       changeplan.LogicalChange
-		responses    []response
-		wantRequests []string
-		wantDelays   []time.Duration
-		want         operationRecord
-		wantErr      bool
+		name                    string
+		change                  changeplan.LogicalChange
+		responses               []response
+		wantRequests            []string
+		wantReobservationDelays []time.Duration
+		want                    operationRecord
+		wantErr                 bool
 	}{
 		{
-			name:         "policy already selected holds without waiting",
+			name:         "policy already selected holds without reading again",
 			change:       toSelectedChange(),
 			responses:    selected,
 			wantRequests: readSelected,
 			want:         operationRecord{precondition: preconditionHolds},
 		},
 		{
-			name:         "policy still before the first update and then selected holds after waiting once",
-			change:       toSelectedChange(),
-			responses:    append(slices.Clone(localOnly), selected...),
-			wantRequests: append(slices.Clone(readNotSelected), readSelected...),
-			wantDelays:   allDelays[:1],
-			want:         operationRecord{precondition: preconditionHolds},
+			name:                    "policy still before the first update and then selected holds after reading again once",
+			change:                  toSelectedChange(),
+			responses:               append(slices.Clone(localOnly), selected...),
+			wantRequests:            append(slices.Clone(readNotSelected), readSelected...),
+			wantReobservationDelays: allDelays[:1],
+			want:                    operationRecord{precondition: preconditionHolds},
 		},
 		{
-			name:         "policy still before the first update on all six reads is a current value change of allowed_actions",
-			change:       toSelectedChange(),
-			responses:    repeat(6, localOnly),
-			wantRequests: repeatRequests(6, readNotSelected),
-			wantDelays:   allDelays,
-			want:         operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions},
+			name:                    "policy still before the first update on all six reads is a current value change of allowed_actions",
+			change:                  toSelectedChange(),
+			responses:               repeat(6, localOnly),
+			wantRequests:            repeatRequests(6, readNotSelected),
+			wantReobservationDelays: allDelays,
+			want:                    operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions},
 		},
 		{
-			name:         "policy neither before the first update nor selected is a current value change without waiting",
+			name:         "policy neither before the first update nor selected is a current value change without reading again",
 			change:       toSelectedChange(),
 			responses:    []response{okRepository(1, false, false), okAllowedActions("all", false)},
 			wantRequests: readNotSelected,
 			want:         operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions},
 		},
 		{
-			name:         "failed read is unconfirmed without waiting",
+			name:         "failed read is unconfirmed without reading again",
 			change:       toSelectedChange(),
 			responses:    []response{okRepository(1, false, false), {status: http.StatusInternalServerError}},
 			wantRequests: readNotSelected,
@@ -425,19 +426,19 @@ func TestObserveBeforeUpdate(t *testing.T) {
 			wantErr:      true,
 		},
 		{
-			name:         "different ID is an identity mismatch without waiting even if the policy is before the first update",
+			name:         "different ID is an identity mismatch without reading again even if the policy is before the first update",
 			change:       toSelectedChange(),
 			responses:    []response{okRepository(2, false, false), okAllowedActions("local_only", false)},
 			wantRequests: readNotSelected,
 			want:         operationRecord{precondition: preconditionIdentityMismatch},
 		},
 		{
-			name:         "actions still disabled as before the first update and then selected holds after waiting once",
-			change:       enableSelectedChange(),
-			responses:    append([]response{okRepository(1, false, false), okActionsDisabled()}, selected...),
-			wantRequests: append(slices.Clone(readNotSelected), readSelected...),
-			wantDelays:   allDelays[:1],
-			want:         operationRecord{precondition: preconditionHolds},
+			name:                    "actions still disabled as before the first update and then selected holds after reading again once",
+			change:                  enableSelectedChange(),
+			responses:               append([]response{okRepository(1, false, false), okActionsDisabled()}, selected...),
+			wantRequests:            append(slices.Clone(readNotSelected), readSelected...),
+			wantReobservationDelays: allDelays[:1],
+			want:                    operationRecord{precondition: preconditionHolds},
 		},
 	}
 	for _, tc := range cases {
@@ -445,13 +446,16 @@ func TestObserveBeforeUpdate(t *testing.T) {
 			baseURL, rec := newSequenceServer(t, tc.responses...)
 			delays := &delayRecorder{}
 
-			_, got, err := observeBeforeUpdate(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, 1, observationAreas(tc.change), delays.after)
+			_, got, err := observeBeforeUpdate(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, 1, observationAreas(tc.change), delays.after, &updateInterval{updateStarted: true})
 
 			if !slices.Equal(rec.Requests(), tc.wantRequests) {
 				t.Errorf("requests = %v, want %v", rec.Requests(), tc.wantRequests)
 			}
-			if !slices.Equal(delays.delays, tc.wantDelays) {
-				t.Errorf("delays = %v, want %v", delays.delays, tc.wantDelays)
+			// 2つ目の更新操作は、1つ目の更新要求のあとのため、観測し直しの待ち時間の前に更新要求の間隔の1秒を待つ。
+			// 間隔の1秒は観測し直しの回数と上限に数えない。
+			wantDelays := append([]time.Duration{time.Second}, tc.wantReobservationDelays...)
+			if !slices.Equal(delays.delays, wantDelays) {
+				t.Errorf("delays = %v, want %v", delays.delays, wantDelays)
 			}
 			if got != tc.want {
 				t.Errorf("observeBeforeUpdate() = %+v, want %+v", got, tc.want)
@@ -466,13 +470,19 @@ func TestObserveBeforeUpdate(t *testing.T) {
 		baseURL, rec := newSequenceServer(t, append(slices.Clone(localOnly), selected...)...)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		interrupted := func(time.Duration) <-chan time.Time {
+		// 1回目の待機は更新要求の間隔のため経過させ、2回目の観測し直す前の待機で中断する。
+		waits := 0
+		interrupted := func(d time.Duration) <-chan time.Time {
+			waits++
+			if waits == 1 {
+				return elapsedAtOnce(d)
+			}
 			cancel()
 			return make(chan time.Time)
 		}
 		change := toSelectedChange()
 
-		_, got, err := observeBeforeUpdate(ctx, newClient(baseURL), newRepositoryPlan(t), change, 1, observationAreas(change), interrupted)
+		_, got, err := observeBeforeUpdate(ctx, newClient(baseURL), newRepositoryPlan(t), change, 1, observationAreas(change), interrupted, &updateInterval{updateStarted: true})
 
 		if !slices.Equal(rec.Requests(), readNotSelected) {
 			t.Errorf("requests = %v, want %v", rec.Requests(), readNotSelected)
@@ -482,6 +492,53 @@ func TestObserveBeforeUpdate(t *testing.T) {
 		}
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("observeBeforeUpdate() error = %v, want it to wrap %v", err, context.Canceled)
+		}
+	})
+
+	// 要求を一つも送らずに終わることが、間隔を最初の読み取りより前に待つことも示す
+	t.Run("interruption while waiting for the interval between update requests is unconfirmed without a read", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t, selected...)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		interrupted := func(time.Duration) <-chan time.Time {
+			cancel()
+			return make(chan time.Time)
+		}
+		change := toSelectedChange()
+
+		_, got, err := observeBeforeUpdate(ctx, newClient(baseURL), newRepositoryPlan(t), change, 1, observationAreas(change), interrupted, &updateInterval{updateStarted: true})
+
+		if len(rec.Requests()) != 0 {
+			t.Errorf("requests = %v, want none", rec.Requests())
+		}
+		if got != (operationRecord{precondition: preconditionUnconfirmed}) {
+			t.Errorf("observeBeforeUpdate() = %+v, want unconfirmed", got)
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("observeBeforeUpdate() error = %v, want it to wrap %v", err, context.Canceled)
+		}
+	})
+}
+
+// TestUpdateIntervalWait は、この実行で更新操作を開始したあとだけ更新要求の間隔を待つ規則を確かめる。
+func TestUpdateIntervalWait(t *testing.T) {
+	t.Run("no update started does not wait", func(t *testing.T) {
+		delays := &delayRecorder{}
+
+		err := (&updateInterval{}).wait(context.Background(), delays.after)
+
+		if len(delays.delays) != 0 || err != nil {
+			t.Errorf("wait() delays = %v, error = %v, want no wait and no error", delays.delays, err)
+		}
+	})
+
+	t.Run("update started waits one second once", func(t *testing.T) {
+		delays := &delayRecorder{}
+
+		err := (&updateInterval{updateStarted: true}).wait(context.Background(), delays.after)
+
+		if !slices.Equal(delays.delays, []time.Duration{time.Second}) || err != nil {
+			t.Errorf("wait() delays = %v, error = %v, want [1s] and no error", delays.delays, err)
 		}
 	})
 }
@@ -1038,7 +1095,7 @@ func TestExecuteChange(t *testing.T) {
 			p := newRepositoryPlan(t)
 			delays := &delayRecorder{}
 
-			got := executeChange(context.Background(), newClient(baseURL), p, tc.change, delays.after)
+			got := executeChange(context.Background(), newClient(baseURL), p, tc.change, delays.after, &updateInterval{})
 
 			if !reflect.DeepEqual(got.change, tc.change) {
 				t.Errorf("change = %+v, want %+v", got.change, tc.change)
@@ -1084,7 +1141,7 @@ func TestExecuteChange(t *testing.T) {
 			return make(chan time.Time)
 		}
 
-		got := executeChange(ctx, newClient(baseURL), newRepositoryPlan(t), allowAutoMergeChange(), interrupted)
+		got := executeChange(ctx, newClient(baseURL), newRepositoryPlan(t), allowAutoMergeChange(), interrupted, &updateInterval{})
 
 		if want := []string{"GET", "PATCH", "GET"}; !slices.Equal(rec.Methods(), want) {
 			t.Errorf("requests = %v, want %v", rec.Methods(), want)
@@ -1277,7 +1334,7 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 			baseURL, rec := newSequenceServer(t, tc.responses...)
 			delays := &delayRecorder{}
 
-			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, delays.after)
+			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, delays.after, &updateInterval{})
 
 			if !slices.Equal(rec.Requests(), tc.wantRequests) {
 				t.Errorf("requests = %v, want %v", rec.Requests(), tc.wantRequests)
@@ -1355,6 +1412,8 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 	holds := func(update github.UpdateOutcome) operationRecord {
 		return operationRecord{precondition: preconditionHolds, update: update}
 	}
+	// 2つ目の更新直前の観測に進むときは、その前に更新要求の間隔の1秒を一度待つ。
+	interval := []time.Duration{time.Second}
 	cases := []struct {
 		name         string
 		change       changeplan.LogicalChange
@@ -1372,6 +1431,7 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 		{
 			// 遷移元が local_only で github_owned_allowed: false を宣言した遷移も、ほかの遷移と同じ扱いで実行する
 			name:         "local_only to selected sends both updates in order and completes",
+			wantDelays:   interval,
 			change:       toSelectedChange(),
 			responses:    join(beforeFirst, []response{noContent}, beforeSecond, []response{noContent}, afterBoth),
 			wantRequests: requests(readNotSelected, []string{putActionsPermissions}, readSelected, []string{putSelectedActions}, readSelected),
@@ -1386,8 +1446,9 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 		},
 		{
 			// 1つ目が状態を変えているため、後続を開始しなくても一度だけ観測して確認結果と変更対象外の設定を与える
-			name:   "policy other than selected before the second update fails without the second update and reads once after it",
-			change: toSelectedChange(),
+			name:       "policy other than selected before the second update fails without the second update and reads once after it",
+			wantDelays: interval,
+			change:     toSelectedChange(),
 			responses: join(beforeFirst, []response{noContent, okRepository(1, false, false), okAllowedActions("all", false)},
 				[]response{okRepository(1, false, false), okAllowedActions("all", false)}),
 			wantRequests:   requests(readNotSelected, []string{putActionsPermissions}, readNotSelected, readNotSelected),
@@ -1396,8 +1457,9 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 			wantResult:     failed,
 		},
 		{
-			name:   "failed read before the second update fails without the second update and reads once after it",
-			change: toSelectedChange(),
+			name:       "failed read before the second update fails without the second update and reads once after it",
+			wantDelays: interval,
+			change:     toSelectedChange(),
 			responses: join(beforeFirst, []response{noContent, okRepository(1, false, false), {status: http.StatusInternalServerError}},
 				beforeSecond),
 			wantRequests:   requests(readNotSelected, []string{putActionsPermissions}, readNotSelected, readSelected),
@@ -1428,8 +1490,9 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 		},
 		{
 			// 1つ目の更新エンドポイントの sha_pinning_required を1つ目の直前と比べる機会を残す
-			name:   "rejected second update reads once after it and reports sha_pinning_required changed from before the first",
-			change: toSelectedChange(),
+			name:       "rejected second update reads once after it and reports sha_pinning_required changed from before the first",
+			wantDelays: interval,
+			change:     toSelectedChange(),
 			responses: join(beforeFirst, []response{noContent}, beforeSecond, []response{{status: http.StatusConflict, body: `{"message": "Conflict"}`}},
 				[]response{okRepository(1, false, false), okAllowedActions("selected", true), setBack}),
 			wantRequests:   requests(readNotSelected, []string{putActionsPermissions}, readSelected, []string{putSelectedActions}, readSelected),
@@ -1441,6 +1504,7 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 		},
 		{
 			name:           "unknown second update reads once for diagnosis",
+			wantDelays:     interval,
 			change:         toSelectedChange(),
 			responses:      join(beforeFirst, []response{noContent}, beforeSecond, []response{redirect}, afterBoth),
 			wantRequests:   requests(readNotSelected, []string{putActionsPermissions}, readSelected, []string{putSelectedActions}, readSelected),
@@ -1450,8 +1514,9 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 			wantCause:      github.ErrRedirect,
 		},
 		{
-			name:   "sha_pinning_required changed from the read before the first update fails even if unchanged since the second",
-			change: toSelectedChange(),
+			name:       "sha_pinning_required changed from the read before the first update fails even if unchanged since the second",
+			wantDelays: interval,
+			change:     toSelectedChange(),
 			responses: join(beforeFirst, []response{noContent},
 				[]response{okRepository(1, false, false), okAllowedActions("selected", true), setBack}, []response{noContent},
 				[]response{okRepository(1, false, false), okAllowedActions("selected", true), okSelectedActions(false, true, `["a/*", "b/*"]`)}),
@@ -1468,15 +1533,17 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 				[]response{okRepository(1, false, false), okAllowedActions("local_only", false)}, beforeSecond, []response{noContent}, afterBoth),
 			wantRequests: requests(readNotSelected, []string{putActionsPermissions},
 				readNotSelected, readSelected, []string{putSelectedActions}, readSelected),
-			wantDelays:     []time.Duration{time.Second},
+			// 間隔の1秒のあとに、観測し直しの1秒が続く
+			wantDelays:     []time.Duration{time.Second, time.Second},
 			wantOperations: []operationRecord{holds(github.UpdateSucceeded), holds(github.UpdateSucceeded)},
 			wantDesired:    desiredStateMatches,
 			wantResult:     completed,
 		},
 		{
 			// 1つ目の直前は sha_pinning_required が観測不能で比べる観測値がなく、更新後に true でも予期しない変化にしない
-			name:   "disabled to selected enables actions with the policy in one update and completes",
-			change: enableSelectedChange(),
+			name:       "disabled to selected enables actions with the policy in one update and completes",
+			wantDelays: interval,
+			change:     enableSelectedChange(),
 			responses: join([]response{okRepository(1, false, false), okActionsDisabled(), noContent}, beforeSecond, []response{noContent},
 				[]response{okRepository(1, false, false), okAllowedActions("selected", true), okSelectedActions(false, true, `["a/*", "b/*"]`)}),
 			wantRequests: requests(readNotSelected, []string{putActionsPermissions}, readSelected, []string{putSelectedActions}, readSelected),
@@ -1495,7 +1562,7 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 			baseURL, rec := newSequenceServer(t, tc.responses...)
 			delays := &delayRecorder{}
 
-			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, delays.after)
+			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, delays.after, &updateInterval{})
 
 			if !slices.Equal(rec.Requests(), tc.wantRequests) {
 				t.Errorf("requests = %v, want %v", rec.Requests(), tc.wantRequests)
@@ -1526,6 +1593,42 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 			}
 		})
 	}
+
+	// 1つ目は成功しているため変更結果は失敗。更新後の観測は一度だけ試みるが、中断を受けているため読み取りも失敗する。
+	t.Run("interruption while waiting for the interval before the second update fails without the second update", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t, join(beforeFirst, []response{noContent}, beforeSecond)...)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		interrupted := func(time.Duration) <-chan time.Time {
+			cancel()
+			return make(chan time.Time)
+		}
+		change := toSelectedChange()
+
+		got := executeChange(ctx, newClient(baseURL), newRepositoryPlan(t), change, interrupted, &updateInterval{})
+
+		if want := requests(readNotSelected, []string{putActionsPermissions}); !slices.Equal(rec.Requests(), want) {
+			t.Errorf("requests = %v, want %v", rec.Requests(), want)
+		}
+		if want := []operationRecord{holds(github.UpdateSucceeded), {precondition: preconditionUnconfirmed}}; !slices.Equal(got.operations, want) {
+			t.Errorf("operations = %+v, want %+v", got.operations, want)
+		}
+		if got.result() != failed {
+			t.Errorf("result() = %v, want %v", got.result(), failed)
+		}
+		if !errors.Is(got.cause, context.Canceled) {
+			t.Errorf("cause = %v, want it to wrap %v", got.cause, context.Canceled)
+		}
+		wantDetails := []string{
+			"Update request (" + string(setting.AllowedActions) + "): succeeded",
+			"Update request (" + string(setting.SelectedActions) + "): not started",
+			"Precondition: not confirmed (read failed)",
+			"Desired state: not confirmed (read failed)",
+		}
+		if !slices.Equal(details(got), wantDetails) {
+			t.Errorf("details() = %q, want %q", details(got), wantDetails)
+		}
+	})
 }
 
 // TestExecuteChanges は、論理的な設定変更を順に実行し、完了以外の変更結果が出たら残りに要求を送らずに止める規則を確かめる。
@@ -1549,18 +1652,39 @@ func TestExecuteChanges(t *testing.T) {
 		wantBodies  []map[string]any
 		wantPrecond []preconditionCheck
 		wantResults []changeResult
+		wantDelays  []time.Duration
+		// wantRequestsAtWait は、待機ごとに、それを求めた時点で GitHub が受けていた要求の数。待機の位置を示す。
+		wantRequestsAtWait []int
 	}{
 		{
-			name:    "both changes complete with a fresh read before each update",
+			// 間隔は1件目の更新後の観測のあと、2件目の更新直前の観測より前に一度だけ入り、最後の更新のあとには入らない
+			name:    "both changes complete with a fresh read before each update and the interval before the second read",
 			changes: generalChanges,
 			responses: []response{
 				okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true),
 				okRepository(1, false, true), okRepository(1, true, true), okRepository(1, true, true),
 			},
-			wantMethods: []string{"GET", "PATCH", "GET", "GET", "PATCH", "GET"},
-			wantBodies:  []map[string]any{nil, {"delete_branch_on_merge": true}, nil, nil, {"allow_auto_merge": true}, nil},
-			wantPrecond: []preconditionCheck{preconditionHolds, preconditionHolds},
-			wantResults: []changeResult{completed, completed},
+			wantMethods:        []string{"GET", "PATCH", "GET", "GET", "PATCH", "GET"},
+			wantBodies:         []map[string]any{nil, {"delete_branch_on_merge": true}, nil, nil, {"allow_auto_merge": true}, nil},
+			wantPrecond:        []preconditionCheck{preconditionHolds, preconditionHolds},
+			wantResults:        []changeResult{completed, completed},
+			wantDelays:         []time.Duration{time.Second},
+			wantRequestsAtWait: []int{3},
+		},
+		{
+			// 観測し直しで待っても、経過時間を測らずに間隔の1秒を待つ
+			name:    "first change read again after the update still waits the interval before the second",
+			changes: generalChanges,
+			responses: []response{
+				okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, false), okRepository(1, false, true),
+				okRepository(1, false, true), okRepository(1, true, true), okRepository(1, true, true),
+			},
+			wantMethods:        []string{"GET", "PATCH", "GET", "GET", "GET", "PATCH", "GET"},
+			wantBodies:         []map[string]any{nil, {"delete_branch_on_merge": true}, nil, nil, nil, {"allow_auto_merge": true}, nil},
+			wantPrecond:        []preconditionCheck{preconditionHolds, preconditionHolds},
+			wantResults:        []changeResult{completed, completed},
+			wantDelays:         []time.Duration{time.Second, time.Second},
+			wantRequestsAtWait: []int{3, 4},
 		},
 		{
 			name:    "second current value changed after the first completes is not attempted",
@@ -1569,10 +1693,12 @@ func TestExecuteChanges(t *testing.T) {
 				okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true),
 				okRepository(1, true, true),
 			},
-			wantMethods: []string{"GET", "PATCH", "GET", "GET"},
-			wantBodies:  []map[string]any{nil, {"delete_branch_on_merge": true}, nil, nil},
-			wantPrecond: []preconditionCheck{preconditionHolds, preconditionCurrentValueChanged},
-			wantResults: []changeResult{completed, notAttempted},
+			wantMethods:        []string{"GET", "PATCH", "GET", "GET"},
+			wantBodies:         []map[string]any{nil, {"delete_branch_on_merge": true}, nil, nil},
+			wantPrecond:        []preconditionCheck{preconditionHolds, preconditionCurrentValueChanged},
+			wantResults:        []changeResult{completed, notAttempted},
+			wantDelays:         []time.Duration{time.Second},
+			wantRequestsAtWait: []int{3},
 		},
 		{
 			name:        "first precondition failure stops the second without a request",
@@ -1615,8 +1741,10 @@ func TestExecuteChanges(t *testing.T) {
 				nil, nil, {"default_workflow_permissions": "read"}, nil, nil,
 				nil, nil, {"can_approve_pull_request_reviews": false}, nil, nil,
 			},
-			wantPrecond: []preconditionCheck{preconditionHolds, preconditionHolds, preconditionHolds, preconditionHolds},
-			wantResults: []changeResult{completed, completed, completed, completed},
+			wantPrecond:        []preconditionCheck{preconditionHolds, preconditionHolds, preconditionHolds, preconditionHolds},
+			wantResults:        []changeResult{completed, completed, completed, completed},
+			wantDelays:         []time.Duration{time.Second, time.Second, time.Second},
+			wantRequestsAtWait: []int{3, 6, 11},
 		},
 		{
 			name: "unconfirmed general change stops the workflow permissions change without a read or an update",
@@ -1627,10 +1755,12 @@ func TestExecuteChanges(t *testing.T) {
 				okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true),
 				okRepository(1, false, true), okRepository(1, false, true), {status: http.StatusInternalServerError},
 			},
-			wantMethods: []string{"GET", "PATCH", "GET", "GET", "PATCH", "GET"},
-			wantBodies:  []map[string]any{nil, {"delete_branch_on_merge": true}, nil, nil, {"allow_auto_merge": true}, nil},
-			wantPrecond: []preconditionCheck{preconditionHolds, preconditionHolds, preconditionNotChecked},
-			wantResults: []changeResult{completed, failed, notAttempted},
+			wantMethods:        []string{"GET", "PATCH", "GET", "GET", "PATCH", "GET"},
+			wantBodies:         []map[string]any{nil, {"delete_branch_on_merge": true}, nil, nil, {"allow_auto_merge": true}, nil},
+			wantPrecond:        []preconditionCheck{preconditionHolds, preconditionHolds, preconditionNotChecked},
+			wantResults:        []changeResult{completed, failed, notAttempted},
+			wantDelays:         []time.Duration{time.Second},
+			wantRequestsAtWait: []int{3},
 		},
 		{
 			name:    "failed change of two updates stops the workflow permissions change without a read or an update",
@@ -1644,15 +1774,31 @@ func TestExecuteChanges(t *testing.T) {
 			wantBodies:  []map[string]any{nil, nil, {"enabled": true, "allowed_actions": "selected"}, nil, nil, nil, nil},
 			wantPrecond: []preconditionCheck{preconditionHolds, preconditionNotChecked},
 			wantResults: []changeResult{failed, notAttempted},
+			// 2つ目の更新操作の直前の間隔だけで、完了しなかった変更のあとには入らない
+			wantDelays:         []time.Duration{time.Second},
+			wantRequestsAtWait: []int{3},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			baseURL, rec := newSequenceServer(t, tc.responses...)
 			changes := tc.changes
+			var delays []time.Duration
+			var requestsAtWait []int
+			after := func(d time.Duration) <-chan time.Time {
+				delays = append(delays, d)
+				requestsAtWait = append(requestsAtWait, len(rec.Requests()))
+				return elapsedAtOnce(d)
+			}
 
-			got := executeChanges(context.Background(), newClient(baseURL), newRepositoryPlan(t), changes, elapsedAtOnce)
+			got := executeChanges(context.Background(), newClient(baseURL), newRepositoryPlan(t), changes, after, &updateInterval{})
 
+			if !slices.Equal(delays, tc.wantDelays) {
+				t.Errorf("delays = %v, want %v", delays, tc.wantDelays)
+			}
+			if !slices.Equal(requestsAtWait, tc.wantRequestsAtWait) {
+				t.Errorf("requests received at each wait = %v, want %v", requestsAtWait, tc.wantRequestsAtWait)
+			}
 			if !slices.Equal(rec.Methods(), tc.wantMethods) {
 				t.Errorf("requests = %v, want %v", rec.Methods(), tc.wantMethods)
 			}
@@ -1675,4 +1821,30 @@ func TestExecuteChanges(t *testing.T) {
 			}
 		})
 	}
+
+	// 先行する変更は完了しているため、先行する異常による停止ではなく、次の変更の変更前提の確認不能になる
+	t.Run("interruption while waiting for the interval between changes leaves the second not attempted without a request", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t, okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true))
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		interrupted := func(time.Duration) <-chan time.Time {
+			cancel()
+			return make(chan time.Time)
+		}
+
+		got := executeChanges(ctx, newClient(baseURL), newRepositoryPlan(t), generalChanges, interrupted, &updateInterval{})
+
+		if want := []string{"GET", "PATCH", "GET"}; !slices.Equal(rec.Methods(), want) {
+			t.Errorf("requests = %v, want %v", rec.Methods(), want)
+		}
+		if got[0].result() != completed || got[1].result() != notAttempted {
+			t.Errorf("results = %v, %v, want %v, %v", got[0].result(), got[1].result(), completed, notAttempted)
+		}
+		if got[1].operation(0).precondition != preconditionUnconfirmed {
+			t.Errorf("records[1].precondition = %v, want %v", got[1].operation(0).precondition, preconditionUnconfirmed)
+		}
+		if !errors.Is(got[1].cause, context.Canceled) {
+			t.Errorf("records[1].cause = %v, want it to wrap %v", got[1].cause, context.Canceled)
+		}
+	})
 }

@@ -5,15 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/tmknom/reco/internal/apply"
-	"github.com/tmknom/reco/internal/github"
 )
 
-func newApplyCmd(env Environment, opts ...github.Option) *cobra.Command {
+func newApplyCmd(env Environment, deps dependencies) *cobra.Command {
 	var repo repoFlag
 	config := newConfigFlag()
 	c := &cobra.Command{
@@ -36,8 +34,8 @@ func newApplyCmd(env Environment, opts ...github.Option) *cobra.Command {
 				Approve: func(ctx context.Context) error {
 					return requestApproval(ctx, env.Stdin, env.StdinIsTerminal, c.ErrOrStderr())
 				},
-				After:         time.After,
-				GitHubOptions: opts,
+				After:         deps.after,
+				GitHubOptions: deps.githubOptions,
 			})
 			if errors.Is(err, apply.ErrMultipleRepositories) {
 				return fmt.Errorf("%w; select one with --repo", err)

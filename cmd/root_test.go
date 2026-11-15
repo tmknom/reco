@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tmknom/reco/internal/github"
 )
@@ -17,8 +18,15 @@ func runExecute(t *testing.T, env Environment, opts []github.Option, args ...str
 	var out, errOut bytes.Buffer
 	env.Stdout = &out
 	env.Stderr = &errOut
-	code = execute(context.Background(), args, env, opts...)
+	code = execute(context.Background(), args, env, dependencies{after: elapsedAtOnce, githubOptions: opts})
 	return code, out.String(), errOut.String()
+}
+
+// elapsedAtOnce は、待つ時間を確かめないテストで、実時間を待たずに経過を知らせる。
+func elapsedAtOnce(time.Duration) <-chan time.Time {
+	elapsed := make(chan time.Time, 1)
+	elapsed <- time.Time{}
+	return elapsed
 }
 
 // fakeGetenv は、vars にない環境変数を空として返す、os.Getenv の代わりの関数を返す。
@@ -104,7 +112,7 @@ func TestExecute_Version(t *testing.T) {
 	}
 }
 
-// 他のテストは接続先を差し替えるため execute を呼ぶ。
+// 他のテストは接続先と待機を差し替えるため execute を呼ぶ。
 func TestExecute_PassesArgsAndEnvironment(t *testing.T) {
 	var out, errOut bytes.Buffer
 	code := Execute(context.Background(), []string{"--version"}, Environment{Stdout: &out, Stderr: &errOut, Version: "v1.2.3"})
@@ -156,7 +164,7 @@ func TestExecute_InvalidInput(t *testing.T) {
 
 func TestNewRootCmd_LogLevel(t *testing.T) {
 	level := new(slog.LevelVar)
-	root := newRootCmd(Environment{Getenv: fakeGetenv(nil)}, level)
+	root := newRootCmd(Environment{Getenv: fakeGetenv(nil)}, level, dependencies{})
 	root.SetArgs([]string{"--log-level", "debug"})
 	root.SetOut(io.Discard)
 	if err := root.Execute(); err != nil {
