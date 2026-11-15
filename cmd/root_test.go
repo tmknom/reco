@@ -49,20 +49,44 @@ func errorRecords(t *testing.T, stderr string) []map[string]any {
 
 func TestExecute_Success(t *testing.T) {
 	cases := []struct {
+		name   string
+		args   []string
+		stdout string
+	}{
+		{name: "no arguments shows help on stdout", args: nil, stdout: "Usage:"},
+		{name: "--help shows help on stdout", args: []string{"--help"}, stdout: "Usage:"},
+		{name: "-h shows help on stdout", args: []string{"-h"}, stdout: "Usage:"},
+		{name: "show --help shows show usage without --repo", args: []string{"show", "--help"}, stdout: "reco show"},
+		{name: "plan --help shows plan usage with the default --config", args: []string{"plan", "--help"}, stdout: "(default ./reco.yaml)"},
+		{name: "apply --help shows apply usage", args: []string{"apply", "--help"}, stdout: "reco apply"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, stdout, stderr := runExecute(t, Environment{}, nil, tc.args...)
+			if code != 0 {
+				t.Errorf("got exit code %d, want 0 (stderr %q)", code, stderr)
+			}
+			if !strings.Contains(stdout, tc.stdout) {
+				t.Errorf("got stdout %q, want it to contain %q", stdout, tc.stdout)
+			}
+			if stderr != "" {
+				t.Errorf("got stderr %q, want empty", stderr)
+			}
+		})
+	}
+}
+
+// CLI 仕様が --version の出力全体を定めるため、部分一致ではなく出力全体を比べる。
+func TestExecute_Version(t *testing.T) {
+	cases := []struct {
 		name    string
 		version string
 		args    []string
 		stdout  string
 	}{
-		{name: "no arguments shows help on stdout", args: nil, stdout: "Usage:"},
-		{name: "--help shows help on stdout", args: []string{"--help"}, stdout: "Usage:"},
-		{name: "-h shows help on stdout", args: []string{"-h"}, stdout: "Usage:"},
-		{name: "--version prints the embedded version", version: "v1.2.3", args: []string{"--version"}, stdout: "v1.2.3"},
-		{name: "-v prints the embedded version", version: "v1.2.3", args: []string{"-v"}, stdout: "v1.2.3"},
-		{name: "--version without embedded version prints dev", version: "", args: []string{"--version"}, stdout: "dev"},
-		{name: "show --help shows show usage without --repo", args: []string{"show", "--help"}, stdout: "reco show"},
-		{name: "plan --help shows plan usage with the default --config", args: []string{"plan", "--help"}, stdout: "(default ./reco.yaml)"},
-		{name: "apply --help shows apply usage", args: []string{"apply", "--help"}, stdout: "reco apply"},
+		{name: "--version prints only the embedded version", version: "1.2.3", args: []string{"--version"}, stdout: "1.2.3\n"},
+		{name: "-v prints only the embedded version", version: "1.2.3", args: []string{"-v"}, stdout: "1.2.3\n"},
+		{name: "--version without embedded version prints only dev", version: "", args: []string{"--version"}, stdout: "dev\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -70,8 +94,8 @@ func TestExecute_Success(t *testing.T) {
 			if code != 0 {
 				t.Errorf("got exit code %d, want 0 (stderr %q)", code, stderr)
 			}
-			if !strings.Contains(stdout, tc.stdout) {
-				t.Errorf("got stdout %q, want it to contain %q", stdout, tc.stdout)
+			if stdout != tc.stdout {
+				t.Errorf("got stdout %q, want %q", stdout, tc.stdout)
 			}
 			if stderr != "" {
 				t.Errorf("got stderr %q, want empty", stderr)

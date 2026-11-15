@@ -10,3 +10,9 @@ updates:
     directory: /
     schedule:
       interval: daily
+
+  # ビルドに使わない Dockerfile の FROM で固定した、コンテナイメージのベースイメージの digest を更新する
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: daily

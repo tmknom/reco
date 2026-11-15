@@ -7,7 +7,8 @@
 REPO_NAME := reco
 MODULE := $(shell go list -m)
 DIST_DIR := dist
-VERSION = $(shell \git describe --tags --always --dirty)
+# --version は、リリースで GoReleaser が埋め込む値と同じく、タグの先頭の v を除いた形で表示する
+VERSION = $(patsubst v%,%,$(shell \git describe --tags --always --dirty))
 LDFLAGS ?= "-X main.version=$(VERSION)"
 
 # Targets: Go
