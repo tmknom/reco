@@ -49,11 +49,12 @@ func TestPlan_Success(t *testing.T) {
 		configName string
 		src        string
 		args       []string
-		wantPath   string
+		wantPaths  []string
 	}{
-		{name: "omitted --config reads reco.yaml in the working directory", configName: "reco.yaml", src: declaredRepository, args: []string{"plan"}, wantPath: "/repos/owner/repo"},
-		{name: "relative --config is resolved against the working directory", configName: "sub/custom.yaml", src: declaredRepository, args: []string{"plan", "--config", "sub/custom.yaml"}, wantPath: "/repos/owner/repo"},
-		{name: "--repo selects one of the declared repositories", configName: "reco.yaml", src: declaredTwoRepositories, args: []string{"plan", "--repo", "owner/second"}, wantPath: "/repos/owner/second"},
+		{name: "omitted --config reads reco.yaml in the working directory", configName: "reco.yaml", src: declaredRepository, args: []string{"plan"}, wantPaths: []string{"/repos/owner/repo"}},
+		{name: "relative --config is resolved against the working directory", configName: "sub/custom.yaml", src: declaredRepository, args: []string{"plan", "--config", "sub/custom.yaml"}, wantPaths: []string{"/repos/owner/repo"}},
+		{name: "--repo selects one of the declared repositories", configName: "reco.yaml", src: declaredTwoRepositories, args: []string{"plan", "--repo", "owner/second"}, wantPaths: []string{"/repos/owner/second"}},
+		{name: "omitted --repo observes all declared repositories in the declared order", configName: "reco.yaml", src: declaredTwoRepositories, args: []string{"plan"}, wantPaths: []string{"/repos/owner/repo", "/repos/owner/second"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -73,8 +74,13 @@ func TestPlan_Success(t *testing.T) {
 			}
 			// plan は GitHub の設定を更新しないため、受け取る要求は観測の GET だけになる
 			got := server.receivedRequests()
-			if len(got) != 1 || got[0].method != http.MethodGet || got[0].path != tc.wantPath || !strings.Contains(got[0].authorization, ghEnvValue) {
-				t.Errorf("got requests %+v, want one GET %s with GH_TOKEN", got, tc.wantPath)
+			if len(got) != len(tc.wantPaths) {
+				t.Fatalf("got requests %+v, want GET %v", got, tc.wantPaths)
+			}
+			for i, r := range got {
+				if r.method != http.MethodGet || r.path != tc.wantPaths[i] || !strings.Contains(r.authorization, ghEnvValue) {
+					t.Errorf("got request %d %+v, want GET %s with GH_TOKEN", i, r, tc.wantPaths[i])
+				}
 			}
 			for _, token := range []string{ghEnvValue, githubEnvValue} {
 				if strings.Contains(stdout+stderr, token) {
@@ -233,5 +239,35 @@ func TestPlan_ObservationFailure(t *testing.T) {
 		if strings.Contains(stdout+stderr, token) {
 			t.Errorf("got output containing token %q", token)
 		}
+	}
+}
+
+// 3件目は stub に登録せず、要求が届けば stub がテストを失敗させる。
+//
+//trace:checks FR-008
+func TestPlan_SecondObservationFailure(t *testing.T) {
+	workDir := t.TempDir()
+	writeConfig(t, workDir, "reco.yaml", declaredTwoRepositories+"  - name: owner/third\n    general:\n      allow_auto_merge: true\n")
+	server, opts := newGitHubServerByPath(t, map[string]stubResponse{
+		"/repos/owner/repo":   {status: http.StatusOK, body: mismatchedRepositoryBody},
+		"/repos/owner/second": {status: http.StatusUnauthorized, body: `{"message": "Bad credentials"}`},
+	})
+
+	code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue})}, opts, "plan")
+	if code != 1 {
+		t.Errorf("got exit code %d, want 1", code)
+	}
+	if stdout != "" {
+		t.Errorf("got stdout %q, want empty", stdout)
+	}
+	records := errorRecords(t, stderr)
+	if len(records) != 1 || records[0]["msg"] != "command failed" {
+		t.Fatalf("got ERROR records %v, want one command failed record", records)
+	}
+	if msg, _ := records[0]["error"].(string); !strings.Contains(msg, "owner/second") {
+		t.Errorf("got error %q, want it to contain the failed repository", msg)
+	}
+	if got := server.receivedRequests(); len(got) != 2 {
+		t.Errorf("got requests %+v, want the first two GETs only", got)
 	}
 }

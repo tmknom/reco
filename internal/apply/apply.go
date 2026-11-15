@@ -72,6 +72,9 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 	return errors.Join(changesError(records, r.Target), writeErr)
 }
 
+// ErrMultipleRepositories は、対象リポジトリが2件以上の変更計画を apply が実行できないことを表す。
+var ErrMultipleRepositories = errors.New("apply can update only one repository at a time")
+
 // soleRepositoryPlan は、変更計画のただ一つのリポジトリの計画を返す。
 // 複数の対象リポジトリの実行と結果の表示を持たないため、2件以上は先頭だけを黙って実行せず error にする。
 // リポジトリの計画を持たない変更計画は changeplan が生成しないため、不変条件の破れとして panic する。
@@ -80,7 +83,7 @@ func soleRepositoryPlan(p changeplan.Plan) (changeplan.RepositoryPlan, error) {
 	case n == 0:
 		panic("apply: change plan has no repository plan")
 	case n > 1:
-		return changeplan.RepositoryPlan{}, fmt.Errorf("%d repositories are selected; select one repository (apply can update only one at a time); no changes made", n)
+		return changeplan.RepositoryPlan{}, fmt.Errorf("%d repositories are selected: %w; no changes made", n, ErrMultipleRepositories)
 	}
 	return p.Repositories[0], nil
 }
