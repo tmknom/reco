@@ -290,14 +290,6 @@ func selectedActionsChange() changeplan.LogicalChange {
 	)
 }
 
-// selectedActionsMismatch は、selectedActionsChange を導く適用可能な変更予定。
-func selectedActionsMismatch() changeplan.SettingPlan {
-	operation := selectedActionsChange().Operations[0]
-	return changeplan.SettingPlan{
-		Key: operation.Key, Observed: operation.RelevantSettings[0].AtApproval, Desired: operation.Desired, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
-	}
-}
-
 // lostCriteria は、selectedToAllChange が失わせる選択方式の Actions 許可条件。
 var lostCriteria = setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{"a/*", "b/*"}}
 
@@ -360,7 +352,13 @@ func enableSelectedChange() changeplan.LogicalChange {
 
 func newRepositoryPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.RepositoryPlan {
 	t.Helper()
-	return changeplan.RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
+	return newRepositoryPlanOf(t, "owner/repo", 1, settings...)
+}
+
+// newRepositoryPlanOf は、name の対象リポジトリを ID id と観測した、リポジトリの計画。
+func newRepositoryPlanOf(t *testing.T, name string, id repository.ID, settings ...changeplan.SettingPlan) changeplan.RepositoryPlan {
+	t.Helper()
+	return changeplan.RepositoryPlan{Target: mustReference(t, name), RepositoryID: id, Settings: settings}
 }
 
 func newPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.Plan {
@@ -382,11 +380,53 @@ func unknownMismatch() changeplan.SettingPlan {
 //trace:checks FR-009
 func TestExecutableChanges(t *testing.T) {
 	match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match}
+	notApplicable := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable}
+	// 宣言の並びを名前順と逆にし、名前順に並べ替える実装を失敗させる
+	plans := func(t *testing.T, settings ...[]changeplan.SettingPlan) changeplan.Plan {
+		t.Helper()
+		names := []string{"owner/zeta", "owner/beta", "owner/alpha"}
+		var p changeplan.Plan
+		for i, s := range settings {
+			p.Repositories = append(p.Repositories, newRepositoryPlanOf(t, names[i], repository.ID(i+1), s...))
+		}
+		return p
+	}
 
-	t.Run("all matches have no change", func(t *testing.T) {
-		got, err := executableChanges(newRepositoryPlan(t, match))
-		if err != nil || len(got) != 0 {
-			t.Errorf("executableChanges() = %v, %v, want no change without error", got, err)
+	t.Run("repositories are returned in the declared order with their own plans and logical changes", func(t *testing.T) {
+		p := plans(t, []changeplan.SettingPlan{allowedActionsMismatch()}, []changeplan.SettingPlan{allowAutoMergeMismatch()})
+		got, err := executableChanges(p)
+		if err != nil {
+			t.Fatalf("executableChanges() error = %v", err)
+		}
+		want := []repositoryChanges{
+			{plan: p.Repositories[0], changes: []changeplan.LogicalChange{allowedActionsChange()}},
+			{plan: p.Repositories[1], changes: []changeplan.LogicalChange{allowAutoMergeChange()}},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("executableChanges() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("repository without changes between two keeps its position", func(t *testing.T) {
+		p := plans(t, []changeplan.SettingPlan{allowAutoMergeMismatch()}, []changeplan.SettingPlan{match}, []changeplan.SettingPlan{allowAutoMergeMismatch()})
+		got, err := executableChanges(p)
+		if err != nil {
+			t.Fatalf("executableChanges() error = %v", err)
+		}
+		want := []repositoryChanges{
+			{plan: p.Repositories[0], changes: []changeplan.LogicalChange{allowAutoMergeChange()}},
+			{plan: p.Repositories[1]},
+			{plan: p.Repositories[2], changes: []changeplan.LogicalChange{allowAutoMergeChange()}},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("executableChanges() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("not applicable planned change in the second repository returns an error", func(t *testing.T) {
+		got, err := executableChanges(plans(t, []changeplan.SettingPlan{allowAutoMergeMismatch()}, []changeplan.SettingPlan{notApplicable}))
+		if err == nil {
+			t.Errorf("executableChanges() = %+v, want an error", got)
 		}
 	})
 
@@ -396,73 +436,16 @@ func TestExecutableChanges(t *testing.T) {
 				t.Error("executableChanges() did not panic")
 			}
 		}()
-		_, _ = executableChanges(newRepositoryPlan(t, allowAutoMergeMismatch(), unknownMismatch()))
+		_, _ = executableChanges(plans(t, []changeplan.SettingPlan{allowAutoMergeMismatch(), unknownMismatch()}))
 	})
 
-	t.Run("mismatch with an update operation is returned as a logical change", func(t *testing.T) {
-		got, err := executableChanges(newRepositoryPlan(t, allowedActionsMismatch()))
-		if err != nil {
-			t.Fatalf("executableChanges() error = %v", err)
-		}
-		if want := []changeplan.LogicalChange{allowedActionsChange()}; !reflect.DeepEqual(got, want) {
-			t.Errorf("executableChanges() = %+v, want %+v", got, want)
-		}
-	})
-}
-
-// TestSoleRepositoryPlan は、複数の対象リポジトリの実行を持たない apply が、変更計画のリポジトリの計画を一つに限る規則を確かめる。
-func TestSoleRepositoryPlan(t *testing.T) {
-	t.Run("two repository plans return ErrMultipleRepositories naming the count", func(t *testing.T) {
-		p := newPlan(t, allowAutoMergeMismatch())
-		p.Repositories = append(p.Repositories, changeplan.RepositoryPlan{Target: mustReference(t, "owner/other"), RepositoryID: 2})
-
-		_, err := soleRepositoryPlan(p)
-
-		if !errors.Is(err, ErrMultipleRepositories) {
-			t.Errorf("soleRepositoryPlan() error = %v, want %v", err, ErrMultipleRepositories)
-		}
-		for _, want := range []string{"2 repositories", "no changes made"} {
-			if err == nil || !strings.Contains(err.Error(), want) {
-				t.Errorf("soleRepositoryPlan() error = %v, want it to contain %q", err, want)
-			}
-		}
-	})
-
-	t.Run("no repository plan panics as a broken invariant", func(t *testing.T) {
+	t.Run("logical change without an update operation in the second repository panics before approval", func(t *testing.T) {
 		defer func() {
-			got, ok := recover().(string)
-			if !ok || !strings.Contains(got, "no repository plan") {
-				t.Errorf("soleRepositoryPlan() panicked with %q, want a message naming no repository plan", got)
+			if recover() == nil {
+				t.Error("executableChanges() did not panic")
 			}
 		}()
-		_, _ = soleRepositoryPlan(changeplan.Plan{})
-	})
-}
-
-//trace:checks FR-009
-func TestWriteChangePlan(t *testing.T) {
-	t.Run("planned changes are written in the plan order in the plan form without matches", func(t *testing.T) {
-		var out bytes.Buffer
-		match := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match}
-		p := newRepositoryPlan(t, deleteBranchOnMergeMismatch(), match, selectedActionsMismatch())
-		if err := writeChangePlan(&out, "./reco.yaml", p); err != nil {
-			t.Fatalf("writeChangePlan() error = %v", err)
-		}
-		want := "Configuration: ./reco.yaml\nRepository: owner/repo\n" +
-			"  general.delete_branch_on_merge: false -> true\n" +
-			"  actions.permissions.selected_actions:\n" +
-			"    github_owned_allowed: false, verified_allowed: false, patterns_allowed: [\"a/*\", \"b/*\"]\n" +
-			"    -> github_owned_allowed: false, verified_allowed: true, patterns_allowed: [\"a/*\", \"b/*\"]\n\n"
-		if out.String() != want {
-			t.Errorf("writeChangePlan() wrote %q, want %q", out.String(), want)
-		}
-	})
-
-	t.Run("write failure is returned", func(t *testing.T) {
-		err := writeChangePlan(failingWriter{}, "./reco.yaml", newRepositoryPlan(t, allowAutoMergeMismatch()))
-		if !errors.Is(err, errWrite) {
-			t.Errorf("writeChangePlan() error = %v, want %v", err, errWrite)
-		}
+		_, _ = executableChanges(plans(t, []changeplan.SettingPlan{allowAutoMergeMismatch()}, []changeplan.SettingPlan{unknownMismatch()}))
 	})
 }
 
@@ -480,23 +463,109 @@ func TestApplyPlan(t *testing.T) {
 		}
 	}
 
-	t.Run("no change does not ask for approval or send a request", func(t *testing.T) {
+	match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match}
+
+	t.Run("no change in any repository does not ask for approval or send a request", func(t *testing.T) {
 		baseURL, rec := newSequenceServer(t)
 		var out bytes.Buffer
 		calls := 0
-		match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match}
+		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{
+			newRepositoryPlanOf(t, "owner/first", 1, match), newRepositoryPlanOf(t, "owner/second", 2, match),
+		}}
 
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, match))
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), p)
 
 		if err != nil {
 			t.Fatalf("applyPlan() error = %v", err)
 		}
-		if want := "No changes.\nRepositories checked: 1\n"; out.String() != want {
+		if want := "No changes.\nRepositories checked: 2\n"; out.String() != want {
 			t.Errorf("got Out %q, want %q", out.String(), want)
 		}
 		if calls != 0 || len(rec.Methods()) != 0 {
 			t.Errorf("approve calls = %d, requests = %v, want none", calls, rec.Methods())
 		}
+	})
+
+	// 先頭を変更不要にし、先頭の対象リポジトリだけで変更の有無を判定する実装を失敗させる
+	t.Run("change plan of three repositories is approved once and applied in the declared order", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t,
+			okRepository(2, false, false), okRepository(2, true, false), okRepository(2, true, false),
+			okRepository(3, false, false), okRepository(3, true, false), okRepository(3, true, false))
+		var out bytes.Buffer
+		var shown string
+		calls := 0
+		cfg := Config{ConfigPath: "./reco.yaml", Out: &out, Approve: func(context.Context) error {
+			calls++
+			shown = out.String()
+			return nil
+		}, After: elapsedAtOnce}
+		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{
+			newRepositoryPlanOf(t, "owner/first", 1, match),
+			newRepositoryPlanOf(t, "owner/second", 2, allowAutoMergeMismatch()),
+			newRepositoryPlanOf(t, "owner/third", 3, allowAutoMergeMismatch()),
+		}}
+
+		err := applyPlan(context.Background(), cfg, newClient(baseURL), p)
+
+		if err != nil {
+			t.Fatalf("applyPlan() error = %v", err)
+		}
+		if calls != 1 {
+			t.Errorf("approve calls = %d, want 1", calls)
+		}
+		wantShown := "Configuration: ./reco.yaml\n\n" +
+			"Repository: owner/second\n  general.allow_auto_merge: false -> true\n\n" +
+			"Repository: owner/third\n  general.allow_auto_merge: false -> true\n\n" +
+			"Plan: 2 repositories to update, 2 known changes, 0 not-comparable settings\nRepositories checked: 3\n\n"
+		if shown != wantShown {
+			t.Errorf("Out at approval = %q, want %q", shown, wantShown)
+		}
+		wantRequests := []string{
+			"GET /repos/owner/second", "PATCH /repos/owner/second", "GET /repos/owner/second",
+			"GET /repos/owner/third", "PATCH /repos/owner/third", "GET /repos/owner/third",
+		}
+		if !slices.Equal(rec.Requests(), wantRequests) {
+			t.Errorf("requests = %v, want %v", rec.Requests(), wantRequests)
+		}
+		wantReport := "Applying changes...\n  owner/first: no change\n  owner/second: updated\n  owner/third: updated\n\nApply complete.\nRepositories updated: 2\n"
+		if got := strings.TrimPrefix(out.String(), shown); got != wantReport {
+			t.Errorf("Out after approval = %q, want %q", got, wantReport)
+		}
+	})
+
+	t.Run("failure in the first repository returns its cause and reports the second not attempted", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t, okRepository(1, false, false), response{status: http.StatusForbidden, body: `{"message": "Forbidden"}`})
+		var out bytes.Buffer
+		calls := 0
+		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{
+			newRepositoryPlanOf(t, "owner/first", 1, allowAutoMergeMismatch()),
+			newRepositoryPlanOf(t, "owner/second", 2, allowAutoMergeMismatch()),
+		}}
+
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), p)
+
+		if !errors.Is(err, github.ErrForbidden) {
+			t.Errorf("applyPlan() error = %v, want %v", err, github.ErrForbidden)
+		}
+		if want := []string{"GET /repos/owner/first", "PATCH /repos/owner/first"}; !slices.Equal(rec.Requests(), want) {
+			t.Errorf("requests = %v, want %v", rec.Requests(), want)
+		}
+		if !strings.Contains(out.String(), "owner/second: not attempted") || strings.Contains(out.String(), "Apply complete.") {
+			t.Errorf("got Out %q, want the second not attempted without Apply complete.", out.String())
+		}
+	})
+
+	t.Run("change plan without a repository plan panics before asking for approval", func(t *testing.T) {
+		calls := 0
+		defer func() {
+			if recover() == nil {
+				t.Error("applyPlan() did not panic")
+			}
+			if calls != 0 {
+				t.Errorf("approve calls = %d, want none", calls)
+			}
+		}()
+		_ = applyPlan(context.Background(), Config{Out: &bytes.Buffer{}, Approve: approve(&calls)}, nil, changeplan.Plan{})
 	})
 
 	t.Run("unappliable plan returns an error without approval or output", func(t *testing.T) {
@@ -506,25 +575,6 @@ func TestApplyPlan(t *testing.T) {
 		notApplicable := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable}
 
 		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, notApplicable))
-
-		if err == nil {
-			t.Error("applyPlan() error = nil, want an error")
-		}
-		if calls != 0 || out.Len() != 0 || len(rec.Methods()) != 0 {
-			t.Errorf("approve calls = %d, Out = %q, requests = %v, want none", calls, out.String(), rec.Methods())
-		}
-	})
-
-	t.Run("two repository plans stop before the change plan is shown", func(t *testing.T) {
-		baseURL, rec := newSequenceServer(t)
-		var out bytes.Buffer
-		calls := 0
-		p := newPlan(t, allowAutoMergeMismatch())
-		p.Repositories = append(p.Repositories, changeplan.RepositoryPlan{
-			Target: mustReference(t, "owner/other"), RepositoryID: 2, Settings: []changeplan.SettingPlan{allowAutoMergeMismatch()},
-		})
-
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), p)
 
 		if err == nil {
 			t.Error("applyPlan() error = nil, want an error")

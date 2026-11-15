@@ -59,6 +59,12 @@ func (r RepositoryPlan) Count(result ReconciliationResult) int {
 	return n
 }
 
+// HasPlannedChanges は、変更予定 (不一致か比較不能の管理設定) があるかを返す。
+// 変更不要かどうかを読む処理ごとに条件を組み立てると定義が食い違うため、変更予定の有無はここだけで判定する。
+func (r RepositoryPlan) HasPlannedChanges() bool {
+	return r.Count(Mismatch)+r.Count(NotComparable) > 0
+}
+
 // ConfigurationFile は、設定宣言を読み込む設定ファイル。
 type ConfigurationFile struct {
 	// Dir は設定ファイルのあるディレクトリ、Name はその中のファイル名。

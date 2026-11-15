@@ -7,63 +7,73 @@ import (
 	"strings"
 
 	"github.com/tmknom/reco/internal/changeplan"
-	"github.com/tmknom/reco/internal/changeplandisplay"
 	"github.com/tmknom/reco/internal/display"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// writeChangePlan は、承認を求める変更計画のただ一つのリポジトリの計画を、CLI 仕様の apply の形式で書く。変更予定の行は plan と同じ形で、計画の並びのまま書く。
-// 対象リポジトリが一つの変更計画しか承認に進まないため、リポジトリの計画を受ける。
-func writeChangePlan(w io.Writer, configPath string, r changeplan.RepositoryPlan) error {
+// writeChangeReport は、選択したすべての対象リポジトリの変更結果を、宣言順に CLI 仕様の apply の形式で書く。
+// 注記は、先に完了した対象リポジトリの変更も GitHub に残るため、すべての対象リポジトリの記録から判定する。
+func writeChangeReport(w io.Writer, records []repositoryRecord) error {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Configuration: %s\nRepository: %s\n", configPath, r.Target)
-	for _, s := range r.Settings {
-		b.WriteString(changeplandisplay.PlannedChangeText(s))
-	}
-	b.WriteString("\n")
-	_, err := io.WriteString(w, b.String())
-	return err
-}
-
-func writeNoChanges(w io.Writer) error {
-	_, err := io.WriteString(w, "No changes.\nRepositories checked: 1\n")
-	return err
-}
-
-// writeChangeReport は、一つの対象リポジトリの変更結果を CLI 仕様の apply の形式で書く。
-func writeChangeReport(w io.Writer, target repository.Reference, records []changeRecord) error {
-	var b strings.Builder
-	switch {
-	case allCompleted(records):
-		fmt.Fprintf(&b, "  %s: %s\n\nApply complete.\nRepositories updated: 1\n", target, resultLabel(completed))
-	case len(records) == 1:
-		fmt.Fprintf(&b, "  %s: %s\n", target, resultLabel(records[0].result()))
-		writeDetails(&b, "    ", details(records[0]))
-	default:
-		fmt.Fprintf(&b, "  %s\n", target)
-		for _, record := range records {
-			fmt.Fprintf(&b, "    %s: %s\n", changeLabel(record.change), resultLabel(record.result()))
-			if record.result() != completed {
-				writeDetails(&b, "      ", details(record))
-			}
+	var all []changeRecord
+	updated := 0
+	for _, r := range records {
+		writeRepositoryReport(&b, r)
+		all = append(all, r.changes...)
+		if r.result() == repositoryCompleted {
+			updated++
 		}
 	}
-	if note := changeNote(records); note != "" {
+	if allCompleted(all) {
+		fmt.Fprintf(&b, "\nApply complete.\nRepositories updated: %d\n", updated)
+	}
+	if note := changeNote(all); note != "" {
 		b.WriteString("\n" + note + "\n")
 	}
 	_, err := io.WriteString(w, b.String())
 	return err
 }
 
-func allCompleted(records []changeRecord) bool {
-	for _, record := range records {
-		if record.result() != completed {
-			return false
+// writeRepositoryReport は、一つの対象リポジトリの変更結果を書く。
+// 先行する対象リポジトリの異常で開始しなかった対象リポジトリは、どの論理的な設定変更も同じ理由の未実行で、
+// 分けて示しても情報が増えないため、論理的な設定変更の数によらずリポジトリの行に一つ示す。
+func writeRepositoryReport(b *strings.Builder, r repositoryRecord) {
+	switch r.result() {
+	case repositoryNoChange:
+		fmt.Fprintf(b, "  %s: no change\n", r.target)
+	case repositoryCompleted:
+		fmt.Fprintf(b, "  %s: %s\n", r.target, resultLabel(completed))
+	case repositoryStopped:
+		fmt.Fprintf(b, "  %s: %s\n", r.target, resultLabel(notAttempted))
+		writeDetails(b, "    ", []string{"Stopped: a preceding repository did not complete"})
+	case repositoryNotCompleted:
+		if len(r.changes) == 1 {
+			fmt.Fprintf(b, "  %s: %s\n", r.target, resultLabel(r.changes[0].result()))
+			writeDetails(b, "    ", details(r.changes[0]))
+			return
+		}
+		fmt.Fprintf(b, "  %s\n", r.target)
+		for _, record := range r.changes {
+			fmt.Fprintf(b, "    %s: %s\n", changeLabel(record.change), resultLabel(record.result()))
+			if record.result() != completed {
+				writeDetails(b, "      ", details(record))
+			}
 		}
 	}
-	return true
+}
+
+// repositoriesError は、宣言順で最初の完了以外の変更結果を error にする。
+// 停止した対象リポジトリは、その原因が先行する対象リポジトリの記録にあるため error を足さない。
+// 停止した対象リポジトリより前には必ず完了以外を含む対象リポジトリがあり、最初の error で返せば停止の記録に届かない。
+func repositoriesError(records []repositoryRecord) error {
+	for _, r := range records {
+		if err := changesError(r.changes, r.target); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // changesError は、最初の完了以外の変更結果を error にする。

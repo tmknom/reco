@@ -11,6 +11,7 @@ import (
 
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
+	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
 )
 
@@ -1845,6 +1846,195 @@ func TestExecuteChanges(t *testing.T) {
 		}
 		if !errors.Is(got[1].cause, context.Canceled) {
 			t.Errorf("records[1].cause = %v, want it to wrap %v", got[1].cause, context.Canceled)
+		}
+	})
+}
+
+// TestExecuteRepositories は、対象リポジトリを宣言順に実行し、完了以外の変更結果のあとは残りの対象リポジトリへ要求を送らない規則と、
+// 更新要求の間隔を対象リポジトリをまたいで保つ規則を確かめる。
+// 完了以外の種類ごとの変更結果は executeChange のテストが確かめているため、停止の分岐を誤らせる代表だけを使う。
+// 対象リポジトリごとに ID を変え、先頭の計画の ID で変更前提を確かめる実装を失敗させる。
+//
+//trace:checks INV-004
+//trace:checks INV-005
+//trace:checks FR-010
+//trace:checks FR-013
+func TestExecuteRepositories(t *testing.T) {
+	forbidden := response{status: http.StatusForbidden, body: `{"message": "Forbidden"}`}
+	redirect := response{status: http.StatusTemporaryRedirect, location: "https://example.com/"}
+	aam := []changeplan.LogicalChange{allowAutoMergeChange()}
+	generalChanges := []changeplan.LogicalChange{deleteBranchOnMergeChange(), allowAutoMergeChange()}
+	// completes は、ID が id の対象リポジトリで allowAutoMergeChange が完了する応答。
+	completes := func(id int64) []response {
+		return []response{okRepository(id, false, false), okRepository(id, true, false), okRepository(id, true, false)}
+	}
+	completesRequests := func(path string) []string {
+		return []string{"GET " + path, "PATCH " + path, "GET " + path}
+	}
+	const first, second, third = "/repos/owner/first", "/repos/owner/second", "/repos/owner/third"
+	type repositoryInput struct {
+		name    string
+		id      repository.ID
+		changes []changeplan.LogicalChange
+	}
+	cases := []struct {
+		name         string
+		repositories []repositoryInput
+		responses    []response
+		wantRequests []string
+		// wantRequestsAtWait は、待機ごとに、それを求めた時点で GitHub が受けていた要求の数。待機の位置を示す。
+		wantRequestsAtWait []int
+		wantResults        []repositoryResult
+	}{
+		{
+			name:               "both repositories complete in the declared order with one interval between them",
+			repositories:       []repositoryInput{{"owner/first", 1, aam}, {"owner/second", 2, aam}},
+			responses:          slices.Concat(completes(1), completes(2)),
+			wantRequests:       slices.Concat(completesRequests(first), completesRequests(second)),
+			wantRequestsAtWait: []int{3},
+			wantResults:        []repositoryResult{repositoryCompleted, repositoryCompleted},
+		},
+		{
+			name:         "rejected update in the first stops the second without a request",
+			repositories: []repositoryInput{{"owner/first", 1, aam}, {"owner/second", 2, aam}},
+			responses:    []response{okRepository(1, false, false), forbidden},
+			wantRequests: []string{"GET " + first, "PATCH " + first},
+			wantResults:  []repositoryResult{repositoryNotCompleted, repositoryStopped},
+		},
+		{
+			name:         "unknown update outcome in the first stops the second without a request",
+			repositories: []repositoryInput{{"owner/first", 1, aam}, {"owner/second", 2, aam}},
+			responses:    []response{okRepository(1, false, false), redirect, okRepository(1, true, false)},
+			wantRequests: []string{"GET " + first, "PATCH " + first, "GET " + first},
+			wantResults:  []repositoryResult{repositoryNotCompleted, repositoryStopped},
+		},
+		{
+			// 原因の error を持たない失敗でも止める
+			name:         "unexpected outside change in the first stops the second without a request",
+			repositories: []repositoryInput{{"owner/first", 1, aam}, {"owner/second", 2, aam}},
+			responses:    []response{okRepository(1, false, false), okRepository(1, true, false), okRepository(1, true, true)},
+			wantRequests: []string{"GET " + first, "PATCH " + first, "GET " + first},
+			wantResults:  []repositoryResult{repositoryNotCompleted, repositoryStopped},
+		},
+		{
+			// 更新を一つも開始していなくても止める
+			name:         "precondition not holding in the first stops the second without a request",
+			repositories: []repositoryInput{{"owner/first", 1, aam}, {"owner/second", 2, aam}},
+			responses:    []response{okRepository(2, false, false)},
+			wantRequests: []string{"GET " + first},
+			wantResults:  []repositoryResult{repositoryNotCompleted, repositoryStopped},
+		},
+		{
+			name:         "second change failing after the first completes in the first repository stops the second repository",
+			repositories: []repositoryInput{{"owner/first", 1, generalChanges}, {"owner/second", 2, aam}},
+			responses: []response{
+				okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true),
+				okRepository(1, false, true), forbidden,
+			},
+			wantRequests:       []string{"GET " + first, "PATCH " + first, "GET " + first, "GET " + first, "PATCH " + first},
+			wantRequestsAtWait: []int{3},
+			wantResults:        []repositoryResult{repositoryNotCompleted, repositoryStopped},
+		},
+		{
+			name:         "first change failing in the first repository stops its second change and the second repository",
+			repositories: []repositoryInput{{"owner/first", 1, generalChanges}, {"owner/second", 2, generalChanges}},
+			responses:    []response{okRepository(1, false, false), forbidden},
+			wantRequests: []string{"GET " + first, "PATCH " + first},
+			wantResults:  []repositoryResult{repositoryNotCompleted, repositoryStopped},
+		},
+		{
+			name:               "failure in the second of three repositories stops only the third",
+			repositories:       []repositoryInput{{"owner/first", 1, aam}, {"owner/second", 2, aam}, {"owner/third", 3, aam}},
+			responses:          slices.Concat(completes(1), []response{okRepository(2, false, false), forbidden}),
+			wantRequests:       slices.Concat(completesRequests(first), []string{"GET " + second, "PATCH " + second}),
+			wantRequestsAtWait: []int{3},
+			wantResults:        []repositoryResult{repositoryCompleted, repositoryNotCompleted, repositoryStopped},
+		},
+		{
+			name:               "repository without changes between two is sent no request and the interval is waited once",
+			repositories:       []repositoryInput{{"owner/first", 1, aam}, {"owner/second", 2, nil}, {"owner/third", 3, aam}},
+			responses:          slices.Concat(completes(1), completes(3)),
+			wantRequests:       slices.Concat(completesRequests(first), completesRequests(third)),
+			wantRequestsAtWait: []int{3},
+			wantResults:        []repositoryResult{repositoryCompleted, repositoryNoChange, repositoryCompleted},
+		},
+		{
+			name:         "repository without changes after a failure stays no change and the next one is stopped",
+			repositories: []repositoryInput{{"owner/first", 1, aam}, {"owner/second", 2, nil}, {"owner/third", 3, aam}},
+			responses:    []response{okRepository(1, false, false), forbidden},
+			wantRequests: []string{"GET " + first, "PATCH " + first},
+			wantResults:  []repositoryResult{repositoryNotCompleted, repositoryNoChange, repositoryStopped},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, rec := newSequenceServer(t, tc.responses...)
+			var repositories []repositoryChanges
+			for _, r := range tc.repositories {
+				repositories = append(repositories, repositoryChanges{plan: newRepositoryPlanOf(t, r.name, r.id), changes: r.changes})
+			}
+			var requestsAtWait []int
+			after := func(d time.Duration) <-chan time.Time {
+				requestsAtWait = append(requestsAtWait, len(rec.Requests()))
+				return elapsedAtOnce(d)
+			}
+
+			got := executeRepositories(context.Background(), newClient(baseURL), repositories, after)
+
+			if !slices.Equal(rec.Requests(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", rec.Requests(), tc.wantRequests)
+			}
+			if !slices.Equal(requestsAtWait, tc.wantRequestsAtWait) {
+				t.Errorf("requests received at each wait = %v, want %v", requestsAtWait, tc.wantRequestsAtWait)
+			}
+			if len(got) != len(repositories) {
+				t.Fatalf("executeRepositories() returned %d records, want %d", len(got), len(repositories))
+			}
+			for i, record := range got {
+				if record.target != repositories[i].plan.Target {
+					t.Errorf("records[%d].target = %v, want %v", i, record.target, repositories[i].plan.Target)
+				}
+				if len(record.changes) != len(repositories[i].changes) {
+					t.Errorf("records[%d] has %d change records, want %d", i, len(record.changes), len(repositories[i].changes))
+				}
+				if record.result() != tc.wantResults[i] {
+					t.Errorf("records[%d].result() = %v, want %v", i, record.result(), tc.wantResults[i])
+				}
+			}
+		})
+	}
+
+	// 先行する対象リポジトリは完了しているため、先行する異常による停止ではなく、次の対象リポジトリの変更前提の確認不能になる
+	t.Run("interruption while waiting for the interval between repositories leaves the next not completed and stops the rest", func(t *testing.T) {
+		baseURL, rec := newSequenceServer(t, completes(1)...)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		interrupted := func(time.Duration) <-chan time.Time {
+			cancel()
+			return make(chan time.Time)
+		}
+		repositories := []repositoryChanges{
+			{plan: newRepositoryPlanOf(t, "owner/first", 1), changes: aam},
+			{plan: newRepositoryPlanOf(t, "owner/second", 2), changes: aam},
+			{plan: newRepositoryPlanOf(t, "owner/third", 3), changes: aam},
+		}
+
+		got := executeRepositories(ctx, newClient(baseURL), repositories, interrupted)
+
+		if want := completesRequests(first); !slices.Equal(rec.Requests(), want) {
+			t.Errorf("requests = %v, want %v", rec.Requests(), want)
+		}
+		want := []repositoryResult{repositoryCompleted, repositoryNotCompleted, repositoryStopped}
+		for i, record := range got {
+			if record.result() != want[i] {
+				t.Errorf("records[%d].result() = %v, want %v", i, record.result(), want[i])
+			}
+		}
+		if got[1].changes[0].operation(0).precondition != preconditionUnconfirmed {
+			t.Errorf("records[1] precondition = %v, want %v", got[1].changes[0].operation(0).precondition, preconditionUnconfirmed)
+		}
+		if !errors.Is(got[1].changes[0].cause, context.Canceled) {
+			t.Errorf("records[1] cause = %v, want it to wrap %v", got[1].changes[0].cause, context.Canceled)
 		}
 	})
 }

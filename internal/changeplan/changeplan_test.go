@@ -25,6 +25,29 @@ func TestRepositoryPlan_Count(t *testing.T) {
 	}
 }
 
+// TestRepositoryPlan_HasPlannedChanges は、変更予定を不一致と比較不能の管理設定とする定義を確かめる。
+//
+//trace:checks FR-008
+func TestRepositoryPlan_HasPlannedChanges(t *testing.T) {
+	cases := []struct {
+		name     string
+		settings []SettingPlan
+		want     bool
+	}{
+		{name: "no setting has no planned change", want: false},
+		{name: "only matches have no planned change", settings: []SettingPlan{{Result: Match}, {Result: Match}}, want: false},
+		{name: "mismatch is a planned change", settings: []SettingPlan{{Result: Match}, {Result: Mismatch}}, want: true},
+		{name: "not comparable is a planned change", settings: []SettingPlan{{Result: NotComparable}, {Result: Match}}, want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := (RepositoryPlan{Settings: tc.settings}).HasPlannedChanges(); got != tc.want {
+				t.Errorf("HasPlannedChanges() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-007
 func TestSettingPlan_EnablesActions(t *testing.T) {
 	cases := []struct {

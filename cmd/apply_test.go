@@ -380,15 +380,79 @@ func TestApply_CanceledWhileWaitingForApproval(t *testing.T) {
 	}
 }
 
-// apply は複数の対象リポジトリの実行を持たないため、--repo を省略して2件を選ぶと、
-// 全件を観測したあと、変更計画を示さず承認も求めずに --repo での選び方を示して止まる。
+// TestApply_ApprovedMultipleRepositories は、--repo を省略して2件を選んだ apply が、承認を一度だけ求め、
+// 宣言順に一つずつ更新し、対象リポジトリのあいだで更新要求の間隔を待つ配線を確かめる。
+// 応答の数は観測し直しを求めない数だけ渡すため、待機が一回であることは、間隔が対象リポジトリをまたいで apply に届いていることを示す。
 //
-//trace:checks FR-008
+//trace:checks FR-009
+//trace:checks FR-011
 //trace:checks INV-003
-func TestApply_MultipleRepositoriesFailBeforeApproval(t *testing.T) {
+func TestApply_ApprovedMultipleRepositories(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", declaredTwoRepositories)
-	server, opts := newGitHubServer(t, http.StatusOK, mismatchedRepositoryBody)
+	const mismatchedSecond = `{"id": 2, "allow_auto_merge": false, "delete_branch_on_merge": false}`
+	const appliedSecond = `{"id": 2, "allow_auto_merge": true, "delete_branch_on_merge": false}`
+	server, opts := newGitHubServerSequence(t,
+		stubResponse{http.StatusOK, mismatchedRepositoryBody}, stubResponse{http.StatusOK, mismatchedSecond},
+		stubResponse{http.StatusOK, mismatchedRepositoryBody}, stubResponse{http.StatusOK, appliedRepositoryBody}, stubResponse{http.StatusOK, appliedRepositoryBody},
+		stubResponse{http.StatusOK, mismatchedSecond}, stubResponse{http.StatusOK, appliedSecond}, stubResponse{http.StatusOK, appliedSecond},
+	)
+	var delays []time.Duration
+	after := func(d time.Duration) <-chan time.Time {
+		delays = append(delays, d)
+		return elapsedAtOnce(d)
+	}
+
+	var stdout, stderr bytes.Buffer
+	env := Environment{
+		Stdout: &stdout, Stderr: &stderr, WorkDir: workDir,
+		Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue}), Stdin: strings.NewReader("y\n"), StdinIsTerminal: true,
+	}
+	if code := execute(context.Background(), []string{"apply"}, env, dependencies{after: after, githubOptions: opts}); code != 0 {
+		t.Errorf("got exit code %d, want 0 (stderr %q)", code, stderr.String())
+	}
+	if stderr.String() != approvalPrompt {
+		t.Errorf("got stderr %q, want the approval prompt once", stderr.String())
+	}
+	for _, want := range []string{"owner/repo: updated\n  owner/second: updated\n", "Repositories updated: 2"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("got stdout %q, want it to contain %q", stdout.String(), want)
+		}
+	}
+	if want := []time.Duration{time.Second}; !slices.Equal(delays, want) {
+		t.Errorf("got delays %v, want %v", delays, want)
+	}
+	first, second := "/repos/owner/repo", "/repos/owner/second"
+	want := []receivedRequest{
+		{method: http.MethodGet, path: first}, {method: http.MethodGet, path: second},
+		{method: http.MethodGet, path: first}, {method: http.MethodPatch, path: first}, {method: http.MethodGet, path: first},
+		{method: http.MethodGet, path: second}, {method: http.MethodPatch, path: second}, {method: http.MethodGet, path: second},
+	}
+	got := server.receivedRequests()
+	if len(got) != len(want) {
+		t.Fatalf("got requests %+v, want %d requests", got, len(want))
+	}
+	for i, r := range got {
+		if r.method != want[i].method || r.path != want[i].path {
+			t.Errorf("got request %d %s %s, want %s %s", i, r.method, r.path, want[i].method, want[i].path)
+		}
+		if !strings.Contains(r.authorization, ghEnvValue) {
+			t.Errorf("got request %d %+v, want GH_TOKEN in Authorization", i, r)
+		}
+	}
+}
+
+// 2件目の観測が失敗すると、変更計画を示さず、承認を求めず、更新要求を送らない。
+//
+//trace:checks INV-002
+//trace:checks FR-008
+func TestApply_SecondObservationFailureFailsBeforeApproval(t *testing.T) {
+	workDir := t.TempDir()
+	writeConfig(t, workDir, "reco.yaml", declaredTwoRepositories)
+	server, opts := newGitHubServerByPath(t, map[string]stubResponse{
+		"/repos/owner/repo":   {status: http.StatusOK, body: mismatchedRepositoryBody},
+		"/repos/owner/second": {status: http.StatusInternalServerError, body: `{"message": "Server Error"}`},
+	})
 
 	env := Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue}), Stdin: unreadableReader{t}, StdinIsTerminal: true}
 	code, stdout, stderr := runExecute(t, env, opts, "apply")
@@ -401,12 +465,32 @@ func TestApply_MultipleRepositoriesFailBeforeApproval(t *testing.T) {
 	if strings.Contains(stderr, approvalPrompt) {
 		t.Errorf("got stderr with the approval prompt, want none")
 	}
-	records := errorRecords(t, stderr)
-	if len(records) != 1 || records[0]["msg"] != "command failed" {
-		t.Fatalf("got ERROR records %v, want one command failed record", records)
+	if records := errorRecords(t, stderr); len(records) != 1 || records[0]["msg"] != "command failed" {
+		t.Errorf("got ERROR records %v, want one command failed record", records)
 	}
-	if msg, _ := records[0]["error"].(string); !strings.Contains(msg, "--repo") {
-		t.Errorf("got error %q, want it to show how to select one with --repo", msg)
+	if got := methodsOf(server.receivedRequests()); !slices.Equal(got, []string{http.MethodGet, http.MethodGet}) {
+		t.Errorf("got requests %v, want the two observation GETs only", got)
+	}
+}
+
+// --repo を省略して選んだ全リポジトリが変更不要なら、承認を求めずに正常終了する。
+//
+//trace:checks FR-008
+func TestApply_NoChangesForAllRepositories(t *testing.T) {
+	workDir := t.TempDir()
+	writeConfig(t, workDir, "reco.yaml", declaredTwoRepositories)
+	server, opts := newGitHubServer(t, http.StatusOK, appliedRepositoryBody)
+
+	env := Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue}), Stdin: unreadableReader{t}, StdinIsTerminal: true}
+	code, stdout, stderr := runExecute(t, env, opts, "apply")
+	if code != 0 {
+		t.Errorf("got exit code %d, want 0 (stderr %q)", code, stderr)
+	}
+	if want := "No changes.\nRepositories checked: 2\n"; stdout != want {
+		t.Errorf("got stdout %q, want %q", stdout, want)
+	}
+	if stderr != "" {
+		t.Errorf("got stderr %q, want no approval prompt", stderr)
 	}
 	if got := methodsOf(server.receivedRequests()); !slices.Equal(got, []string{http.MethodGet, http.MethodGet}) {
 		t.Errorf("got requests %v, want the two observation GETs only", got)

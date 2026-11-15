@@ -17,7 +17,7 @@ import (
 const updateIntervalDelay = 1 * time.Second
 
 // updateInterval は、一回の実行で更新操作を開始したかを持ち、更新要求の間隔を待つ。
-// 実行の中の2つ目以降の更新操作の前だけで待つため、論理的な設定変更をまたいで同じ値を使う。
+// 実行の中の2つ目以降の更新操作の前だけで待つため、論理的な設定変更と対象リポジトリをまたいで同じ値を使う。
 type updateInterval struct {
 	updateStarted bool
 }
@@ -27,6 +27,28 @@ func (u *updateInterval) wait(ctx context.Context, after func(time.Duration) <-c
 		return nil
 	}
 	return waitFor(ctx, after, updateIntervalDelay)
+}
+
+// executeRepositories は、承認した論理的な設定変更を、対象リポジトリの宣言順に実行する。
+// INV-005 は一回の実行の全体を範囲にするため、完了以外の変更結果が出たら、残りの対象リポジトリにも要求を一つも送らず、
+// change だけを持つ記録 (先行する異常による停止) を並べる。変更不要の対象リポジトリは、停止のあとでも記録を持たないまま並ぶ。
+// 戻り値は repositories と同じ長さ、同じ並びになる。
+func executeRepositories(ctx context.Context, client *github.Client, repositories []repositoryChanges, after func(time.Duration) <-chan time.Time) []repositoryRecord {
+	interval := &updateInterval{}
+	records := make([]repositoryRecord, len(repositories))
+	stopped := false
+	for i, r := range repositories {
+		records[i].target = r.plan.Target
+		if stopped {
+			for _, change := range r.changes {
+				records[i].changes = append(records[i].changes, changeRecord{change: change})
+			}
+			continue
+		}
+		records[i].changes = executeChanges(ctx, client, r.plan, r.changes, after, interval)
+		stopped = !allCompleted(records[i].changes)
+	}
+	return records
 }
 
 // executeChanges は、承認した論理的な設定変更を順に実行する。
