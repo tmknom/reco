@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -39,16 +40,23 @@ type Environment struct {
 	Getenv func(string) string
 }
 
-// Execute は args を実行し、終了コードを返す。
-func Execute(ctx context.Context, args []string, env Environment) int {
-	return execute(ctx, args, env)
+// dependencies は、実行環境ではなく処理が使う依存。テストは execute からこれを差し替える。
+// 差し替える依存が二種類あり可変長引数では並べられないため、GitHub の接続先の Option も struct のフィールドで受ける。
+type dependencies struct {
+	after         func(time.Duration) <-chan time.Time
+	githubOptions []github.Option
 }
 
-func execute(ctx context.Context, args []string, env Environment, opts ...github.Option) int {
+// Execute は args を実行し、終了コードを返す。
+func Execute(ctx context.Context, args []string, env Environment) int {
+	return execute(ctx, args, env, dependencies{after: time.After})
+}
+
+func execute(ctx context.Context, args []string, env Environment, deps dependencies) int {
 	level := new(slog.LevelVar)
 	log := logger.New(env.Stderr, level)
 
-	root := newRootCmd(env, level, opts...) //nolint:contextcheck // サブコマンドは ExecuteContext に渡した ctx を c.Context() で受け取るため、組み立てに ctx を渡さない
+	root := newRootCmd(env, level, deps) //nolint:contextcheck // サブコマンドは ExecuteContext に渡した ctx を c.Context() で受け取るため、組み立てに ctx を渡さない
 	root.SetArgs(args)
 	root.SetOut(env.Stdout)
 	root.SetErr(env.Stderr)
@@ -61,7 +69,7 @@ func execute(ctx context.Context, args []string, env Environment, opts ...github
 	return exitOK
 }
 
-func newRootCmd(env Environment, level *slog.LevelVar, opts ...github.Option) *cobra.Command {
+func newRootCmd(env Environment, level *slog.LevelVar, deps dependencies) *cobra.Command {
 	version := env.Version
 	if version == "" {
 		version = devVersion
@@ -76,8 +84,8 @@ func newRootCmd(env Environment, level *slog.LevelVar, opts ...github.Option) *c
 	// cobra の既定の出力は "reco version X" のため、CLI 仕様が定めるバージョンだけの出力に変える
 	root.SetVersionTemplate("{{.Version}}\n")
 	root.PersistentFlags().TextVar(level, "log-level", level, "diagnostic log `LEVEL`: debug, info, warn, or error")
-	root.AddCommand(newApplyCmd(env, opts...))
-	root.AddCommand(newPlanCmd(env, opts...))
-	root.AddCommand(newShowCmd(env, opts...))
+	root.AddCommand(newApplyCmd(env, deps))
+	root.AddCommand(newPlanCmd(env, deps.githubOptions...))
+	root.AddCommand(newShowCmd(env, deps.githubOptions...))
 	return root
 }

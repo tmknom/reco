@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // appliedRepositoryBody は、宣言の期待値 true に更新されたあとの観測結果。
@@ -194,7 +195,7 @@ func TestApply_ApprovedWithActionsPermissions(t *testing.T) {
 }
 
 // TestApply_ApprovedWithTwoUpdates は、Actions permissions と Selected actions の二つの PUT を含む承認済みの実行の配線を確かめる。
-// 応答の数は観測し直しを求めない数だけ渡すため、要求の数の一致が、実時間を待っていないことも示す。
+// 応答の数は観測し直しを求めない数だけ渡すため、待機が更新要求の間隔の一回だけであることは、待機が apply に届いていることを示す。
 //
 //trace:checks FR-011
 func TestApply_ApprovedWithTwoUpdates(t *testing.T) {
@@ -218,14 +219,25 @@ func TestApply_ApprovedWithTwoUpdates(t *testing.T) {
 		stubResponse{http.StatusNoContent, ""},
 		stubResponse{http.StatusOK, mismatchedRepositoryBody}, stubResponse{http.StatusOK, actionsPermissionsBody}, stubResponse{http.StatusOK, selectedActionsBody},
 	)
-
-	env := Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue}), Stdin: strings.NewReader("y\n"), StdinIsTerminal: true}
-	code, stdout, stderr := runExecute(t, env, opts, "apply")
-	if code != 0 {
-		t.Errorf("got exit code %d, want 0 (stderr %q)", code, stderr)
+	var delays []time.Duration
+	after := func(d time.Duration) <-chan time.Time {
+		delays = append(delays, d)
+		return elapsedAtOnce(d)
 	}
-	if !strings.Contains(stdout, "owner/repo: updated") {
-		t.Errorf("got stdout %q, want owner/repo: updated", stdout)
+
+	var stdout, stderr bytes.Buffer
+	env := Environment{
+		Stdout: &stdout, Stderr: &stderr, WorkDir: workDir,
+		Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue}), Stdin: strings.NewReader("y\n"), StdinIsTerminal: true,
+	}
+	if code := execute(context.Background(), []string{"apply"}, env, dependencies{after: after, githubOptions: opts}); code != 0 {
+		t.Errorf("got exit code %d, want 0 (stderr %q)", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "owner/repo: updated") {
+		t.Errorf("got stdout %q, want owner/repo: updated", stdout.String())
+	}
+	if want := []time.Duration{time.Second}; !slices.Equal(delays, want) {
+		t.Errorf("got delays %v, want %v", delays, want)
 	}
 	repo, permissions, selected := "/repos/owner/repo", "/repos/owner/repo/actions/permissions", "/repos/owner/repo/actions/permissions/selected-actions"
 	want := []receivedRequest{
@@ -330,7 +342,7 @@ func TestApply_SideEffectOnStdoutBeforeApprovalPrompt(t *testing.T) {
 		Stdout: taggedWriter{stream: "stdout", writes: &writes}, Stderr: taggedWriter{stream: "stderr", writes: &writes},
 	}
 
-	if code := execute(context.Background(), []string{"apply"}, env, opts...); code != 1 {
+	if code := execute(context.Background(), []string{"apply"}, env, dependencies{after: elapsedAtOnce, githubOptions: opts}); code != 1 {
 		t.Errorf("got exit code %d, want 1", code)
 	}
 	sideEffect := slices.IndexFunc(writes, func(w streamWrite) bool { return w.stream == "stdout" && strings.Contains(w.text, "Side effect:") })
@@ -360,7 +372,7 @@ func TestApply_CanceledWhileWaitingForApproval(t *testing.T) {
 		Stdin:           blockingReader{cancel: cancel, done: done},
 		StdinIsTerminal: true,
 	}
-	if code := execute(ctx, []string{"apply"}, env, opts...); code != 1 {
+	if code := execute(ctx, []string{"apply"}, env, dependencies{after: elapsedAtOnce, githubOptions: opts}); code != 1 {
 		t.Errorf("got exit code %d, want 1", code)
 	}
 	if got := methodsOf(server.receivedRequests()); slices.Contains(got, http.MethodPatch) {

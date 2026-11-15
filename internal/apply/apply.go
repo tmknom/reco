@@ -27,7 +27,7 @@ type Config struct {
 	Out       io.Writer
 	// Approve は、変更計画を提示したあとに利用者の対話承認を求める。承認されたときだけ nil を返す。
 	Approve func(ctx context.Context) error
-	// After は、時間の経過を知らせる。更新が反映されるのを待つために使う。
+	// After は、時間の経過を知らせる。更新要求の間隔と、更新が反映されるのを待つために使う。
 	After         func(d time.Duration) <-chan time.Time
 	GitHubOptions []github.Option
 }
@@ -67,7 +67,7 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 	if _, err := io.WriteString(cfg.Out, "Applying changes...\n"); err != nil {
 		return err
 	}
-	records := executeChanges(ctx, client, r, changes, cfg.After)
+	records := executeChanges(ctx, client, r, changes, cfg.After, &updateInterval{})
 	writeErr := writeChangeReport(cfg.Out, r.Target, records)
 	return errors.Join(changesError(records, r.Target), writeErr)
 }

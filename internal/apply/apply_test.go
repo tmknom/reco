@@ -556,16 +556,17 @@ func TestApplyPlan(t *testing.T) {
 		}
 	})
 
-	t.Run("two changes are shown before approval and both are applied", func(t *testing.T) {
+	t.Run("two changes are shown before approval and both are applied with the interval between update requests", func(t *testing.T) {
 		baseURL, rec := newSequenceServer(t,
 			okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true),
 			okRepository(1, false, true), okRepository(1, true, true), okRepository(1, true, true))
 		var out bytes.Buffer
 		var shown string
+		delays := &delayRecorder{}
 		cfg := Config{Out: &out, Approve: func(context.Context) error {
 			shown = out.String()
 			return nil
-		}, After: elapsedAtOnce}
+		}, After: delays.after}
 
 		err := applyPlan(context.Background(), cfg, newClient(baseURL), newPlan(t, deleteBranchOnMergeMismatch(), allowAutoMergeMismatch()))
 
@@ -579,6 +580,9 @@ func TestApplyPlan(t *testing.T) {
 		}
 		if want := []string{"GET", "PATCH", "GET", "GET", "PATCH", "GET"}; !slices.Equal(rec.Methods(), want) {
 			t.Errorf("requests = %v, want %v", rec.Methods(), want)
+		}
+		if want := []time.Duration{time.Second}; !slices.Equal(delays.delays, want) {
+			t.Errorf("delays = %v, want %v", delays.delays, want)
 		}
 		if !strings.Contains(out.String(), "owner/repo: updated") {
 			t.Errorf("got Out %q, want it to contain %q", out.String(), "owner/repo: updated")
