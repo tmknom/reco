@@ -12,9 +12,23 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// completedRecord は、change の更新操作が成功し、期待状態との一致を確認できた記録。
+// completedRecord は、change のすべての更新操作が成功し、期待状態との一致を確認できた記録。
 func completedRecord(change changeplan.LogicalChange) changeRecord {
-	return changeRecord{change: change, precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateMatches}
+	operations := make([]operationRecord, len(change.Operations))
+	for i := range operations {
+		operations[i] = operationRecord{precondition: preconditionHolds, update: github.UpdateSucceeded}
+	}
+	return changeRecord{change: change, operations: operations, confirmation: desiredStateMatches}
+}
+
+// toSelectedRecord は、toSelectedChange の更新操作の記録が operations の記録。
+func toSelectedRecord(confirmation desiredStateConfirmation, operations ...operationRecord) changeRecord {
+	return changeRecord{change: toSelectedChange(), operations: operations, confirmation: confirmation}
+}
+
+// started は、変更前提が成立して開始し、update に終わった更新操作の記録。
+func started(update github.UpdateOutcome) operationRecord {
+	return operationRecord{precondition: preconditionHolds, update: update}
 }
 
 //trace:checks FR-013
@@ -30,7 +44,7 @@ func TestChangesError(t *testing.T) {
 	})
 
 	t.Run("not attempted without a cause is an error naming the target", func(t *testing.T) {
-		records := []changeRecord{{change: allowAutoMergeChange(), precondition: preconditionIdentityMismatch}}
+		records := []changeRecord{{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionIdentityMismatch}}}}
 		err := changesError(records, target)
 		if err == nil || !strings.Contains(err.Error(), "owner/repo") {
 			t.Errorf("changesError() = %v, want an error containing the target", err)
@@ -39,7 +53,7 @@ func TestChangesError(t *testing.T) {
 
 	t.Run("failed wraps the cause without repeating the target it names", func(t *testing.T) {
 		cause := fmt.Errorf("update repository owner/repo: %w", github.ErrForbidden)
-		records := []changeRecord{{change: allowAutoMergeChange(), precondition: preconditionHolds, update: github.UpdateRejected, cause: cause}}
+		records := []changeRecord{{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateRejected}}, cause: cause}}
 		err := changesError(records, target)
 		if !errors.Is(err, github.ErrForbidden) {
 			t.Errorf("changesError() = %v, want it to wrap %v", err, github.ErrForbidden)
@@ -53,7 +67,7 @@ func TestChangesError(t *testing.T) {
 		cause := fmt.Errorf("update repository owner/repo: %w", github.ErrForbidden)
 		records := []changeRecord{
 			completedRecord(deleteBranchOnMergeChange()),
-			{change: allowAutoMergeChange(), precondition: preconditionHolds, update: github.UpdateRejected, cause: cause},
+			{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateRejected}}, cause: cause},
 		}
 		err := changesError(records, target)
 		if !errors.Is(err, github.ErrForbidden) {
@@ -64,10 +78,20 @@ func TestChangesError(t *testing.T) {
 		}
 	})
 
+	t.Run("failed change of two updates without a cause names both settings", func(t *testing.T) {
+		records := []changeRecord{toSelectedRecord(desiredStateMismatch,
+			started(github.UpdateSucceeded), operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions})}
+		err := changesError(records, target)
+		want := "actions.permissions.allowed_actions + actions.permissions.selected_actions"
+		if err == nil || !strings.Contains(err.Error(), "owner/repo") || !strings.Contains(err.Error(), want) {
+			t.Errorf("changesError() = %v, want an error containing the target and %q", err, want)
+		}
+	})
+
 	t.Run("stopped change after a failed one adds no error", func(t *testing.T) {
 		cause := fmt.Errorf("update repository owner/repo: %w", github.ErrForbidden)
 		records := []changeRecord{
-			{change: deleteBranchOnMergeChange(), precondition: preconditionHolds, update: github.UpdateRejected, cause: cause},
+			{change: deleteBranchOnMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateRejected}}, cause: cause},
 			{change: allowAutoMergeChange()},
 		}
 		err := changesError(records, target)
@@ -89,22 +113,22 @@ func TestPossibleCause(t *testing.T) {
 	}{
 		{
 			name:   "allow_auto_merge mismatch after a successful update has a possible cause",
-			record: changeRecord{change: allowAutoMergeChange(), precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateMismatch},
+			record: changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateMismatch},
 			want:   true,
 		},
 		{
 			name:   "mismatch of another setting has no possible cause",
-			record: changeRecord{change: deleteBranchOnMergeChange(), precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateMismatch},
+			record: changeRecord{change: deleteBranchOnMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateMismatch},
 			want:   false,
 		},
 		{
 			name:   "mismatch after an unknown outcome has no possible cause",
-			record: changeRecord{change: allowAutoMergeChange(), precondition: preconditionHolds, update: github.UpdateUnknown, confirmation: desiredStateMismatch},
+			record: changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateUnknown}}, confirmation: desiredStateMismatch},
 			want:   false,
 		},
 		{
 			name:   "unconfirmed state after a successful update has no possible cause",
-			record: changeRecord{change: allowAutoMergeChange(), precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateUnconfirmed},
+			record: changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateUnconfirmed},
 			want:   false,
 		},
 	}
@@ -123,7 +147,13 @@ func TestNotAttemptedReason_StartedUpdatePanics(t *testing.T) {
 			t.Error("notAttemptedReason() did not panic for a record whose precondition holds")
 		}
 	}()
-	notAttemptedReason(changeRecord{change: allowAutoMergeChange(), precondition: preconditionHolds})
+	notAttemptedReason(changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionHolds}}})
+}
+
+// updateRequestRows は、toSelectedChange の2つの更新操作の結果を、リポジトリの行の下の字下げで示す行。
+func updateRequestRows(first, second string) string {
+	return "    Update request (actions.permissions.allowed_actions): " + first + "\n" +
+		"    Update request (actions.permissions.selected_actions): " + second + "\n"
 }
 
 // TestWriteChangeReport_SingleChange は、論理的な設定変更が1件のとき、リポジトリの行に結果と理由を書く表示を確かめる。
@@ -148,52 +178,52 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 		},
 		{
 			name:   "not attempted because the repository ID differs",
-			record: changeRecord{change: change, precondition: preconditionIdentityMismatch},
+			record: changeRecord{change: change, operations: []operationRecord{{precondition: preconditionIdentityMismatch}}},
 			want:   "  owner/repo: not attempted\n    Precondition: repository ID differs from the approved repository\n",
 		},
 		{
 			name:   "not attempted because the current value changed",
-			record: changeRecord{change: change, precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowAutoMerge},
+			record: changeRecord{change: change, operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowAutoMerge}}},
 			want:   "  owner/repo: not attempted\n    Precondition: general.allow_auto_merge changed since approval\n",
 		},
 		{
 			name:   "not attempted because the value shown as a side effect changed names that setting rather than allowed_actions",
-			record: changeRecord{change: selectedToAllChange(), precondition: preconditionCurrentValueChanged, changedSetting: setting.SelectedActions},
+			record: changeRecord{change: selectedToAllChange(), operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.SelectedActions}}},
 			want:   "  owner/repo: not attempted\n    Precondition: actions.permissions.selected_actions changed since approval\n",
 		},
 		{
 			name:   "not attempted because the precondition is not confirmed",
-			record: changeRecord{change: change, precondition: preconditionUnconfirmed, cause: github.ErrNotFound},
+			record: changeRecord{change: change, operations: []operationRecord{{precondition: preconditionUnconfirmed}}, cause: github.ErrNotFound},
 			want:   "  owner/repo: not attempted\n    Precondition: not confirmed (read failed)\n",
 		},
 		{
 			name:   "rejected update",
-			record: changeRecord{change: change, precondition: preconditionHolds, update: github.UpdateRejected, cause: github.ErrForbidden},
+			record: changeRecord{change: change, operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateRejected}}, cause: github.ErrForbidden},
 			want: "  owner/repo: failed\n    Update request: rejected\n    Desired state: not checked\n\n" +
 				rollbackNote,
 		},
 		{
 			name:   "unknown outcome with a matching state",
-			record: changeRecord{change: change, precondition: preconditionHolds, update: github.UpdateUnknown, confirmation: desiredStateMatches},
+			record: changeRecord{change: change, operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateUnknown}}, confirmation: desiredStateMatches},
 			want: "  owner/repo: failed\n    Update request: unknown\n" +
 				"    Desired state: matches (update outcome still unknown)\n\nNote: No automatic retry was performed.\n",
 		},
 		{
 			name:   "success with an unconfirmed state",
-			record: changeRecord{change: change, precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateUnconfirmed},
+			record: changeRecord{change: change, operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateUnconfirmed},
 			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not confirmed (read failed)\n\n" +
 				rollbackNote,
 		},
 		{
 			name:   "success with a changed repository ID",
-			record: changeRecord{change: change, precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateIdentityMismatch},
+			record: changeRecord{change: change, operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateIdentityMismatch},
 			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not confirmed (repository ID changed)\n\n" +
 				rollbackNote,
 		},
 		{
 			name: "success with an unavailable desired value shows the unavailable reason",
 			record: changeRecord{
-				change: allowedActionsChange(), precondition: preconditionHolds, update: github.UpdateSucceeded,
+				change: allowedActionsChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}},
 				confirmation: desiredStateUnavailable, desiredUnavailableReason: github.UnavailableActionsDisabled,
 			},
 			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not confirmed (GitHub Actions is disabled)\n\n" +
@@ -201,7 +231,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 		},
 		{
 			name:   "success with a mismatch shows the possible cause after the desired state",
-			record: changeRecord{change: change, precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateMismatch},
+			record: changeRecord{change: change, operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateMismatch},
 			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: does not match\n" +
 				"    Possible cause: auto-merge is not available for private repositories on GitHub Free, where GitHub may accept the update without applying it\n\n" +
 				rollbackNote,
@@ -209,7 +239,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 		{
 			name: "other setting change",
 			record: changeRecord{
-				change: change, precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateMatches, unexpectedOutsideChanges: outside,
+				change: change, operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateMatches, unexpectedOutsideChanges: outside,
 			},
 			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: matches\n" +
 				"    Other settings: general.delete_branch_on_merge changed false -> true (cause not determined)\n\n" +
@@ -218,7 +248,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 		{
 			name: "other setting change with permission level values",
 			record: changeRecord{
-				change: canApprovePullRequestReviewsChange(), precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateMatches,
+				change: canApprovePullRequestReviewsChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateMatches,
 				unexpectedOutsideChanges: []unexpectedOutsideChange{{
 					Key:    setting.DefaultWorkflowPermissions,
 					Before: setting.PermissionLevelValue(setting.PermissionRead),
@@ -228,6 +258,55 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: matches\n" +
 				"    Other settings: actions.workflow.default_workflow_permissions changed read -> write (cause not determined)\n\n" +
 				rollbackNote,
+		},
+		{
+			// 完了済みの操作と未開始の操作を示す。未実行にしない
+			name: "second update not started because the policy is not the value expected after the first",
+			record: toSelectedRecord(desiredStateMismatch,
+				started(github.UpdateSucceeded), operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions}),
+			want: "  owner/repo: failed\n" + updateRequestRows("succeeded", "not started") +
+				"    Precondition: actions.permissions.allowed_actions is not the value expected after the preceding update\n" +
+				"    Desired state: does not match\n\n" + rollbackNote,
+		},
+		{
+			name:   "second update not started because the read before it failed",
+			record: toSelectedRecord(desiredStateMismatch, started(github.UpdateSucceeded), operationRecord{precondition: preconditionUnconfirmed}),
+			want: "  owner/repo: failed\n" + updateRequestRows("succeeded", "not started") +
+				"    Precondition: not confirmed (read failed)\n    Desired state: does not match\n\n" + rollbackNote,
+		},
+		{
+			// 宣言した3項目が GitHub の戻す値と同じなら、後続を開始しなくても一致を観測し得る。必要な更新操作の成功を確認していないため failed のまま
+			name:   "second update not started with a matching state stays failed",
+			record: toSelectedRecord(desiredStateMatches, started(github.UpdateSucceeded), operationRecord{precondition: preconditionUnconfirmed}),
+			want: "  owner/repo: failed\n" + updateRequestRows("succeeded", "not started") +
+				"    Precondition: not confirmed (read failed)\n    Desired state: matches\n\n" + rollbackNote,
+		},
+		{
+			name:   "rejected first update shows the second not started without a precondition",
+			record: toSelectedRecord(desiredStateNotChecked, started(github.UpdateRejected)),
+			want:   "  owner/repo: failed\n" + updateRequestRows("rejected", "not started") + "    Desired state: not checked\n\n" + rollbackNote,
+		},
+		{
+			name:   "unknown first update has the retry note",
+			record: toSelectedRecord(desiredStateMismatch, started(github.UpdateUnknown)),
+			want: "  owner/repo: failed\n" + updateRequestRows("unknown", "not started") + "    Desired state: does not match\n\n" +
+				"Note: No automatic retry was performed.\n",
+		},
+		{
+			name:   "unknown second update after the first succeeded has the retry note",
+			record: toSelectedRecord(desiredStateMatches, started(github.UpdateSucceeded), started(github.UpdateUnknown)),
+			want: "  owner/repo: failed\n" + updateRequestRows("succeeded", "unknown") +
+				"    Desired state: matches (update outcome still unknown)\n\nNote: No automatic retry was performed.\n",
+		},
+		{
+			name:   "both updates succeeded with a mismatch shows both update requests",
+			record: toSelectedRecord(desiredStateMismatch, started(github.UpdateSucceeded), started(github.UpdateSucceeded)),
+			want:   "  owner/repo: failed\n" + updateRequestRows("succeeded", "succeeded") + "    Desired state: does not match\n\n" + rollbackNote,
+		},
+		{
+			name:   "first precondition of two updates not holding is not attempted without update requests",
+			record: toSelectedRecord(desiredStateNotChecked, operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions}),
+			want:   "  owner/repo: not attempted\n    Precondition: actions.permissions.allowed_actions changed since approval\n",
 		},
 	}
 	for _, tc := range cases {
@@ -274,7 +353,7 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 			name: "complete then failed shows each setting without a repository result and the rollback note",
 			records: []changeRecord{
 				completedRecord(deleteBranchOnMergeChange()),
-				{change: allowAutoMergeChange(), precondition: preconditionHolds, update: github.UpdateRejected, cause: github.ErrForbidden},
+				{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateRejected}}, cause: github.ErrForbidden},
 			},
 			want: "  owner/repo\n" +
 				"    general.delete_branch_on_merge: updated\n" +
@@ -285,7 +364,7 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 			name: "failed then stopped shows the stop reason",
 			records: []changeRecord{
 				{
-					change: deleteBranchOnMergeChange(), precondition: preconditionHolds, update: github.UpdateSucceeded, confirmation: desiredStateMatches,
+					change: deleteBranchOnMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateMatches,
 					unexpectedOutsideChanges: []unexpectedOutsideChange{{Key: setting.AllowAutoMerge, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
 				},
 				stopped,
@@ -302,14 +381,14 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 		},
 		{
 			name:    "precondition failure then stopped has no note because no update started",
-			records: []changeRecord{{change: deleteBranchOnMergeChange(), precondition: preconditionIdentityMismatch}, stopped},
+			records: []changeRecord{{change: deleteBranchOnMergeChange(), operations: []operationRecord{{precondition: preconditionIdentityMismatch}}}, stopped},
 			want: "  owner/repo\n" +
 				"    general.delete_branch_on_merge: not attempted\n      Precondition: repository ID differs from the approved repository\n" +
 				"    general.allow_auto_merge: not attempted\n      Stopped: a preceding change did not complete\n",
 		},
 		{
 			name:    "complete then precondition failure has the rollback note",
-			records: []changeRecord{completedRecord(deleteBranchOnMergeChange()), {change: allowAutoMergeChange(), precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowAutoMerge}},
+			records: []changeRecord{completedRecord(deleteBranchOnMergeChange()), {change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowAutoMerge}}}},
 			want: "  owner/repo\n" +
 				"    general.delete_branch_on_merge: updated\n" +
 				"    general.allow_auto_merge: not attempted\n      Precondition: general.allow_auto_merge changed since approval\n\n" +
@@ -319,13 +398,43 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 			name: "complete then unknown outcome has the retry note",
 			records: []changeRecord{
 				completedRecord(deleteBranchOnMergeChange()),
-				{change: allowAutoMergeChange(), precondition: preconditionHolds, update: github.UpdateUnknown, confirmation: desiredStateMatches},
+				{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateUnknown}}, confirmation: desiredStateMatches},
 			},
 			want: "  owner/repo\n" +
 				"    general.delete_branch_on_merge: updated\n" +
 				"    general.allow_auto_merge: failed\n      Update request: unknown\n" +
 				"      Desired state: matches (update outcome still unknown)\n\n" +
 				"Note: No automatic retry was performed.\n",
+		},
+		{
+			// 変更結果を二つの管理設定の行に分けず、論理的な設定変更の全体について一つ示す
+			name: "change of two updates is shown as one change named by both settings",
+			records: []changeRecord{
+				completedRecord(allowAutoMergeChange()),
+				toSelectedRecord(desiredStateMismatch, started(github.UpdateSucceeded), started(github.UpdateRejected)),
+				{change: defaultWorkflowPermissionsChange()},
+			},
+			want: "  owner/repo\n" +
+				"    general.allow_auto_merge: updated\n" +
+				"    actions.permissions.allowed_actions + actions.permissions.selected_actions: failed\n" +
+				"      Update request (actions.permissions.allowed_actions): succeeded\n" +
+				"      Update request (actions.permissions.selected_actions): rejected\n" +
+				"      Desired state: does not match\n" +
+				"    actions.workflow.default_workflow_permissions: not attempted\n" +
+				"      Stopped: a preceding change did not complete\n\n" +
+				rollbackNote,
+		},
+		{
+			name: "change of two updates stopped by a preceding change shows the stop reason",
+			records: []changeRecord{
+				{change: allowAutoMergeChange(), operations: []operationRecord{started(github.UpdateRejected)}, cause: github.ErrForbidden},
+				{change: toSelectedChange()},
+			},
+			want: "  owner/repo\n" +
+				"    general.allow_auto_merge: failed\n      Update request: rejected\n      Desired state: not checked\n" +
+				"    actions.permissions.allowed_actions + actions.permissions.selected_actions: not attempted\n" +
+				"      Stopped: a preceding change did not complete\n\n" +
+				rollbackNote,
 		},
 	}
 	for _, tc := range cases {

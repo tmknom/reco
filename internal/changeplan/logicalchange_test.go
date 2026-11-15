@@ -8,8 +8,16 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
+func TestLogicalChange_Keys(t *testing.T) {
+	change := LogicalChange{Operations: []UpdateOperation{{Key: setting.AllowedActions}, {Key: setting.SelectedActions}}}
+	if got, want := change.Keys(), []setting.Key{setting.AllowedActions, setting.SelectedActions}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Keys() = %v, want %v", got, want)
+	}
+}
+
 //trace:checks INV-001
 //trace:checks INV-002
+//trace:checks INV-004
 //trace:checks FR-008
 //trace:checks FR-011
 func TestPlan_LogicalChanges(t *testing.T) {
@@ -34,10 +42,10 @@ func TestPlan_LogicalChanges(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
-		want := []LogicalChange{{
+		want := []LogicalChange{{Operations: []UpdateOperation{{
 			Key: setting.AllowAutoMerge, Desired: setting.BoolValue(true),
 			RelevantSettings: []RelevantSetting{relevant(setting.AllowAutoMerge, github.Observed(setting.BoolValue(false)))},
-		}}
+		}}}}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
 		}
@@ -50,14 +58,14 @@ func TestPlan_LogicalChanges(t *testing.T) {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
 		want := []LogicalChange{
-			{
+			{Operations: []UpdateOperation{{
 				Key: setting.DeleteBranchOnMerge, Desired: setting.BoolValue(true),
 				RelevantSettings: []RelevantSetting{relevant(setting.DeleteBranchOnMerge, github.Observed(setting.BoolValue(false)))},
-			},
-			{
+			}}},
+			{Operations: []UpdateOperation{{
 				Key: setting.AllowAutoMerge, Desired: setting.BoolValue(true),
 				RelevantSettings: []RelevantSetting{relevant(setting.AllowAutoMerge, github.Observed(setting.BoolValue(false)))},
-			},
+			}}},
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
@@ -79,10 +87,10 @@ func TestPlan_LogicalChanges(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
-		want := []LogicalChange{{
+		want := []LogicalChange{{Operations: []UpdateOperation{{
 			Key: setting.AllowedActions, Desired: policy(setting.AllowedActionsLocalOnly),
 			RelevantSettings: []RelevantSetting{relevant(setting.AllowedActions, github.Observed(policy(setting.AllowedActionsAll)))},
-		}}
+		}}}}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
 		}
@@ -94,13 +102,13 @@ func TestPlan_LogicalChanges(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
-		want := []LogicalChange{{
+		want := []LogicalChange{{Operations: []UpdateOperation{{
 			Key: setting.AllowedActions, Desired: policy(setting.AllowedActionsAll),
 			RelevantSettings: []RelevantSetting{
 				relevant(setting.AllowedActions, github.Observed(policy(setting.AllowedActionsSelected))),
 				relevant(setting.SelectedActions, github.Observed(criteria)),
 			},
-		}}
+		}}}}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
 		}
@@ -115,10 +123,10 @@ func TestPlan_LogicalChanges(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
-		want := []LogicalChange{{
+		want := []LogicalChange{{Operations: []UpdateOperation{{
 			Key: setting.AllowedActions, Desired: policy(setting.AllowedActionsLocalOnly),
 			RelevantSettings: []RelevantSetting{relevant(setting.AllowedActions, disabled), relevant(setting.SelectedActions, disabled)},
-		}}
+		}}}}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
 		}
@@ -130,23 +138,105 @@ func TestPlan_LogicalChanges(t *testing.T) {
 			Desired: criteria, Result: NotComparable, Applicability: Applicable,
 		}
 	}
+	// toSelected は、ポリシーを selected にする更新操作のあとに続く、選択方式の Actions 許可条件の更新操作。
+	// 基準は1つ目による予定どおりの変化を反映したポリシーだけで、2つ目がすべて上書きする3項目は並ばない。
+	toSelected := UpdateOperation{
+		Key: setting.SelectedActions, Desired: criteria,
+		RelevantSettings: []RelevantSetting{relevant(setting.AllowedActions, github.Observed(policy(setting.AllowedActionsSelected)))},
+	}
+	workflow := SettingPlan{
+		Key: setting.DefaultWorkflowPermissions, Observed: github.Observed(setting.PermissionLevelValue(setting.PermissionWrite)),
+		Desired: setting.PermissionLevelValue(setting.PermissionRead), Result: Mismatch, Applicability: Applicable,
+	}
+
+	t.Run("policy to selected and the criteria not comparable become one logical change of two updates at the policy position", func(t *testing.T) {
+		got, err := newPlan(mismatch, policyChange(setting.AllowedActionsAll, setting.AllowedActionsSelected), notComparableCriteria(github.UnavailableNotSelected), workflow).LogicalChanges()
+		if err != nil {
+			t.Fatalf("LogicalChanges() error = %v", err)
+		}
+		want := []LogicalChange{
+			{Operations: []UpdateOperation{{Key: setting.AllowAutoMerge, Desired: setting.BoolValue(true), RelevantSettings: []RelevantSetting{relevant(setting.AllowAutoMerge, github.Observed(setting.BoolValue(false)))}}}},
+			{Operations: []UpdateOperation{
+				{
+					Key: setting.AllowedActions, Desired: policy(setting.AllowedActionsSelected),
+					RelevantSettings: []RelevantSetting{relevant(setting.AllowedActions, github.Observed(policy(setting.AllowedActionsAll)))},
+				},
+				toSelected,
+			}},
+			{Operations: []UpdateOperation{{Key: workflow.Key, Desired: workflow.Desired, RelevantSettings: []RelevantSetting{relevant(workflow.Key, workflow.Observed)}}}},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("policy enabling actions with selected and the criteria not comparable become one logical change of two updates", func(t *testing.T) {
+		enableSelected := SettingPlan{Key: setting.AllowedActions, Observed: disabled, Desired: policy(setting.AllowedActionsSelected), Result: NotComparable, Applicability: Applicable}
+		got, err := newPlan(enableSelected, notComparableCriteria(github.UnavailableActionsDisabled)).LogicalChanges()
+		if err != nil {
+			t.Fatalf("LogicalChanges() error = %v", err)
+		}
+		want := []LogicalChange{{Operations: []UpdateOperation{
+			{Key: setting.AllowedActions, Desired: policy(setting.AllowedActionsSelected), RelevantSettings: []RelevantSetting{relevant(setting.AllowedActions, disabled)}},
+			toSelected,
+		}}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
+		}
+	})
+
+	// 設定宣言は selected と3項目を組で求め、許可条件はポリシーが selected でなければ観測不能になるため、Generate からは到達しない組
+	panicCases := []struct {
+		name     string
+		settings []SettingPlan
+	}{
+		{
+			name:     "policy to selected without the criteria panics",
+			settings: []SettingPlan{policyChange(setting.AllowedActionsAll, setting.AllowedActionsSelected)},
+		},
+		{
+			name:     "criteria not comparable without the policy to selected panics",
+			settings: []SettingPlan{notComparableCriteria(github.UnavailableNotSelected)},
+		},
+		{
+			name: "policy already selected with the criteria not comparable panics",
+			settings: []SettingPlan{
+				{Key: setting.AllowedActions, Observed: github.Observed(policy(setting.AllowedActionsSelected)), Desired: policy(setting.AllowedActionsSelected), Result: Match},
+				notComparableCriteria(github.UnavailableNotSelected),
+			},
+		},
+		{
+			name: "policy to selected with the criteria mismatch panics",
+			settings: []SettingPlan{
+				policyChange(setting.AllowedActionsAll, setting.AllowedActionsSelected),
+				{Key: setting.SelectedActions, Observed: github.Observed(criteria), Desired: criteria, Result: Mismatch, Applicability: Applicable},
+			},
+		},
+	}
+	for _, tc := range panicCases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Error("LogicalChanges() did not panic")
+				}
+			}()
+			_, _ = newPlan(tc.settings...).LogicalChanges()
+		})
+	}
+
+	t.Run("not-applicable criteria paired with an applicable policy to selected is an error", func(t *testing.T) {
+		// 対の1つ目が適用可能でも、2つ目の適用可能性も確かめる
+		notApplicable := notComparableCriteria(github.UnavailableNotSelected)
+		notApplicable.Applicability = NotApplicable
+		if got, err := newPlan(mismatch, policyChange(setting.AllowedActionsAll, setting.AllowedActionsSelected), notApplicable).LogicalChanges(); err == nil {
+			t.Errorf("LogicalChanges() = %+v, error = nil, want an error", got)
+		}
+	})
+
 	errorCases := []struct {
 		name    string
 		setting SettingPlan
 	}{
-		// 遷移先が selected の変更は、ポリシーと許可条件のどちらも単独で拒否されることを確かめる
-		{
-			name:    "policy mismatch to selected is an error without the criteria",
-			setting: policyChange(setting.AllowedActionsAll, setting.AllowedActionsSelected),
-		},
-		{
-			name:    "policy enabling actions with selected is an error without the criteria",
-			setting: SettingPlan{Key: setting.AllowedActions, Observed: disabled, Desired: policy(setting.AllowedActionsSelected), Result: NotComparable, Applicability: Applicable},
-		},
-		{
-			name:    "criteria not comparable because the policy is not selected is an error",
-			setting: notComparableCriteria(github.UnavailableNotSelected),
-		},
 		{
 			name:    "not-applicable mismatch is an error",
 			setting: SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: NotApplicable},

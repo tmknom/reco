@@ -10,9 +10,18 @@ import (
 // LogicalChange は、承認の対象になる論理的な設定変更。
 // 実行は承認した変更内容だけを使い、設定宣言を読み直さずに変更前提と期待状態を確かめる。
 type LogicalChange struct {
-	Key     setting.Key
+	// Operations は構成する更新操作を実行順に並べたもの。一つ以上を持つ。
+	// 期待状態は、すべての更新操作の期待値の全体になる。
+	Operations []UpdateOperation
+}
+
+// UpdateOperation は、論理的な設定変更を構成する更新操作について、承認の対象になる内容。
+type UpdateOperation struct {
+	// Key は、この更新操作が変える管理設定。
+	Key setting.Key
+	// Desired は、この更新操作が送る期待値。
 	Desired setting.Value
-	// RelevantSettings は変更前提の基準。先頭は Key の設定で、副作用として提示した設定が続く。
+	// RelevantSettings は、この更新操作の変更前提の基準。変わっていたことを報告するときに優先する順に並べる。
 	RelevantSettings []RelevantSetting
 }
 
@@ -22,29 +31,84 @@ type RelevantSetting struct {
 	AtApproval github.SettingObservation[setting.Value]
 }
 
-// LogicalChanges は、変更予定から論理的な設定変更を導く。
-// 副作用を伴う変更予定は、副作用として提示した設定を基準に載せて受け付ける。
-// 載せずに受け付けると承認の前に示していない値を失わせ得るため、受け付ける行と基準を組み立てる行を分けない。
-// 遷移先が selected のポリシーの変更予定と選択方式の Actions 許可条件の比較不能な変更予定は、
-// 二つの更新操作を順に行う論理的な設定変更になるため error にする。
-// ポリシーは同じ計画に並ぶ許可条件によっても拒否されるが、設定宣言の組み合わせの規則に頼らずにここで拒否する。
-// そのため論理的な設定変更になるのは、単独の管理設定の変更として実現できる変更予定だけで、変更予定と論理的な設定変更は一対一になる。
+// Keys は、c が変える設定を更新操作の順に返す。
+func (c LogicalChange) Keys() []setting.Key {
+	keys := make([]setting.Key, len(c.Operations))
+	for i, operation := range c.Operations {
+		keys[i] = operation.Key
+	}
+	return keys
+}
+
+// LogicalChanges は、変更予定から論理的な設定変更を、計画の並びで導く。
+// 適用可能でない変更予定があれば、承認の対象にしないため error にする。
+// 副作用を伴う変更予定の更新操作は、operationOf が副作用として提示した設定を必ず基準に載せる。載せずに受け付けると承認の前に示していない値を失わせ得るため。
+// 遷移先が selected のポリシーの変更予定と、選択方式の Actions 許可条件の比較不能な変更予定は、ポリシーの位置で一つの論理的な設定変更にまとめ、
+// ポリシー、許可条件の順に二つの更新操作で実現する。
+// 対にならない形は、設定宣言の組み合わせの規則と観測の取得条件のどちらかが破れたときにしか生じないため、不変条件の破れとして panic する。
 func (p Plan) LogicalChanges() ([]LogicalChange, error) {
-	var changes []LogicalChange
 	for _, s := range p.Settings {
-		if s.Result == Match {
-			continue
-		}
-		if s.Applicability != Applicable || (s.Result == NotComparable && !s.EnablesActions()) || targetsSelectedPolicy(s) {
+		if s.Result != Match && s.Applicability != Applicable {
 			return nil, fmt.Errorf("%s: %s cannot be applied", p.Target, s.Key)
 		}
-		relevant := []RelevantSetting{{Key: s.Key, AtApproval: s.Observed}}
-		for _, effect := range s.SideEffects {
-			relevant = append(relevant, RelevantSetting{Key: effect.Key, AtApproval: effect.Observed})
+	}
+	criteria, paired := p.criteriaFollowingPolicy()
+	var changes []LogicalChange
+	for _, s := range p.Settings {
+		switch {
+		case s.Result == Match:
+			continue
+		case s.Key == setting.SelectedActions && s.Result == NotComparable:
+			if !paired {
+				panic(fmt.Sprintf("changeplan: %s is not comparable without a policy change to selected", s.Key))
+			}
+			continue
 		}
-		changes = append(changes, LogicalChange{Key: s.Key, Desired: s.Desired, RelevantSettings: relevant})
+		operations := []UpdateOperation{operationOf(s)}
+		if targetsSelectedPolicy(s) {
+			if !paired {
+				panic(fmt.Sprintf("changeplan: %s to selected has no not-comparable %s to follow", s.Key, setting.SelectedActions))
+			}
+			// 2つ目の承認時に予定した値は、1つ目による予定どおりの変化を反映したポリシーである
+			operations = append(operations, UpdateOperation{
+				Key: criteria.Key, Desired: criteria.Desired,
+				RelevantSettings: []RelevantSetting{{Key: s.Key, AtApproval: github.Observed(s.Desired)}},
+			})
+		}
+		changes = append(changes, LogicalChange{Operations: operations})
 	}
 	return changes, nil
+}
+
+// criteriaFollowingPolicy は、遷移先が selected のポリシーの変更予定に続けて更新する、選択方式の Actions 許可条件の比較不能な変更予定を返す。
+// 二つが対で計画にあるときだけ真を返す。
+func (p Plan) criteriaFollowingPolicy() (SettingPlan, bool) {
+	policy, hasPolicy := p.settingPlanOf(setting.AllowedActions)
+	criteria, hasCriteria := p.settingPlanOf(setting.SelectedActions)
+	if !hasPolicy || !hasCriteria || policy.Result == Match || !targetsSelectedPolicy(policy) || criteria.Result != NotComparable {
+		return SettingPlan{}, false
+	}
+	return criteria, true
+}
+
+// settingPlanOf は、key の管理設定の計画を返す。管理範囲になければ偽を返す。
+func (p Plan) settingPlanOf(key setting.Key) (SettingPlan, bool) {
+	for _, s := range p.Settings {
+		if s.Key == key {
+			return s, true
+		}
+	}
+	return SettingPlan{}, false
+}
+
+// operationOf は、変更予定 s の設定を変える更新操作を返す。
+// 基準は、s の計画時の観測結果と、副作用として提示した設定の計画時の観測結果である。
+func operationOf(s SettingPlan) UpdateOperation {
+	relevant := []RelevantSetting{{Key: s.Key, AtApproval: s.Observed}}
+	for _, effect := range s.SideEffects {
+		relevant = append(relevant, RelevantSetting{Key: effect.Key, AtApproval: effect.Observed})
+	}
+	return UpdateOperation{Key: s.Key, Desired: s.Desired, RelevantSettings: relevant}
 }
 
 func targetsSelectedPolicy(s SettingPlan) bool {

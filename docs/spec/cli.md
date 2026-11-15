@@ -226,6 +226,8 @@ Repositories updated: 1
 
 GitHub が更新を取得の結果に反映するまで時間がかかることがあるため、更新操作が成功したのに期待状態と一致しないとき、または期待値と比べる設定を GitHub の取得条件により確認できないときは、間隔を広げながら確認し直し、一致を確認できないまま合計約30秒が経てば `failed` とします（[アーキテクチャ設計](../design/architecture.md) 6.2節）。
 
+一つの論理的な設定変更が二つの更新操作からなるときは、後続の更新操作の直前の確認にも同じ遅れが現れ得ます。先行する更新操作が成功したのに、その更新操作が変えた設定が更新前の値のままのときは、同じ間隔で確認し直します。合計約30秒が経っても変わらなければ、後続の更新操作を開始せずに `failed` とします。先行する更新操作の更新要求は再送しません。
+
 一つのリポジトリに複数の変更予定があるときは、承認の前に提示する順も、論理的な設定変更を実行する順も、4章が定める変更予定の表示順に従います。承認の前に提示する変更予定の行は、4章と同じ形で示します。
 
 ### 5.2 結果の表示区分
@@ -243,11 +245,17 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 - **論理的な設定変更が1件で、完了しなかった**：リポジトリの行に `failed` または `not attempted` と理由を表示する
 - **論理的な設定変更が2件以上で、完了しなかったものを含む**：リポジトリの行に結果を表示せず、論理的な設定変更ごとに結果を実行順に表示し、完了しなかったものに理由を添える
 
-いずれかの論理的な設定変更で更新操作を開始しており、完了しなかった論理的な設定変更があるときは、変更結果の末尾に注記（`Note:`）を添えます。開始した更新操作に成否不明があれば自動で再送していないことを、なければ自動ロールバックを行っていないことを示します。
+いずれかの論理的な設定変更で更新操作を開始しており、完了しなかった論理的な設定変更があるときは、変更結果の末尾に注記（`Note:`）を添えます。開始した更新操作に成否不明があれば自動で再送していないことを、なければ自動ロールバックを行っていないことを示します。二つの更新操作からなる論理的な設定変更では、どちらの更新操作も判定に含めます。
 
-選択方式の Actions 許可条件は、3項目を個別の変更として表示せず、一体の設定グループとして扱います。上位ポリシーと組み合わせて一つの論理的な設定変更となる場合も、その変更全体の結果を示します。
+選択方式の Actions 許可条件は、3項目を個別の変更として表示せず、一体の設定グループとして扱います。Actions 許可ポリシーを `selected` へ変える変更と組み合わせて一つの論理的な設定変更となる場合は、変更結果を管理設定ごとの行に分けず、その変更全体について一つ示します。承認の前に提示する変更予定は、管理設定ごとの行のままです。
 
-複数の API 更新操作のうち先行操作が成功し、後続操作を開始できなかった場合は、完了済み操作と未開始の操作を示し、変更全体を `failed` とします。更新を一度も開始していない変更は `not attempted` とし、変更前提の不成立と、先行する異常による停止のどちらに当たるかを区別して理由を示します。
+論理的な設定変更ごとに結果を表示するときは、論理的な設定変更を、それが変える管理設定の名前で示します。二つの管理設定を変える論理的な設定変更は、更新操作の順に ` + ` でつないで示します（`actions.permissions.allowed_actions + actions.permissions.selected_actions`）。
+
+二つの更新操作からなる論理的な設定変更が、更新操作を開始したあとで完了しなかった場合は、`Update request` の行を更新操作ごとに1行ずつ、実行順に示します。行は `Update request (<その更新操作が変える管理設定>): <結果>` の形で、結果は `succeeded`、`rejected`、`unknown`、開始しなかった更新操作を表す `not started` のいずれかです。先行する更新操作が成功し、後続の更新操作を開始できなかった場合は、完了済みの更新操作を `succeeded`、未開始の更新操作を `not started` と示し、変更全体を `failed` とします。`not started` は更新操作についての表示で、論理的な設定変更の `not attempted` とは区別します。
+
+後続の更新操作を変更前提の不成立で開始できなかった場合は、`not started` の行の次に `Precondition:` の行で理由を示します。先行する更新操作が変えた設定が予定どおりの値でなかった場合は、`Precondition: <設定> is not the value expected after the preceding update` と示します。GitHub の反映が遅れている場合も、外部主体が値を変えた場合もこの表示になり、原因は断定しません。先行する更新操作が成功しなかったために開始しなかった場合は、理由の行を足しません。先行する更新操作が成功していれば、後続を開始できなかった場合も後続が失敗した場合も、更新後の確認を一度だけ行い、その結果と変更対象外の設定の予期しない変化を示します。この確認で期待状態との一致を確認しても、必要な更新操作の成功を確認していないため、`updated` に変更しません。最初の更新操作が拒否され、更新後の確認を行わなかった場合は `Desired state: not checked` と示します。
+
+更新を一度も開始していない変更は `not attempted` とし、変更前提の不成立と、先行する異常による停止のどちらに当たるかを区別して理由を示します。
 
 変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を示します（`Precondition: <設定> changed since approval`）。`Side effect:` で示した設定の値が承認の前に示した値から変わっていた場合は、その設定を示します。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。複数の設定が変わっていた場合は、論理的な設定変更が変える設定を優先して一つだけ示します。
 
@@ -331,6 +339,47 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 Applying changes...
   example/project-a: not attempted
     Precondition: actions.permissions.selected_actions changed since approval
+```
+
+二つの更新操作からなる論理的な設定変更で、先行する更新操作が成功し、後続の更新操作を開始できなかった場合は次のとおりです。
+
+```text
+Applying changes...
+  example/project-a: failed
+    Update request (actions.permissions.allowed_actions): succeeded
+    Update request (actions.permissions.selected_actions): not started
+    Precondition: actions.permissions.allowed_actions is not the value expected after the preceding update
+    Desired state: does not match
+
+Note: Some changes may already have been applied. No automatic rollback was performed.
+```
+
+先行する更新操作が成否不明の場合は、後続の更新操作を開始しません。
+
+```text
+Applying changes...
+  example/project-a: failed
+    Update request (actions.permissions.allowed_actions): unknown
+    Update request (actions.permissions.selected_actions): not started
+    Desired state: does not match
+
+Note: No automatic retry was performed.
+```
+
+ほかの論理的な設定変更と並ぶときは、二つの管理設定をまとめた名前で示します。
+
+```text
+Applying changes...
+  example/project-a
+    general.allow_auto_merge: updated
+    actions.permissions.allowed_actions + actions.permissions.selected_actions: failed
+      Update request (actions.permissions.allowed_actions): succeeded
+      Update request (actions.permissions.selected_actions): rejected
+      Desired state: does not match
+    actions.workflow.default_workflow_permissions: not attempted
+      Stopped: a preceding change did not complete
+
+Note: Some changes may already have been applied. No automatic rollback was performed.
 ```
 
 異常時の表示では、確認済みの操作結果、成否が不明な範囲、未実行の変更を区別します。
