@@ -76,9 +76,10 @@
 > [!NOTE]
 > 次は、reco の開発者が実際の動作で確認した事項です。
 >
-> - 省略したフィールドの保持：`sha_pinning_required` を省略して `allowed_actions` を変えると、`sha_pinning_required` は変わらない。`enabled` だけを送ると、`allowed_actions` と `sha_pinning_required` は変わらない（非公開リポジトリで確認）
+> - 省略したフィールドの保持：`sha_pinning_required` を省略して `allowed_actions` を変えると、`sha_pinning_required` は変わらない（公開・非公開リポジトリで確認）。`enabled` だけを送ると、`allowed_actions` と `sha_pinning_required` は変わらない（非公開リポジトリで確認）
 > - `allowed_actions` に `selected` を送ったときの副作用：現在の値がすでに `selected` でも、4章の `github_owned_allowed` が `true` に変わる。`verified_allowed` と `patterns_allowed` は変わらない。`enabled` だけを送った場合は変わらない（公開・非公開リポジトリで確認）
-> - Actions が無効の状態からの変更：`enabled: true` と `allowed_actions` を一つのリクエストで送ると、有効化とポリシーの変更が同時に反映され、省略した `sha_pinning_required` は無効にする前の値のまま保持される。無効にする前のポリシーが `selected` だった場合、`selected` を送ると4章の3項目は `github_owned_allowed` が `true` に変わるほかは残り、`all` を送ると3項目は残らない（非公開リポジトリで確認）
+> - Actions が無効の状態からの変更：`enabled: true` と `allowed_actions` を一つのリクエストで送ると、有効化とポリシーの変更が同時に反映され、省略した `sha_pinning_required` は無効にする前の値のまま保持される（公開・非公開リポジトリで確認）。無効にする前のポリシーが `selected` だった場合、`selected` を送ると4章の3項目は `github_owned_allowed` が `true` に変わるほかは残り、`all` を送ると3項目は残らない（非公開リポジトリで確認）
+> - 更新直後の取得：`allowed_actions` を `all` と `local_only` の間で変える更新、`selected` にする更新、Actions が無効の状態から `enabled: true` と `allowed_actions: all` を送って有効にする更新では、`204` の約 0.3 秒後の 3.1 の取得が更新後の値を返し、続けて約 0.6 秒おきに取得しても更新前の値には戻らなかった。`selected` にした直後の4章の取得も `409` にならず値を返した。有効にした直後の取得が `enabled: false` を返すこともなかった（公開・非公開リポジトリで、順に6回、3回、3回ずつ確認）
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -92,7 +93,7 @@ Selected actions の取得・更新は、どちらもリポジトリの `allowed
 > 次は、reco の開発者が実際の動作で確認した事項です。
 >
 > - 前提を満たさないときの応答：`allowed_actions` が `all` または `local_only` のとき、および Actions が無効のとき、取得は `409` を返し、値は返らない。本文の `errors` は、それぞれ `All actions and workflows are allowed on this repository`、`Only local actions and workflows are allowed on this repository`、`GitHub Actions is disabled on this repository` である。更新も、3つの場合のどれでも同じ `errors` の `409` を返す（非公開リポジトリで確認）
-> - `selected` から別のポリシーへの切替：`all` または `local_only` を経て `selected` に戻すと、切替前の値は残らず、`github_owned_allowed` が `true`、`verified_allowed` が `false`、`patterns_allowed` が `[]` になる（非公開リポジトリで `all`、公開リポジトリで `local_only` を経由して確認）。`all` から `selected` にした直後の値も同じだった
+> - `selected` から別のポリシーへの切替：`all` または `local_only` を経て `selected` に戻すと、切替前の値は残らず、`github_owned_allowed` が `true`、`verified_allowed` が `false`、`patterns_allowed` が `[]` になる（非公開リポジトリで `all`、公開リポジトリで `local_only` を経由して確認）。`all` から `selected` にした直後の値も同じだった（公開・非公開リポジトリで確認）
 > - Actions の無効化：無効にしてから `enabled` だけを `true` にして有効に戻すと、無効にする前の3項目の値が返る（非公開リポジトリで確認）
 > - 省略したフィールドの保持：`github_owned_allowed` だけを送ると、`verified_allowed` と `patterns_allowed` は変わらない（非公開リポジトリで確認）
 
@@ -119,7 +120,12 @@ Selected actions の取得・更新は、どちらもリポジトリの `allowed
 `patterns_allowed` の設定は **公開リポジトリにのみ適用される** と記載されています。非公開リポジトリで `patterns_allowed` を送ったときに値が保存されるか、取得時に返るか、空配列がどう扱われるかは記載がありません。
 
 > [!NOTE]
-> 非公開リポジトリでも、`patterns_allowed` に送った空でない配列と `[]` は保存され、4.1 の取得でそのまま返ることを、reco の開発者が実際の動作で確認しています。公開リポジトリでも同じです。保存された値が非公開リポジトリのワークフロー実行に適用されるかは確認していません。
+> 次は、reco の開発者が実際の動作で確認した事項です（公開・非公開リポジトリで確認）。
+>
+> - `patterns_allowed` の保存：非公開リポジトリでも、送った空でない配列と `[]` は保存され、4.1 の取得で同じ要素が返る。保存された値が非公開リポジトリのワークフロー実行に適用されるかは確認していない
+> - `patterns_allowed` の要素の順序：4.1 の取得が返す要素の順序は、送った順序と同じとは限らない。更新前の `patterns_allowed` が空でないときに複数の要素を送ると、送った順序と異なる順序で返った。`["actions/setup-go@*", "octo-org/*", "actions/checkout@*"]` を送ると `["actions/checkout@*", "actions/setup-go@*", "octo-org/*"]` が、`["tmknom/*", "actions/checkout@*"]` を送ると `["actions/checkout@*", "tmknom/*"]` が返り、どちらも文字列の昇順だった。更新前が `[]` のときと、`allowed_actions` を `selected` にした直後に送ったときは、送った順序のまま返った。順序が変わる条件と並べ方の規則は確認していない
+> - ほかの設定への影響：この更新は、3.1 の `allowed_actions` と `sha_pinning_required` を変えない。`sha_pinning_required` を `true` にしてから3項目を変えて確かめた
+> - 更新直後の取得：3項目を変える更新では、`204` の約 0.3 秒後の 4.1 の取得が更新後の値を返し、続けて約 0.6 秒おきに取得しても更新前の値には戻らなかった（それぞれ6回確認）
 
 ## 5. Workflow permissions
 
