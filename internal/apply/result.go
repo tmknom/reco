@@ -11,6 +11,9 @@ import (
 type changeRecord struct {
 	change       changeplan.LogicalChange
 	precondition preconditionCheck
+	// changedSetting は precondition が preconditionCurrentValueChanged のときだけ意味を持つ、変わっていた関係する現在値の設定。
+	// 副作用として提示した設定が変わっていた場合は、change.Key と異なる。
+	changedSetting setting.Key
 	// update は updateStarted が真のときだけ意味を持つ。偽のときのゼロ値は、開始しなかった更新操作の結果ではない。
 	update       github.UpdateOutcome
 	confirmation desiredStateConfirmation

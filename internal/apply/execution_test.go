@@ -43,14 +43,49 @@ func actionsDisabled() *github.ActionsPermissions {
 	}
 }
 
+// TestSameObservation は、承認時に予定した値と更新直前の設定の観測結果が同じかの規則を確かめる。
+//
+//trace:checks INV-001
+//trace:checks INV-004
+//trace:checks FR-010
+func TestSameObservation(t *testing.T) {
+	disabled := github.Unavailable[setting.Value](github.UnavailableActionsDisabled)
+	notSelected := github.Unavailable[setting.Value](github.UnavailableNotSelected)
+	criteria := func(patterns ...string) github.SettingObservation[setting.Value] {
+		return github.Observed(setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{PatternsAllowed: patterns}))
+	}
+	cases := []struct {
+		name       string
+		atApproval github.SettingObservation[setting.Value]
+		current    github.SettingObservation[setting.Value]
+		want       bool
+	}{
+		{name: "unavailable for the same reason is the same", atApproval: disabled, current: disabled, want: true},
+		{name: "unavailable for another reason differs", atApproval: disabled, current: notSelected, want: false},
+		{name: "observed value where unavailable was approved differs", atApproval: disabled, current: criteria("a/*"), want: false},
+		{name: "unavailable where an observed value was approved differs", atApproval: criteria("a/*"), current: disabled, want: false},
+		{name: "another observed value differs", atApproval: criteria("a/*"), current: criteria("b/*"), want: false},
+		{name: "observed values differing only in the order of patterns are the same", atApproval: criteria("a/*", "b/*"), current: criteria("b/*", "a/*"), want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sameObservation(tc.atApproval, tc.current); got != tc.want {
+				t.Errorf("sameObservation() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+//trace:checks INV-001
 //trace:checks INV-004
 //trace:checks FR-010
 func TestCheckPrecondition(t *testing.T) {
 	change := allowAutoMergeChange()
 	cases := []struct {
-		name     string
-		observed github.ObservationResult
-		want     preconditionCheck
+		name        string
+		observed    github.ObservationResult
+		want        preconditionCheck
+		wantChanged setting.Key
 	}{
 		{
 			name:     "same identity and current value hold",
@@ -68,9 +103,10 @@ func TestCheckPrecondition(t *testing.T) {
 			want:     preconditionIdentityMismatch,
 		},
 		{
-			name:     "changed current value alone is a current value change even if it equals the desired value",
-			observed: github.ObservationResult{RepositoryID: 1, General: github.General{AllowAutoMerge: true}},
-			want:     preconditionCurrentValueChanged,
+			name:        "changed current value alone is a current value change of the setting even if it equals the desired value",
+			observed:    github.ObservationResult{RepositoryID: 1, General: github.General{AllowAutoMerge: true}},
+			want:        preconditionCurrentValueChanged,
+			wantChanged: setting.AllowAutoMerge,
 		},
 		{
 			name:     "different ID and current value is an identity mismatch",
@@ -80,37 +116,59 @@ func TestCheckPrecondition(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := checkPrecondition(1, change, tc.observed); got != tc.want {
-				t.Errorf("checkPrecondition() = %v, want %v", got, tc.want)
+			if got, changed := checkPrecondition(1, change, tc.observed); got != tc.want || changed != tc.wantChanged {
+				t.Errorf("checkPrecondition() = %v, %q, want %v, %q", got, changed, tc.want, tc.wantChanged)
 			}
 		})
 	}
 
-	// 選択方式の Actions 許可条件は、Actions 許可ポリシーが selected でなくなると観測不能になる
-	selectedCases := []struct {
-		name     string
-		observed *github.ActionsPermissions
-		want     preconditionCheck
+	// 関係する現在値の設定が複数並ぶ変更と、承認時に予定した値が観測不能の変更。値の比べ方は TestSameObservation が確かめる
+	actionsCases := []struct {
+		name        string
+		change      changeplan.LogicalChange
+		observed    *github.ActionsPermissions
+		want        preconditionCheck
+		wantChanged setting.Key
 	}{
 		{
-			name:     "criteria differing only in the order of patterns hold",
-			observed: actionsSelected(setting.SelectedActionsCriteria{PatternsAllowed: []string{"b/*", "a/*"}}),
-			want:     preconditionHolds,
+			name:        "selected to all with criteria other than shown before approval is a current value change of selected_actions",
+			change:      selectedToAllChange(),
+			observed:    actionsSelected(setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{"a/*", "b/*", "c/*"}}),
+			want:        preconditionCurrentValueChanged,
+			wantChanged: setting.SelectedActions,
 		},
 		{
-			name:     "criteria that became unavailable are a current value change",
-			observed: actionsEnabled(setting.AllowedActionsAll, false),
-			want:     preconditionCurrentValueChanged,
+			name:        "selected to all with the policy no longer selected is a current value change of allowed_actions",
+			change:      selectedToAllChange(),
+			observed:    actionsEnabled(setting.AllowedActionsLocalOnly, false),
+			want:        preconditionCurrentValueChanged,
+			wantChanged: setting.AllowedActions,
+		},
+		{
+			name:     "enabling actions holds while actions is still disabled",
+			change:   enableActionsChange(),
+			observed: actionsDisabled(),
+			want:     preconditionHolds,
 		},
 	}
-	for _, tc := range selectedCases {
+	for _, tc := range actionsCases {
 		t.Run(tc.name, func(t *testing.T) {
 			observed := github.ObservationResult{RepositoryID: 1, ActionsPermissions: tc.observed}
-			if got := checkPrecondition(1, selectedActionsChange(), observed); got != tc.want {
-				t.Errorf("checkPrecondition() = %v, want %v", got, tc.want)
+			if got, changed := checkPrecondition(1, tc.change, observed); got != tc.want || changed != tc.wantChanged {
+				t.Errorf("checkPrecondition() = %v, %q, want %v, %q", got, changed, tc.want, tc.wantChanged)
 			}
 		})
 	}
+
+	t.Run("logical change without relevant settings panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("checkPrecondition() did not panic")
+			}
+		}()
+		empty := changeplan.LogicalChange{Key: setting.AllowAutoMerge, Desired: setting.BoolValue(true)}
+		checkPrecondition(1, empty, github.ObservationResult{RepositoryID: 1})
+	})
 }
 
 //trace:checks FR-012
@@ -701,6 +759,7 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 		wantBodies  []map[string]any
 		wantDelays  []time.Duration
 		wantPrecond preconditionCheck
+		wantChanged setting.Key
 		wantUpdate  github.UpdateOutcome
 		wantDesired desiredStateConfirmation
 		wantReason  github.UnavailableReason
@@ -708,6 +767,45 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 		wantResult  changeResult
 		wantCauses  []error
 	}{
+		{
+			// 更新後は Actions 許可ポリシーが selected でないため選択方式の Actions 許可条件を読まず、その消失は承認した副作用として比べない
+			name:   "selected to all reads the lost criteria only before the update and completes without an unexpected outside change",
+			change: selectedToAllChange(),
+			responses: []response{
+				okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(true, false, `["a/*", "b/*"]`), noContent,
+				okRepository(1, false, false), okAllowedActions("all", false),
+			},
+			wantRequests: []string{getRepository, getActionsPermissions, getSelectedActions, putActionsPermissions, getRepository, getActionsPermissions},
+			wantBodies:   []map[string]any{nil, nil, nil, {"enabled": true, "allowed_actions": "all"}, nil, nil},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
+		{
+			name:         "selected to all with criteria other than shown before approval sends no update request",
+			change:       selectedToAllChange(),
+			responses:    []response{okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(false, false, `["a/*", "b/*"]`)},
+			wantRequests: []string{getRepository, getActionsPermissions, getSelectedActions},
+			wantPrecond:  preconditionCurrentValueChanged,
+			wantChanged:  setting.SelectedActions,
+			wantResult:   notAttempted,
+		},
+		{
+			// 更新直前は sha_pinning_required が観測不能で比べる観測値がなく、保持の確認結果を根拠に保全されるとみなす
+			name:   "enabling actions with local_only completes even if sha_pinning_required is read as true after the update",
+			change: enableActionsChange(),
+			responses: []response{
+				okRepository(1, false, false), okActionsDisabled(), noContent,
+				okRepository(1, false, false), okAllowedActions("local_only", true),
+			},
+			wantRequests: []string{getRepository, getActionsPermissions, putActionsPermissions, getRepository, getActionsPermissions},
+			wantBodies:   []map[string]any{nil, nil, {"enabled": true, "allowed_actions": "local_only"}, nil, nil},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
 		{
 			name:   "all to local_only reads and updates only actions permissions and completes",
 			change: allowedActionsChange(),
@@ -800,6 +898,7 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 			responses:    []response{okRepository(1, false, false), okAllowedActions("all", false)},
 			wantRequests: []string{getRepository, getActionsPermissions},
 			wantPrecond:  preconditionCurrentValueChanged,
+			wantChanged:  setting.SelectedActions,
 			wantResult:   notAttempted,
 		},
 	}
@@ -821,6 +920,9 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 			}
 			if got.precondition != tc.wantPrecond {
 				t.Errorf("precondition = %v, want %v", got.precondition, tc.wantPrecond)
+			}
+			if got.changedSetting != tc.wantChanged {
+				t.Errorf("changedSetting = %q, want %q", got.changedSetting, tc.wantChanged)
 			}
 			if got.update != tc.wantUpdate {
 				t.Errorf("update = %v, want %v", got.update, tc.wantUpdate)
