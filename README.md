@@ -17,6 +17,11 @@ Only settings you declare are managed. Omitted settings are left untouched.
 reco targets repositories owned by personal accounts on GitHub.com.
 Organization-owned repositories and GitHub Enterprise Server are not supported.
 
+## Installation
+
+Download an archive from [GitHub Releases][releases], or use the container image `ghcr.io/tmknom/reco` (no `latest` tag).
+See [Installation](docs/user-guide/installation.md) (in Japanese) for verifying the downloads and preparing a token.
+
 ## Usage
 
 Create `reco.yaml`:
@@ -26,24 +31,23 @@ repositories:
   - name: your-name/your-repo
     general:
       delete_branch_on_merge: true
-      allow_auto_merge: true
-    actions:
-      workflow:
-        default_workflow_permissions: read
-        can_approve_pull_request_reviews: false
 ```
 
-Set a token in `GH_TOKEN` or `GITHUB_TOKEN` (typically `export GH_TOKEN=$(gh auth token)`), then run:
+Set a token in `GH_TOKEN` (typically `export GH_TOKEN=$(gh auth token)`), then run:
 
 ```shell
-reco plan                        # show the change plan without updating
-reco apply                       # show the plan, ask for approval, and apply
-reco show --repo OWNER/REPO      # show current settings
+reco show --repo your-name/your-repo   # show current settings
+reco plan                              # show the change plan without updating
+reco apply                             # show the plan, ask for approval, and apply
 ```
 
-Use `--config PATH` to specify another file, and `--repo OWNER/REPO` to limit `plan` / `apply` to one declared repository.
+For a step-by-step first run, see [Getting Started](docs/user-guide/getting-started.md) (in Japanese).
 
 ## Documentation
+
+- [User Guide](docs/user-guide/README.md) (in Japanese): what reco solves, how to install and use it, how to read its output, and what to do when something goes wrong
+
+For developers:
 
 - [Requirements](docs/spec/requirements.md)
 - [CLI specification](docs/spec/cli.md)

@@ -88,7 +88,7 @@
 | `delete_branch_on_merge` | boolean | 任意 | `false` |
 | `allow_auto_merge` | boolean | 任意 | `false` |
 
-`delete_branch_on_merge` は Pull Request のマージ時に head ブランチを自動で削除するか、`allow_auto_merge` は Pull Request の自動マージを許可するかの設定です。たとえば、`allow_auto_merge` だけを指定するリクエスト本文は次のとおりです。
+`delete_branch_on_merge` は Pull Request のマージ時に head ブランチを自動で削除するか、`allow_auto_merge` は Pull Request の自動マージを許可するかの設定です。リポジトリ設定のドキュメントは、同じ二つの機能を、設定画面の「General」ページの「Pull Requests」の欄にある「Automatically delete head branches」と「Allow auto-merge」という項目で設定できると記載しています。たとえば、`allow_auto_merge` だけを指定するリクエスト本文は次のとおりです。
 
 ```json
 {
@@ -111,3 +111,5 @@ Pull Request の自動マージは、GitHub Free と GitHub Free for organizatio
 |---|---|---|
 | `grounding` | [Update a repository](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#update-a-repository) | External Document |
 | `grounding` | [Managing auto-merge for pull requests in your repository (GitHub Enterprise Server 3.18)](https://docs.github.com/en/enterprise-server@3.18/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-auto-merge-for-pull-requests-in-your-repository) | External Document |
+| `grounding` | [Managing auto-merge for pull requests in your repository](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-auto-merge-for-pull-requests-in-your-repository) | External Document |
+| `grounding` | [Managing the automatic deletion of branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-the-automatic-deletion-of-branches) | External Document |

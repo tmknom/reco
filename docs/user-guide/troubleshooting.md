@@ -179,7 +179,7 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 3. `plan` を実行し、残っている変更予定を確かめる。完了した変更は、ほかの手段で変えられていなければ変更計画に出ない。`Update request` に `unknown`（成否不明）があれば、その更新が GitHub に反映されたかを reco は知らないため、この `plan` で今の値を確かめてから次へ進む
 4. 残りの変更を適用するなら、`apply` を実行し直す（[リポジトリを並べる順序](operations.md#リポジトリを並べる順序)）。途中で止まった `apply` で反映された変更を元に戻したいなら、[変えた値を戻す](operations.md#変えた値を戻す) の手順で元の値を書いて `apply` する
 
-`Update request (actions.permissions.allowed_actions): succeeded` のあとに、二つ目の `Update request` が `succeeded` 以外で続くときは、GitHub に中間状態が残っている可能性があります（[二つの更新操作からなる変更の途中で止まると、中間状態が残る](safety.md#二つの更新操作からなる変更の途中で止まると中間状態が残る)）。上の手順 3 と 4 で `apply` し直すと、残りの更新が行われます。GitHub の設定画面で直してもかまいません。
+`Update request (actions.permissions.allowed_actions)` が `succeeded` か `unknown` で、そのあとに二つ目の `Update request` が `succeeded` 以外で続くときは、GitHub に中間状態が残っている可能性があります（[二つの更新操作からなる変更の途中で止まると、中間状態が残る](safety.md#二つの更新操作からなる変更の途中で止まると中間状態が残る)）。上の手順 3 と 4 で `apply` し直すと、残りの更新が行われます。GitHub の設定画面で直してもかまいません。
 
 ## 適用したのに反映されない
 
@@ -189,6 +189,8 @@ Applying changes...
     Update request: succeeded
     Desired state: does not match
     Possible cause: auto-merge is not available for private repositories on GitHub Free, where GitHub may accept the update without applying it
+
+Note: Some changes may already have been applied. No automatic rollback was performed.
 ```
 
 GitHub は更新を受け付けたのに、reco が読み取り直した値が期待値になっていなかったときの表示です。`Possible cause:` の行の意味は [原因を断定しない行](reading-output.md#原因を断定しない行) にあります。
@@ -204,6 +206,8 @@ Applying changes...
     Update request: succeeded
     Desired state: matches
     Other settings: actions.permissions.sha_pinning_required changed false -> true (cause not determined)
+
+Note: Some changes may already have been applied. No automatic rollback was performed.
 ```
 
 `Other settings:` の行は、変更対象外の設定の予期しない変化を示します。変えようとした設定が期待値になっていても（`Desired state: matches`）、この行があれば `failed` になります。行の意味は [原因を断定しない行](reading-output.md#原因を断定しない行) にあります。
@@ -235,6 +239,8 @@ Applying changes...
     Update request (actions.permissions.selected_actions): not started
     Precondition: actions.permissions.allowed_actions is not the value expected after the preceding update
     Desired state: does not match
+
+Note: Some changes may already have been applied. No automatic rollback was performed.
 ```
 
 - **原因の候補**：二つの更新操作からなる変更で、一つ目の更新のあと、GitHub への反映が遅れた。ほかの人や自動化が、そのあいだに値を変えた。reco はどちらかを断定しない
