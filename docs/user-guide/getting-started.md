@@ -119,6 +119,7 @@ Repositories checked: 1
 - 設定を増やす：[設定ファイルの書き方](configuration.md)
 - 変更計画と変更結果の各行の意味を知る：[変更計画と変更結果の読み方](reading-output.md)
 - 管理するリポジトリを増やす：[複数リポジトリの運用](operations.md)
+- エラーで止まったときにすることを知る：[困ったときは](troubleshooting.md)
 
 ## References
 

@@ -127,7 +127,7 @@ Repositories updated: 2
 | `not attempted` | 未実行 | その変更について、GitHub の設定を変える要求を送っていない。同じ `apply` のほかの変更は反映されていることがある |
 | `no change` | 変更不要 | 変更計画を作ったときに確かめた事実で、更新を伴わない。先のリポジトリが完了しなかった場合も `no change` と示す |
 
-`failed` と `not attempted` には、理由の行が続きます（[更新操作の結果と期待状態の確認結果](#更新操作の結果と期待状態の確認結果)、[更新を始めなかった理由](#更新を始めなかった理由)）。
+`failed` と `not attempted` には、理由の行が続きます（[更新操作の結果と期待状態の確認結果](#更新操作の結果と期待状態の確認結果)、[更新を始めなかった理由](#更新を始めなかった理由)）。これらが出たあとにすることは [`apply` が途中で止まった](troubleshooting.md#apply-が途中で止まった) にあります。
 
 `Apply complete.` と `Repositories updated:` は、すべてのリポジトリが `updated` か `no change` のときだけ出ます。`Repositories updated:` は `updated` のリポジトリの数で、`no change` は数えません。
 
@@ -209,6 +209,8 @@ Applying changes...
 Note: Some changes may already have been applied. No automatic rollback was performed.
 ```
 
+`Precondition:` の行が出たあとにすることは [承認のあとで状況が変わったと報告された](troubleshooting.md#承認のあとで状況が変わったと報告された) にあります。
+
 ## 原因を断定しない行
 
 `Other settings:` と `Possible cause:` は、どちらも reco が原因を断定せずに示す行です。
@@ -225,7 +227,9 @@ Applying changes...
 Note: Some changes may already have been applied. No automatic rollback was performed.
 ```
 
-`Possible cause:` は、更新要求が受け付けられたのに期待状態と一致しなかった設定に、既知の原因の候補があるとき、その候補を可能性として示します。現在、候補を示すのは `general.allow_auto_merge` だけで、候補の内容は [設定ファイルの書き方](configuration.md#リポジトリの一般設定) にあります。reco は候補が当てはまるかを確かめていません。
+この行が出たあとにすることは [変えていない設定が変わったと報告された](troubleshooting.md#変えていない設定が変わったと報告された) にあります。
+
+`Possible cause:` は、更新要求が受け付けられたのに期待状態と一致しなかった設定に、既知の原因の候補があるとき、その候補を可能性として示します。現在、候補を示すのは `general.allow_auto_merge` だけで、候補の内容は [設定ファイルの書き方](configuration.md#リポジトリの一般設定) にあります。reco は候補が当てはまるかを確かめていません。この行が出たあとにすることは [適用したのに反映されない](troubleshooting.md#適用したのに反映されない) にあります。
 
 ```text
 Applying changes...

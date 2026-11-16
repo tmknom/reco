@@ -106,7 +106,7 @@ Actions が無効のリポジトリで `all` や `local_only` を書いた場合
 
 Actions が無効のリポジトリから変えるとき、無効にする前のポリシーが `selected` だったなら、中間状態の `selected_actions` は、`github_owned_allowed` が `true` になるほかは無効にする前の値のままです。この場合も、宣言していない許可が一時的に生まれることがあります。
 
-二つの更新操作のあいだで `apply` が止まったときに中間状態が残ることと、そのときにすることは、[reco の安全性の約束](safety.md#二つの更新操作からなる変更の途中で止まると中間状態が残る) にあります。
+二つの更新操作のあいだで `apply` が止まったときに中間状態が残ることは [reco の安全性の約束](safety.md#二つの更新操作からなる変更の途中で止まると中間状態が残る) に、そのときにすることは [`apply` が途中で止まった](troubleshooting.md#apply-が途中で止まった) にあります。
 
 ## ワークフローの権限
 
@@ -171,7 +171,7 @@ repositories:
 {"time":"...","level":"ERROR","msg":"command failed","error":"load configuration ./reco.yaml: repositories[0].actions.permissions.selected_actions (line 7, column 11): missing patterns_allowed; selected_actions requires all of github_owned_allowed, verified_allowed, patterns_allowed"}
 ```
 
-受け付ける入力の全条件は、References の YAML 設定仕様にあります。
+受け付ける入力の全条件は、References の YAML 設定仕様にあります。設定ファイルが見つからないときなど、GitHub に問い合わせる前に止まるほかのエラーは [困ったときは](troubleshooting.md#github-に問い合わせる前に止まる) にあります。
 
 ## References
 
