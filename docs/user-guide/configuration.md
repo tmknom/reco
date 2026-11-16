@@ -94,9 +94,9 @@ GitHub の資料は `patterns_allowed` を公開リポジトリに適用する�
 
 `selected` から `all` や `local_only` に変えると、GitHub は `selected_actions` の3項目の値を消します。あとで `selected` に戻しても、消える前の値は戻りません。`all` や `local_only` のときは `selected_actions` を書けないため、この3項目は管理範囲の外にあります。
 
-変更計画では、消える値が副作用（`Side effect:` の行）として、現在の値とともに示されます。あとで同じ値に戻したいときは、この行の値を控えておきます。reco がこの副作用をどう扱うかは、[reco の安全性の約束](safety.md#宣言していない設定を変えない) にあります。
+変更計画では、消える値が副作用（`Side effect:` の行）として示されます。行の読み方と、承認の前に控えておく値は [変更計画と変更結果の読み方](reading-output.md#副作用) に、reco がこの副作用をどう扱うかは [reco の安全性の約束](safety.md#宣言していない設定を変えない) にあります。
 
-Actions が無効のリポジトリで `all` や `local_only` を書いた場合は、無効にする前のポリシーが `selected` だったなら、同じく3項目が消えます。無効のあいだは値を読み取れないため、変更計画には消える可能性があることだけが示されます。
+Actions が無効のリポジトリで `all` や `local_only` を書いた場合は、無効にする前のポリシーが `selected` だったなら、同じく3項目が消えます。
 
 ### `all` や `local_only` から `selected` に変えるとき
 
