@@ -164,6 +164,7 @@ Relationships の存在は、要求の充足、根拠の正確性、検証の実
 |---|---|
 | [reco ユーザーガイド](../user-guide/README.md) | 正本だけ |
 | [用語集](../user-guide/glossary.md) | 正本だけ |
+| [設定ファイルの書き方](../user-guide/configuration.md) | 用語集 |
 
 ### 5.4 責務の境界
 
