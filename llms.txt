@@ -11,6 +11,7 @@ Identify and read task-related sections below:
 - Make design decisions or evaluate scope → Read **Project Overview** section
 - Edit documents under `docs/` → Read **Contributing** section
 - Modify the release workflow, `.goreleaser.yaml`, or `Dockerfile` → Read **Contributing** section (Release Workflow)
+- Change explanations for users → Read **User Guide** section and **Contributing** section (Documentation Policy)
 
 ## Specifications
 
@@ -31,11 +32,16 @@ Identify and read task-related sections below:
 - [GitHub Repositories API](docs/research/repositories.md): Repository get and update endpoints (required permissions, HTTP responses, merge-related field visibility, repository name vs. ID and rename redirects, general setting fields and update behavior) - Use when a spec or design needs a fact about repository identity or general settings
 - [GitHub Actions Permissions API](docs/research/actions-permissions.md): Actions permissions, selected actions, and workflow permissions endpoints (required permissions, HTTP responses, fields, update units, and observed side effects) - Use when a spec or design needs a fact about GitHub Actions permission settings
 
+## User Guide
+
+- [User Guide](docs/user-guide/README.md): Entry point of the user guide (intended readers, documents to read for each user goal, and the guide's relationship to the specifications as their source of truth) - Use when choosing which user-facing document to read or adding a new one
+- [Glossary](docs/user-guide/glossary.md): Plain-language paraphrases of the terms the user guide uses, grouped by declaration, observation, planning, and applying, with where each term appears in reco's output - Use when writing or reading user-facing explanations, or checking which word the guide uses for a domain concept
+
 ## Project Overview
 
 - [Constitution](docs/CONSTITUTION.md): Purpose, problem statement, value proposition, design principles, and non-goals of reco - Use when making design decisions, resolving tradeoffs between principles, or judging whether a feature is in scope
 
 ## Contributing
 
-- [Documentation Policy](docs/contributing/docs-policy.md): Responsibilities and sources of truth of each document, identifiers (`FR`, `QR`, `INV`), Relationships (`alignment`, `grounding`, `checks`), and consistency checks on change - Use when adding or changing requirements, identifiers, or Relationship tables, or when editing specs and designs
+- [Documentation Policy](docs/contributing/docs-policy.md): Responsibilities and sources of truth of each document, identifiers (`FR`, `QR`, `INV`), Relationships (`alignment`, `grounding`, `checks`), consistency checks on change, and the rules for the user guide (position, terms, document dependencies, responsibility boundaries, checks when adding documents, output examples, readers and volume) - Use when adding or changing requirements, identifiers, or Relationship tables, when editing specs and designs, or when editing the user guide
 - [Release Workflow](docs/contributing/release.md): Tag-triggered release to GitHub Releases and GHCR (job order and permissions, artifacts, build settings, container image, provenance attestation, partial publication and re-runs, user-side verification, pinning of actions and tools) - Use when modifying `.github/workflows/release.yml`, `.goreleaser.yaml`, or `Dockerfile`, or when cutting a release
