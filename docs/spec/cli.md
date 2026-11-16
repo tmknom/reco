@@ -249,7 +249,7 @@ Repositories updated: 2
 
 承認の前には、変更計画を4章の `plan` と同じ形で提示します。承認は、提示した変更計画の全体に一度だけ求めます。
 
-承認が得られなければ更新を開始せず、理由を表示して終了コード `1` とします。拒否した場合は `Apply cancelled. No changes made.` のように、更新が開始されていないことを伝えます。一部の更新後に停止した場合は `No changes made.` と表示しません。
+承認が得られなければ更新を開始せず、理由を表示して終了コード `1` とします。拒否した場合は `apply cancelled: approval declined; no changes made` のように、更新が開始されていないことを伝えます。一部の更新後に停止した場合は `no changes made` を示しません。
 
 承認後は、承認した対象と変更内容を差し替えません。各更新直前にリポジトリ ID・関係する現在値・適用条件を確認できない場合や、関係する予定外の変化を検出した場合は、理由を報告して当該操作と後続の更新を開始しません。更新操作に未管理設定の既存値を含める必要がある場合も、その値を維持できると確認できなければ当該操作を開始しません。
 
@@ -306,6 +306,8 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 ### 5.3 異常時の表示例
 
+次の表示例は、stdout へ表示する変更結果です。完了しなかった論理的な設定変更があるときは、変更結果のあとに、宣言順で最初に完了しなかった論理的な設定変更のエラーを stderr へ1行で表示します（7章）。
+
 ```text
 Applying changes...
   example/project-a
@@ -316,8 +318,13 @@ Applying changes...
   example/project-b: not attempted
     Stopped: a preceding repository did not complete
 
-Error: unable to confirm the desired state for example/project-a
 Note: Some changes may already have been applied. No automatic rollback was performed.
+```
+
+この例で stderr へ表示するエラーは次のとおりです。
+
+```text
+{"time":"...","level":"ERROR","msg":"command failed","error":"change actions.workflow.default_workflow_permissions failed: fetch workflow permissions example/project-a: unexpected response (HTTP 502)"}
 ```
 
 ```text
@@ -328,7 +335,6 @@ Applying changes...
   example/project-b: not attempted
     Stopped: a preceding repository did not complete
 
-Error: unable to confirm an update result for example/project-a: redirect not followed (HTTP 307)
 Note: No automatic retry was performed.
 ```
 
@@ -504,7 +510,15 @@ Actions permissions:
 
 ## 7. 出力と終了コード
 
-観測した設定状態、変更計画、変更結果、`--help` と `--version` による使い方・バージョンは標準出力（stdout）へ表示します。エラー、警告、承認プロンプト、診断ログは標準エラー出力（stderr）へ表示します。エラー時は対象と理由を可能な範囲で示します。前掲の表示例は両ストリームをまとめた代表例であり、空白・改行・エラーメッセージの完全一致は契約としません（`--version` の出力は除きます）。変更結果に添える注記（`Note:`）は変更結果の一部として stdout へ表示します。
+観測した設定状態、変更計画、変更結果、`--help` と `--version` による使い方・バージョンは標準出力（stdout）へ表示します。エラー、警告、承認プロンプト、診断ログは標準エラー出力（stderr）へ表示します。変更結果に添える注記（`Note:`）は変更結果の一部として stdout へ表示します。
+
+エラーは、診断ログと同じ JSON の1行で stderr へ表示します。`msg` は `command failed` とし、`error` に対象と理由を可能な範囲で示します。エラーは `--log-level` の値によらず表示します。
+
+```text
+{"time":"...","level":"ERROR","msg":"command failed","error":"apply cancelled: approval declined; no changes made"}
+```
+
+前掲の表示例は代表例であり、空白・改行・エラーメッセージの完全一致は契約としません（`--version` の出力は除きます）。
 
 | 状況 | 終了コード |
 |---|---:|
@@ -527,7 +541,7 @@ HTTP リダイレクトには追従しません。読み取り要求では観測
 GitHub は、名前変更前の名前で指定したリポジトリへの要求にリダイレクト応答を返します（[GitHub リポジトリ API 仕様](../research/repositories.md) 2章）。このため、リダイレクト応答のエラーでは、リポジトリが名前変更または移転された可能性と、現在の名前で指定し直すことを案内します。転送先の名前は示しません。
 
 ```text
-Error: fetch repository example/old-name: redirect not followed (HTTP 301): the repository may have been renamed or transferred; specify its current name
+{"time":"...","level":"ERROR","msg":"command failed","error":"fetch repository example/old-name: redirect not followed (HTTP 301): the repository may have been renamed or transferred; specify its current name"}
 ```
 
 | Relationship | Target | Target Type |
