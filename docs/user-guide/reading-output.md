@@ -89,7 +89,7 @@ Repository: example/project-a
     Side effect: GitHub discards the current selected_actions (github_owned_allowed: true, verified_allowed: true, patterns_allowed: ["example/*"])
 ```
 
-括弧の中は、消える設定の値を、変更計画を作った時点で読み取ったものです。同じ値に戻す可能性があるなら、承認する前にこの値を控えておきます。
+括弧の中は、消える設定の値を、変更計画を作った時点で読み取ったものです。同じ値に戻す可能性があるなら、承認する前にこの値を控えておきます。控えた値で戻す手順は [変えた値を戻す](operations.md#変えた値を戻す) にあります。
 
 Actions が無効のリポジトリでは値を読み取れないため、`Side effect: GitHub may discard selected_actions if allowed_actions was "selected" before GitHub Actions was disabled (current values are unavailable)` のように、消える可能性だけが示されます。
 

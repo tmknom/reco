@@ -92,7 +92,7 @@ GitHub の資料は `patterns_allowed` を公開リポジトリに適用する�
 
 ### `selected` から `all` や `local_only` に変えるとき
 
-`selected` から `all` や `local_only` に変えると、GitHub は `selected_actions` の3項目の値を消します。あとで `selected` に戻しても、消える前の値は戻りません。`all` や `local_only` のときは `selected_actions` を書けないため、この3項目は管理範囲の外にあります。
+`selected` から `all` や `local_only` に変えると、GitHub は `selected_actions` の3項目の値を消します。あとで `selected` に戻しても、GitHub は消える前の値を復元しません。`all` や `local_only` のときは `selected_actions` を書けないため、この3項目は管理範囲の外にあります。
 
 変更計画では、消える値が副作用（`Side effect:` の行）として示されます。行の読み方と、承認の前に控えておく値は [変更計画と変更結果の読み方](reading-output.md#副作用) に、reco がこの副作用をどう扱うかは [reco の安全性の約束](safety.md#宣言していない設定を変えない) にあります。
 
@@ -133,7 +133,7 @@ repositories:
       delete_branch_on_merge: true
 ```
 
-並べた順が、reco が変更計画を示す順であり、承認後に更新する順です。一つのリポジトリの中の設定は、書いた順ではなく、reco が決めた順に示し、更新します。
+並べた順が、reco が変更計画を示す順であり、承認後に更新する順です。どの順に並べるとよいかは [複数リポジトリの運用](operations.md#リポジトリを並べる順序) にあります。一つのリポジトリの中の設定は、書いた順ではなく、reco が決めた順に示し、更新します。
 
 YAML のアンカー（`&`）とエイリアス（`*`）は使えません。reco は、リポジトリごとの宣言をほかのリポジトリと共有したり継承したりすることを認めていないためです。多くのリポジトリに同じ設定を書くときも、リポジトリごとに書き並べる必要があります。
 
