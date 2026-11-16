@@ -36,6 +36,7 @@ Identify and read task-related sections below:
 
 - [User Guide](docs/user-guide/README.md): Entry point of the user guide (intended readers, documents to read for each user goal, and the guide's relationship to the specifications as their source of truth) - Use when choosing which user-facing document to read or adding a new one
 - [Glossary](docs/user-guide/glossary.md): Plain-language paraphrases of the terms the user guide uses, grouped by declaration, observation, planning, and applying, with where each term appears in reco's output - Use when writing or reading user-facing explanations, or checking which word the guide uses for a domain concept
+- [Configuration Guide](docs/user-guide/configuration.md): How to write the configuration file for users (file location and structure, unwritten settings staying unmanaged, meaning of each setting, what GitHub does when the Actions permission policy changes, listing multiple repositories, common mistakes) - Use when explaining to users how to declare settings, or when changing configuration behavior that users rely on
 
 ## Project Overview
 
