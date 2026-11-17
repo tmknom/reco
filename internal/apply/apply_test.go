@@ -520,6 +520,22 @@ func TestApplyPlan(t *testing.T) {
 		}
 	})
 
+	t.Run("enabled state change returns an error naming it without approval, output, or request", func(t *testing.T) {
+		baseURL, server := newSequenceServer(t)
+		var out bytes.Buffer
+		calls := 0
+		disabling := changeplan.SettingPlan{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
+
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, disabling))
+
+		if want := "owner/repo: updating actions.permissions.enabled is not supported yet; no changes made"; err == nil || err.Error() != want {
+			t.Errorf("applyPlan() error = %v, want %q", err, want)
+		}
+		if calls != 0 || out.Len() != 0 || len(server.Methods()) != 0 {
+			t.Errorf("approve calls = %d, Out = %q, requests = %v, want none", calls, out.String(), server.Methods())
+		}
+	})
+
 	t.Run("not-comparable policy and its side effect are shown before approval and declining sends no request", func(t *testing.T) {
 		baseURL, server := newSequenceServer(t)
 		var out bytes.Buffer

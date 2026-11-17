@@ -254,4 +254,21 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("applicable change of the enabled state is an error naming the setting", func(t *testing.T) {
+		enabling := SettingPlan{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
+		// 適用可能な変更予定と並べ、ほかの変更予定があっても承認の対象にしないことを確かめる
+		got, err := newRepositoryPlan(enabling, mismatch).LogicalChanges()
+		if want := "owner/repo: updating actions.permissions.enabled is not supported yet"; err == nil || err.Error() != want {
+			t.Errorf("LogicalChanges() = %+v, error = %v, want error %q", got, err, want)
+		}
+	})
+
+	t.Run("matched enabled state does not prevent the other changes", func(t *testing.T) {
+		matched := SettingPlan{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(false), Result: Match}
+		got, err := newRepositoryPlan(matched, mismatch).LogicalChanges()
+		if err != nil || len(got) != 1 || !reflect.DeepEqual(got[0].Keys(), []setting.Key{setting.AllowAutoMerge}) {
+			t.Errorf("LogicalChanges() = %+v, error = %v, want one logical change of %s", got, err, setting.AllowAutoMerge)
+		}
+	})
 }

@@ -66,6 +66,12 @@ func TestSideEffects(t *testing.T) {
 			want:     nil,
 		},
 		{
+			name:     "disabling actions with selected policy has no side effect because GitHub keeps the criteria",
+			plan:     newSettingPlan(setting.ActionsEnabled, selected.Setting(setting.ActionsEnabled), setting.BoolValue(false)),
+			observed: selected,
+			want:     nil,
+		},
+		{
 			name:     "criteria change has no side effect",
 			plan:     newSettingPlan(setting.SelectedActions, selected.Setting(setting.SelectedActions), setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{})),
 			observed: selected,

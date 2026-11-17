@@ -33,6 +33,8 @@ func (o ObservationResult) Setting(key setting.Key) SettingObservation[setting.V
 		return Observed(setting.BoolValue(o.General.DeleteBranchOnMerge))
 	case setting.AllowAutoMerge:
 		return Observed(setting.BoolValue(o.General.AllowAutoMerge))
+	case setting.ActionsEnabled:
+		return Observed(setting.BoolValue(o.ActionsPermissions.Enabled))
 	case setting.AllowedActions:
 		return valueObservation(o.ActionsPermissions.AllowedActions, setting.AllowedActionsPolicyValue)
 	case setting.SHAPinningRequired:

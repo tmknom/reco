@@ -68,7 +68,7 @@ func TestRepositoryPlan_HasPlannedChanges(t *testing.T) {
 }
 
 //trace:checks FR-007
-func TestSettingPlan_EnablesActions(t *testing.T) {
+func TestSettingPlan_EnablesActionsByPolicy(t *testing.T) {
 	cases := []struct {
 		name string
 		plan SettingPlan
@@ -97,8 +97,8 @@ func TestSettingPlan_EnablesActions(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.plan.EnablesActions(); got != tc.want {
-				t.Errorf("EnablesActions() = %t, want %t", got, tc.want)
+			if got := tc.plan.EnablesActionsByPolicy(); got != tc.want {
+				t.Errorf("EnablesActionsByPolicy() = %t, want %t", got, tc.want)
 			}
 		})
 	}
@@ -389,6 +389,49 @@ func TestGenerate_ActionsPermissions(t *testing.T) {
 		}
 		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
 			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
+		}
+	})
+
+	t.Run("declared enabled alone is reconciled and judged applicable without a side effect", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo":                     githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/actions/permissions": githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "all"}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+		enabledFile := configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(strings.Replace(actionsPermissionsSource, "allowed_actions: all", "enabled: false", 1))}}, Name: "reco.yaml", Path: "./reco.yaml"}
+
+		got, err := Generate(context.Background(), client, enabledFile, nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		want := []SettingPlan{{
+			Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false), Result: Mismatch, Applicability: Applicable,
+		}}
+		if len(got.Repositories) != 1 {
+			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
+		}
+		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
+			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
+		}
+	})
+
+	t.Run("enabled true with a policy on disabled actions plans only the not-comparable policy", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo":                     githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/actions/permissions": githubtest.OK(githubtest.ActionsDisabledBody),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+		enabledFile := configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(strings.Replace(actionsPermissionsSource, "allowed_actions: all", "enabled: true\n        allowed_actions: all", 1))}}, Name: "reco.yaml", Path: "./reco.yaml"}
+
+		got, err := Generate(context.Background(), client, enabledFile, nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		if len(got.Repositories) != 1 {
+			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
+		}
+		if s := got.Repositories[0].Settings; len(s) != 1 || s[0].Key != setting.AllowedActions || s[0].Result != NotComparable {
+			t.Errorf("Settings = %+v, want only the not-comparable %s", s, setting.AllowedActions)
 		}
 	})
 

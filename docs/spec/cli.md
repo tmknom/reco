@@ -144,6 +144,16 @@ Plan: 2 repositories to update, 2 known changes, 0 not-comparable settings
 Repositories checked: 3
 ```
 
+Actions の有効状態は、Actions permissions を取得できれば必ず確認できるため、`enabled` の変更予定は確認済みの差分として示します。Actions を無効にしても、GitHub は `allowed_actions`、`sha_pinning_required`、Selected actions の値を残すため（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 3.2・4章）、`Side effect:` は添えません。`enabled: true` を `allowed_actions` とともに宣言した場合は、有効状態の行を示さず、表示と集計は `enabled` を省略した場合と同じです（[YAML 設定仕様](configuration.md) 4章）。
+
+```text
+Repository: example/project-a
+  actions.permissions.enabled: true -> false
+
+Plan: 1 repository to update, 1 known change, 0 not-comparable settings
+Repositories checked: 1
+```
+
 比較不能な設定予定は、現在値を推測せずに示します。Actions が無効のリポジトリでは `allowed_actions` の現在値を取得できませんが、宣言したポリシーで Actions を有効にする変更として適用できます（[YAML 設定仕様](configuration.md) 4章）。
 
 ```text
@@ -192,6 +202,8 @@ Repository: example/project-a
 ## 5. `apply`：承認と変更結果
 
 `apply` は、選択された全対象について、設定宣言の検証、必要な観測、照合と適用可能性の判断が完了してから承認へ進みます。これらの事前検証で問題が見つかった場合は、対象と理由を示し、承認や更新を開始していないことを報告します。すべて変更不要と確認できた場合は、承認を求めず、更新せずに正常終了します。
+
+`actions.permissions.enabled` の変更予定を含む変更計画は、`apply` ではまだ実行できません。事前検証の問題として、変更計画を表示せず、承認を求めず、更新を開始せずに、`example/project-a: updating actions.permissions.enabled is not supported yet; no changes made` のように対象と設定を示してエラー終了します。`plan` では変更予定を確認できます。
 
 すべて変更不要の場合の表示例は次のとおりです。
 
@@ -499,7 +511,7 @@ Actions permissions:
 
 権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。`unavailable` と表示せず、欠けた項目を示してエラーとします。
 
-`enabled` は観測・表示する値ですが、設定宣言に書ける設定ではありません。`allowed_actions` を宣言したときに Actions が有効であることを期待状態に含める扱いは、[YAML 設定仕様](configuration.md) 4章が定めます。`show` の表示は人が読むためのものであり、設定宣言として再利用できる形式ではありません。
+`show` の表示は人が読むためのものであり、設定宣言として再利用できる形式ではありません。
 
 | Relationship | Target | Target Type |
 |---|---|---|

@@ -129,6 +129,8 @@ Actions の実行許可で、取得条件による観測不能として扱うの
 | Actions が無効（`enabled: false`） | Actions 許可ポリシー、`sha_pinning_required`、選択方式の Actions 許可条件 | 応答に `allowed_actions` が含まれず、`sha_pinning_required` は保存された値によらず `false` で返る（GitHub Actions 権限 API 仕様 3.1） |
 | Actions 許可ポリシーが `selected` でない | 選択方式の Actions 許可条件 | 取得が `409` を返し、値は返らない（GitHub Actions 権限 API 仕様 4章） |
 
+Actions の有効状態は取得条件を持たず、`GET /repos/{owner}/{repo}/actions/permissions` の応答が取得契約に適合すれば必ず観測値になります。Actions の有効状態だけを管理設定とするリポジトリでも、計画時の観測は Actions の実行許可を読み取ります。
+
 Actions が有効のときに `allowed_actions` または `sha_pinning_required` が欠けた応答と、3項目のいずれかが欠けた Selected actions の応答は、取得契約に適合しない応答です。`sha_pinning_required` と Selected actions の3項目は公式ドキュメント上は任意のフィールドですが、欠落の理由を確認できないため、既定値で補いません。`selected` と観測したあとの Selected actions の取得が `409` を返した場合も、観測不能にせず観測操作の失敗とします（[ドメインモデル](domain.md) の現在状態・観測結果・観測失敗）。
 
 Reconciliation は管理範囲内の期待状態と観測結果を比較し、一致（Match）、不一致（Mismatch）、比較不能（Not Comparable）を返します。比較可能な集合値は設定の意味に沿って比較し、例えば許可パターンは要素の順序だけで差分を作りません。Change Execution が変更前提、更新後の期待状態、変更対象外の設定を比べるときも、同じ判定を使います（[ドメインモデル](domain.md) の設定の値）。未観測値を既定値で補わず、観測操作の失敗を比較不能として処理しません。比較不能にするのは、管理設定の観測結果が取得条件による観測不能のときだけで、その理由をそのまま管理設定の計画に持たせます。
@@ -303,6 +305,8 @@ Actions 許可ポリシーの遷移は次の表に従います。遷移元は観
 遷移元が `local_only` のとき、中間状態は `github_owned_allowed: true` によって GitHub 所有の Actions を許可します。宣言した `github_owned_allowed` が `false` なら、遷移元も宣言した状態も許可しない Actions を (1) から (2) までの間だけ許可することになります。(2) を開始できなかった場合と (2) が失敗した場合は、この中間状態が残ります。reco は (1) を取り消さず、どの更新操作まで終えたかを変更結果に示します。(1) の更新要求と (2) の直前の観測のあいだには更新要求の間隔（6.2節）が入るため、中間状態は少なくとも1秒残ります。
 
 遷移元が無効の遷移では、(1) の直前の変更前提に、Actions が無効で Actions 許可ポリシーを取得できないままであることを含めます。承認時に予定した値が観測不能であるためです（[ドメインモデル](domain.md) の承認と変更前提）。
+
+Actions 許可ポリシーを宣言せずに Actions の有効状態を宣言した場合（[YAML 設定仕様](../spec/configuration.md) 4.1）、有効状態の変更予定は、有効から無効、無効から有効のどちらも適用可能です。無効にしても、GitHub は Actions 許可ポリシー、`sha_pinning_required`、選択方式の Actions 許可条件の値を保持するため（GitHub Actions 権限 API 仕様 3.2・4章）、変更計画に示す消失はありません。Actions 許可ポリシーとともに有効を宣言した場合は、有効状態が管理設定にならないため（[ドメインモデル](domain.md) の管理の単位と管理設定）、遷移表の遷移元が「無効」の行だけが当たります。
 
 `selected` のまま3項目だけを変える場合は、Actions 許可ポリシーの更新を送りません。現在の値と同じ `selected` を送っても、GitHub は `github_owned_allowed` を `true` に変えるためです（GitHub Actions 権限 API 仕様 3.2）。
 

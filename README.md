@@ -12,7 +12,7 @@ Only settings you declare are managed. Omitted settings are left untouched.
 ### Supported settings
 
 - General: allow auto-merge, automatically delete head branches
-- GitHub Actions: allowed actions and reusable workflows, default `GITHUB_TOKEN` permissions, allowing GitHub Actions to create and approve pull requests
+- GitHub Actions: enabling or disabling GitHub Actions, allowed actions and reusable workflows, default `GITHUB_TOKEN` permissions, allowing GitHub Actions to create and approve pull requests
 
 reco targets repositories owned by personal accounts on GitHub.com.
 Organization-owned repositories and GitHub Enterprise Server are not supported.

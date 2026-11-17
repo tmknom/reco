@@ -62,8 +62,8 @@ func updateRequestOf(key setting.Key) updateRequest {
 		}}
 	case setting.CanApprovePullRequestReviews:
 		return updateRequest{WorkflowPermissionsEndpoint, boolUpdate((*Client).updateCanApprovePullRequestReviews)}
-	case setting.SHAPinningRequired:
-		// 観測するだけで、更新要求を送らない設定
+	case setting.SHAPinningRequired, setting.ActionsEnabled:
+		// 更新要求を持たない設定
 	}
 	panic("github: no update request for " + string(key))
 }

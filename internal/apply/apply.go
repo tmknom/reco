@@ -86,7 +86,7 @@ func executableChanges(p changeplan.Plan) ([]repositoryChanges, error) {
 	for i, r := range p.Repositories {
 		changes, err := r.LogicalChanges()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%w; no changes made", err)
 		}
 		for _, change := range changes {
 			for _, operation := range change.Operations {

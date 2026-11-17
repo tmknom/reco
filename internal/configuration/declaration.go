@@ -90,15 +90,36 @@ func (d document) actions(n *yaml.Node, path string) (ActionsPermissions, Workfl
 	return permissions, workflow, nil
 }
 
-// permissions は、Actions 許可ポリシーと、選択方式の Actions 許可条件の組み合わせを読む。
-// 組み合わせの違反は selected_actions の中身を見ずに拒否し、組み合わせの誤りを中身の誤りより先に示す。
+// permissions は、Actions の有効状態、Actions 許可ポリシー、選択方式の Actions 許可条件の組み合わせを読む。
+// 組み合わせの違反は allowed_actions の値や selected_actions の中身を見ずに拒否し、組み合わせの誤りを値の誤りより先に示す。
 func (d document) permissions(n *yaml.Node, path string) (ActionsPermissions, error) {
-	entries, err := d.mappingEntries(n, path, nil, []string{"allowed_actions", "selected_actions"})
+	entries, err := d.mappingEntries(n, path, nil, []string{"enabled", "allowed_actions", "selected_actions"})
 	if err != nil {
 		return ActionsPermissions{}, err
 	}
+	enabledNode, hasEnabled := entries["enabled"]
 	allowedNode, hasAllowed := entries["allowed_actions"]
 	selectedNode, hasSelected := entries["selected_actions"]
+	if hasEnabled {
+		enabled, err := d.boolValue(enabledNode, path+".enabled")
+		if err != nil {
+			return ActionsPermissions{}, err
+		}
+		var declared []string
+		if hasAllowed {
+			declared = append(declared, "allowed_actions")
+		}
+		if hasSelected {
+			declared = append(declared, "selected_actions")
+		}
+		switch {
+		case len(declared) == 0:
+			return ActionsPermissions{Enabled: &enabled}, nil
+		case !enabled:
+			return ActionsPermissions{}, invalid(n, path, "enabled false cannot be declared with %s", strings.Join(declared, ", "))
+		}
+		// enabled true は読み捨てる。ActionsPermissions.Enabled を参照。
+	}
 	if !hasAllowed {
 		return ActionsPermissions{}, invalid(n, path, `selected_actions requires allowed_actions "selected"`)
 	}

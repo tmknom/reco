@@ -81,6 +81,7 @@ repositories:
 
 | YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
 |---|---|---|---|---|
+| `actions.permissions.enabled` | 真偽値 | `true` / `false` | GitHub Actions を有効にするか | Actions の有効状態（独立） |
 | `actions.permissions.allowed_actions` | 文字列 | `all` / `local_only` / `selected` | Actions と再利用可能なワークフローの実行許可範囲 | Actions 許可ポリシー（独立） |
 | `actions.permissions.selected_actions.github_owned_allowed` | 真偽値 | `true` / `false` | GitHub 所有 Actions の許可 | 選択方式の Actions 許可条件（設定グループ） |
 | `actions.permissions.selected_actions.verified_allowed` | 真偽値 | `true` / `false` | Marketplace の認証済み作成者が提供する Actions の許可 | 選択方式の Actions 許可条件（設定グループ） |
@@ -88,7 +89,9 @@ repositories:
 
 `selected_actions` の3項目は選択方式の Actions 許可条件を表し、 **一つの設定グループ** として扱います。3項目を一体として宣言するのは reco の入力契約であり、GitHub への更新の単位を定めるものではありません。
 
-GitHub API が提供する `enabled` や `sha_pinning_required` は、reco の YAML で宣言できません。ただし `allowed_actions` を宣言した場合は、そのポリシーで Actions が実行できること、つまり Actions が有効であることも期待状態に含めます。Actions が無効のリポジトリでは、reco は宣言したポリシーで Actions を有効にします。reco が Actions を無効にすることはありません。
+`enabled: false` は Actions を無効にする宣言です。reco が Actions を無効にするのは、`enabled: false` を宣言したリポジトリに限ります。GitHub API が提供する `sha_pinning_required` は、reco の YAML で宣言できません。
+
+`allowed_actions` を宣言した場合は、そのポリシーで Actions が実行できること、つまり Actions が有効であることも期待状態に含めます。Actions が無効のリポジトリでは、reco は宣言したポリシーで Actions を有効にします。そのため、`allowed_actions` とともに宣言した `enabled: true` の意味は、`enabled` を省略した場合と同じです。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -99,16 +102,21 @@ GitHub API が提供する `enabled` や `sha_pinning_required` は、reco の Y
 
 ### 4.1 入力の組み合わせ
 
-| `allowed_actions` | `selected_actions` | 判定 |
-|---|---|---|
-| `all` または `local_only` | 省略 | 有効 |
-| `selected` | 3項目をすべて指定 | 有効 |
-| `selected` | 省略、または3項目の一部だけを指定 | エラー |
-| `all` または `local_only` | 指定 | エラー |
-| 省略 | 指定 | エラー |
-| 省略 | 省略（`permissions` 自体を宣言） | エラー（空のマッピング） |
+| `enabled` | `allowed_actions` | `selected_actions` | 判定 |
+|---|---|---|---|
+| 省略または `true` | `all` または `local_only` | 省略 | 有効 |
+| 省略または `true` | `selected` | 3項目をすべて指定 | 有効 |
+| 省略または `true` | `selected` | 省略、または3項目の一部だけを指定 | エラー |
+| 省略または `true` | `all` または `local_only` | 指定 | エラー |
+| 省略または `true` | 省略 | 指定 | エラー |
+| `true` または `false` | 省略 | 省略 | 有効 |
+| `false` | 指定 | 省略または指定 | エラー |
+| `false` | 省略 | 指定 | エラー |
+| 省略 | 省略 | 省略（`permissions` 自体を宣言） | エラー（空のマッピング） |
 
-これは **reco 固有の入力契約** です。GitHub REST API では Selected actions の3項目は任意パラメータですが、reco は選択方式の Actions 許可条件の期待状態を一意に定めるため、3項目を必須とします。入力として有効でも、現在の Actions 許可ポリシーや GitHub の制約によって、選択方式の Actions 許可条件を取得・適用できるとは限りません。
+`enabled: false` と `allowed_actions`・`selected_actions` を同時に宣言できないのは、Actions が無効のあいだ GitHub がこれらの値を返さず（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 3.1・4章）、期待状態を確かめられないためです。この組み合わせの誤りは、`allowed_actions` の値や `selected_actions` の中身の誤りより先に示します。`actions.workflow` の設定は、`enabled` の値によらず同時に宣言できます。
+
+3項目を必須とする点は **reco 固有の入力契約** です。GitHub REST API では Selected actions の3項目は任意パラメータですが、reco は選択方式の Actions 許可条件の期待状態を一意に定めるため、3項目を必須とします。入力として有効でも、現在の Actions 許可ポリシーや GitHub の制約によって、選択方式の Actions 許可条件を取得・適用できるとは限りません。
 
 ### 4.2 `patterns_allowed`
 
