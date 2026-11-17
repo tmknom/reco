@@ -5,13 +5,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/tmknom/reco/internal/github"
+	"github.com/tmknom/reco/internal/githubtest"
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -135,32 +134,25 @@ func TestRun(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 
 	t.Run("all areas are observed with GET only and written to Out", func(t *testing.T) {
-		var requests []string
-		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
-			requests = append(requests, r.Method+" "+r.URL.Path)
-			if !strings.Contains(r.Header.Get("Authorization"), "test-token") {
-				t.Errorf("got Authorization %q, want it to contain the token", r.Header.Get("Authorization"))
-			}
-			switch r.URL.Path {
-			case repositoryPath:
-				_, _ = w.Write([]byte(repositoryBody))
-			case actionsPermissionsPath:
-				_, _ = w.Write([]byte(`{"enabled": true, "allowed_actions": "local_only", "sha_pinning_required": false}`))
-			case workflowPermissionsPath:
-				_, _ = w.Write([]byte(`{"default_workflow_permissions": "write", "can_approve_pull_request_reviews": true}`))
-			default:
-				w.WriteHeader(http.StatusNotFound)
-			}
-		})
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET " + repositoryPath:          githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowAutoMerge: true}.JSON()),
+			"GET " + actionsPermissionsPath:  githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "local_only"}.JSON()),
+			"GET " + workflowPermissionsPath: githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "write", CanApprovePullRequestReviews: true}.JSON()),
+		}))
 		var out bytes.Buffer
-		cfg := Config{Token: "test-token", Target: target, Out: &out, GitHubOptions: []github.Option{github.WithBaseURL(baseURL)}}
+		cfg := Config{Token: "test-token", Target: target, Out: &out, GitHubOptions: []github.Option{github.WithBaseURL(server.URL())}}
 
 		if err := Run(context.Background(), cfg); err != nil {
 			t.Fatalf("Run() error = %v", err)
 		}
 		want := []string{"GET " + repositoryPath, "GET " + actionsPermissionsPath, "GET " + workflowPermissionsPath}
-		if !slices.Equal(requests, want) {
-			t.Errorf("got requests %v, want %v", requests, want)
+		if got := server.RequestLines(); !slices.Equal(got, want) {
+			t.Errorf("got requests %v, want %v", got, want)
+		}
+		for _, r := range server.Requests() {
+			if !strings.Contains(r.Authorization, "test-token") {
+				t.Errorf("got Authorization %q, want it to contain the token", r.Authorization)
+			}
 		}
 		if !strings.Contains(out.String(), "default_workflow_permissions: write") {
 			t.Errorf("got Out %q, want it to contain the observed default_workflow_permissions", out.String())
@@ -176,21 +168,15 @@ func TestRun(t *testing.T) {
 	}
 	for _, tc := range failures {
 		t.Run(tc.name, func(t *testing.T) {
-			baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
-				switch r.URL.Path {
-				case tc.failedPath:
-					w.WriteHeader(http.StatusForbidden)
-				case repositoryPath:
-					_, _ = w.Write([]byte(repositoryBody))
-				case actionsPermissionsPath:
-					_, _ = w.Write([]byte(`{"enabled": true, "allowed_actions": "all", "sha_pinning_required": false}`))
-				default:
-					t.Errorf("unexpected request path %q", r.URL.Path)
-					w.WriteHeader(http.StatusInternalServerError)
-				}
-			})
+			// 失敗した取得より後の領域は登録しない。失敗のあとに観測を続ければ、stub が登録のない要求として報告する
+			routes := map[string]githubtest.Response{
+				"GET " + repositoryPath:         githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowAutoMerge: true}.JSON()),
+				"GET " + actionsPermissionsPath: githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "all"}.JSON()),
+			}
+			routes["GET "+tc.failedPath] = githubtest.Response{Status: http.StatusForbidden}
+			server := githubtest.NewServer(t, githubtest.Routes(t, routes))
 			var out bytes.Buffer
-			cfg := Config{Token: "test-token", Target: target, Out: &out, GitHubOptions: []github.Option{github.WithBaseURL(baseURL)}}
+			cfg := Config{Token: "test-token", Target: target, Out: &out, GitHubOptions: []github.Option{github.WithBaseURL(server.URL())}}
 
 			err := Run(context.Background(), cfg)
 			if !errors.Is(err, github.ErrForbidden) {
@@ -207,16 +193,4 @@ const (
 	repositoryPath          = "/repos/owner/repo"
 	actionsPermissionsPath  = "/repos/owner/repo/actions/permissions"
 	workflowPermissionsPath = "/repos/owner/repo/actions/permissions/workflow"
-	repositoryBody          = `{"id": 1, "allow_auto_merge": true, "delete_branch_on_merge": false}`
 )
-
-func newGitHubServer(t *testing.T, handler http.HandlerFunc) *url.URL {
-	t.Helper()
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
-	u, err := url.Parse(server.URL)
-	if err != nil {
-		t.Fatalf("parse server URL: %v", err)
-	}
-	return u
-}

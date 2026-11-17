@@ -9,25 +9,19 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tmknom/reco/internal/githubtest"
 )
 
 // appliedRepositoryBody は、宣言の期待値 true に更新されたあとの観測結果。
-const appliedRepositoryBody = `{"id": 1, "allow_auto_merge": true, "delete_branch_on_merge": false}`
-
-func methodsOf(requests []receivedRequest) []string {
-	var methods []string
-	for _, r := range requests {
-		methods = append(methods, r.method)
-	}
-	return methods
-}
+var appliedRepositoryBody = githubtest.RepositoryBody{ID: 1, AllowAutoMerge: true}.JSON()
 
 //trace:checks FR-008
 //trace:checks FR-002
 func TestApply_NoChanges(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "sub/custom.yaml", declaredTwoRepositories)
-	server, opts := newGitHubServer(t, http.StatusOK, appliedRepositoryBody)
+	server, opts := newGitHubServer(t, githubtest.OK(appliedRepositoryBody))
 
 	env := Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue}), Stdin: unreadableReader{t}, StdinIsTerminal: true}
 	code, stdout, stderr := runExecute(t, env, opts, "apply", "--config", "sub/custom.yaml", "--repo", "owner/second")
@@ -40,8 +34,8 @@ func TestApply_NoChanges(t *testing.T) {
 	if stderr != "" {
 		t.Errorf("got stderr %q, want no approval prompt", stderr)
 	}
-	got := server.receivedRequests()
-	if len(got) != 1 || got[0].method != http.MethodGet || got[0].path != "/repos/owner/second" {
+	got := server.Requests()
+	if len(got) != 1 || got[0].Method != http.MethodGet || got[0].Path != "/repos/owner/second" {
 		t.Errorf("got requests %+v, want one GET /repos/owner/second", got)
 	}
 }
@@ -52,12 +46,12 @@ func TestApply_NoChanges(t *testing.T) {
 func TestApply_Approved(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", declaredRepository)
-	server, opts := newGitHubServerSequence(t,
-		stubResponse{http.StatusOK, mismatchedRepositoryBody},
-		stubResponse{http.StatusOK, mismatchedRepositoryBody},
-		stubResponse{http.StatusOK, appliedRepositoryBody},
-		stubResponse{http.StatusOK, appliedRepositoryBody},
-	)
+	server, opts := newGitHubServer(t, githubtest.Sequence(t,
+		githubtest.Response{Status: http.StatusOK, Body: mismatchedRepositoryBody},
+		githubtest.Response{Status: http.StatusOK, Body: mismatchedRepositoryBody},
+		githubtest.Response{Status: http.StatusOK, Body: appliedRepositoryBody},
+		githubtest.Response{Status: http.StatusOK, Body: appliedRepositoryBody},
+	))
 
 	env := Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue, "GITHUB_TOKEN": githubEnvValue}), Stdin: strings.NewReader("y\n"), StdinIsTerminal: true}
 	code, stdout, stderr := runExecute(t, env, opts, "apply")
@@ -70,13 +64,13 @@ func TestApply_Approved(t *testing.T) {
 	if stderr != approvalPrompt {
 		t.Errorf("got stderr %q, want only the approval prompt", stderr)
 	}
-	got := server.receivedRequests()
+	got := server.Requests()
 	want := []string{http.MethodGet, http.MethodGet, http.MethodPatch, http.MethodGet}
-	if !slices.Equal(methodsOf(got), want) {
+	if !slices.Equal(server.Methods(), want) {
 		t.Errorf("got requests %+v, want methods %v", got, want)
 	}
 	for _, r := range got {
-		if !strings.Contains(r.authorization, ghEnvValue) {
+		if !strings.Contains(r.Authorization, ghEnvValue) {
 			t.Errorf("got request %+v, want GH_TOKEN in Authorization", r)
 		}
 	}
@@ -100,19 +94,19 @@ func TestApply_ApprovedWithWorkflowPermissions(t *testing.T) {
       workflow:
         default_workflow_permissions: read
 `)
-	writePermissionsBody := `{"default_workflow_permissions": "write", "can_approve_pull_request_reviews": false}`
-	server, opts := newGitHubServerSequence(t,
-		stubResponse{http.StatusOK, mismatchedRepositoryBody},
-		stubResponse{http.StatusOK, writePermissionsBody},
-		stubResponse{http.StatusOK, mismatchedRepositoryBody},
-		stubResponse{http.StatusOK, appliedRepositoryBody},
-		stubResponse{http.StatusOK, appliedRepositoryBody},
-		stubResponse{http.StatusOK, appliedRepositoryBody},
-		stubResponse{http.StatusOK, writePermissionsBody},
-		stubResponse{http.StatusNoContent, ""},
-		stubResponse{http.StatusOK, appliedRepositoryBody},
-		stubResponse{http.StatusOK, workflowPermissionsBody},
-	)
+	writePermissionsBody := githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "write"}.JSON()
+	server, opts := newGitHubServer(t, githubtest.Sequence(t,
+		githubtest.Response{Status: http.StatusOK, Body: mismatchedRepositoryBody},
+		githubtest.Response{Status: http.StatusOK, Body: writePermissionsBody},
+		githubtest.Response{Status: http.StatusOK, Body: mismatchedRepositoryBody},
+		githubtest.Response{Status: http.StatusOK, Body: appliedRepositoryBody},
+		githubtest.Response{Status: http.StatusOK, Body: appliedRepositoryBody},
+		githubtest.Response{Status: http.StatusOK, Body: appliedRepositoryBody},
+		githubtest.Response{Status: http.StatusOK, Body: writePermissionsBody},
+		githubtest.Response{Status: http.StatusNoContent, Body: ""},
+		githubtest.Response{Status: http.StatusOK, Body: appliedRepositoryBody},
+		githubtest.Response{Status: http.StatusOK, Body: workflowPermissionsBody},
+	))
 
 	env := Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue}), Stdin: strings.NewReader("y\n"), StdinIsTerminal: true}
 	code, stdout, stderr := runExecute(t, env, opts, "apply")
@@ -123,21 +117,21 @@ func TestApply_ApprovedWithWorkflowPermissions(t *testing.T) {
 		t.Errorf("got stdout %q, want owner/repo: updated", stdout)
 	}
 	repo, workflow := "/repos/owner/repo", "/repos/owner/repo/actions/permissions/workflow"
-	want := []receivedRequest{
-		{method: http.MethodGet, path: repo}, {method: http.MethodGet, path: workflow},
-		{method: http.MethodGet, path: repo}, {method: http.MethodPatch, path: repo}, {method: http.MethodGet, path: repo},
-		{method: http.MethodGet, path: repo}, {method: http.MethodGet, path: workflow}, {method: http.MethodPut, path: workflow},
-		{method: http.MethodGet, path: repo}, {method: http.MethodGet, path: workflow},
+	want := []githubtest.Request{
+		{Method: http.MethodGet, Path: repo}, {Method: http.MethodGet, Path: workflow},
+		{Method: http.MethodGet, Path: repo}, {Method: http.MethodPatch, Path: repo}, {Method: http.MethodGet, Path: repo},
+		{Method: http.MethodGet, Path: repo}, {Method: http.MethodGet, Path: workflow}, {Method: http.MethodPut, Path: workflow},
+		{Method: http.MethodGet, Path: repo}, {Method: http.MethodGet, Path: workflow},
 	}
-	got := server.receivedRequests()
+	got := server.Requests()
 	if len(got) != len(want) {
 		t.Fatalf("got requests %+v, want %d requests", got, len(want))
 	}
 	for i, r := range got {
-		if r.method != want[i].method || r.path != want[i].path {
-			t.Errorf("got request %d %s %s, want %s %s", i, r.method, r.path, want[i].method, want[i].path)
+		if r.Method != want[i].Method || r.Path != want[i].Path {
+			t.Errorf("got request %d %s %s, want %s %s", i, r.Method, r.Path, want[i].Method, want[i].Path)
 		}
-		if !strings.Contains(r.authorization, ghEnvValue) {
+		if !strings.Contains(r.Authorization, ghEnvValue) {
 			t.Errorf("got request %d %+v, want GH_TOKEN in Authorization", i, r)
 		}
 	}
@@ -154,17 +148,17 @@ func TestApply_ApprovedWithActionsPermissions(t *testing.T) {
       permissions:
         allowed_actions: local_only
 `)
-	allBody := `{"enabled": true, "allowed_actions": "all", "sha_pinning_required": false}`
-	localOnlyBody := `{"enabled": true, "allowed_actions": "local_only", "sha_pinning_required": false}`
-	server, opts := newGitHubServerSequence(t,
-		stubResponse{http.StatusOK, mismatchedRepositoryBody},
-		stubResponse{http.StatusOK, allBody},
-		stubResponse{http.StatusOK, mismatchedRepositoryBody},
-		stubResponse{http.StatusOK, allBody},
-		stubResponse{http.StatusNoContent, ""},
-		stubResponse{http.StatusOK, mismatchedRepositoryBody},
-		stubResponse{http.StatusOK, localOnlyBody},
-	)
+	allBody := githubtest.ActionsPermissionsBody{AllowedActions: "all"}.JSON()
+	localOnlyBody := githubtest.ActionsPermissionsBody{AllowedActions: "local_only"}.JSON()
+	server, opts := newGitHubServer(t, githubtest.Sequence(t,
+		githubtest.Response{Status: http.StatusOK, Body: mismatchedRepositoryBody},
+		githubtest.Response{Status: http.StatusOK, Body: allBody},
+		githubtest.Response{Status: http.StatusOK, Body: mismatchedRepositoryBody},
+		githubtest.Response{Status: http.StatusOK, Body: allBody},
+		githubtest.Response{Status: http.StatusNoContent, Body: ""},
+		githubtest.Response{Status: http.StatusOK, Body: mismatchedRepositoryBody},
+		githubtest.Response{Status: http.StatusOK, Body: localOnlyBody},
+	))
 
 	env := Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue}), Stdin: strings.NewReader("y\n"), StdinIsTerminal: true}
 	code, stdout, stderr := runExecute(t, env, opts, "apply")
@@ -175,20 +169,20 @@ func TestApply_ApprovedWithActionsPermissions(t *testing.T) {
 		t.Errorf("got stdout %q, want owner/repo: updated", stdout)
 	}
 	repo, permissions := "/repos/owner/repo", "/repos/owner/repo/actions/permissions"
-	want := []receivedRequest{
-		{method: http.MethodGet, path: repo}, {method: http.MethodGet, path: permissions},
-		{method: http.MethodGet, path: repo}, {method: http.MethodGet, path: permissions}, {method: http.MethodPut, path: permissions},
-		{method: http.MethodGet, path: repo}, {method: http.MethodGet, path: permissions},
+	want := []githubtest.Request{
+		{Method: http.MethodGet, Path: repo}, {Method: http.MethodGet, Path: permissions},
+		{Method: http.MethodGet, Path: repo}, {Method: http.MethodGet, Path: permissions}, {Method: http.MethodPut, Path: permissions},
+		{Method: http.MethodGet, Path: repo}, {Method: http.MethodGet, Path: permissions},
 	}
-	got := server.receivedRequests()
+	got := server.Requests()
 	if len(got) != len(want) {
 		t.Fatalf("got requests %+v, want %d requests", got, len(want))
 	}
 	for i, r := range got {
-		if r.method != want[i].method || r.path != want[i].path {
-			t.Errorf("got request %d %s %s, want %s %s", i, r.method, r.path, want[i].method, want[i].path)
+		if r.Method != want[i].Method || r.Path != want[i].Path {
+			t.Errorf("got request %d %s %s, want %s %s", i, r.Method, r.Path, want[i].Method, want[i].Path)
 		}
-		if !strings.Contains(r.authorization, ghEnvValue) {
+		if !strings.Contains(r.Authorization, ghEnvValue) {
 			t.Errorf("got request %d %+v, want GH_TOKEN in Authorization", i, r)
 		}
 	}
@@ -210,15 +204,15 @@ func TestApply_ApprovedWithTwoUpdates(t *testing.T) {
           verified_allowed: false
           patterns_allowed: ["example/*"]
 `)
-	allBody := `{"enabled": true, "allowed_actions": "all", "sha_pinning_required": false}`
-	setBackBody := `{"github_owned_allowed": true, "verified_allowed": false, "patterns_allowed": []}`
-	server, opts := newGitHubServerSequence(t,
-		stubResponse{http.StatusOK, mismatchedRepositoryBody}, stubResponse{http.StatusOK, allBody},
-		stubResponse{http.StatusOK, mismatchedRepositoryBody}, stubResponse{http.StatusOK, allBody}, stubResponse{http.StatusNoContent, ""},
-		stubResponse{http.StatusOK, mismatchedRepositoryBody}, stubResponse{http.StatusOK, actionsPermissionsBody}, stubResponse{http.StatusOK, setBackBody},
-		stubResponse{http.StatusNoContent, ""},
-		stubResponse{http.StatusOK, mismatchedRepositoryBody}, stubResponse{http.StatusOK, actionsPermissionsBody}, stubResponse{http.StatusOK, selectedActionsBody},
-	)
+	allBody := githubtest.ActionsPermissionsBody{AllowedActions: "all"}.JSON()
+	setBackBody := githubtest.SelectedActionsBody{GitHubOwnedAllowed: true}.JSON()
+	server, opts := newGitHubServer(t, githubtest.Sequence(t,
+		githubtest.Response{Status: http.StatusOK, Body: mismatchedRepositoryBody}, githubtest.Response{Status: http.StatusOK, Body: allBody},
+		githubtest.Response{Status: http.StatusOK, Body: mismatchedRepositoryBody}, githubtest.Response{Status: http.StatusOK, Body: allBody}, githubtest.Response{Status: http.StatusNoContent, Body: ""},
+		githubtest.Response{Status: http.StatusOK, Body: mismatchedRepositoryBody}, githubtest.Response{Status: http.StatusOK, Body: actionsPermissionsBody}, githubtest.Response{Status: http.StatusOK, Body: setBackBody},
+		githubtest.Response{Status: http.StatusNoContent, Body: ""},
+		githubtest.Response{Status: http.StatusOK, Body: mismatchedRepositoryBody}, githubtest.Response{Status: http.StatusOK, Body: actionsPermissionsBody}, githubtest.Response{Status: http.StatusOK, Body: selectedActionsBody},
+	))
 	var delays []time.Duration
 	after := func(d time.Duration) <-chan time.Time {
 		delays = append(delays, d)
@@ -240,21 +234,21 @@ func TestApply_ApprovedWithTwoUpdates(t *testing.T) {
 		t.Errorf("got delays %v, want %v", delays, want)
 	}
 	repo, permissions, selected := "/repos/owner/repo", "/repos/owner/repo/actions/permissions", "/repos/owner/repo/actions/permissions/selected-actions"
-	want := []receivedRequest{
-		{method: http.MethodGet, path: repo}, {method: http.MethodGet, path: permissions},
-		{method: http.MethodGet, path: repo}, {method: http.MethodGet, path: permissions}, {method: http.MethodPut, path: permissions},
-		{method: http.MethodGet, path: repo}, {method: http.MethodGet, path: permissions}, {method: http.MethodGet, path: selected}, {method: http.MethodPut, path: selected},
-		{method: http.MethodGet, path: repo}, {method: http.MethodGet, path: permissions}, {method: http.MethodGet, path: selected},
+	want := []githubtest.Request{
+		{Method: http.MethodGet, Path: repo}, {Method: http.MethodGet, Path: permissions},
+		{Method: http.MethodGet, Path: repo}, {Method: http.MethodGet, Path: permissions}, {Method: http.MethodPut, Path: permissions},
+		{Method: http.MethodGet, Path: repo}, {Method: http.MethodGet, Path: permissions}, {Method: http.MethodGet, Path: selected}, {Method: http.MethodPut, Path: selected},
+		{Method: http.MethodGet, Path: repo}, {Method: http.MethodGet, Path: permissions}, {Method: http.MethodGet, Path: selected},
 	}
-	got := server.receivedRequests()
+	got := server.Requests()
 	if len(got) != len(want) {
 		t.Fatalf("got requests %+v, want %d requests", got, len(want))
 	}
 	for i, r := range got {
-		if r.method != want[i].method || r.path != want[i].path {
-			t.Errorf("got request %d %s %s, want %s %s", i, r.method, r.path, want[i].method, want[i].path)
+		if r.Method != want[i].Method || r.Path != want[i].Path {
+			t.Errorf("got request %d %s %s, want %s %s", i, r.Method, r.Path, want[i].Method, want[i].Path)
 		}
-		if !strings.Contains(r.authorization, ghEnvValue) {
+		if !strings.Contains(r.Authorization, ghEnvValue) {
 			t.Errorf("got request %d %+v, want GH_TOKEN in Authorization", i, r)
 		}
 	}
@@ -276,7 +270,7 @@ func TestApply_NotApproved(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			workDir := t.TempDir()
 			writeConfig(t, workDir, "reco.yaml", declaredRepository)
-			server, opts := newGitHubServer(t, http.StatusOK, mismatchedRepositoryBody)
+			server, opts := newGitHubServer(t, githubtest.OK(mismatchedRepositoryBody))
 
 			env := Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue}), Stdin: tc.stdin, StdinIsTerminal: tc.terminal}
 			code, stdout, stderr := runExecute(t, env, opts, "apply")
@@ -294,7 +288,7 @@ func TestApply_NotApproved(t *testing.T) {
 			if len(records) != 1 || records[0]["msg"] != "command failed" {
 				t.Errorf("got error records %v, want one command failed", records)
 			}
-			if got := methodsOf(server.receivedRequests()); slices.Contains(got, http.MethodPatch) {
+			if got := server.Methods(); slices.Contains(got, http.MethodPatch) {
 				t.Errorf("got requests %v, want no PATCH", got)
 			}
 		})
@@ -331,11 +325,11 @@ func TestApply_SideEffectOnStdoutBeforeApprovalPrompt(t *testing.T) {
       permissions:
         allowed_actions: all
 `)
-	server, opts := newGitHubServerByPath(t, map[string]stubResponse{
-		"/repos/owner/repo":                                      {http.StatusOK, repositoryBody},
-		"/repos/owner/repo/actions/permissions":                  {http.StatusOK, actionsPermissionsBody},
-		"/repos/owner/repo/actions/permissions/selected-actions": {http.StatusOK, selectedActionsBody},
-	})
+	server, opts := newGitHubServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+		"GET /repos/owner/repo":                                      {Status: http.StatusOK, Body: repositoryBody},
+		"GET /repos/owner/repo/actions/permissions":                  {Status: http.StatusOK, Body: actionsPermissionsBody},
+		"GET /repos/owner/repo/actions/permissions/selected-actions": {Status: http.StatusOK, Body: selectedActionsBody},
+	}))
 	var writes []streamWrite
 	env := Environment{
 		WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue}), Stdin: strings.NewReader("n\n"), StdinIsTerminal: true,
@@ -350,7 +344,7 @@ func TestApply_SideEffectOnStdoutBeforeApprovalPrompt(t *testing.T) {
 	if sideEffect < 0 || prompt < 0 || sideEffect > prompt {
 		t.Errorf("got writes %+v, want Side effect: on stdout before the approval prompt on stderr", writes)
 	}
-	if got := methodsOf(server.receivedRequests()); slices.Contains(got, http.MethodPut) {
+	if got := server.Methods(); slices.Contains(got, http.MethodPut) {
 		t.Errorf("got requests %v, want no PUT", got)
 	}
 }
@@ -359,7 +353,7 @@ func TestApply_SideEffectOnStdoutBeforeApprovalPrompt(t *testing.T) {
 func TestApply_CanceledWhileWaitingForApproval(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", declaredRepository)
-	server, opts := newGitHubServer(t, http.StatusOK, mismatchedRepositoryBody)
+	server, opts := newGitHubServer(t, githubtest.OK(mismatchedRepositoryBody))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan struct{})
@@ -375,7 +369,7 @@ func TestApply_CanceledWhileWaitingForApproval(t *testing.T) {
 	if code := execute(ctx, []string{"apply"}, env, dependencies{after: elapsedAtOnce, githubOptions: opts}); code != 1 {
 		t.Errorf("got exit code %d, want 1", code)
 	}
-	if got := methodsOf(server.receivedRequests()); slices.Contains(got, http.MethodPatch) {
+	if got := server.Methods(); slices.Contains(got, http.MethodPatch) {
 		t.Errorf("got requests %v, want no PATCH", got)
 	}
 }
@@ -390,13 +384,13 @@ func TestApply_CanceledWhileWaitingForApproval(t *testing.T) {
 func TestApply_ApprovedMultipleRepositories(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", declaredTwoRepositories)
-	const mismatchedSecond = `{"id": 2, "allow_auto_merge": false, "delete_branch_on_merge": false}`
-	const appliedSecond = `{"id": 2, "allow_auto_merge": true, "delete_branch_on_merge": false}`
-	server, opts := newGitHubServerSequence(t,
-		stubResponse{http.StatusOK, mismatchedRepositoryBody}, stubResponse{http.StatusOK, mismatchedSecond},
-		stubResponse{http.StatusOK, mismatchedRepositoryBody}, stubResponse{http.StatusOK, appliedRepositoryBody}, stubResponse{http.StatusOK, appliedRepositoryBody},
-		stubResponse{http.StatusOK, mismatchedSecond}, stubResponse{http.StatusOK, appliedSecond}, stubResponse{http.StatusOK, appliedSecond},
-	)
+	mismatchedSecond := githubtest.RepositoryBody{ID: 2}.JSON()
+	appliedSecond := githubtest.RepositoryBody{ID: 2, AllowAutoMerge: true}.JSON()
+	server, opts := newGitHubServer(t, githubtest.Sequence(t,
+		githubtest.Response{Status: http.StatusOK, Body: mismatchedRepositoryBody}, githubtest.Response{Status: http.StatusOK, Body: mismatchedSecond},
+		githubtest.Response{Status: http.StatusOK, Body: mismatchedRepositoryBody}, githubtest.Response{Status: http.StatusOK, Body: appliedRepositoryBody}, githubtest.Response{Status: http.StatusOK, Body: appliedRepositoryBody},
+		githubtest.Response{Status: http.StatusOK, Body: mismatchedSecond}, githubtest.Response{Status: http.StatusOK, Body: appliedSecond}, githubtest.Response{Status: http.StatusOK, Body: appliedSecond},
+	))
 	var delays []time.Duration
 	after := func(d time.Duration) <-chan time.Time {
 		delays = append(delays, d)
@@ -423,20 +417,20 @@ func TestApply_ApprovedMultipleRepositories(t *testing.T) {
 		t.Errorf("got delays %v, want %v", delays, want)
 	}
 	first, second := "/repos/owner/repo", "/repos/owner/second"
-	want := []receivedRequest{
-		{method: http.MethodGet, path: first}, {method: http.MethodGet, path: second},
-		{method: http.MethodGet, path: first}, {method: http.MethodPatch, path: first}, {method: http.MethodGet, path: first},
-		{method: http.MethodGet, path: second}, {method: http.MethodPatch, path: second}, {method: http.MethodGet, path: second},
+	want := []githubtest.Request{
+		{Method: http.MethodGet, Path: first}, {Method: http.MethodGet, Path: second},
+		{Method: http.MethodGet, Path: first}, {Method: http.MethodPatch, Path: first}, {Method: http.MethodGet, Path: first},
+		{Method: http.MethodGet, Path: second}, {Method: http.MethodPatch, Path: second}, {Method: http.MethodGet, Path: second},
 	}
-	got := server.receivedRequests()
+	got := server.Requests()
 	if len(got) != len(want) {
 		t.Fatalf("got requests %+v, want %d requests", got, len(want))
 	}
 	for i, r := range got {
-		if r.method != want[i].method || r.path != want[i].path {
-			t.Errorf("got request %d %s %s, want %s %s", i, r.method, r.path, want[i].method, want[i].path)
+		if r.Method != want[i].Method || r.Path != want[i].Path {
+			t.Errorf("got request %d %s %s, want %s %s", i, r.Method, r.Path, want[i].Method, want[i].Path)
 		}
-		if !strings.Contains(r.authorization, ghEnvValue) {
+		if !strings.Contains(r.Authorization, ghEnvValue) {
 			t.Errorf("got request %d %+v, want GH_TOKEN in Authorization", i, r)
 		}
 	}
@@ -449,10 +443,10 @@ func TestApply_ApprovedMultipleRepositories(t *testing.T) {
 func TestApply_SecondObservationFailureFailsBeforeApproval(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", declaredTwoRepositories)
-	server, opts := newGitHubServerByPath(t, map[string]stubResponse{
-		"/repos/owner/repo":   {status: http.StatusOK, body: mismatchedRepositoryBody},
-		"/repos/owner/second": {status: http.StatusInternalServerError, body: `{"message": "Server Error"}`},
-	})
+	server, opts := newGitHubServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+		"GET /repos/owner/repo":   {Status: http.StatusOK, Body: mismatchedRepositoryBody},
+		"GET /repos/owner/second": {Status: http.StatusInternalServerError, Body: `{"message": "Server Error"}`},
+	}))
 
 	env := Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue}), Stdin: unreadableReader{t}, StdinIsTerminal: true}
 	code, stdout, stderr := runExecute(t, env, opts, "apply")
@@ -468,7 +462,7 @@ func TestApply_SecondObservationFailureFailsBeforeApproval(t *testing.T) {
 	if records := errorRecords(t, stderr); len(records) != 1 || records[0]["msg"] != "command failed" {
 		t.Errorf("got ERROR records %v, want one command failed record", records)
 	}
-	if got := methodsOf(server.receivedRequests()); !slices.Equal(got, []string{http.MethodGet, http.MethodGet}) {
+	if got := server.Methods(); !slices.Equal(got, []string{http.MethodGet, http.MethodGet}) {
 		t.Errorf("got requests %v, want the two observation GETs only", got)
 	}
 }
@@ -479,7 +473,7 @@ func TestApply_SecondObservationFailureFailsBeforeApproval(t *testing.T) {
 func TestApply_NoChangesForAllRepositories(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", declaredTwoRepositories)
-	server, opts := newGitHubServer(t, http.StatusOK, appliedRepositoryBody)
+	server, opts := newGitHubServer(t, githubtest.OK(appliedRepositoryBody))
 
 	env := Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue}), Stdin: unreadableReader{t}, StdinIsTerminal: true}
 	code, stdout, stderr := runExecute(t, env, opts, "apply")
@@ -492,7 +486,7 @@ func TestApply_NoChangesForAllRepositories(t *testing.T) {
 	if stderr != "" {
 		t.Errorf("got stderr %q, want no approval prompt", stderr)
 	}
-	if got := methodsOf(server.receivedRequests()); !slices.Equal(got, []string{http.MethodGet, http.MethodGet}) {
+	if got := server.Methods(); !slices.Equal(got, []string{http.MethodGet, http.MethodGet}) {
 		t.Errorf("got requests %v, want the two observation GETs only", got)
 	}
 }
@@ -515,7 +509,7 @@ func TestApply_FailsBeforeApproval(t *testing.T) {
 		t.Run(tc.name+" fails without asking for approval", func(t *testing.T) {
 			workDir := t.TempDir()
 			writeConfig(t, workDir, "reco.yaml", declaredRepository)
-			server, opts := newGitHubServer(t, tc.status, mismatchedRepositoryBody)
+			server, opts := newGitHubServer(t, githubtest.Response{Status: tc.status, Body: mismatchedRepositoryBody})
 
 			env := Environment{WorkDir: workDir, Getenv: fakeGetenv(tc.getenv), Stdin: unreadableReader{t}, StdinIsTerminal: true}
 			code, stdout, stderr := runExecute(t, env, opts, tc.args...)
@@ -528,7 +522,7 @@ func TestApply_FailsBeforeApproval(t *testing.T) {
 			if records := errorRecords(t, stderr); len(records) != 1 || records[0]["msg"] != "command failed" {
 				t.Errorf("got error records %v, want one command failed", records)
 			}
-			if got := methodsOf(server.receivedRequests()); slices.Contains(got, http.MethodPatch) {
+			if got := server.Methods(); slices.Contains(got, http.MethodPatch) {
 				t.Errorf("got requests %v, want no PATCH", got)
 			}
 		})
