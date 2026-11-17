@@ -20,15 +20,68 @@ const (
 	UpdateRejected
 )
 
-// UpdateAllowAutoMerge は reference のリポジトリの allow_auto_merge を allow に更新する。
+// Update は、reference のリポジトリの key の設定を value にする更新要求を、UpdateEndpointOf(key) へ一度だけ送る。再送はしない。
 // error が nil になるのは UpdateSucceeded のときだけで、呼び出し側は error から結果を導かない。
-func (c *Client) UpdateAllowAutoMerge(ctx context.Context, reference repository.Reference, allow bool) (UpdateOutcome, error) {
+func (c *Client) Update(ctx context.Context, reference repository.Reference, key setting.Key, value setting.Value) (UpdateOutcome, error) {
+	return updateRequestOf(key).send(c, ctx, reference, value)
+}
+
+// updateRequestFunc は、reference のリポジトリの設定を value にする更新要求を一度送る。
+// メソッド式 ((*Client).updateAllowAutoMerge など) をそのまま渡せるよう、受け手の Client を先頭に置く。
+type updateRequestFunc func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error)
+
+// updateRequest は、一つの設定を変える更新要求の、送り先の更新エンドポイントと送り方の組。
+// 送る更新要求と比べる設定の範囲を別々の場所で足し忘れないよう、同じ switch から返す。
+type updateRequest struct {
+	endpoint UpdateEndpoint
+	send     updateRequestFunc
+}
+
+// updateRequestOf は、key の設定を変える更新要求を返す。
+// 更新要求を持たない設定は、不変条件の破れとして panic する。
+// 定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+func updateRequestOf(key setting.Key) updateRequest {
+	switch key {
+	case setting.DeleteBranchOnMerge:
+		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateDeleteBranchOnMerge)}
+	case setting.AllowAutoMerge:
+		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateAllowAutoMerge)}
+	case setting.AllowedActions:
+		return updateRequest{ActionsPermissionsEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+			return c.updateAllowedActions(ctx, reference, value.AllowedActionsPolicy())
+		}}
+	case setting.SelectedActions:
+		// Actions 許可ポリシーが selected のまま3項目だけを変えるときも、ポリシーの更新要求は送らない。
+		// selected を送り直すと、GitHub が github_owned_allowed を true に変えるため。
+		return updateRequest{SelectedActionsEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+			return c.updateSelectedActions(ctx, reference, value.SelectedActionsCriteria())
+		}}
+	case setting.DefaultWorkflowPermissions:
+		return updateRequest{WorkflowPermissionsEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+			return c.updateDefaultWorkflowPermissions(ctx, reference, value.PermissionLevel())
+		}}
+	case setting.CanApprovePullRequestReviews:
+		return updateRequest{WorkflowPermissionsEndpoint, boolUpdate((*Client).updateCanApprovePullRequestReviews)}
+	case setting.SHAPinningRequired:
+		// 観測するだけで、更新要求を送らない設定
+	}
+	panic("github: no update request for " + string(key))
+}
+
+// boolUpdate は、真偽値を受ける更新メソッドを、設定の値を受ける更新要求にする。
+func boolUpdate(update func(*Client, context.Context, repository.Reference, bool) (UpdateOutcome, error)) updateRequestFunc {
+	return func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+		return update(c, ctx, reference, value.Bool())
+	}
+}
+
+// updateAllowAutoMerge は reference のリポジトリの allow_auto_merge を allow に更新する。
+func (c *Client) updateAllowAutoMerge(ctx context.Context, reference repository.Reference, allow bool) (UpdateOutcome, error) {
 	return c.updateRepository(ctx, reference, fmt.Appendf(nil, `{"allow_auto_merge":%t}`, allow))
 }
 
-// UpdateDeleteBranchOnMerge は reference のリポジトリの delete_branch_on_merge を enabled に更新する。
-// error が nil になるのは UpdateSucceeded のときだけで、呼び出し側は error から結果を導かない。
-func (c *Client) UpdateDeleteBranchOnMerge(ctx context.Context, reference repository.Reference, enabled bool) (UpdateOutcome, error) {
+// updateDeleteBranchOnMerge は reference のリポジトリの delete_branch_on_merge を enabled に更新する。
+func (c *Client) updateDeleteBranchOnMerge(ctx context.Context, reference repository.Reference, enabled bool) (UpdateOutcome, error) {
 	return c.updateRepository(ctx, reference, fmt.Appendf(nil, `{"delete_branch_on_merge":%t}`, enabled))
 }
 
@@ -42,15 +95,13 @@ func (c *Client) updateRepository(ctx context.Context, reference repository.Refe
 	return describeUpdateOutcome("update repository", reference, status, err)
 }
 
-// UpdateDefaultWorkflowPermissions は reference のリポジトリの default_workflow_permissions を level に更新する。
-// error が nil になるのは UpdateSucceeded のときだけで、呼び出し側は error から結果を導かない。
-func (c *Client) UpdateDefaultWorkflowPermissions(ctx context.Context, reference repository.Reference, level setting.PermissionLevel) (UpdateOutcome, error) {
+// updateDefaultWorkflowPermissions は reference のリポジトリの default_workflow_permissions を level に更新する。
+func (c *Client) updateDefaultWorkflowPermissions(ctx context.Context, reference repository.Reference, level setting.PermissionLevel) (UpdateOutcome, error) {
 	return c.updateWorkflowPermissions(ctx, reference, fmt.Appendf(nil, `{"default_workflow_permissions":%q}`, level))
 }
 
-// UpdateCanApprovePullRequestReviews は reference のリポジトリの can_approve_pull_request_reviews を canApprove に更新する。
-// error が nil になるのは UpdateSucceeded のときだけで、呼び出し側は error から結果を導かない。
-func (c *Client) UpdateCanApprovePullRequestReviews(ctx context.Context, reference repository.Reference, canApprove bool) (UpdateOutcome, error) {
+// updateCanApprovePullRequestReviews は reference のリポジトリの can_approve_pull_request_reviews を canApprove に更新する。
+func (c *Client) updateCanApprovePullRequestReviews(ctx context.Context, reference repository.Reference, canApprove bool) (UpdateOutcome, error) {
 	return c.updateWorkflowPermissions(ctx, reference, fmt.Appendf(nil, `{"can_approve_pull_request_reviews":%t}`, canApprove))
 }
 
@@ -61,20 +112,18 @@ func (c *Client) updateWorkflowPermissions(ctx context.Context, reference reposi
 	return describeUpdateOutcome("update workflow permissions", reference, status, err)
 }
 
-// UpdateAllowedActions は reference のリポジトリの Actions 許可ポリシーを policy に更新する。
+// updateAllowedActions は reference のリポジトリの Actions 許可ポリシーを policy に更新する。
 // Actions が無効のリポジトリでは、同じ要求が Actions を有効にする。
-// error が nil になるのは UpdateSucceeded のときだけで、呼び出し側は error から結果を導かない。
-func (c *Client) UpdateAllowedActions(ctx context.Context, reference repository.Reference, policy setting.AllowedActionsPolicy) (UpdateOutcome, error) {
+func (c *Client) updateAllowedActions(ctx context.Context, reference repository.Reference, policy setting.AllowedActionsPolicy) (UpdateOutcome, error) {
 	// policy は英小文字と _ だけの定義済みの値で、%q の表記が JSON の文字列と一致する
 	body := fmt.Appendf(nil, `{"enabled":true,"allowed_actions":%q}`, policy)
 	status, _, err := c.send(ctx, http.MethodPut, c.actionsPermissionsURL(reference), body, http.StatusNoContent)
 	return describeUpdateOutcome("update actions permissions", reference, status, err)
 }
 
-// UpdateSelectedActions は reference のリポジトリの選択方式の Actions 許可条件を criteria に更新する。
+// updateSelectedActions は reference のリポジトリの選択方式の Actions 許可条件を criteria に更新する。
 // GitHub は、要求の前提となる設定の状態が成り立たないとき 409 で拒否する（GitHub Actions 権限 API 仕様の Selected actions）。
-// error が nil になるのは UpdateSucceeded のときだけで、呼び出し側は error から結果を導かない。
-func (c *Client) UpdateSelectedActions(ctx context.Context, reference repository.Reference, criteria setting.SelectedActionsCriteria) (UpdateOutcome, error) {
+func (c *Client) updateSelectedActions(ctx context.Context, reference repository.Reference, criteria setting.SelectedActionsCriteria) (UpdateOutcome, error) {
 	status, _, err := c.send(ctx, http.MethodPut, c.selectedActionsURL(reference), encodeSelectedActions(criteria), http.StatusNoContent)
 	return describeUpdateOutcome("update selected actions", reference, status, err)
 }

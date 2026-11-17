@@ -3,23 +3,24 @@ package setting
 
 import "fmt"
 
-// Key は設定の識別。値は表示にそのまま使う。宣言を受け付ける設定 (Keys) では、YAML 設定仕様のキーのパスと一致する。
+// Key は設定の識別。値は表示にそのまま使う。管理の単位 (ManagementUnits) では、YAML 設定仕様のキーのパスと一致する。
 type Key string
 
 const (
 	DeleteBranchOnMerge Key = "general.delete_branch_on_merge"
 	AllowAutoMerge      Key = "general.allow_auto_merge"
 	AllowedActions      Key = "actions.permissions.allowed_actions"
-	// SHAPinningRequired は、観測するが宣言を受け付けない設定。Keys に含めない。
+	// SHAPinningRequired は、観測するが管理の単位に含まれない設定。ManagementUnits に含めない。
 	SHAPinningRequired           Key = "actions.permissions.sha_pinning_required"
 	SelectedActions              Key = "actions.permissions.selected_actions"
 	DefaultWorkflowPermissions   Key = "actions.workflow.default_workflow_permissions"
 	CanApprovePullRequestReviews Key = "actions.workflow.can_approve_pull_request_reviews"
 )
 
-// Keys は、reco が宣言を受け付ける設定を YAML 設定仕様の章と表の並びで返す。
+// ManagementUnits は、管理の単位 (reco が期待値の宣言を受け付ける設定) を YAML 設定仕様の章と表の並びで返す。
+// 設定グループは一つの Key で表す。
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
-func Keys() []Key {
+func ManagementUnits() []Key {
 	return []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowedActions, SelectedActions, DefaultWorkflowPermissions, CanApprovePullRequestReviews}
 }
 

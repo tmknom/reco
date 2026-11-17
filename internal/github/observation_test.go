@@ -907,7 +907,7 @@ func TestObserveActionsPermissionsFailure(t *testing.T) {
 	})
 }
 
-func TestObservationResult_Value(t *testing.T) {
+func TestObservationResult_Setting(t *testing.T) {
 	// 観測結果ごとに真偽値の設定を一つだけ真にし、どの設定も観測結果を通した値の並びがほかの設定とも定数とも異なるようにする。
 	// 別の設定の値や定数を返す誤りを検出するため。
 	observations := []ObservationResult{
@@ -929,8 +929,8 @@ func TestObservationResult_Value(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(string(tc.key)+" returns its observed value", func(t *testing.T) {
 			for i, observed := range observations {
-				if got := observed.Value(tc.key); !reflect.DeepEqual(got, tc.want[i]) {
-					t.Errorf("observations[%d].Value(%q) = %v, want %v", i, tc.key, got, tc.want[i])
+				if got := observed.Setting(tc.key); !reflect.DeepEqual(got, tc.want[i]) {
+					t.Errorf("observations[%d].Setting(%q) = %v, want %v", i, tc.key, got, tc.want[i])
 				}
 			}
 		})
@@ -939,7 +939,7 @@ func TestObservationResult_Value(t *testing.T) {
 
 //trace:checks FR-004
 //trace:checks QR-002
-func TestObservationResult_ValueOfActionsPermissions(t *testing.T) {
+func TestObservationResult_SettingOfActionsPermissions(t *testing.T) {
 	// 観測値の設定グループの許可パターンは、応答の並びと重複のまま運ばれることを確かめるため、順不同で重複を含める。
 	criteria := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{"b/*", "a/*", "b/*"}}
 	cases := []struct {
@@ -987,18 +987,18 @@ func TestObservationResult_ValueOfActionsPermissions(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := (ObservationResult{ActionsPermissions: &tc.observed}).Value(tc.key); !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("Value(%q) = %+v, want %+v", tc.key, got, tc.want)
+			if got := (ObservationResult{ActionsPermissions: &tc.observed}).Setting(tc.key); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Setting(%q) = %+v, want %+v", tc.key, got, tc.want)
 			}
 		})
 	}
 }
 
-func TestObservationResult_ValueOfUnknownSettingPanics(t *testing.T) {
+func TestObservationResult_SettingOfUnknownSettingPanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {
-			t.Error("Value() did not panic for an unknown setting")
+			t.Error("Setting() did not panic for an unknown setting")
 		}
 	}()
-	_ = ObservationResult{}.Value("general.unknown")
+	_ = ObservationResult{}.Setting("general.unknown")
 }

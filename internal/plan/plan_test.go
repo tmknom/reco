@@ -11,6 +11,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
 )
@@ -41,9 +42,7 @@ func TestRun(t *testing.T) {
 	newConfig := func(files fstest.MapFS, out *bytes.Buffer, baseURL *url.URL) Config {
 		return Config{
 			Token:         "test-token",
-			ConfigDir:     files,
-			ConfigName:    "reco.yaml",
-			ConfigPath:    "./reco.yaml",
+			Configuration: configuration.File{Dir: files, Name: "reco.yaml", Path: "./reco.yaml"},
 			Out:           out,
 			GitHubOptions: []github.Option{github.WithBaseURL(baseURL)},
 		}
@@ -98,16 +97,6 @@ func TestRun(t *testing.T) {
 		}
 		if requested {
 			t.Error("GitHub received a request, want none")
-		}
-	})
-
-	t.Run("configuration path is passed to change planning", func(t *testing.T) {
-		baseURL := newGitHubServer(t, func(http.ResponseWriter, *http.Request) {})
-		var out bytes.Buffer
-
-		err := Run(context.Background(), newConfig(fstest.MapFS{}, &out, baseURL))
-		if err == nil || !strings.Contains(err.Error(), "./reco.yaml") {
-			t.Errorf("Run() error = %v, want it to contain the configuration path", err)
 		}
 	})
 

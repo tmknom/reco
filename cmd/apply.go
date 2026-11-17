@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -21,14 +20,11 @@ func newApplyCmd(env Environment, deps dependencies) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			dir, name := resolveConfigPath(env.WorkDir, config.path)
 			return apply.Run(c.Context(), apply.Config{
-				Token:      token,
-				ConfigDir:  os.DirFS(dir),
-				ConfigName: name,
-				ConfigPath: config.path,
-				Selection:  repo.selection(),
-				Out:        c.OutOrStdout(),
+				Token:         token,
+				Configuration: config.file(env.WorkDir),
+				Selection:     repo.selection(),
+				Out:           c.OutOrStdout(),
 				Approve: func(ctx context.Context) error {
 					return requestApproval(ctx, env.Stdin, env.StdinIsTerminal, c.ErrOrStderr())
 				},

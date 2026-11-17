@@ -23,11 +23,11 @@ type ObservationResult struct {
 	WorkflowPermissions *WorkflowPermissions
 }
 
-// Value は、key の設定の観測結果を返す。取得条件を持たない設定は、常に観測値になる。
+// Setting は、key の設定の観測結果を返す。取得条件を持たない設定は、常に観測値になる。
 // o は key の設定の領域を読み取った観測の結果に限り、読み取らなかった領域の値は補わずに nil 参照で止まる。
 // 未知の設定は不変条件の破れとして panic する。
 // 設定を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
-func (o ObservationResult) Value(key setting.Key) SettingObservation[setting.Value] {
+func (o ObservationResult) Setting(key setting.Key) SettingObservation[setting.Value] {
 	switch key {
 	case setting.DeleteBranchOnMerge:
 		return Observed(setting.BoolValue(o.General.DeleteBranchOnMerge))

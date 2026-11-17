@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"slices"
 	"time"
 
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/changeplandisplay"
+	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
 )
@@ -19,11 +19,8 @@ import (
 // Config は Run の入力。
 type Config struct {
 	Token string
-	// ConfigDir は設定ファイルのあるディレクトリ、ConfigName はその中のファイル名。
-	ConfigDir  fs.FS
-	ConfigName string
-	// ConfigPath は利用者が指定したままの設定ファイルのパス。表示とエラー文言に使う。
-	ConfigPath string
+	// Configuration は設定宣言を読み込む設定ファイル。
+	Configuration configuration.File
 	// Selection は利用者が明示したリポジトリ指定。明示しなければ nil。
 	Selection *repository.Reference
 	Out       io.Writer
@@ -37,8 +34,7 @@ type Config struct {
 // Run は変更計画を生成し、承認されたときだけ GitHub の設定を更新して、結果を Out に書く。
 func Run(ctx context.Context, cfg Config) error {
 	client := github.New(cfg.Token, cfg.GitHubOptions...)
-	file := changeplan.ConfigurationFile{Dir: cfg.ConfigDir, Name: cfg.ConfigName, Path: cfg.ConfigPath}
-	p, err := changeplan.Generate(ctx, client, file, cfg.Selection)
+	p, err := changeplan.Generate(ctx, client, cfg.Configuration, cfg.Selection)
 	if err != nil {
 		return err
 	}
@@ -51,7 +47,7 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 	if err != nil {
 		return err
 	}
-	text := changeplandisplay.ChangePlanText(cfg.ConfigPath, p)
+	text := changeplandisplay.Text(cfg.Configuration.Path, p)
 	if !slices.ContainsFunc(p.Repositories, changeplan.RepositoryPlan.HasPlannedChanges) {
 		_, err := io.WriteString(cfg.Out, text)
 		return err
@@ -83,7 +79,8 @@ type repositoryChanges struct {
 // executableChanges は、選択したすべての対象リポジトリについて、論理的な設定変更を実行順で返す。
 // 戻り値は変更計画のリポジトリの計画と同じ長さ、同じ並びで、変更不要の対象リポジトリも changes が空の要素として含む。
 // 論理的な設定変更にできない変更予定の拒否は、論理的な設定変更を導く changeplan が持つ。
-// INV-002 のため、すべての対象リポジトリの更新操作を承認の前に引き、欠けていれば、先の対象リポジトリを更新したあとではなく、更新要求を一つも送る前に止める。
+// INV-002 のため、すべての対象リポジトリの更新操作の更新エンドポイントを承認の前に引き、更新要求を持たない設定の更新操作があれば、
+// 先の対象リポジトリを更新したあとではなく、更新要求を一つも送る前に止める。戻り値を使わないのは、この呼び出しが引けることの検査だけを目的とするため。
 func executableChanges(p changeplan.Plan) ([]repositoryChanges, error) {
 	repositories := make([]repositoryChanges, len(p.Repositories))
 	for i, r := range p.Repositories {
@@ -93,7 +90,7 @@ func executableChanges(p changeplan.Plan) ([]repositoryChanges, error) {
 		}
 		for _, change := range changes {
 			for _, operation := range change.Operations {
-				updateSenderOf(operation.Key)
+				github.UpdateEndpointOf(operation.Key)
 			}
 		}
 		repositories[i] = repositoryChanges{plan: r, changes: changes}

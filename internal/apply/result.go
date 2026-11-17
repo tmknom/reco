@@ -91,39 +91,6 @@ const (
 	completed
 )
 
-// preconditionCheck は、更新直前に変更前提を確かめた結果。
-// 未実行の理由はこの値から導く。preconditionNotChecked は先行する異常による停止、preconditionHolds 以外の残りの値は変更前提の不成立に当たる。
-// 理由を別のフィールドで持つと、前提は成立したのに理由は停止、のような矛盾した値を作れるため。
-type preconditionCheck int
-
-const (
-	preconditionNotChecked preconditionCheck = iota
-	preconditionUnconfirmed
-	preconditionHolds
-	preconditionIdentityMismatch
-	preconditionCurrentValueChanged
-)
-
-// desiredStateConfirmation は、更新後の観測で期待状態を確かめた結果。
-// desiredStateUnconfirmed、desiredStateIdentityMismatch、desiredStateUnavailable は、どれも確認失敗を理由で分けたもの。
-// desiredStateUnavailable は、期待値と比べる設定が取得条件により観測不能だったことを表す。
-type desiredStateConfirmation int
-
-const (
-	desiredStateNotChecked desiredStateConfirmation = iota
-	desiredStateMatches
-	desiredStateMismatch
-	desiredStateUnconfirmed
-	desiredStateIdentityMismatch
-	desiredStateUnavailable
-)
-
-// unexpectedOutsideChange は、変更対象外の設定の予期しない変化。
-type unexpectedOutsideChange struct {
-	Key           setting.Key
-	Before, After setting.Value
-}
-
 // operation は、i 番目の更新操作の記録を返す。変更前提を確かめなかった更新操作は、ゼロ値 (preconditionNotChecked) を返す。
 func (r changeRecord) operation(i int) operationRecord {
 	if i < len(r.operations) {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -42,6 +43,93 @@ func TestUpdateOutcomeOf(t *testing.T) {
 	}
 }
 
+// TestClientUpdate は、更新操作が変える設定から、その更新要求の送り先と本文を選ぶ規則を確かめる。
+//
+//trace:checks INV-001
+//trace:checks FR-011
+func TestClientUpdate(t *testing.T) {
+	cases := []struct {
+		name        string
+		key         setting.Key
+		value       setting.Value
+		wantRequest string
+		wantBody    map[string]any
+	}{
+		{
+			name: "delete_branch_on_merge sends only delete_branch_on_merge", key: setting.DeleteBranchOnMerge, value: setting.BoolValue(true),
+			wantRequest: "PATCH /repos/owner/repo", wantBody: map[string]any{"delete_branch_on_merge": true},
+		},
+		{
+			name: "allow_auto_merge sends only allow_auto_merge", key: setting.AllowAutoMerge, value: setting.BoolValue(true),
+			wantRequest: "PATCH /repos/owner/repo", wantBody: map[string]any{"allow_auto_merge": true},
+		},
+		{
+			name: "allowed_actions sends enabled and allowed_actions only", key: setting.AllowedActions,
+			value:       setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly),
+			wantRequest: "PUT /repos/owner/repo/actions/permissions", wantBody: map[string]any{"enabled": true, "allowed_actions": "local_only"},
+		},
+		{
+			name: "selected_actions sends all three items", key: setting.SelectedActions,
+			value:       setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{"b/*", "a/*"}}),
+			wantRequest: "PUT /repos/owner/repo/actions/permissions/selected-actions",
+			wantBody:    map[string]any{"github_owned_allowed": false, "verified_allowed": true, "patterns_allowed": []any{"b/*", "a/*"}},
+		},
+		{
+			name: "default_workflow_permissions sends only default_workflow_permissions", key: setting.DefaultWorkflowPermissions,
+			value:       setting.PermissionLevelValue(setting.PermissionRead),
+			wantRequest: "PUT /repos/owner/repo/actions/permissions/workflow", wantBody: map[string]any{"default_workflow_permissions": "read"},
+		},
+		{
+			name: "can_approve_pull_request_reviews sends only can_approve_pull_request_reviews", key: setting.CanApprovePullRequestReviews,
+			value:       setting.BoolValue(false),
+			wantRequest: "PUT /repos/owner/repo/actions/permissions/workflow", wantBody: map[string]any{"can_approve_pull_request_reviews": false},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests []string
+			var bodies []map[string]any
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				requests = append(requests, r.Method+" "+r.URL.Path)
+				data, _ := io.ReadAll(r.Body)
+				var body map[string]any
+				if err := json.Unmarshal(data, &body); err != nil {
+					t.Errorf("request body %q is not JSON: %v", data, err)
+				}
+				bodies = append(bodies, body)
+				if r.Method == http.MethodPatch {
+					_, _ = w.Write([]byte(repositoryBody))
+					return
+				}
+				w.WriteHeader(http.StatusNoContent)
+			})
+
+			if outcome, err := c.Update(t.Context(), mustReference(t, "owner/repo"), tc.key, tc.value); err != nil || outcome != UpdateSucceeded {
+				t.Fatalf("Update() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+			}
+
+			if want := []string{tc.wantRequest}; !slices.Equal(requests, want) {
+				t.Errorf("requests = %v, want %v", requests, want)
+			}
+			if want := []map[string]any{tc.wantBody}; !reflect.DeepEqual(bodies, want) {
+				t.Errorf("request bodies = %v, want %v", bodies, want)
+			}
+		})
+	}
+
+	t.Run("setting without an update request panics before sending a request", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Errorf("Update(%q) did not panic", setting.SHAPinningRequired)
+			}
+		}()
+		c := newTestClient(t, func(http.ResponseWriter, *http.Request) {
+			t.Error("Update() sent a request for a setting without an update request")
+		})
+		_, _ = c.Update(t.Context(), mustReference(t, "owner/repo"), setting.SHAPinningRequired, setting.BoolValue(true))
+	})
+}
+
 // TestUpdateAllowAutoMerge は、送信する要求と本文が変更対象の項目だけであることを確かめる。
 //
 //trace:checks FR-011
@@ -66,9 +154,9 @@ func TestUpdateAllowAutoMerge(t *testing.T) {
 				_, _ = w.Write([]byte(repositoryBody))
 			})
 
-			outcome, err := c.UpdateAllowAutoMerge(t.Context(), mustReference(t, "owner/repo"), tc.allow)
+			outcome, err := c.updateAllowAutoMerge(t.Context(), mustReference(t, "owner/repo"), tc.allow)
 			if err != nil || outcome != UpdateSucceeded {
-				t.Fatalf("UpdateAllowAutoMerge() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+				t.Fatalf("updateAllowAutoMerge() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
 			}
 
 			if gotMethod != http.MethodPatch || gotPath != "/repos/owner/repo" {
@@ -92,7 +180,7 @@ func TestUpdateAllowAutoMerge(t *testing.T) {
 }
 
 // TestUpdateDeleteBranchOnMerge は、本文が変更対象の項目だけであることを確かめる。
-// 要求の形と結果の判定は UpdateAllowAutoMerge と共有するため、本文だけを確かめる。
+// 要求の形と結果の判定は updateAllowAutoMerge と共有するため、本文だけを確かめる。
 //
 //trace:checks FR-011
 //trace:checks INV-001
@@ -113,9 +201,9 @@ func TestUpdateDeleteBranchOnMerge(t *testing.T) {
 				_, _ = w.Write([]byte(repositoryBody))
 			})
 
-			outcome, err := c.UpdateDeleteBranchOnMerge(t.Context(), mustReference(t, "owner/repo"), tc.enabled)
+			outcome, err := c.updateDeleteBranchOnMerge(t.Context(), mustReference(t, "owner/repo"), tc.enabled)
 			if err != nil || outcome != UpdateSucceeded {
-				t.Fatalf("UpdateDeleteBranchOnMerge() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+				t.Fatalf("updateDeleteBranchOnMerge() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
 			}
 
 			var got map[string]any
@@ -141,9 +229,9 @@ func TestUpdateAllowAutoMergeRejected(t *testing.T) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
 	})
 
-	outcome, err := c.UpdateAllowAutoMerge(t.Context(), mustReference(t, "owner/repo"), true)
+	outcome, err := c.updateAllowAutoMerge(t.Context(), mustReference(t, "owner/repo"), true)
 	if outcome != UpdateRejected || !errors.Is(err, ErrUnprocessable) {
-		t.Fatalf("UpdateAllowAutoMerge() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrUnprocessable)
+		t.Fatalf("updateAllowAutoMerge() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrUnprocessable)
 	}
 	if n := received.Load(); n != 1 {
 		t.Errorf("server received %d requests, want 1", n)
@@ -218,9 +306,9 @@ func TestUpdateAllowAutoMergeOutcomeUnknown(t *testing.T) {
 				tc.handler(w, r)
 			})
 
-			outcome, err := c.UpdateAllowAutoMerge(t.Context(), mustReference(t, "owner/repo"), true)
+			outcome, err := c.updateAllowAutoMerge(t.Context(), mustReference(t, "owner/repo"), true)
 			if outcome != UpdateUnknown || !errors.Is(err, tc.want) {
-				t.Fatalf("UpdateAllowAutoMerge() = %v, %v, want %v with %v", outcome, err, UpdateUnknown, tc.want)
+				t.Fatalf("updateAllowAutoMerge() = %v, %v, want %v with %v", outcome, err, UpdateUnknown, tc.want)
 			}
 			// 成否不明は利用者に示す事実のため、error の文言に含める
 			if !strings.Contains(err.Error(), "update outcome unknown") {
@@ -307,9 +395,9 @@ func TestUpdateDefaultWorkflowPermissions(t *testing.T) {
 				w.WriteHeader(http.StatusNoContent)
 			})
 
-			outcome, err := c.UpdateDefaultWorkflowPermissions(t.Context(), mustReference(t, "owner/repo"), tc.level)
+			outcome, err := c.updateDefaultWorkflowPermissions(t.Context(), mustReference(t, "owner/repo"), tc.level)
 			if err != nil || outcome != UpdateSucceeded {
-				t.Fatalf("UpdateDefaultWorkflowPermissions() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+				t.Fatalf("updateDefaultWorkflowPermissions() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
 			}
 
 			if gotMethod != http.MethodPut || gotPath != workflowPermissionsPath {
@@ -333,7 +421,7 @@ func TestUpdateDefaultWorkflowPermissions(t *testing.T) {
 }
 
 // TestUpdateCanApprovePullRequestReviews は、本文が変更対象の項目だけであることを確かめる。
-// 要求の形と結果の判定は UpdateDefaultWorkflowPermissions と共有するため、本文だけを確かめる。
+// 要求の形と結果の判定は updateDefaultWorkflowPermissions と共有するため、本文だけを確かめる。
 //
 //trace:checks FR-011
 //trace:checks INV-001
@@ -354,9 +442,9 @@ func TestUpdateCanApprovePullRequestReviews(t *testing.T) {
 				w.WriteHeader(http.StatusNoContent)
 			})
 
-			outcome, err := c.UpdateCanApprovePullRequestReviews(t.Context(), mustReference(t, "owner/repo"), tc.canApprove)
+			outcome, err := c.updateCanApprovePullRequestReviews(t.Context(), mustReference(t, "owner/repo"), tc.canApprove)
 			if err != nil || outcome != UpdateSucceeded {
-				t.Fatalf("UpdateCanApprovePullRequestReviews() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+				t.Fatalf("updateCanApprovePullRequestReviews() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
 			}
 
 			var got map[string]any
@@ -393,9 +481,9 @@ func TestUpdateWorkflowPermissionsRejected(t *testing.T) {
 				w.WriteHeader(tc.status)
 			})
 
-			outcome, err := c.UpdateDefaultWorkflowPermissions(t.Context(), mustReference(t, "owner/repo"), setting.PermissionRead)
+			outcome, err := c.updateDefaultWorkflowPermissions(t.Context(), mustReference(t, "owner/repo"), setting.PermissionRead)
 			if outcome != UpdateRejected || !errors.Is(err, tc.want) {
-				t.Fatalf("UpdateDefaultWorkflowPermissions() = %v, %v, want %v with %v", outcome, err, UpdateRejected, tc.want)
+				t.Fatalf("updateDefaultWorkflowPermissions() = %v, %v, want %v with %v", outcome, err, UpdateRejected, tc.want)
 			}
 			if !strings.Contains(err.Error(), "update workflow permissions owner/repo") {
 				t.Errorf("error = %q, want it to name the operation and owner/repo", err)
@@ -480,9 +568,9 @@ func TestUpdateWorkflowPermissionsOutcomeUnknown(t *testing.T) {
 				tc.handler(w, r)
 			})
 
-			outcome, err := c.UpdateDefaultWorkflowPermissions(t.Context(), mustReference(t, "owner/repo"), setting.PermissionRead)
+			outcome, err := c.updateDefaultWorkflowPermissions(t.Context(), mustReference(t, "owner/repo"), setting.PermissionRead)
 			if outcome != UpdateUnknown || !errors.Is(err, tc.want) {
-				t.Fatalf("UpdateDefaultWorkflowPermissions() = %v, %v, want %v with %v", outcome, err, UpdateUnknown, tc.want)
+				t.Fatalf("updateDefaultWorkflowPermissions() = %v, %v, want %v with %v", outcome, err, UpdateUnknown, tc.want)
 			}
 			for _, secret := range []string{testToken, bodyMarker, location} {
 				if strings.Contains(err.Error(), secret) {
@@ -526,9 +614,9 @@ func TestUpdateAllowedActions(t *testing.T) {
 				w.WriteHeader(http.StatusNoContent)
 			})
 
-			outcome, err := c.UpdateAllowedActions(t.Context(), mustReference(t, "owner/repo"), tc.policy)
+			outcome, err := c.updateAllowedActions(t.Context(), mustReference(t, "owner/repo"), tc.policy)
 			if err != nil || outcome != UpdateSucceeded {
-				t.Fatalf("UpdateAllowedActions() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+				t.Fatalf("updateAllowedActions() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
 			}
 
 			if gotMethod != http.MethodPut || gotPath != actionsPermissionsPath {
@@ -571,9 +659,9 @@ func TestUpdateAllowedActionsRejected(t *testing.T) {
 		w.WriteHeader(http.StatusForbidden)
 	})
 
-	outcome, err := c.UpdateAllowedActions(t.Context(), mustReference(t, "owner/repo"), setting.AllowedActionsAll)
+	outcome, err := c.updateAllowedActions(t.Context(), mustReference(t, "owner/repo"), setting.AllowedActionsAll)
 	if outcome != UpdateRejected || !errors.Is(err, ErrForbidden) {
-		t.Fatalf("UpdateAllowedActions() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrForbidden)
+		t.Fatalf("updateAllowedActions() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrForbidden)
 	}
 	if !strings.HasPrefix(err.Error(), "update actions permissions owner/repo: ") {
 		t.Errorf("error = %q, want it to start with the operation and owner/repo", err)
@@ -654,9 +742,9 @@ func TestUpdateSelectedActions(t *testing.T) {
 	})
 
 	criteria := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: []string{"z/*", "a/*"}}
-	outcome, err := c.UpdateSelectedActions(t.Context(), mustReference(t, "owner/repo"), criteria)
+	outcome, err := c.updateSelectedActions(t.Context(), mustReference(t, "owner/repo"), criteria)
 	if err != nil || outcome != UpdateSucceeded {
-		t.Fatalf("UpdateSelectedActions() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+		t.Fatalf("updateSelectedActions() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
 	}
 
 	if gotMethod != http.MethodPut || gotPath != selectedActionsPath {
@@ -696,9 +784,9 @@ func TestUpdateSelectedActionsRejected(t *testing.T) {
 		w.WriteHeader(http.StatusConflict)
 	})
 
-	outcome, err := c.UpdateSelectedActions(t.Context(), mustReference(t, "owner/repo"), setting.SelectedActionsCriteria{GitHubOwnedAllowed: true})
+	outcome, err := c.updateSelectedActions(t.Context(), mustReference(t, "owner/repo"), setting.SelectedActionsCriteria{GitHubOwnedAllowed: true})
 	if outcome != UpdateRejected || !errors.Is(err, ErrConflict) {
-		t.Fatalf("UpdateSelectedActions() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrConflict)
+		t.Fatalf("updateSelectedActions() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrConflict)
 	}
 	if !strings.HasPrefix(err.Error(), "update selected actions owner/repo: ") {
 		t.Errorf("error = %q, want it to start with the operation and owner/repo", err)

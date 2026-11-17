@@ -23,6 +23,17 @@ func TestConfigFlag_Set(t *testing.T) {
 	})
 }
 
+// TestConfigFlag_File は、設定ファイルが表示とエラー文言に利用者の指定したままのパスを持つことを確かめる。解決の規則は TestResolveConfigPath が確かめる。
+func TestConfigFlag_File(t *testing.T) {
+	f := newConfigFlag()
+	if err := f.Set("../custom.yaml"); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	if got := f.file("/work"); got.Path != "../custom.yaml" {
+		t.Errorf("file().Path = %q, want %q", got.Path, "../custom.yaml")
+	}
+}
+
 //trace:checks FR-001
 func TestResolveConfigPath(t *testing.T) {
 	const workDir = "/work"

@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-func TestKeys_FollowsConfigurationOrder(t *testing.T) {
+func TestManagementUnits_FollowsConfigurationOrder(t *testing.T) {
 	want := []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowedActions, SelectedActions, DefaultWorkflowPermissions, CanApprovePullRequestReviews}
-	if got := Keys(); !slices.Equal(got, want) {
-		t.Errorf("Keys() = %v, want %v", got, want)
+	if got := ManagementUnits(); !slices.Equal(got, want) {
+		t.Errorf("ManagementUnits() = %v, want %v", got, want)
 	}
 }
 

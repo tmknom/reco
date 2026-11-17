@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
+
+	"github.com/tmknom/reco/internal/configuration"
 )
 
 const defaultConfigPath = "./reco.yaml"
@@ -28,6 +31,12 @@ func (f *configFlag) Set(s string) error {
 	}
 	f.path = s
 	return nil
+}
+
+// file は、--config のパスを workDir を基準に解決した設定ファイルを返す。
+func (f *configFlag) file(workDir string) configuration.File {
+	dir, name := resolveConfigPath(workDir, f.path)
+	return configuration.File{Dir: os.DirFS(dir), Name: name, Path: f.path}
 }
 
 func resolveConfigPath(workDir, path string) (dir, name string) {

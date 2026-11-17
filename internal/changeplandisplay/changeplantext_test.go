@@ -42,7 +42,7 @@ func TestPluralize(t *testing.T) {
 //trace:checks FR-005
 //trace:checks FR-007
 //trace:checks QR-002
-func TestChangePlanText(t *testing.T) {
+func TestText(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 	cases := []struct {
 		name     string
@@ -87,8 +87,8 @@ func TestChangePlanText(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{{Target: target, RepositoryID: 1, Settings: tc.settings}}}
-			if got := ChangePlanText("./reco.yaml", p); got != tc.want {
-				t.Errorf("ChangePlanText() = %q, want %q", got, tc.want)
+			if got := Text("./reco.yaml", p); got != tc.want {
+				t.Errorf("Text() = %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -100,7 +100,7 @@ func TestChangePlanText(t *testing.T) {
 //trace:checks FR-007
 //trace:checks QR-002
 //trace:checks INV-001
-func TestChangePlanText_ActionsPermissions(t *testing.T) {
+func TestText_ActionsPermissions(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 	criteria := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: true, PatternsAllowed: []string{"example/*"}}
 	policy := setting.AllowedActionsPolicyValue
@@ -144,8 +144,8 @@ func TestChangePlanText_ActionsPermissions(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{{Target: target, RepositoryID: 1, Settings: tc.settings}}}
-			if got := ChangePlanText("./reco.yaml", p); got != tc.want {
-				t.Errorf("ChangePlanText() = %q, want %q", got, tc.want)
+			if got := Text("./reco.yaml", p); got != tc.want {
+				t.Errorf("Text() = %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -156,7 +156,7 @@ func TestChangePlanText_ActionsPermissions(t *testing.T) {
 //
 //trace:checks FR-007
 //trace:checks QR-002
-func TestChangePlanText_Repositories(t *testing.T) {
+func TestText_Repositories(t *testing.T) {
 	zeta, alpha := mustReference(t, "owner/zeta"), mustReference(t, "owner/alpha")
 	match := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(false), Result: changeplan.Match}
 	mismatch := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
@@ -202,8 +202,8 @@ func TestChangePlanText_Repositories(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := ChangePlanText("./reco.yaml", changeplan.Plan{Repositories: tc.repositories}); got != tc.want {
-				t.Errorf("ChangePlanText() = %q, want %q", got, tc.want)
+			if got := Text("./reco.yaml", changeplan.Plan{Repositories: tc.repositories}); got != tc.want {
+				t.Errorf("Text() = %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -212,9 +212,9 @@ func TestChangePlanText_Repositories(t *testing.T) {
 		defer func() {
 			got, ok := recover().(string)
 			if !ok || !strings.Contains(got, "no repository plan") {
-				t.Errorf("ChangePlanText() panicked with %q, want a message naming no repository plan", got)
+				t.Errorf("Text() panicked with %q, want a message naming no repository plan", got)
 			}
 		}()
-		_ = ChangePlanText("./reco.yaml", changeplan.Plan{})
+		_ = Text("./reco.yaml", changeplan.Plan{})
 	})
 }
