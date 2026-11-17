@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/spf13/cobra"
 
 	"github.com/tmknom/reco/internal/github"
@@ -21,12 +19,9 @@ func newPlanCmd(env Environment, opts ...github.Option) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			dir, name := resolveConfigPath(env.WorkDir, config.path)
 			return plan.Run(c.Context(), plan.Config{
 				Token:         token,
-				ConfigDir:     os.DirFS(dir),
-				ConfigName:    name,
-				ConfigPath:    config.path,
+				Configuration: config.file(env.WorkDir),
 				Selection:     repo.selection(),
 				Out:           c.OutOrStdout(),
 				GitHubOptions: opts,

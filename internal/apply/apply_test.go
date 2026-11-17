@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/tmknom/reco/internal/changeplan"
+	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
@@ -366,10 +367,10 @@ func newPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.Plan {
 	return changeplan.Plan{Repositories: []changeplan.RepositoryPlan{newRepositoryPlan(t, settings...)}}
 }
 
-// unknownKey は、実行できる更新操作を持たない設定。
+// unknownKey は、更新要求を持たない設定。
 const unknownKey setting.Key = "general.unknown"
 
-// unknownMismatch は、実行できる更新操作を持たない設定の適用可能な変更予定。
+// unknownMismatch は、更新要求を持たない設定の適用可能な変更予定。
 func unknownMismatch() changeplan.SettingPlan {
 	return changeplan.SettingPlan{Key: unknownKey, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
 }
@@ -430,7 +431,7 @@ func TestExecutableChanges(t *testing.T) {
 		}
 	})
 
-	t.Run("logical change without an update operation after an executable one panics before approval", func(t *testing.T) {
+	t.Run("update operation for a setting without an update request after an executable one panics before approval", func(t *testing.T) {
 		defer func() {
 			if recover() == nil {
 				t.Error("executableChanges() did not panic")
@@ -439,7 +440,7 @@ func TestExecutableChanges(t *testing.T) {
 		_, _ = executableChanges(plans(t, []changeplan.SettingPlan{allowAutoMergeMismatch(), unknownMismatch()}))
 	})
 
-	t.Run("logical change without an update operation in the second repository panics before approval", func(t *testing.T) {
+	t.Run("update operation for a setting without an update request in the second repository panics before approval", func(t *testing.T) {
 		defer func() {
 			if recover() == nil {
 				t.Error("executableChanges() did not panic")
@@ -494,7 +495,7 @@ func TestApplyPlan(t *testing.T) {
 		var out bytes.Buffer
 		var shown string
 		calls := 0
-		cfg := Config{ConfigPath: "./reco.yaml", Out: &out, Approve: func(context.Context) error {
+		cfg := Config{Configuration: configuration.File{Path: "./reco.yaml"}, Out: &out, Approve: func(context.Context) error {
 			calls++
 			shown = out.String()
 			return nil
@@ -829,11 +830,9 @@ const workflowConfigSource = `repositories:
 func TestRun(t *testing.T) {
 	newConfig := func(files fstest.MapFS, out *bytes.Buffer, baseURL *url.URL, calls *int) Config {
 		return Config{
-			Token:      "test-token",
-			ConfigDir:  files,
-			ConfigName: "reco.yaml",
-			ConfigPath: "./reco.yaml",
-			Out:        out,
+			Token:         "test-token",
+			Configuration: configuration.File{Dir: files, Name: "reco.yaml", Path: "./reco.yaml"},
+			Out:           out,
 			Approve: func(context.Context) error {
 				*calls++
 				return nil
@@ -1088,8 +1087,8 @@ func TestRun(t *testing.T) {
 
 		err := Run(context.Background(), newConfig(fstest.MapFS{}, &out, baseURL, &calls))
 
-		if err == nil || !strings.Contains(err.Error(), "./reco.yaml") {
-			t.Errorf("Run() error = %v, want it to contain the configuration path", err)
+		if err == nil {
+			t.Error("Run() error = nil, want an error")
 		}
 		if calls != 0 || len(rec.Methods()) != 0 {
 			t.Errorf("approve calls = %d, requests = %v, want none", calls, rec.Methods())

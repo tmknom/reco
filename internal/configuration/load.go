@@ -3,6 +3,7 @@ package configuration
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"unicode/utf8"
@@ -10,10 +11,28 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// Load は fsys の name を読み、設定宣言に変換する。入力検証に失敗したら設定宣言を返さない。
-// エラーに name を付けないのは、fs.FS の名前が利用者の指定したパスと異なり、呼び出し元がそのパスを付けるため。
-func Load(fsys fs.FS, name string) (Declaration, error) {
-	data, err := fs.ReadFile(fsys, name)
+// File は、設定宣言を読み込む設定ファイル。
+type File struct {
+	// Dir は設定ファイルのあるディレクトリ、Name はその中のファイル名。
+	// fs.FS の名前は先頭の / や .. を含められないため、パスをディレクトリと名前に分けて受ける。
+	Dir  fs.FS
+	Name string
+	// Path は利用者が指定したままの設定ファイルのパス。表示とエラー文言に使う。
+	Path string
+}
+
+// Load は f を読み、設定宣言に変換する。入力検証に失敗したら設定宣言を返さない。
+// エラーに Name ではなく Path を付けるのは、fs.FS の名前が利用者の指定したパスと異なるため。
+func (f File) Load() (Declaration, error) {
+	d, err := f.read()
+	if err != nil {
+		return Declaration{}, fmt.Errorf("load configuration %s: %w", f.Path, err)
+	}
+	return d, nil
+}
+
+func (f File) read() (Declaration, error) {
+	data, err := fs.ReadFile(f.Dir, f.Name)
 	if err != nil {
 		return Declaration{}, err
 	}

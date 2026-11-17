@@ -13,6 +13,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
@@ -25,8 +26,28 @@ func TestRepositoryPlan_Count(t *testing.T) {
 	}
 }
 
-// TestRepositoryPlan_HasPlannedChanges は、変更予定を不一致と比較不能の管理設定とする定義を確かめる。
+// TestSettingPlan_IsPlannedChange は、変更予定を不一致と比較不能の管理設定とする定義を確かめる。
 //
+//trace:checks FR-008
+func TestSettingPlan_IsPlannedChange(t *testing.T) {
+	cases := []struct {
+		name   string
+		result ReconciliationResult
+		want   bool
+	}{
+		{name: "match is not a planned change", result: Match, want: false},
+		{name: "mismatch is a planned change", result: Mismatch, want: true},
+		{name: "not comparable is a planned change", result: NotComparable, want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := (SettingPlan{Result: tc.result}).IsPlannedChange(); got != tc.want {
+				t.Errorf("IsPlannedChange() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-008
 func TestRepositoryPlan_HasPlannedChanges(t *testing.T) {
 	cases := []struct {
@@ -36,8 +57,7 @@ func TestRepositoryPlan_HasPlannedChanges(t *testing.T) {
 	}{
 		{name: "no setting has no planned change", want: false},
 		{name: "only matches have no planned change", settings: []SettingPlan{{Result: Match}, {Result: Match}}, want: false},
-		{name: "mismatch is a planned change", settings: []SettingPlan{{Result: Match}, {Result: Mismatch}}, want: true},
-		{name: "not comparable is a planned change", settings: []SettingPlan{{Result: NotComparable}, {Result: Match}}, want: true},
+		{name: "a planned change after a match is found", settings: []SettingPlan{{Result: Match}, {Result: Mismatch}}, want: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -99,8 +119,8 @@ const twoRepositoriesSource = `repositories:
 //trace:checks FR-002
 //trace:checks FR-005
 func TestGenerate(t *testing.T) {
-	file := func(files fstest.MapFS) ConfigurationFile {
-		return ConfigurationFile{Dir: files, Name: "reco.yaml", Path: "./reco.yaml"}
+	file := func(files fstest.MapFS) configuration.File {
+		return configuration.File{Dir: files, Name: "reco.yaml", Path: "./reco.yaml"}
 	}
 	declared := fstest.MapFS{"reco.yaml": {Data: []byte(twoRepositoriesSource)}}
 
@@ -166,7 +186,7 @@ func TestGenerate(t *testing.T) {
 		}
 	})
 
-	t.Run("missing configuration file is reported with the user path before any request", func(t *testing.T) {
+	t.Run("missing configuration file is reported before any request", func(t *testing.T) {
 		requested := false
 		baseURL := newGitHubServer(t, func(http.ResponseWriter, *http.Request) { requested = true })
 		client := github.New("test-token", github.WithBaseURL(baseURL))
@@ -174,9 +194,6 @@ func TestGenerate(t *testing.T) {
 		_, err := Generate(context.Background(), client, file(fstest.MapFS{}), nil)
 		if !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("Generate() error = %v, want %v", err, fs.ErrNotExist)
-		}
-		if err == nil || !strings.Contains(err.Error(), "./reco.yaml") {
-			t.Errorf("Generate() error = %v, want it to contain the configuration path", err)
 		}
 		if requested {
 			t.Error("GitHub received a request, want none")
@@ -191,8 +208,8 @@ func TestGenerate(t *testing.T) {
 		files := fstest.MapFS{"reco.yaml": {Data: []byte(src)}}
 
 		_, err := Generate(context.Background(), client, file(files), new(mustReference(t, "owner/first")))
-		if err == nil || !strings.Contains(err.Error(), "./reco.yaml") {
-			t.Errorf("Generate() error = %v, want a configuration error naming the configuration path", err)
+		if err == nil {
+			t.Error("Generate() error = nil, want a configuration error")
 		}
 		if requested {
 			t.Error("GitHub received a request, want none")
@@ -259,8 +276,8 @@ const workflowSource = `repositories:
 //trace:checks FR-004
 //trace:checks FR-005
 func TestGenerate_ObservedAreas(t *testing.T) {
-	file := func(src string) ConfigurationFile {
-		return ConfigurationFile{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(src)}}, Name: "reco.yaml", Path: "./reco.yaml"}
+	file := func(src string) configuration.File {
+		return configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(src)}}, Name: "reco.yaml", Path: "./reco.yaml"}
 	}
 	const repositoryBody = `{"id": 7, "allow_auto_merge": false, "delete_branch_on_merge": false}`
 
@@ -371,7 +388,7 @@ const actionsPermissionsSource = `repositories:
 //trace:checks FR-006
 //trace:checks FR-007
 func TestGenerate_ActionsPermissions(t *testing.T) {
-	file := ConfigurationFile{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(actionsPermissionsSource)}}, Name: "reco.yaml", Path: "./reco.yaml"}
+	file := configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(actionsPermissionsSource)}}, Name: "reco.yaml", Path: "./reco.yaml"}
 	const repositoryBody = `{"id": 7, "allow_auto_merge": false, "delete_branch_on_merge": false}`
 
 	t.Run("declared policy is observed, judged applicable, and carries the side effect", func(t *testing.T) {

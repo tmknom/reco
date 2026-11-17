@@ -19,22 +19,22 @@ const (
 
 // reconcile は、期待値が明示された設定 (管理範囲内) だけを観測結果と照合する。
 // 期待値が省略された設定は管理範囲外のため、照合結果を作らず、観測値も読まない。
-// setting.Keys の並びが Plan.Settings の並びになる。
+// setting.ManagementUnits の並びが Plan.Settings の並びになる。
 func reconcile(desired configuration.DesiredState, observed github.ObservationResult) []SettingPlan {
 	var settings []SettingPlan
-	for _, key := range setting.Keys() {
+	for _, key := range setting.ManagementUnits() {
 		if d, ok := desired.Value(key); ok {
-			settings = append(settings, newSettingPlan(key, observed.Value(key), d))
+			settings = append(settings, newSettingPlan(key, observed.Setting(key), d))
 		}
 	}
 	return settings
 }
 
-// managedAreas は、管理範囲内の管理設定が属する設定の領域を、setting.Keys の並びで一度ずつ返す。
+// managedAreas は、管理範囲内の管理設定が属する設定の領域を、setting.ManagementUnits の並びで一度ずつ返す。
 // reconcile と同じ DesiredState.Value で管理設定を決めるため、照合する設定の領域は必ず観測される。
 func managedAreas(desired configuration.DesiredState) []setting.Area {
 	var areas []setting.Area
-	for _, key := range setting.Keys() {
+	for _, key := range setting.ManagementUnits() {
 		if _, ok := desired.Value(key); ok && !slices.Contains(areas, key.Area()) {
 			areas = append(areas, key.Area())
 		}

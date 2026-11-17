@@ -48,7 +48,7 @@ func (c LogicalChange) Keys() []setting.Key {
 // 対にならない形は、設定宣言の組み合わせの規則と観測の取得条件のどちらかが破れたときにしか生じないため、不変条件の破れとして panic する。
 func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 	for _, s := range r.Settings {
-		if s.Result != Match && s.Applicability != Applicable {
+		if s.IsPlannedChange() && s.Applicability != Applicable {
 			return nil, fmt.Errorf("%s: %s cannot be applied", r.Target, s.Key)
 		}
 	}
@@ -56,7 +56,7 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 	var changes []LogicalChange
 	for _, s := range r.Settings {
 		switch {
-		case s.Result == Match:
+		case !s.IsPlannedChange():
 			continue
 		case s.Key == setting.SelectedActions && s.Result == NotComparable:
 			if !paired {
@@ -85,7 +85,7 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 func (r RepositoryPlan) criteriaFollowingPolicy() (SettingPlan, bool) {
 	policy, hasPolicy := r.settingPlanOf(setting.AllowedActions)
 	criteria, hasCriteria := r.settingPlanOf(setting.SelectedActions)
-	if !hasPolicy || !hasCriteria || policy.Result == Match || !targetsSelectedPolicy(policy) || criteria.Result != NotComparable {
+	if !hasPolicy || !hasCriteria || !policy.IsPlannedChange() || !targetsSelectedPolicy(policy) || criteria.Result != NotComparable {
 		return SettingPlan{}, false
 	}
 	return criteria, true

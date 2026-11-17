@@ -3,8 +3,7 @@ package changeplan
 
 import (
 	"context"
-	"fmt"
-	"io/fs"
+	"slices"
 
 	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
@@ -59,28 +58,24 @@ func (r RepositoryPlan) Count(result ReconciliationResult) int {
 	return n
 }
 
-// HasPlannedChanges は、変更予定 (不一致か比較不能の管理設定) があるかを返す。
-// 変更不要かどうかを読む処理ごとに条件を組み立てると定義が食い違うため、変更予定の有無はここだけで判定する。
-func (r RepositoryPlan) HasPlannedChanges() bool {
-	return r.Count(Mismatch)+r.Count(NotComparable) > 0
+// IsPlannedChange は、この管理設定が変更予定 (不一致か比較不能の管理設定) かを返す。
+// 変更予定かどうかを読む処理ごとに条件を組み立てると定義が食い違うため、ここだけで判定する。
+func (s SettingPlan) IsPlannedChange() bool {
+	return s.Result != Match
 }
 
-// ConfigurationFile は、設定宣言を読み込む設定ファイル。
-type ConfigurationFile struct {
-	// Dir は設定ファイルのあるディレクトリ、Name はその中のファイル名。
-	// fs.FS の名前は先頭の / や .. を含められないため、パスをディレクトリと名前に分けて受ける。
-	Dir  fs.FS
-	Name string
-	// Path は利用者が指定したままの設定ファイルのパス。エラー文言に使う。
-	Path string
+// HasPlannedChanges は、変更予定があるかを返す。
+func (r RepositoryPlan) HasPlannedChanges() bool {
+	return slices.ContainsFunc(r.Settings, SettingPlan.IsPlannedChange)
 }
 
 // Generate は、selection で選んだ対象の変更計画を生成する。selection が nil なら宣言された全リポジトリを選ぶ。
-// 観測操作の失敗は、比較不能にせず、文言が対象名を含むため包み直さずに返す。
-func Generate(ctx context.Context, client *github.Client, file ConfigurationFile, selection *repository.Reference) (Plan, error) {
-	declaration, err := configuration.Load(file.Dir, file.Name)
+// 設定ファイルの読み込みと観測操作の失敗は、文言が設定ファイルのパスか対象名を含むため包み直さずに返す。
+// 観測操作の失敗は比較不能にしない。
+func Generate(ctx context.Context, client *github.Client, file configuration.File, selection *repository.Reference) (Plan, error) {
+	declaration, err := file.Load()
 	if err != nil {
-		return Plan{}, fmt.Errorf("load configuration %s: %w", file.Path, err)
+		return Plan{}, err
 	}
 	targets, err := selectTargets(declaration, selection)
 	if err != nil {

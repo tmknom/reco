@@ -57,14 +57,14 @@ func TestDesiredState_Value(t *testing.T) {
 }
 
 // TestDesiredState_ValueCoversEveryDesiredValue は、期待状態が持つ期待値の数と、Value が返す期待値の数が食い違わないことを確かめる。
-// 期待状態に設定を足して setting.Keys や Value に足し忘れると、宣言を受理した設定が照合されないまま
+// 期待状態に設定を足して setting.ManagementUnits や Value に足し忘れると、宣言を受理した設定が照合されないまま
 // コンパイルもほかのテストも通るため、期待状態の全フィールドを埋めて数える。
 func TestDesiredState_ValueCoversEveryDesiredValue(t *testing.T) {
 	var desired DesiredState
 	declared := fillDesiredValues(reflect.ValueOf(&desired).Elem())
 
 	n := 0
-	for _, key := range setting.Keys() {
+	for _, key := range setting.ManagementUnits() {
 		if _, ok := desired.Value(key); ok {
 			n++
 		}

@@ -50,14 +50,15 @@ func TestDecodeDocument(t *testing.T) {
 	}
 }
 
-// TestLoad は、ファイルの読み取りから設定宣言までのつなぎ目を確かめる。各規則は段階ごとのテストが確かめる。
+// TestFileLoad は、ファイルの読み取りから設定宣言までのつなぎ目を確かめる。各規則は段階ごとのテストが確かめる。
 //
 //trace:checks FR-001
-func TestLoad(t *testing.T) {
-	const name = "reco.yaml"
+func TestFileLoad(t *testing.T) {
+	const name, path = "reco.yaml", "./config/reco.yaml"
 	load := func(src string) (Declaration, error) {
-		return Load(fstest.MapFS{name: {Data: []byte(src)}}, name)
+		return File{Dir: fstest.MapFS{name: {Data: []byte(src)}}, Name: name, Path: path}.Load()
 	}
+	wantPrefix := "load configuration " + path + ": "
 
 	t.Run("valid file is read as a declaration", func(t *testing.T) {
 		got, err := load(minimal)
@@ -73,30 +74,30 @@ func TestLoad(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid document is rejected without the file name and with no declaration", func(t *testing.T) {
+	t.Run("invalid document is rejected with the user path and with no declaration", func(t *testing.T) {
 		got, err := load("")
-		if err == nil || strings.HasPrefix(err.Error(), name) {
-			t.Errorf("Load() error = %v, want an error not starting with %q", err, name)
+		if err == nil || !strings.HasPrefix(err.Error(), wantPrefix) {
+			t.Errorf("Load() error = %v, want it to start with %q", err, wantPrefix)
 		}
 		if !reflect.DeepEqual(got, Declaration{}) {
 			t.Errorf("Load() returned a declaration with error: %+v", got)
 		}
 	})
 
-	t.Run("invalid declaration is rejected without the file name and with no declaration", func(t *testing.T) {
+	t.Run("invalid declaration is rejected with the user path and with no declaration", func(t *testing.T) {
 		got, err := load("repositories: []\n")
-		if err == nil || !strings.HasPrefix(err.Error(), "repositories") {
-			t.Errorf("Load() error = %v, want it to start with %q", err, "repositories")
+		if err == nil || !strings.HasPrefix(err.Error(), wantPrefix+"repositories") {
+			t.Errorf("Load() error = %v, want it to start with %q", err, wantPrefix+"repositories")
 		}
 		if !reflect.DeepEqual(got, Declaration{}) {
 			t.Errorf("Load() returned a declaration with error: %+v", got)
 		}
 	})
 
-	t.Run("missing file is rejected as fs.ErrNotExist", func(t *testing.T) {
-		_, err := Load(fstest.MapFS{}, name)
-		if !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("Load() error = %v, want fs.ErrNotExist", err)
+	t.Run("missing file is rejected as fs.ErrNotExist with the user path", func(t *testing.T) {
+		_, err := File{Dir: fstest.MapFS{}, Name: name, Path: path}.Load()
+		if !errors.Is(err, fs.ErrNotExist) || !strings.HasPrefix(err.Error(), wantPrefix) {
+			t.Errorf("Load() error = %v, want fs.ErrNotExist starting with %q", err, wantPrefix)
 		}
 	})
 }
