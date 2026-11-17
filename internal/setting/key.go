@@ -9,6 +9,7 @@ type Key string
 const (
 	DeleteBranchOnMerge Key = "general.delete_branch_on_merge"
 	AllowAutoMerge      Key = "general.allow_auto_merge"
+	ActionsEnabled      Key = "actions.permissions.enabled"
 	AllowedActions      Key = "actions.permissions.allowed_actions"
 	// SHAPinningRequired は、観測するが管理の単位に含まれない設定。ManagementUnits に含めない。
 	SHAPinningRequired           Key = "actions.permissions.sha_pinning_required"
@@ -21,7 +22,7 @@ const (
 // 設定グループは一つの Key で表す。
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
 func ManagementUnits() []Key {
-	return []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowedActions, SelectedActions, DefaultWorkflowPermissions, CanApprovePullRequestReviews}
+	return []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, DefaultWorkflowPermissions, CanApprovePullRequestReviews}
 }
 
 // Area は、k が属する設定の領域を返す。未知の設定は不変条件の破れとして panic する。
@@ -30,7 +31,7 @@ func (k Key) Area() Area {
 	switch k {
 	case DeleteBranchOnMerge, AllowAutoMerge:
 		return AreaGeneral
-	case AllowedActions, SHAPinningRequired, SelectedActions:
+	case ActionsEnabled, AllowedActions, SHAPinningRequired, SelectedActions:
 		return AreaActionsPermissions
 	case DefaultWorkflowPermissions, CanApprovePullRequestReviews:
 		return AreaWorkflowPermissions

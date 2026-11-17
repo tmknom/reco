@@ -42,6 +42,7 @@ reco が管理できるのは、次の表の設定です。表にない設定（
 |---|---|
 | `general.delete_branch_on_merge` | 「General」ページの「Pull Requests」の欄の「Automatically delete head branches」 |
 | `general.allow_auto_merge` | 「General」ページの「Pull Requests」の欄の「Allow auto-merge」 |
+| `actions.permissions.enabled` | 「Actions」の「General」ページの「Actions permissions」の欄で選ぶ、Actions の無効化 |
 | `actions.permissions.allowed_actions` | 「Actions」の「General」ページの「Actions permissions」の欄で選ぶ、実行を許可する Actions と再利用可能なワークフローの範囲（Actions 許可ポリシー）。`selected` は「Allow *OWNER*, and select non-*OWNER*, actions and reusable workflows」に当たる |
 | `actions.permissions.selected_actions.github_owned_allowed` | `selected` のときの「Allow actions created by GitHub」 |
 | `actions.permissions.selected_actions.verified_allowed` | `selected` のときの「Allow actions by Marketplace verified creators」 |
@@ -49,7 +50,7 @@ reco が管理できるのは、次の表の設定です。表にない設定（
 | `actions.workflow.default_workflow_permissions` | 「Actions」の「General」ページの「Workflow permissions」の欄で選ぶ、`GITHUB_TOKEN` の既定の権限（`read` か `write`） |
 | `actions.workflow.can_approve_pull_request_reviews` | 「Actions」の「General」ページの「Workflow permissions」の欄の「Allow GitHub Actions to create and approve pull requests」 |
 
-`allowed_actions` を書くと、Actions が有効であることも期待状態に含まれます。reco で Actions を無効にすることはできません。各設定の意味と、値を変えたときに GitHub 側で起きることは [設定ファイルの書き方](configuration.md) にあります。
+`allowed_actions` を書くと、Actions が有効であることも期待状態に含まれます。reco が Actions を無効にするのは、`enabled: false` を書いたリポジトリだけです。各設定の意味と、値を変えたときに GitHub 側で起きることは [設定ファイルの書き方](configuration.md) にあります。
 
 ## 対象にしていないもの
 

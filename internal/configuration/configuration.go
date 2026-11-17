@@ -39,6 +39,8 @@ func (d DesiredState) Value(key setting.Key) (value setting.Value, ok bool) {
 		return optionalBoolValue(d.General.DeleteBranchOnMerge)
 	case setting.AllowAutoMerge:
 		return optionalBoolValue(d.General.AllowAutoMerge)
+	case setting.ActionsEnabled:
+		return optionalBoolValue(d.ActionsPermissions.Enabled)
 	case setting.AllowedActions:
 		if policy := d.ActionsPermissions.AllowedActions; policy != nil {
 			return setting.AllowedActionsPolicyValue(*policy), true
@@ -78,6 +80,8 @@ type General struct {
 
 // ActionsPermissions は Actions の実行許可の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
 type ActionsPermissions struct {
+	// Enabled は、AllowedActions を宣言したときは nil。有効であることの期待値は AllowedActions が担う (YAML 設定仕様 4章)。
+	Enabled        *bool
 	AllowedActions *setting.AllowedActionsPolicy
 	// SelectedActions は設定グループの期待値で、3項目を一体として持つ。
 	SelectedActions *setting.SelectedActionsCriteria

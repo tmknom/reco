@@ -949,6 +949,18 @@ func TestObservationResult_SettingOfActionsPermissions(t *testing.T) {
 		want     SettingObservation[setting.Value]
 	}{
 		{
+			name:     "enabled returns true observed for enabled actions",
+			observed: ActionsPermissions{Enabled: true, AllowedActions: Observed(setting.AllowedActionsAll), SelectedActions: Unavailable[setting.SelectedActionsCriteria](UnavailableNotSelected)},
+			key:      setting.ActionsEnabled,
+			want:     Observed(setting.BoolValue(true)),
+		},
+		{
+			name:     "enabled returns false observed, not unavailable, for disabled actions",
+			observed: ActionsPermissions{AllowedActions: Unavailable[setting.AllowedActionsPolicy](UnavailableActionsDisabled), SelectedActions: Unavailable[setting.SelectedActionsCriteria](UnavailableActionsDisabled)},
+			key:      setting.ActionsEnabled,
+			want:     Observed(setting.BoolValue(false)),
+		},
+		{
 			name:     "allowed_actions returns the observed policy",
 			observed: ActionsPermissions{Enabled: true, AllowedActions: Observed(setting.AllowedActionsLocalOnly), SelectedActions: Unavailable[setting.SelectedActionsCriteria](UnavailableNotSelected)},
 			key:      setting.AllowedActions,

@@ -79,7 +79,41 @@ func TestDocumentPermissions(t *testing.T) {
 			wantReason: `must be all, local_only, or selected; got "none"`,
 		},
 		{name: "empty permissions is rejected", src: "{}\n", wantPath: "P", wantReason: "must not be empty"},
-		{name: "unknown key is rejected", src: selected + "enabled: true\n", wantPath: "P", wantReason: `unknown key "enabled"; expected allowed_actions, selected_actions`},
+		{name: "unknown key is rejected", src: selected + "unknown: true\n", wantPath: "P", wantReason: `unknown key "unknown"; expected enabled, allowed_actions, selected_actions`},
+		{name: "enabled true alone is read as the enabled state", src: "enabled: true\n", want: ActionsPermissions{Enabled: new(true)}},
+		{name: "enabled false alone is read as the enabled state", src: "enabled: false\n", want: ActionsPermissions{Enabled: new(false)}},
+		{name: "enabled true with all is read the same as all alone", src: "enabled: true\nallowed_actions: all\n", want: ActionsPermissions{AllowedActions: new(setting.AllowedActionsAll)}},
+		{name: "enabled true with selected is read the same as selected alone", src: "enabled: true\n" + selected, want: criteria([]string{"a/*", "b/*"})},
+		{
+			name:       "enabled false with allowed_actions and selected_actions is rejected naming both",
+			src:        "enabled: false\n" + selected,
+			wantPath:   "P",
+			wantReason: "enabled false cannot be declared with allowed_actions, selected_actions",
+		},
+		{
+			name:       "enabled false with selected_actions alone is rejected by the enabled combination first",
+			src:        "enabled: false\n" + strings.Replace(selected, "allowed_actions: selected\n", "", 1),
+			wantPath:   "P",
+			wantReason: "enabled false cannot be declared with selected_actions",
+		},
+		{
+			name:       "enabled false with undefined allowed_actions is rejected by the combination, not the value",
+			src:        "enabled: false\nallowed_actions: none\n",
+			wantPath:   "P",
+			wantReason: "enabled false cannot be declared with allowed_actions",
+		},
+		{
+			name:       "quoted enabled with allowed_actions is rejected at enabled",
+			src:        "enabled: \"true\"\nallowed_actions: all\n",
+			wantPath:   "P.enabled",
+			wantReason: "must be true or false",
+		},
+		{
+			name:       "enabled true with selected_actions alone is rejected for missing allowed_actions",
+			src:        "enabled: true\n" + strings.Replace(selected, "allowed_actions: selected\n", "", 1),
+			wantPath:   "P",
+			wantReason: `selected_actions requires allowed_actions "selected"`,
+		},
 		{name: "duplicate allowed_actions is rejected", src: selected + "allowed_actions: all\n", wantPath: "P", wantReason: `duplicate key "allowed_actions"`},
 		{
 			name:       "selected_actions without a value is rejected rather than read as omitted",
@@ -356,6 +390,21 @@ func TestDocumentDeclaration(t *testing.T) {
 					Desired: DesiredState{
 						General:             General{AllowAutoMerge: new(false)},
 						ActionsPermissions:  ActionsPermissions{AllowedActions: new(setting.AllowedActionsAll)},
+						WorkflowPermissions: WorkflowPermissions{CanApprovePullRequestReviews: new(true)},
+					},
+				},
+			}},
+		},
+		{
+			name: "enabled false is read together with actions.workflow",
+			src:  second + "    actions:\n      permissions:\n        enabled: false\n      workflow:\n        can_approve_pull_request_reviews: true\n",
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				{
+					Reference: mustReference(t, "owner/second"),
+					Desired: DesiredState{
+						General:             General{AllowAutoMerge: new(false)},
+						ActionsPermissions:  ActionsPermissions{Enabled: new(false)},
 						WorkflowPermissions: WorkflowPermissions{CanApprovePullRequestReviews: new(true)},
 					},
 				},

@@ -66,13 +66,17 @@ GitHub Free のアカウントが所有する非公開リポジトリでは自�
 
 ## Actions の実行許可
 
+`actions.permissions.enabled` には、このリポジトリで GitHub Actions を有効にするか（`true`）、無効にするか（`false`）を書きます。reco が Actions を無効にするのは、`enabled: false` を書いたリポジトリだけです。無効にしても、GitHub は `allowed_actions` と `selected_actions` の値を消さずに残します。`enabled` の変更は `plan` で確かめられますが、`apply` ではまだ適用できず、更新を始める前にエラーで止まります。
+
+`enabled: false` と、`allowed_actions` や `selected_actions` は同時に書けません。Actions が無効のあいだ、GitHub はこれらの値を返さず、reco が期待値と比べられないためです。
+
 `actions.permissions.allowed_actions` には、このリポジトリで実行を許可する Actions と再利用可能なワークフローの範囲（Actions 許可ポリシー）を、次の三つの値のどれかで書きます。
 
 - **`all`**：すべての Actions と再利用可能なワークフローを許可する
 - **`local_only`**：ローカルの Actions と再利用可能なワークフローだけを許可する。どこまでをローカルとみなすかは GitHub が決める
 - **`selected`**：`selected_actions` に書いた条件に合うものだけを許可する
 
-`allowed_actions` を書くと、そのポリシーで Actions が実行できること、つまり Actions が有効であることも期待状態に含まれます。Actions が無効のリポジトリでは、reco は書いたポリシーで Actions を有効にします。reco が Actions を無効にすることはありません。Actions を無効のままにしておきたいリポジトリには、`allowed_actions` を書かないでください。
+`allowed_actions` を書くと、そのポリシーで Actions が実行できること、つまり Actions が有効であることも期待状態に含まれます。Actions が無効のリポジトリでは、reco は書いたポリシーで Actions を有効にします。そのため、`allowed_actions` と一緒に `enabled: true` を書いても、書かない場合と同じです。Actions を無効のままにしておきたいリポジトリには、`allowed_actions` を書かないでください。
 
 `allowed_actions` が `all` か `local_only` のときは、`selected_actions` を書けません。`selected` のときは、`selected_actions` に次の3項目をすべて書きます。
 

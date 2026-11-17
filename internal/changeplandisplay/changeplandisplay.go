@@ -28,7 +28,7 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 		}
 	case changeplan.NotComparable:
 		desired := s.Desired.String()
-		if s.EnablesActions() {
+		if s.EnablesActionsByPolicy() {
 			desired += " (enables GitHub Actions)"
 		}
 		fmt.Fprintf(&b, "  %s\n    Current: %s\n    Desired: %s\n", s.Key, display.UnavailableText(s.Observed.UnavailableReason()), desired)

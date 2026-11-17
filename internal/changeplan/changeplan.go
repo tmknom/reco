@@ -41,9 +41,9 @@ type SettingPlan struct {
 	SideEffects []SideEffect
 }
 
-// EnablesActions は、この変更予定が GitHub Actions を有効にするかを返す。
+// EnablesActionsByPolicy は、この変更予定が Actions 許可ポリシーの変更として GitHub Actions を有効にするかを返す。
 // Actions 許可ポリシーの期待値は Actions が有効であることを含むため、Actions が無効で観測不能だったポリシーの変更予定が当たる。
-func (s SettingPlan) EnablesActions() bool {
+func (s SettingPlan) EnablesActionsByPolicy() bool {
 	return s.Key == setting.AllowedActions && s.Result == NotComparable && s.Observed.UnavailableReason() == github.UnavailableActionsDisabled
 }
 

@@ -123,12 +123,33 @@ func TestReconcile_ActionsPermissions(t *testing.T) {
 		SelectedActions: github.Unavailable[setting.SelectedActionsCriteria](github.UnavailableActionsDisabled),
 	}}
 	unavailable := github.Unavailable[setting.Value]
+	declareEnabled := func(enabled bool) configuration.DesiredState {
+		return configuration.DesiredState{ActionsPermissions: configuration.ActionsPermissions{Enabled: &enabled}}
+	}
 	cases := []struct {
 		name     string
 		desired  configuration.DesiredState
 		observed github.ObservationResult
 		want     []SettingPlan
 	}{
+		{
+			name:     "enabled true on disabled actions is a mismatch, not not comparable",
+			desired:  declareEnabled(true),
+			observed: disabled,
+			want:     []SettingPlan{{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch}},
+		},
+		{
+			name:     "enabled false on enabled actions is a mismatch of the enabled state alone",
+			desired:  declareEnabled(false),
+			observed: selected(criteria),
+			want:     []SettingPlan{{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false), Result: Mismatch}},
+		},
+		{
+			name:     "enabled false on disabled actions is a match",
+			desired:  declareEnabled(false),
+			observed: disabled,
+			want:     []SettingPlan{{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(false), Result: Match}},
+		},
 		{
 			name:     "all to local_only is a mismatch of the policy",
 			desired:  declarePolicy(setting.AllowedActionsLocalOnly),
@@ -214,6 +235,11 @@ func TestManagedAreas(t *testing.T) {
 		{
 			name:    "allowed_actions alone includes actions permissions",
 			desired: configuration.DesiredState{ActionsPermissions: configuration.ActionsPermissions{AllowedActions: new(setting.AllowedActionsAll)}},
+			want:    []setting.Area{setting.AreaActionsPermissions},
+		},
+		{
+			name:    "enabled alone includes actions permissions",
+			desired: configuration.DesiredState{ActionsPermissions: configuration.ActionsPermissions{Enabled: new(false)}},
 			want:    []setting.Area{setting.AreaActionsPermissions},
 		},
 		{
