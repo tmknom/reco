@@ -1,6 +1,6 @@
 # GitHub Actions 権限 API 仕様
 
-本ドキュメントは、GitHub REST API の「REST API endpoints for GitHub Actions permissions」のうち、reco が利用するリポジトリ単位のエンドポイントの外部契約を整理します。対象は、Actions permissions・Selected actions・Workflow permissions の取得・更新に必要な権限、HTTP 応答、フィールドです。すべてのエンドポイントに共通する仕様は [GitHub REST API 共通仕様](rest-api.md) が、リポジトリの名前と ID は [GitHub リポジトリ API 仕様](repositories.md) が扱います。記述の前提（根拠とする API バージョン、注釈の意味）は [Research](README.md) に従います。
+本ドキュメントは、GitHub REST API の「REST API endpoints for GitHub Actions permissions」のうち、reco が利用するリポジトリ単位のエンドポイントの外部契約を整理します。対象は、Actions permissions・Selected actions・Workflow permissions・リポジトリ外のワークフローからのアクセスの取得・更新に必要な権限、HTTP 応答、フィールドです。すべてのエンドポイントに共通する仕様は [GitHub REST API 共通仕様](rest-api.md) が、リポジトリの名前と ID は [GitHub リポジトリ API 仕様](repositories.md) が扱います。記述の前提（根拠とする API バージョン、注釈の意味）は [Research](README.md) に従います。
 
 ## 1. 必要な権限と HTTP 応答
 
@@ -14,6 +14,8 @@
 | Selected actions の更新 | `PUT /repos/{owner}/{repo}/actions/permissions/selected-actions` | Administration: write |
 | Workflow permissions の取得 | `GET /repos/{owner}/{repo}/actions/permissions/workflow` | Administration: read |
 | Workflow permissions の更新 | `PUT /repos/{owner}/{repo}/actions/permissions/workflow` | Administration: write |
+| リポジトリ外のワークフローからのアクセスの取得 | `GET /repos/{owner}/{repo}/actions/permissions/access` | Administration: read |
+| リポジトリ外のワークフローからのアクセスの更新 | `PUT /repos/{owner}/{repo}/actions/permissions/access` | Administration: write |
 
 | メソッド・パス | 正常応答 | ドキュメントに記載されたその他の応答 |
 |---|---|---|
@@ -23,6 +25,8 @@
 | `PUT /repos/{owner}/{repo}/actions/permissions/selected-actions` | `204` | 記載なし |
 | `GET /repos/{owner}/{repo}/actions/permissions/workflow` | `200` | 記載なし |
 | `PUT /repos/{owner}/{repo}/actions/permissions/workflow` | `204` | `409` 所有 Organization によって設定の変更が妨げられた場合の競合応答 |
+| `GET /repos/{owner}/{repo}/actions/permissions/access` | `200` | 記載なし |
+| `PUT /repos/{owner}/{repo}/actions/permissions/access` | `204` | 記載なし |
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -32,7 +36,7 @@
 
 ## 2. 更新操作の単位と結果の確認
 
-本ドキュメントの更新エンドポイントは、それぞれ独立したリクエストです。Actions permissions・Selected actions・Workflow permissions を、一つのリクエストでまとめて更新するエンドポイントは公開ドキュメントにありません。
+本ドキュメントの更新エンドポイントは、それぞれ独立したリクエストです。Actions permissions・Selected actions・Workflow permissions・リポジトリ外のワークフローからのアクセスのうち複数を、一つのリクエストでまとめて更新するエンドポイントは公開ドキュメントにありません。
 
 更新エンドポイントの本文フィールドの多くは任意ですが、省略したフィールドの既存値が保持されるかは、いずれのドキュメントにも記載がありません。また、どの `PUT` も本文のない `204` を返すため、更新後の値を知るには対応する `GET` で取得し直す必要があります。条件付きリクエストに対応する旨の記載は、いずれの更新エンドポイントのドキュメントにもありません。
 
@@ -54,10 +58,10 @@
 | `sha_pinning_required` | boolean | 任意 |
 
 > [!NOTE]
-> 次は、reco の開発者が実際の動作で確認した事項です（非公開リポジトリで確認）。
+> 次は、reco の開発者が実際の動作で確認した事項です（公開・非公開リポジトリで確認）。
 >
 > - Actions が有効のときの応答：`sha_pinning_required` は、必須ではないフィールドだが常に含まれていた
-> - Actions が無効のときの応答：`enabled` が `false` のとき、`allowed_actions` と `selected_actions_url` は応答に含まれない。`sha_pinning_required` は保存された値によらず `false` で返る。`enabled` だけを `true` にして有効に戻すと、無効にする前の `allowed_actions` と `sha_pinning_required` が返る
+> - Actions が無効のときの応答：`enabled` が `false` のとき、`allowed_actions` と `selected_actions_url` は応答に含まれない。`sha_pinning_required` は保存された値によらず `false` で返る。`enabled` だけを `true` にして有効に戻すと、無効にする前の `allowed_actions` と `sha_pinning_required` が返る。`allowed_actions` を `selected`、`sha_pinning_required` を `true` にしてから確かめた
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -78,10 +82,12 @@
 > [!NOTE]
 > 次は、reco の開発者が実際の動作で確認した事項です。
 >
-> - 省略したフィールドの保持：`sha_pinning_required` を省略して `allowed_actions` を変えると、`sha_pinning_required` は変わらない（公開・非公開リポジトリで確認）。`enabled` だけを送ると、`allowed_actions` と `sha_pinning_required` は変わらない（非公開リポジトリで確認）
+> - 省略したフィールドの保持：`sha_pinning_required` を省略して `allowed_actions` を変えると、`sha_pinning_required` は変わらない。`enabled` だけを送ると、`allowed_actions` と `sha_pinning_required` は変わらない。`enabled: true` と `sha_pinning_required` だけを送ると、`allowed_actions` と4章の3項目は変わらない（いずれも公開・非公開リポジトリで確認）。最後の場合は、`allowed_actions` を `selected` にし、3項目を既定と異なる値（`github_owned_allowed: false`、`verified_allowed: true`、空でない `patterns_allowed`）にしてから確かめた
+> - `sha_pinning_required` の値の反映：Actions が有効のとき、`true` と `false` のどちらを送っても、直後の 3.1 の取得が送った値を返した（公開・非公開リポジトリで確認）
+> - Actions が無効のときの `sha_pinning_required`：無効のリポジトリへ `enabled: false` と `sha_pinning_required: true` を送ると `204` を返すが、値は保存されない。`enabled` だけを `true` にして有効に戻すと、送る前の保存値 `false` が返った（非公開リポジトリで確認）
 > - `allowed_actions` に `selected` を送ったときの副作用：現在の値がすでに `selected` でも、4章の `github_owned_allowed` が `true` に変わる。`verified_allowed` と `patterns_allowed` は変わらない。`enabled` だけを送った場合は変わらない（公開・非公開リポジトリで確認）
 > - Actions が無効の状態からの変更：`enabled: true` と `allowed_actions` を一つのリクエストで送ると、有効化とポリシーの変更が同時に反映され、省略した `sha_pinning_required` は無効にする前の値のまま保持される（公開・非公開リポジトリで確認）。無効にする前のポリシーが `selected` だった場合、`selected` を送ると4章の3項目は `github_owned_allowed` が `true` に変わるほかは残り、`all` を送ると3項目は残らない（非公開リポジトリで確認）
-> - 更新直後の取得：`allowed_actions` を `all` と `local_only` の間で変える更新、`selected` にする更新、Actions が無効の状態から `enabled: true` と `allowed_actions: all` を送って有効にする更新では、`204` の約 0.3 秒後の 3.1 の取得が更新後の値を返し、続けて約 0.6 秒おきに取得しても更新前の値には戻らなかった。`selected` にした直後の4章の取得も `409` にならず値を返した。有効にした直後の取得が `enabled: false` を返すこともなかった（公開・非公開リポジトリで、順に6回、3回、3回ずつ確認）
+> - 更新直後の取得：`allowed_actions` を `all` と `local_only` の間で変える更新、`selected` にする更新、Actions が無効の状態から `enabled: true` と `allowed_actions: all` を送って有効にする更新では、`204` の約 0.3 秒後の 3.1 の取得が更新後の値を返し、続けて約 0.6 秒おきに取得しても更新前の値には戻らなかった。`selected` にした直後の4章の取得も `409` にならず値を返した。有効にした直後の取得が `enabled: false` を返すこともなかった（公開・非公開リポジトリで、順に6回、3回、3回ずつ確認）。`enabled: true` と `sha_pinning_required` だけを送る更新（公開で7回、非公開で3回）、`enabled` だけを送って無効または有効にする更新（公開で各1回、非公開で各2回）でも、`204` を受け取ってから1秒以内、約 1.5 秒後、約 3 秒後の取得は、どれも更新後の値を返した
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -97,7 +103,7 @@ Selected actions の取得・更新は、どちらもリポジトリの `allowed
 >
 > - 前提を満たさないときの応答：`allowed_actions` が `all` または `local_only` のとき、および Actions が無効のとき、取得は `409` を返し、値は返らない。本文の `errors` は、それぞれ `All actions and workflows are allowed on this repository`、`Only local actions and workflows are allowed on this repository`、`GitHub Actions is disabled on this repository` である。更新も、3つの場合のどれでも同じ `errors` の `409` を返す（非公開リポジトリで確認）
 > - `selected` から別のポリシーへの切替：`all` または `local_only` を経て `selected` に戻すと、切替前の値は残らず、`github_owned_allowed` が `true`、`verified_allowed` が `false`、`patterns_allowed` が `[]` になる（非公開リポジトリで `all`、公開リポジトリで `local_only` を経由して確認）。`all` から `selected` にした直後の値も同じだった（公開・非公開リポジトリで確認）
-> - Actions の無効化：無効にしてから `enabled` だけを `true` にして有効に戻すと、無効にする前の3項目の値が返る（非公開リポジトリで確認）
+> - Actions の無効化：無効にしてから `enabled` だけを `true` にして有効に戻すと、無効にする前の3項目の値が返る（公開・非公開リポジトリで確認）
 > - 省略したフィールドの保持：`github_owned_allowed` だけを送ると、`verified_allowed` と `patterns_allowed` は変わらない（非公開リポジトリで確認）
 
 | Relationship | Target | Target Type |
@@ -182,3 +188,48 @@ Selected actions の取得・更新は、どちらもリポジトリの `allowed
 | `grounding` | [Workflow syntax for GitHub Actions: permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions) | External Document |
 | `grounding` | [Managing GitHub Actions settings for a repository: Configuring the default GITHUB_TOKEN permissions](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository#configuring-the-default-github_token-permissions) | External Document |
 | `grounding` | [Managing GitHub Actions settings for a repository: Preventing GitHub Actions from creating or approving pull requests](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository#preventing-github-actions-from-creating-or-approving-pull-requests) | External Document |
+
+## 6. リポジトリ外のワークフローからのアクセス
+
+非公開リポジトリの Actions と再利用可能なワークフローは、同じユーザーまたは Organization が所有するほかの非公開リポジトリと共有できます。本章のエンドポイントは、リポジトリ外のワークフローがそれらにアクセスできる範囲を取得・設定します。取得と更新のどちらのドキュメントも、 **非公開リポジトリにだけ適用される** と記載しています。公開リポジトリに送ったときの応答は記載がありません。
+
+リポジトリ設定のドキュメントは、この範囲を設定画面の「Actions」の「General」ページにある「Access」の欄で選ぶと記載しています。ユーザー所有のリポジトリの選択肢は「Not accessible」と「Accessible from repositories owned by '*USER NAME*' user」、Organization 所有のリポジトリの選択肢は「Not accessible」と「Accessible from repositories in the '*ORGANIZATION NAME*' organization」です。どちらも、アクセスは非公開リポジトリからだけ許可されると記載しています。
+
+> [!NOTE]
+> 次は、reco の開発者が実際の動作で確認した事項です（`repo` scope を持つ personal access token (classic) で確認）。
+>
+> - 公開リポジトリへの取得：トークン所有者が Admin ロールを持つ公開リポジトリでは `422` を返し、値は返らない。本文の `message` は `Access policy only applies to internal and private repositories.` だった。Actions が無効のときも同じだった
+> - 権限のないリポジトリへの取得：トークン所有者が Write 以上のロールを持たない第三者の公開リポジトリ（`cli/cli`）では `403` を返す。本文の `message` は 5.1 の注釈と同じ `You must have repository read permissions or have the repository Actions policies fine-grained permission.` で、公開リポジトリへの `422` とは異なる
+> - Actions が無効のとき：取得は `200` で値を返し、更新も `204` を返して反映される。Actions を有効に戻したあとも、無効のあいだに送った値が返る。3.2 の無効化と再有効化で、値は変わらない（非公開リポジトリで確認）
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [REST API endpoints for GitHub Actions permissions](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10) | External Document |
+| `grounding` | [Managing GitHub Actions settings for a repository: Allowing access to components in a private repository](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository#allowing-access-to-components-in-a-private-repository) | External Document |
+
+### 6.1 `GET /repos/{owner}/{repo}/actions/permissions/access`
+
+- 用途：リポジトリ外のワークフローが、このリポジトリの Actions と再利用可能なワークフローにアクセスできる範囲の取得
+- 応答フィールド：`access_level`（`none` / `user` / `organization`、必須）
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [Get the level of access for workflows outside of the repository](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#get-the-level-of-access-for-workflows-outside-of-the-repository) | External Document |
+
+### 6.2 `PUT /repos/{owner}/{repo}/actions/permissions/access`
+
+- 用途：6.1 で取得する範囲の設定
+
+| 本文フィールド | 型・値 | 指定条件 | 意味 |
+|---|---|---|---|
+| `access_level` | `none` / `user` / `organization` | 必須 | `none` はこのリポジトリのワークフローからだけアクセスできる。`user` はユーザー所有の非公開リポジトリのあいだで共有する。`organization` は Organization の中で共有する |
+
+> [!NOTE]
+> 次は、reco の開発者が実際の動作で確認した事項です（ユーザー所有の非公開リポジトリで確認）。
+>
+> - 値の反映：`none` と `user` のどちらを送っても `204` を返し、直後の 6.1 の取得が送った値を返した。`204` を受け取ってから1秒以内、約 1.5 秒後、約 3 秒後の取得は、どれも更新後の値を返した（`user` にする更新で1回、`none` にする更新で2回）
+> - ユーザー所有のリポジトリへの `organization`：`422` を返し、値は変わらない。本文の `errors` は `Only 'none' and 'user' access levels are allowed for this repository.` だった
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [Set the level of access for workflows outside of the repository](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-the-level-of-access-for-workflows-outside-of-the-repository) | External Document |
