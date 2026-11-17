@@ -12,6 +12,7 @@ SOURCE_URL="https://raw.githubusercontent.com/github/rest-api-description/${REF}
 OPERATIONS='{
   "/repos/{owner}/{repo}": ["get", "patch"],
   "/repos/{owner}/{repo}/actions/permissions": ["get", "put"],
+  "/repos/{owner}/{repo}/actions/permissions/access": ["get", "put"],
   "/repos/{owner}/{repo}/actions/permissions/selected-actions": ["get", "put"],
   "/repos/{owner}/{repo}/actions/permissions/workflow": ["get", "put"]
 }'

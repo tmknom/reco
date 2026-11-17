@@ -34,4 +34,4 @@ GitHub は REST API の OpenAPI 3.0 記述を [github/rest-api-description](http
 |---|---|
 | [GitHub REST API 共通仕様](rest-api.md) | リクエストの形式、API バージョン、リダイレクト、失敗応答、レート制限、条件付きリクエスト、認証とトークン |
 | [GitHub リポジトリ API 仕様](repositories.md) | リポジトリの取得・一般設定の更新、リポジトリの名前と ID |
-| [GitHub Actions 権限 API 仕様](actions-permissions.md) | Actions permissions・Selected actions・Workflow permissions の取得・更新 |
+| [GitHub Actions 権限 API 仕様](actions-permissions.md) | Actions permissions・Selected actions・Workflow permissions・リポジトリ外のワークフローからのアクセスの取得・更新 |
