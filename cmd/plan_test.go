@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/tmknom/reco/internal/github"
+	"github.com/tmknom/reco/internal/githubtest"
 )
 
 const declaredRepository = `repositories:
@@ -26,7 +27,7 @@ const declaredTwoRepositories = `repositories:
 `
 
 // mismatchedRepositoryBody は、宣言の期待値 true と異なる現在値 false を返す観測結果。
-const mismatchedRepositoryBody = `{"id": 1, "allow_auto_merge": false, "delete_branch_on_merge": false}`
+var mismatchedRepositoryBody = githubtest.RepositoryBody{ID: 1}.JSON()
 
 func writeConfig(t *testing.T, dir, name, src string) {
 	t.Helper()
@@ -60,7 +61,7 @@ func TestPlan_Success(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			workDir := t.TempDir()
 			writeConfig(t, workDir, tc.configName, tc.src)
-			server, opts := newGitHubServer(t, http.StatusOK, mismatchedRepositoryBody)
+			server, opts := newGitHubServer(t, githubtest.OK(mismatchedRepositoryBody))
 
 			code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue, "GITHUB_TOKEN": githubEnvValue})}, opts, tc.args...)
 			if code != 0 {
@@ -73,12 +74,12 @@ func TestPlan_Success(t *testing.T) {
 				t.Errorf("got stderr %q, want empty", stderr)
 			}
 			// plan は GitHub の設定を更新しないため、受け取る要求は観測の GET だけになる
-			got := server.receivedRequests()
+			got := server.Requests()
 			if len(got) != len(tc.wantPaths) {
 				t.Fatalf("got requests %+v, want GET %v", got, tc.wantPaths)
 			}
 			for i, r := range got {
-				if r.method != http.MethodGet || r.path != tc.wantPaths[i] || !strings.Contains(r.authorization, ghEnvValue) {
+				if r.Method != http.MethodGet || r.Path != tc.wantPaths[i] || !strings.Contains(r.Authorization, ghEnvValue) {
 					t.Errorf("got request %d %+v, want GET %s with GH_TOKEN", i, r, tc.wantPaths[i])
 				}
 			}
@@ -98,11 +99,11 @@ func TestPlan_Success(t *testing.T) {
 func TestPlan_ActionsPermissions(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", "repositories:\n  - name: owner/repo\n    actions:\n      permissions:\n        allowed_actions: all\n")
-	server, opts := newGitHubServerByPath(t, map[string]stubResponse{
-		"/repos/owner/repo":                                      {status: http.StatusOK, body: repositoryBody},
-		"/repos/owner/repo/actions/permissions":                  {status: http.StatusOK, body: actionsPermissionsBody},
-		"/repos/owner/repo/actions/permissions/selected-actions": {status: http.StatusOK, body: selectedActionsBody},
-	})
+	server, opts := newGitHubServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+		"GET /repos/owner/repo":                                      {Status: http.StatusOK, Body: repositoryBody},
+		"GET /repos/owner/repo/actions/permissions":                  {Status: http.StatusOK, Body: actionsPermissionsBody},
+		"GET /repos/owner/repo/actions/permissions/selected-actions": {Status: http.StatusOK, Body: selectedActionsBody},
+	}))
 
 	code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue})}, opts, "plan")
 	if code != 0 {
@@ -117,12 +118,12 @@ func TestPlan_ActionsPermissions(t *testing.T) {
 		t.Errorf("got stderr %q, want empty", stderr)
 	}
 	wantPaths := []string{"/repos/owner/repo", "/repos/owner/repo/actions/permissions", "/repos/owner/repo/actions/permissions/selected-actions"}
-	got := server.receivedRequests()
+	got := server.Requests()
 	if len(got) != len(wantPaths) {
 		t.Fatalf("got requests %+v, want paths %v", got, wantPaths)
 	}
 	for i, r := range got {
-		if r.method != http.MethodGet || r.path != wantPaths[i] {
+		if r.Method != http.MethodGet || r.Path != wantPaths[i] {
 			t.Errorf("got request %d %+v, want GET %s", i, r, wantPaths[i])
 		}
 	}
@@ -142,7 +143,7 @@ func TestPlan_InvalidInput(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			workDir := t.TempDir()
 			writeConfig(t, workDir, "reco.yaml", declaredRepository)
-			server, opts := newGitHubServer(t, http.StatusOK, mismatchedRepositoryBody)
+			server, opts := newGitHubServer(t, githubtest.OK(mismatchedRepositoryBody))
 
 			code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue})}, opts, tc.args...)
 			if code != 1 {
@@ -155,7 +156,7 @@ func TestPlan_InvalidInput(t *testing.T) {
 			if len(records) != 1 || records[0]["msg"] != "command failed" {
 				t.Errorf("got ERROR records %v, want one command failed record", records)
 			}
-			if got := server.receivedRequests(); len(got) != 0 {
+			if got := server.Requests(); len(got) != 0 {
 				t.Errorf("got %d requests, want none", len(got))
 			}
 		})
@@ -166,7 +167,7 @@ func TestPlan_InvalidInput(t *testing.T) {
 func TestPlan_TokenMissing(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", declaredRepository)
-	server, opts := newGitHubServer(t, http.StatusOK, mismatchedRepositoryBody)
+	server, opts := newGitHubServer(t, githubtest.OK(mismatchedRepositoryBody))
 
 	code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir, Getenv: fakeGetenv(nil)}, opts, "plan")
 	if code != 1 {
@@ -179,7 +180,7 @@ func TestPlan_TokenMissing(t *testing.T) {
 	if len(records) != 1 || records[0]["msg"] != "command failed" {
 		t.Errorf("got ERROR records %v, want one command failed record", records)
 	}
-	if got := server.receivedRequests(); len(got) != 0 {
+	if got := server.Requests(); len(got) != 0 {
 		t.Errorf("got %d requests, want none", len(got))
 	}
 }
@@ -187,7 +188,7 @@ func TestPlan_TokenMissing(t *testing.T) {
 //trace:checks FR-001
 //trace:checks QR-002
 func TestPlan_ConfigNotFound(t *testing.T) {
-	server, opts := newGitHubServer(t, http.StatusOK, mismatchedRepositoryBody)
+	server, opts := newGitHubServer(t, githubtest.OK(mismatchedRepositoryBody))
 
 	code, stdout, stderr := runExecute(t, Environment{WorkDir: t.TempDir(), Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue})}, opts, "plan")
 	if code != 1 {
@@ -203,7 +204,7 @@ func TestPlan_ConfigNotFound(t *testing.T) {
 	if msg, _ := records[0]["error"].(string); !strings.Contains(msg, "./reco.yaml") {
 		t.Errorf("got error %q, want it to contain the configuration path", msg)
 	}
-	if got := server.receivedRequests(); len(got) != 0 {
+	if got := server.Requests(); len(got) != 0 {
 		t.Errorf("got %d requests, want none", len(got))
 	}
 }
@@ -216,7 +217,7 @@ func TestPlan_ConfigNotFound(t *testing.T) {
 func TestPlan_ObservationFailure(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", declaredRepository)
-	server, opts := newGitHubServer(t, http.StatusUnauthorized, `{"message": "Bad credentials"}`)
+	server, opts := newGitHubServer(t, githubtest.Response{Status: http.StatusUnauthorized, Body: `{"message": "Bad credentials"}`})
 
 	code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue, "GITHUB_TOKEN": githubEnvValue})}, opts, "plan")
 	if code != 1 {
@@ -232,7 +233,7 @@ func TestPlan_ObservationFailure(t *testing.T) {
 	if msg, _ := records[0]["error"].(string); !strings.Contains(msg, "owner/repo") || !strings.Contains(msg, github.ErrUnauthorized.Error()) {
 		t.Errorf("got error %q, want it to contain the target and the authentication failure", msg)
 	}
-	if got := server.receivedRequests(); len(got) != 1 || !strings.Contains(got[0].authorization, ghEnvValue) {
+	if got := server.Requests(); len(got) != 1 || !strings.Contains(got[0].Authorization, ghEnvValue) {
 		t.Errorf("got requests %+v, want one request with GH_TOKEN and no retry with GITHUB_TOKEN", got)
 	}
 	for _, token := range []string{ghEnvValue, githubEnvValue} {
@@ -248,10 +249,10 @@ func TestPlan_ObservationFailure(t *testing.T) {
 func TestPlan_SecondObservationFailure(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", declaredTwoRepositories+"  - name: owner/third\n    general:\n      allow_auto_merge: true\n")
-	server, opts := newGitHubServerByPath(t, map[string]stubResponse{
-		"/repos/owner/repo":   {status: http.StatusOK, body: mismatchedRepositoryBody},
-		"/repos/owner/second": {status: http.StatusUnauthorized, body: `{"message": "Bad credentials"}`},
-	})
+	server, opts := newGitHubServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+		"GET /repos/owner/repo":   {Status: http.StatusOK, Body: mismatchedRepositoryBody},
+		"GET /repos/owner/second": {Status: http.StatusUnauthorized, Body: `{"message": "Bad credentials"}`},
+	}))
 
 	code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue})}, opts, "plan")
 	if code != 1 {
@@ -267,7 +268,7 @@ func TestPlan_SecondObservationFailure(t *testing.T) {
 	if msg, _ := records[0]["error"].(string); !strings.Contains(msg, "owner/second") {
 		t.Errorf("got error %q, want it to contain the failed repository", msg)
 	}
-	if got := server.receivedRequests(); len(got) != 2 {
+	if got := server.Requests(); len(got) != 2 {
 		t.Errorf("got requests %+v, want the first two GETs only", got)
 	}
 }

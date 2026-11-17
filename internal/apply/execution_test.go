@@ -57,7 +57,7 @@ func TestObserveBeforeUpdate(t *testing.T) {
 		getActionsPermissions = "GET /repos/owner/repo/actions/permissions"
 		getSelectedActions    = "GET /repos/owner/repo/actions/permissions/selected-actions"
 	)
-	selected := []response{okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(true, false, `[]`)}
+	selected := []response{okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(true, false)}
 	localOnly := []response{okRepository(1, false, false), okAllowedActions("local_only", false)}
 	readSelected := []string{getRepository, getActionsPermissions, getSelectedActions}
 	readNotSelected := []string{getRepository, getActionsPermissions}
@@ -141,13 +141,13 @@ func TestObserveBeforeUpdate(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			baseURL, rec := newSequenceServer(t, tc.responses...)
+			baseURL, server := newSequenceServer(t, tc.responses...)
 			delays := &delayRecorder{}
 
 			_, got, err := observeBeforeUpdate(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, 1, observationAreas(tc.change), delays.after, &updateInterval{updateStarted: true})
 
-			if !slices.Equal(rec.Requests(), tc.wantRequests) {
-				t.Errorf("requests = %v, want %v", rec.Requests(), tc.wantRequests)
+			if !slices.Equal(server.RequestLines(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", server.RequestLines(), tc.wantRequests)
 			}
 			// 2つ目の更新操作は、1つ目の更新要求のあとのため、観測し直しの待ち時間の前に更新要求の間隔の1秒を待つ。
 			// 間隔の1秒は観測し直しの回数と上限に数えない。
@@ -165,7 +165,7 @@ func TestObserveBeforeUpdate(t *testing.T) {
 	}
 
 	t.Run("interruption while waiting to read again is unconfirmed without another read", func(t *testing.T) {
-		baseURL, rec := newSequenceServer(t, append(slices.Clone(localOnly), selected...)...)
+		baseURL, server := newSequenceServer(t, append(slices.Clone(localOnly), selected...)...)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		// 1回目の待機は更新要求の間隔のため経過させ、2回目の観測し直す前の待機で中断する。
@@ -182,8 +182,8 @@ func TestObserveBeforeUpdate(t *testing.T) {
 
 		_, got, err := observeBeforeUpdate(ctx, newClient(baseURL), newRepositoryPlan(t), change, 1, observationAreas(change), interrupted, &updateInterval{updateStarted: true})
 
-		if !slices.Equal(rec.Requests(), readNotSelected) {
-			t.Errorf("requests = %v, want %v", rec.Requests(), readNotSelected)
+		if !slices.Equal(server.RequestLines(), readNotSelected) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), readNotSelected)
 		}
 		if got != (operationRecord{precondition: preconditionUnconfirmed}) {
 			t.Errorf("observeBeforeUpdate() = %+v, want unconfirmed", got)
@@ -195,7 +195,7 @@ func TestObserveBeforeUpdate(t *testing.T) {
 
 	// 要求を一つも送らずに終わることが、間隔を最初の読み取りより前に待つことも示す
 	t.Run("interruption while waiting for the interval between update requests is unconfirmed without a read", func(t *testing.T) {
-		baseURL, rec := newSequenceServer(t, selected...)
+		baseURL, server := newSequenceServer(t, selected...)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		interrupted := func(time.Duration) <-chan time.Time {
@@ -206,8 +206,8 @@ func TestObserveBeforeUpdate(t *testing.T) {
 
 		_, got, err := observeBeforeUpdate(ctx, newClient(baseURL), newRepositoryPlan(t), change, 1, observationAreas(change), interrupted, &updateInterval{updateStarted: true})
 
-		if len(rec.Requests()) != 0 {
-			t.Errorf("requests = %v, want none", rec.Requests())
+		if len(server.RequestLines()) != 0 {
+			t.Errorf("requests = %v, want none", server.RequestLines())
 		}
 		if got != (operationRecord{precondition: preconditionUnconfirmed}) {
 			t.Errorf("observeBeforeUpdate() = %+v, want unconfirmed", got)
@@ -558,7 +558,7 @@ func TestExecuteChange(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			baseURL, rec := newSequenceServer(t, tc.responses...)
+			baseURL, server := newSequenceServer(t, tc.responses...)
 			p := newRepositoryPlan(t)
 			delays := &delayRecorder{}
 
@@ -567,8 +567,8 @@ func TestExecuteChange(t *testing.T) {
 			if !reflect.DeepEqual(got.change, tc.change) {
 				t.Errorf("change = %+v, want %+v", got.change, tc.change)
 			}
-			if !slices.Equal(rec.Methods(), tc.wantMethods) {
-				t.Errorf("requests = %v, want %v", rec.Methods(), tc.wantMethods)
+			if !slices.Equal(server.Methods(), tc.wantMethods) {
+				t.Errorf("requests = %v, want %v", server.Methods(), tc.wantMethods)
 			}
 			if !slices.Equal(delays.delays, tc.wantDelays) {
 				t.Errorf("delays = %v, want %v", delays.delays, tc.wantDelays)
@@ -600,7 +600,7 @@ func TestExecuteChange(t *testing.T) {
 	}
 
 	t.Run("interruption while waiting to read again after a mismatch is unconfirmed without another read", func(t *testing.T) {
-		baseURL, rec := newSequenceServer(t, okRepository(1, false, false), okRepository(1, true, false), okRepository(1, false, false), okRepository(1, true, false))
+		baseURL, server := newSequenceServer(t, okRepository(1, false, false), okRepository(1, true, false), okRepository(1, false, false), okRepository(1, true, false))
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		interrupted := func(time.Duration) <-chan time.Time {
@@ -610,8 +610,8 @@ func TestExecuteChange(t *testing.T) {
 
 		got := executeChange(ctx, newClient(baseURL), newRepositoryPlan(t), allowAutoMergeChange(), interrupted, &updateInterval{})
 
-		if want := []string{"GET", "PATCH", "GET"}; !slices.Equal(rec.Methods(), want) {
-			t.Errorf("requests = %v, want %v", rec.Methods(), want)
+		if want := []string{"GET", "PATCH", "GET"}; !slices.Equal(server.Methods(), want) {
+			t.Errorf("requests = %v, want %v", server.Methods(), want)
 		}
 		if got.operation(0).update != github.UpdateSucceeded {
 			t.Errorf("update = %v, want %v", got.operation(0).update, github.UpdateSucceeded)
@@ -666,7 +666,7 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 			name:   "selected to all reads the lost criteria only before the update and completes without an unexpected outside change",
 			change: selectedToAllChange(),
 			responses: []response{
-				okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(true, false, `["a/*", "b/*"]`), noContent,
+				okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(true, false, "a/*", "b/*"), noContent,
 				okRepository(1, false, false), okAllowedActions("all", false),
 			},
 			wantRequests: []string{getRepository, getActionsPermissions, getSelectedActions, putActionsPermissions, getRepository, getActionsPermissions},
@@ -679,7 +679,7 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 		{
 			name:         "selected to all with criteria other than shown before approval sends no update request",
 			change:       selectedToAllChange(),
-			responses:    []response{okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(false, false, `["a/*", "b/*"]`)},
+			responses:    []response{okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(false, false, "a/*", "b/*")},
 			wantRequests: []string{getRepository, getActionsPermissions, getSelectedActions},
 			wantPrecond:  preconditionCurrentValueChanged,
 			wantChanged:  setting.SelectedActions,
@@ -770,8 +770,8 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 			name:   "selected criteria change sends only the selected actions update and completes",
 			change: selectedActionsChange(),
 			responses: []response{
-				okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(false, false, `["a/*", "b/*"]`), noContent,
-				okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(false, true, `["a/*", "b/*"]`),
+				okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(false, false, "a/*", "b/*"), noContent,
+				okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(false, true, "a/*", "b/*"),
 			},
 			wantRequests: []string{
 				getRepository, getActionsPermissions, getSelectedActions, putSelectedActions,
@@ -798,16 +798,16 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			baseURL, rec := newSequenceServer(t, tc.responses...)
+			baseURL, server := newSequenceServer(t, tc.responses...)
 			delays := &delayRecorder{}
 
 			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, delays.after, &updateInterval{})
 
-			if !slices.Equal(rec.Requests(), tc.wantRequests) {
-				t.Errorf("requests = %v, want %v", rec.Requests(), tc.wantRequests)
+			if !slices.Equal(server.RequestLines(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", server.RequestLines(), tc.wantRequests)
 			}
-			if tc.wantBodies != nil && !reflect.DeepEqual(rec.Bodies(), tc.wantBodies) {
-				t.Errorf("request bodies = %v, want %v", rec.Bodies(), tc.wantBodies)
+			if tc.wantBodies != nil && !reflect.DeepEqual(server.Bodies(), tc.wantBodies) {
+				t.Errorf("request bodies = %v, want %v", server.Bodies(), tc.wantBodies)
 			}
 			if !slices.Equal(delays.delays, tc.wantDelays) {
 				t.Errorf("delays = %v, want %v", delays.delays, tc.wantDelays)
@@ -866,10 +866,10 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 	redirect := response{status: http.StatusTemporaryRedirect, location: "https://example.com/"}
 	beforeFirst := []response{okRepository(1, false, false), okAllowedActions("local_only", false)}
 	// GitHub がポリシーの更新で戻した3項目。宣言した declaredCriteria と3項目とも異なる
-	setBack := okSelectedActions(true, false, `[]`)
+	setBack := okSelectedActions(true, false)
 	beforeSecond := []response{okRepository(1, false, false), okAllowedActions("selected", false), setBack}
 	// 宣言した値と許可パターンの順序だけが異なる
-	afterBoth := []response{okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(false, true, `["b/*", "a/*"]`)}
+	afterBoth := []response{okRepository(1, false, false), okAllowedActions("selected", false), okSelectedActions(false, true, "b/*", "a/*")}
 	readNotSelected := []string{getRepository, getActionsPermissions}
 	readSelected := []string{getRepository, getActionsPermissions, getSelectedActions}
 	join := func(parts ...[]response) []response { return slices.Concat(parts...) }
@@ -986,7 +986,7 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 			change:     toSelectedChange(),
 			responses: join(beforeFirst, []response{noContent},
 				[]response{okRepository(1, false, false), okAllowedActions("selected", true), setBack}, []response{noContent},
-				[]response{okRepository(1, false, false), okAllowedActions("selected", true), okSelectedActions(false, true, `["a/*", "b/*"]`)}),
+				[]response{okRepository(1, false, false), okAllowedActions("selected", true), okSelectedActions(false, true, "a/*", "b/*")}),
 			wantRequests:   requests(readNotSelected, []string{putActionsPermissions}, readSelected, []string{putSelectedActions}, readSelected),
 			wantOperations: []operationRecord{holds(github.UpdateSucceeded), holds(github.UpdateSucceeded)},
 			wantDesired:    desiredStateMatches,
@@ -1012,7 +1012,7 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 			wantDelays: interval,
 			change:     enableSelectedChange(),
 			responses: join([]response{okRepository(1, false, false), okActionsDisabled(), noContent}, beforeSecond, []response{noContent},
-				[]response{okRepository(1, false, false), okAllowedActions("selected", true), okSelectedActions(false, true, `["a/*", "b/*"]`)}),
+				[]response{okRepository(1, false, false), okAllowedActions("selected", true), okSelectedActions(false, true, "a/*", "b/*")}),
 			wantRequests: requests(readNotSelected, []string{putActionsPermissions}, readSelected, []string{putSelectedActions}, readSelected),
 			wantBodies: []map[string]any{
 				nil, nil, firstBody,
@@ -1026,16 +1026,16 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			baseURL, rec := newSequenceServer(t, tc.responses...)
+			baseURL, server := newSequenceServer(t, tc.responses...)
 			delays := &delayRecorder{}
 
 			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, delays.after, &updateInterval{})
 
-			if !slices.Equal(rec.Requests(), tc.wantRequests) {
-				t.Errorf("requests = %v, want %v", rec.Requests(), tc.wantRequests)
+			if !slices.Equal(server.RequestLines(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", server.RequestLines(), tc.wantRequests)
 			}
-			if tc.wantBodies != nil && !reflect.DeepEqual(rec.Bodies(), tc.wantBodies) {
-				t.Errorf("request bodies = %v, want %v", rec.Bodies(), tc.wantBodies)
+			if tc.wantBodies != nil && !reflect.DeepEqual(server.Bodies(), tc.wantBodies) {
+				t.Errorf("request bodies = %v, want %v", server.Bodies(), tc.wantBodies)
 			}
 			if !slices.Equal(delays.delays, tc.wantDelays) {
 				t.Errorf("delays = %v, want %v", delays.delays, tc.wantDelays)
@@ -1063,7 +1063,7 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 
 	// 1つ目は成功しているため変更結果は失敗。更新後の観測は一度だけ試みるが、中断を受けているため読み取りも失敗する。
 	t.Run("interruption while waiting for the interval before the second update fails without the second update", func(t *testing.T) {
-		baseURL, rec := newSequenceServer(t, join(beforeFirst, []response{noContent}, beforeSecond)...)
+		baseURL, server := newSequenceServer(t, join(beforeFirst, []response{noContent}, beforeSecond)...)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		interrupted := func(time.Duration) <-chan time.Time {
@@ -1074,8 +1074,8 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 
 		got := executeChange(ctx, newClient(baseURL), newRepositoryPlan(t), change, interrupted, &updateInterval{})
 
-		if want := requests(readNotSelected, []string{putActionsPermissions}); !slices.Equal(rec.Requests(), want) {
-			t.Errorf("requests = %v, want %v", rec.Requests(), want)
+		if want := requests(readNotSelected, []string{putActionsPermissions}); !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}
 		if want := []operationRecord{holds(github.UpdateSucceeded), {precondition: preconditionUnconfirmed}}; !slices.Equal(got.operations, want) {
 			t.Errorf("operations = %+v, want %+v", got.operations, want)
@@ -1248,13 +1248,13 @@ func TestExecuteChanges(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			baseURL, rec := newSequenceServer(t, tc.responses...)
+			baseURL, server := newSequenceServer(t, tc.responses...)
 			changes := tc.changes
 			var delays []time.Duration
 			var requestsAtWait []int
 			after := func(d time.Duration) <-chan time.Time {
 				delays = append(delays, d)
-				requestsAtWait = append(requestsAtWait, len(rec.Requests()))
+				requestsAtWait = append(requestsAtWait, len(server.RequestLines()))
 				return elapsedAtOnce(d)
 			}
 
@@ -1266,11 +1266,11 @@ func TestExecuteChanges(t *testing.T) {
 			if !slices.Equal(requestsAtWait, tc.wantRequestsAtWait) {
 				t.Errorf("requests received at each wait = %v, want %v", requestsAtWait, tc.wantRequestsAtWait)
 			}
-			if !slices.Equal(rec.Methods(), tc.wantMethods) {
-				t.Errorf("requests = %v, want %v", rec.Methods(), tc.wantMethods)
+			if !slices.Equal(server.Methods(), tc.wantMethods) {
+				t.Errorf("requests = %v, want %v", server.Methods(), tc.wantMethods)
 			}
-			if !reflect.DeepEqual(rec.Bodies(), tc.wantBodies) {
-				t.Errorf("request bodies = %v, want %v", rec.Bodies(), tc.wantBodies)
+			if !reflect.DeepEqual(server.Bodies(), tc.wantBodies) {
+				t.Errorf("request bodies = %v, want %v", server.Bodies(), tc.wantBodies)
 			}
 			if len(got) != len(changes) {
 				t.Fatalf("executeChanges() returned %d records, want %d", len(got), len(changes))
@@ -1291,7 +1291,7 @@ func TestExecuteChanges(t *testing.T) {
 
 	// 先行する変更は完了しているため、先行する異常による停止ではなく、次の変更の変更前提の確認不能になる
 	t.Run("interruption while waiting for the interval between changes leaves the second not attempted without a request", func(t *testing.T) {
-		baseURL, rec := newSequenceServer(t, okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true))
+		baseURL, server := newSequenceServer(t, okRepository(1, false, false), okRepository(1, false, true), okRepository(1, false, true))
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		interrupted := func(time.Duration) <-chan time.Time {
@@ -1301,8 +1301,8 @@ func TestExecuteChanges(t *testing.T) {
 
 		got := executeChanges(ctx, newClient(baseURL), newRepositoryPlan(t), generalChanges, interrupted, &updateInterval{})
 
-		if want := []string{"GET", "PATCH", "GET"}; !slices.Equal(rec.Methods(), want) {
-			t.Errorf("requests = %v, want %v", rec.Methods(), want)
+		if want := []string{"GET", "PATCH", "GET"}; !slices.Equal(server.Methods(), want) {
+			t.Errorf("requests = %v, want %v", server.Methods(), want)
 		}
 		if got[0].result() != completed || got[1].result() != notAttempted {
 			t.Errorf("results = %v, %v, want %v, %v", got[0].result(), got[1].result(), completed, notAttempted)
@@ -1434,21 +1434,21 @@ func TestExecuteRepositories(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			baseURL, rec := newSequenceServer(t, tc.responses...)
+			baseURL, server := newSequenceServer(t, tc.responses...)
 			var repositories []repositoryChanges
 			for _, r := range tc.repositories {
 				repositories = append(repositories, repositoryChanges{plan: newRepositoryPlanOf(t, r.name, r.id), changes: r.changes})
 			}
 			var requestsAtWait []int
 			after := func(d time.Duration) <-chan time.Time {
-				requestsAtWait = append(requestsAtWait, len(rec.Requests()))
+				requestsAtWait = append(requestsAtWait, len(server.RequestLines()))
 				return elapsedAtOnce(d)
 			}
 
 			got := executeRepositories(context.Background(), newClient(baseURL), repositories, after)
 
-			if !slices.Equal(rec.Requests(), tc.wantRequests) {
-				t.Errorf("requests = %v, want %v", rec.Requests(), tc.wantRequests)
+			if !slices.Equal(server.RequestLines(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", server.RequestLines(), tc.wantRequests)
 			}
 			if !slices.Equal(requestsAtWait, tc.wantRequestsAtWait) {
 				t.Errorf("requests received at each wait = %v, want %v", requestsAtWait, tc.wantRequestsAtWait)
@@ -1472,7 +1472,7 @@ func TestExecuteRepositories(t *testing.T) {
 
 	// 先行する対象リポジトリは完了しているため、先行する異常による停止ではなく、次の対象リポジトリの変更前提の確認不能になる
 	t.Run("interruption while waiting for the interval between repositories leaves the next not completed and stops the rest", func(t *testing.T) {
-		baseURL, rec := newSequenceServer(t, completes(1)...)
+		baseURL, server := newSequenceServer(t, completes(1)...)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		interrupted := func(time.Duration) <-chan time.Time {
@@ -1487,8 +1487,8 @@ func TestExecuteRepositories(t *testing.T) {
 
 		got := executeRepositories(ctx, newClient(baseURL), repositories, interrupted)
 
-		if want := completesRequests(first); !slices.Equal(rec.Requests(), want) {
-			t.Errorf("requests = %v, want %v", rec.Requests(), want)
+		if want := completesRequests(first); !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}
 		want := []repositoryResult{repositoryCompleted, repositoryNotCompleted, repositoryStopped}
 		for i, record := range got {

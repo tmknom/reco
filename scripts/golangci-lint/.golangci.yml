@@ -152,6 +152,20 @@ linters:
           deny:
             - pkg: github.com/tmknom/reco/internal
               desc: shared terms of every context must not depend on any context
+        githubtest-outside-tests:
+          list-mode: lax
+          files:
+            - "!$test"
+          deny:
+            - pkg: github.com/tmknom/reco/internal/githubtest
+              desc: only tests use the GitHub stub
+        githubtest-standalone:
+          list-mode: lax
+          files:
+            - "${base-path}/internal/githubtest/**"
+          deny:
+            - pkg: github.com/tmknom/reco
+              desc: the GitHub stub does not depend on reco packages
         internal-from-main:
           list-mode: lax
           files:

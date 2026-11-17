@@ -5,8 +5,6 @@ import (
 	"errors"
 	"io/fs"
 	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"reflect"
 	"slices"
 	"strings"
@@ -15,6 +13,7 @@ import (
 
 	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
+	"github.com/tmknom/reco/internal/githubtest"
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -125,23 +124,18 @@ func TestGenerate(t *testing.T) {
 	declared := fstest.MapFS{"reco.yaml": {Data: []byte(twoRepositoriesSource)}}
 
 	t.Run("no selection observes all declarations in the declared order", func(t *testing.T) {
-		var paths []string
-		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
-			paths = append(paths, r.Method+" "+r.URL.Path)
-			id := "1"
-			if r.URL.Path == "/repos/owner/second" {
-				id = "2"
-			}
-			_, _ = w.Write([]byte(`{"id": ` + id + `, "allow_auto_merge": true, "delete_branch_on_merge": true}`))
-		})
-		client := github.New("test-token", github.WithBaseURL(baseURL))
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/first":  githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowAutoMerge: true, DeleteBranchOnMerge: true}.JSON()),
+			"GET /repos/owner/second": githubtest.OK(githubtest.RepositoryBody{ID: 2, AllowAutoMerge: true, DeleteBranchOnMerge: true}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
 
 		got, err := Generate(context.Background(), client, file(declared), nil)
 		if err != nil {
 			t.Fatalf("Generate() error = %v", err)
 		}
-		if want := []string{"GET /repos/owner/first", "GET /repos/owner/second"}; !slices.Equal(paths, want) {
-			t.Errorf("requests = %v, want %v", paths, want)
+		if want := []string{"GET /repos/owner/first", "GET /repos/owner/second"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}
 		var targets []string
 		var ids []repository.ID
@@ -158,20 +152,18 @@ func TestGenerate(t *testing.T) {
 	})
 
 	t.Run("selected declaration is the only one observed and reconciled", func(t *testing.T) {
-		var paths []string
-		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
-			paths = append(paths, r.Method+" "+r.URL.Path)
-			_, _ = w.Write([]byte(`{"id": 7, "allow_auto_merge": false, "delete_branch_on_merge": false}`))
-		})
-		client := github.New("test-token", github.WithBaseURL(baseURL))
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/second": githubtest.OK(githubtest.RepositoryBody{ID: 7}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
 		sel := mustReference(t, "Owner/Second")
 
 		got, err := Generate(context.Background(), client, file(declared), &sel)
 		if err != nil {
 			t.Fatalf("Generate() error = %v", err)
 		}
-		if want := []string{"GET /repos/owner/second"}; !slices.Equal(paths, want) {
-			t.Errorf("requests = %v, want %v", paths, want)
+		if want := []string{"GET /repos/owner/second"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}
 		want := []RepositoryPlan{{
 			Target:       mustReference(t, "owner/second"),
@@ -187,23 +179,21 @@ func TestGenerate(t *testing.T) {
 	})
 
 	t.Run("missing configuration file is reported before any request", func(t *testing.T) {
-		requested := false
-		baseURL := newGitHubServer(t, func(http.ResponseWriter, *http.Request) { requested = true })
-		client := github.New("test-token", github.WithBaseURL(baseURL))
+		server := githubtest.NewServer(t, githubtest.Routes(t, nil))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
 
 		_, err := Generate(context.Background(), client, file(fstest.MapFS{}), nil)
 		if !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("Generate() error = %v, want %v", err, fs.ErrNotExist)
 		}
-		if requested {
-			t.Error("GitHub received a request, want none")
+		if len(server.Requests()) != 0 {
+			t.Errorf("got requests %v, want none", server.RequestLines())
 		}
 	})
 
 	t.Run("invalid declaration of an unselected repository is rejected before any request", func(t *testing.T) {
-		requested := false
-		baseURL := newGitHubServer(t, func(http.ResponseWriter, *http.Request) { requested = true })
-		client := github.New("test-token", github.WithBaseURL(baseURL))
+		server := githubtest.NewServer(t, githubtest.Routes(t, nil))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
 		const src = "repositories:\n  - name: owner/first\n    general:\n      allow_auto_merge: true\n  - name: owner/second\n    general:\n      allow_auto_merge: yes\n"
 		files := fstest.MapFS{"reco.yaml": {Data: []byte(src)}}
 
@@ -211,37 +201,31 @@ func TestGenerate(t *testing.T) {
 		if err == nil {
 			t.Error("Generate() error = nil, want a configuration error")
 		}
-		if requested {
-			t.Error("GitHub received a request, want none")
+		if len(server.Requests()) != 0 {
+			t.Errorf("got requests %v, want none", server.RequestLines())
 		}
 	})
 
 	t.Run("target selection failure is returned before any request", func(t *testing.T) {
-		requested := false
-		baseURL := newGitHubServer(t, func(http.ResponseWriter, *http.Request) { requested = true })
-		client := github.New("test-token", github.WithBaseURL(baseURL))
+		server := githubtest.NewServer(t, githubtest.Routes(t, nil))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
 		sel := mustReference(t, "owner/other")
 
 		if _, err := Generate(context.Background(), client, file(declared), &sel); err == nil {
 			t.Fatal("Generate() error = nil, want an error")
 		}
-		if requested {
-			t.Error("GitHub received a request, want none")
+		if len(server.Requests()) != 0 {
+			t.Errorf("got requests %v, want none", server.RequestLines())
 		}
 	})
 
 	//trace:checks FR-008
 	t.Run("observation failure of the second repository stops before the third and returns no plan", func(t *testing.T) {
-		var paths []string
-		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
-			paths = append(paths, r.Method+" "+r.URL.Path)
-			if r.URL.Path == "/repos/owner/second" {
-				w.WriteHeader(http.StatusForbidden)
-				return
-			}
-			_, _ = w.Write([]byte(`{"id": 1, "allow_auto_merge": false, "delete_branch_on_merge": false}`))
-		})
-		client := github.New("test-token", github.WithBaseURL(baseURL))
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/first":  githubtest.OK(githubtest.RepositoryBody{ID: 1}.JSON()),
+			"GET /repos/owner/second": {Status: http.StatusForbidden},
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
 		const src = "repositories:\n" +
 			"  - name: owner/first\n    general:\n      allow_auto_merge: true\n" +
 			"  - name: owner/second\n    general:\n      allow_auto_merge: true\n" +
@@ -258,8 +242,8 @@ func TestGenerate(t *testing.T) {
 		if !reflect.DeepEqual(got, Plan{}) {
 			t.Errorf("Generate() = %+v, want the zero plan", got)
 		}
-		if want := []string{"GET /repos/owner/first", "GET /repos/owner/second"}; !slices.Equal(paths, want) {
-			t.Errorf("requests = %v, want %v", paths, want)
+		if want := []string{"GET /repos/owner/first", "GET /repos/owner/second"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}
 	})
 }
@@ -279,42 +263,35 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 	file := func(src string) configuration.File {
 		return configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(src)}}, Name: "reco.yaml", Path: "./reco.yaml"}
 	}
-	const repositoryBody = `{"id": 7, "allow_auto_merge": false, "delete_branch_on_merge": false}`
+	repositoryBody := githubtest.RepositoryBody{ID: 7}.JSON()
 
 	t.Run("general only sends only the repository GET", func(t *testing.T) {
-		var paths []string
-		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
-			paths = append(paths, r.Method+" "+r.URL.Path)
-			_, _ = w.Write([]byte(repositoryBody))
-		})
-		client := github.New("test-token", github.WithBaseURL(baseURL))
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/first": githubtest.OK(repositoryBody),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
 
 		if _, err := Generate(context.Background(), client, file(twoRepositoriesSource), new(mustReference(t, "owner/first"))); err != nil {
 			t.Fatalf("Generate() error = %v", err)
 		}
-		if want := []string{"GET /repos/owner/first"}; !slices.Equal(paths, want) {
-			t.Errorf("requests = %v, want %v", paths, want)
+		if want := []string{"GET /repos/owner/first"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}
 	})
 
 	t.Run("declared workflow permissions are observed and reconciled", func(t *testing.T) {
-		var paths []string
-		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
-			paths = append(paths, r.Method+" "+r.URL.Path)
-			if strings.HasSuffix(r.URL.Path, "/actions/permissions/workflow") {
-				_, _ = w.Write([]byte(`{"default_workflow_permissions": "write", "can_approve_pull_request_reviews": true}`))
-				return
-			}
-			_, _ = w.Write([]byte(repositoryBody))
-		})
-		client := github.New("test-token", github.WithBaseURL(baseURL))
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo":                              githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/actions/permissions/workflow": githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "write", CanApprovePullRequestReviews: true}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
 
 		got, err := Generate(context.Background(), client, file(workflowSource), nil)
 		if err != nil {
 			t.Fatalf("Generate() error = %v", err)
 		}
-		if want := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions/workflow"}; !slices.Equal(paths, want) {
-			t.Errorf("requests = %v, want %v", paths, want)
+		if want := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions/workflow"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}
 		want := []SettingPlan{
 			{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
@@ -332,16 +309,13 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 	})
 
 	t.Run("each repository reads only the areas of its own management scope", func(t *testing.T) {
-		var paths []string
-		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
-			paths = append(paths, r.Method+" "+r.URL.Path)
-			if strings.HasSuffix(r.URL.Path, "/actions/permissions/workflow") {
-				_, _ = w.Write([]byte(`{"default_workflow_permissions": "read", "can_approve_pull_request_reviews": false}`))
-				return
-			}
-			_, _ = w.Write([]byte(repositoryBody))
-		})
-		client := github.New("test-token", github.WithBaseURL(baseURL))
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/first":                               githubtest.OK(repositoryBody),
+			"GET /repos/owner/second":                              githubtest.OK(repositoryBody),
+			"GET /repos/owner/second/actions/permissions/workflow": githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
+			"GET /repos/owner/third":                               githubtest.OK(repositoryBody),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
 		const src = "repositories:\n" +
 			"  - name: owner/first\n    general:\n      allow_auto_merge: true\n" +
 			"  - name: owner/second\n    actions:\n      workflow:\n        default_workflow_permissions: read\n" +
@@ -351,20 +325,17 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 			t.Fatalf("Generate() error = %v", err)
 		}
 		want := []string{"GET /repos/owner/first", "GET /repos/owner/second", "GET /repos/owner/second/actions/permissions/workflow", "GET /repos/owner/third"}
-		if !slices.Equal(paths, want) {
-			t.Errorf("requests = %v, want %v", paths, want)
+		if got := server.RequestLines(); !slices.Equal(got, want) {
+			t.Errorf("requests = %v, want %v", got, want)
 		}
 	})
 
 	t.Run("workflow permissions observation failure is returned without a plan", func(t *testing.T) {
-		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasSuffix(r.URL.Path, "/actions/permissions/workflow") {
-				w.WriteHeader(http.StatusForbidden)
-				return
-			}
-			_, _ = w.Write([]byte(repositoryBody))
-		})
-		client := github.New("test-token", github.WithBaseURL(baseURL))
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo":                              githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/actions/permissions/workflow": {Status: http.StatusForbidden},
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
 
 		got, err := Generate(context.Background(), client, file(workflowSource), nil)
 		if !errors.Is(err, github.ErrForbidden) {
@@ -389,30 +360,23 @@ const actionsPermissionsSource = `repositories:
 //trace:checks FR-007
 func TestGenerate_ActionsPermissions(t *testing.T) {
 	file := configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(actionsPermissionsSource)}}, Name: "reco.yaml", Path: "./reco.yaml"}
-	const repositoryBody = `{"id": 7, "allow_auto_merge": false, "delete_branch_on_merge": false}`
+	repositoryBody := githubtest.RepositoryBody{ID: 7}.JSON()
 
 	t.Run("declared policy is observed, judged applicable, and carries the side effect", func(t *testing.T) {
-		var paths []string
-		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
-			paths = append(paths, r.Method+" "+r.URL.Path)
-			switch {
-			case strings.HasSuffix(r.URL.Path, "/actions/permissions/selected-actions"):
-				_, _ = w.Write([]byte(`{"github_owned_allowed": true, "verified_allowed": false, "patterns_allowed": ["example/*"]}`))
-			case strings.HasSuffix(r.URL.Path, "/actions/permissions"):
-				_, _ = w.Write([]byte(`{"enabled": true, "allowed_actions": "selected", "sha_pinning_required": false}`))
-			default:
-				_, _ = w.Write([]byte(repositoryBody))
-			}
-		})
-		client := github.New("test-token", github.WithBaseURL(baseURL))
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo":                                      githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/actions/permissions":                  githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "selected"}.JSON()),
+			"GET /repos/owner/repo/actions/permissions/selected-actions": githubtest.OK(githubtest.SelectedActionsBody{GitHubOwnedAllowed: true, PatternsAllowed: []string{"example/*"}}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
 
 		got, err := Generate(context.Background(), client, file, nil)
 		if err != nil {
 			t.Fatalf("Generate() error = %v", err)
 		}
 		wantPaths := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions", "GET /repos/owner/repo/actions/permissions/selected-actions"}
-		if !slices.Equal(paths, wantPaths) {
-			t.Errorf("requests = %v, want %v", paths, wantPaths)
+		if got := server.RequestLines(); !slices.Equal(got, wantPaths) {
+			t.Errorf("requests = %v, want %v", got, wantPaths)
 		}
 		criteria := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{"example/*"}}
 		want := []SettingPlan{{
@@ -429,14 +393,11 @@ func TestGenerate_ActionsPermissions(t *testing.T) {
 	})
 
 	t.Run("actions permissions observation failure is returned without a plan", func(t *testing.T) {
-		baseURL := newGitHubServer(t, func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasSuffix(r.URL.Path, "/actions/permissions") {
-				w.WriteHeader(http.StatusForbidden)
-				return
-			}
-			_, _ = w.Write([]byte(repositoryBody))
-		})
-		client := github.New("test-token", github.WithBaseURL(baseURL))
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo":                     githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/actions/permissions": {Status: http.StatusForbidden},
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
 
 		got, err := Generate(context.Background(), client, file, nil)
 		if !errors.Is(err, github.ErrForbidden) {
@@ -446,15 +407,4 @@ func TestGenerate_ActionsPermissions(t *testing.T) {
 			t.Errorf("Generate() = %+v, want the zero plan", got)
 		}
 	})
-}
-
-func newGitHubServer(t *testing.T, handler http.HandlerFunc) *url.URL {
-	t.Helper()
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
-	u, err := url.Parse(server.URL)
-	if err != nil {
-		t.Fatalf("parse server URL: %v", err)
-	}
-	return u
 }

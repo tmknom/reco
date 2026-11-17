@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/tmknom/reco/internal/github"
+	"github.com/tmknom/reco/internal/githubtest"
 )
 
 //trace:checks FR-003
@@ -21,12 +22,12 @@ func TestShow_Success(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			server, opts := newGitHubServerByPath(t, map[string]stubResponse{
-				"/repos/owner/repo":                                      {status: http.StatusOK, body: repositoryBody},
-				"/repos/owner/repo/actions/permissions":                  {status: http.StatusOK, body: actionsPermissionsBody},
-				"/repos/owner/repo/actions/permissions/selected-actions": {status: http.StatusOK, body: selectedActionsBody},
-				"/repos/owner/repo/actions/permissions/workflow":         {status: http.StatusOK, body: workflowPermissionsBody},
-			})
+			server, opts := newGitHubServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+				"GET /repos/owner/repo":                                      {Status: http.StatusOK, Body: repositoryBody},
+				"GET /repos/owner/repo/actions/permissions":                  {Status: http.StatusOK, Body: actionsPermissionsBody},
+				"GET /repos/owner/repo/actions/permissions/selected-actions": {Status: http.StatusOK, Body: selectedActionsBody},
+				"GET /repos/owner/repo/actions/permissions/workflow":         {Status: http.StatusOK, Body: workflowPermissionsBody},
+			}))
 
 			code, stdout, stderr := runExecute(t, Environment{Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue, "GITHUB_TOKEN": githubEnvValue})}, opts, tc.args...)
 			if code != 0 {
@@ -44,12 +45,12 @@ func TestShow_Success(t *testing.T) {
 				"/repos/owner/repo/actions/permissions/selected-actions",
 				"/repos/owner/repo/actions/permissions/workflow",
 			}
-			got := server.receivedRequests()
+			got := server.Requests()
 			if len(got) != len(wantPaths) {
 				t.Fatalf("got requests %+v, want paths %v", got, wantPaths)
 			}
 			for i, r := range got {
-				if r.method != http.MethodGet || r.path != wantPaths[i] || !strings.Contains(r.authorization, ghEnvValue) {
+				if r.Method != http.MethodGet || r.Path != wantPaths[i] || !strings.Contains(r.Authorization, ghEnvValue) {
 					t.Errorf("got request %d %+v, want GET %s with GH_TOKEN", i, r, wantPaths[i])
 				}
 			}
@@ -74,7 +75,7 @@ func TestShow_InvalidInput(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			server, opts := newGitHubServer(t, http.StatusOK, repositoryBody)
+			server, opts := newGitHubServer(t, githubtest.OK(repositoryBody))
 
 			code, stdout, stderr := runExecute(t, Environment{Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue})}, opts, tc.args...)
 			if code != 1 {
@@ -87,7 +88,7 @@ func TestShow_InvalidInput(t *testing.T) {
 			if len(records) != 1 || records[0]["msg"] != "command failed" {
 				t.Errorf("got ERROR records %v, want one command failed record", records)
 			}
-			if got := server.receivedRequests(); len(got) != 0 {
+			if got := server.Requests(); len(got) != 0 {
 				t.Errorf("got %d requests, want none", len(got))
 			}
 		})
@@ -96,7 +97,7 @@ func TestShow_InvalidInput(t *testing.T) {
 
 //trace:checks FR-003
 func TestShow_TokenMissing(t *testing.T) {
-	server, opts := newGitHubServer(t, http.StatusOK, repositoryBody)
+	server, opts := newGitHubServer(t, githubtest.OK(repositoryBody))
 
 	code, stdout, stderr := runExecute(t, Environment{Getenv: fakeGetenv(nil)}, opts, "show", "--repo", "owner/repo")
 	if code != 1 {
@@ -109,7 +110,7 @@ func TestShow_TokenMissing(t *testing.T) {
 	if len(records) != 1 || records[0]["msg"] != "command failed" {
 		t.Errorf("got ERROR records %v, want one command failed record", records)
 	}
-	if got := server.receivedRequests(); len(got) != 0 {
+	if got := server.Requests(); len(got) != 0 {
 		t.Errorf("got %d requests, want none", len(got))
 	}
 }
@@ -121,7 +122,7 @@ func TestShow_TokenMissing(t *testing.T) {
 //trace:checks FR-004
 //trace:checks QR-001
 func TestShow_ObservationFailure(t *testing.T) {
-	server, opts := newGitHubServer(t, http.StatusUnauthorized, `{"message": "Bad credentials"}`)
+	server, opts := newGitHubServer(t, githubtest.Response{Status: http.StatusUnauthorized, Body: `{"message": "Bad credentials"}`})
 
 	code, stdout, stderr := runExecute(t, Environment{Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue, "GITHUB_TOKEN": githubEnvValue})}, opts, "show", "--repo", "owner/repo")
 	if code != 1 {
@@ -137,7 +138,7 @@ func TestShow_ObservationFailure(t *testing.T) {
 	if msg, _ := records[0]["error"].(string); !strings.Contains(msg, "owner/repo") || !strings.Contains(msg, github.ErrUnauthorized.Error()) {
 		t.Errorf("got error %q, want it to contain the target and the authentication failure", msg)
 	}
-	if got := server.receivedRequests(); len(got) != 1 || !strings.Contains(got[0].authorization, ghEnvValue) {
+	if got := server.Requests(); len(got) != 1 || !strings.Contains(got[0].Authorization, ghEnvValue) {
 		t.Errorf("got requests %+v, want one request with GH_TOKEN and no retry with GITHUB_TOKEN", got)
 	}
 	for _, token := range []string{ghEnvValue, githubEnvValue} {
