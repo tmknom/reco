@@ -107,7 +107,7 @@ Actions が無効のリポジトリでは値を読み取れないため、`Side 
 
 ## `apply` の結果の区分
 
-`apply` は、承認のあと `Applying changes...` に続けて、対象にしたすべてのリポジトリの変更結果を、設定ファイルに書いた順に示します。
+`apply` は、承認のあと `Applying changes...` に続けて、対象にしたすべてのリポジトリについて、変更結果か変更不要かを、設定ファイルに書いた順に示します。
 
 ```text
 Apply these changes? [y/N]: y

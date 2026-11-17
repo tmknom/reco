@@ -102,7 +102,7 @@ Actions が無効のリポジトリで `all` や `local_only` を書いた場合
 
 `selected_actions` は、`allowed_actions` が `selected` になるまで GitHub に書き込めません。そのため reco は、先に `allowed_actions` を `selected` にし、そのあとで `selected_actions` を書いた値にするという、二つの更新操作を順に行います。Actions が無効のリポジトリで `selected` を書いた場合も同じです。
 
-二つの更新操作のあいだは中間状態になり、少なくとも1秒続きます。Actions が有効なリポジトリで `all` や `local_only` から変えるときは、中間状態の `selected_actions` は GitHub が決めた値（`github_owned_allowed: true`、`verified_allowed: false`、`patterns_allowed: []`）になります。この値は、宣言していない許可を一時的に生むことがあります。たとえば `local_only` から、`github_owned_allowed: false` の `selected` に変える場合、変更前も変更後も許可しない GitHub 所有の Actions が、中間状態のあいだだけ許可されます。
+二つの更新操作のあいだは中間状態になります。中間状態は少なくとも1秒続き、GitHub への反映が遅れているときはさらに長く続きます。Actions が有効なリポジトリで `all` や `local_only` から変えるときは、中間状態の `selected_actions` は GitHub が決めた値（`github_owned_allowed: true`、`verified_allowed: false`、`patterns_allowed: []`）になります。この値は、宣言していない許可を一時的に生むことがあります。たとえば `local_only` から、`github_owned_allowed: false` の `selected` に変える場合、変更前も変更後も許可しない GitHub 所有の Actions が、中間状態のあいだだけ許可されます。
 
 Actions が無効のリポジトリから変えるとき、無効にする前のポリシーが `selected` だったなら、中間状態の `selected_actions` は、`github_owned_allowed` が `true` になるほかは無効にする前の値のままです。この場合も、宣言していない許可が一時的に生まれることがあります。
 
@@ -113,7 +113,7 @@ Actions が無効のリポジトリから変えるとき、無効にする前の
 `actions.workflow` には、ワークフローに与える権限を書きます。
 
 - **`default_workflow_permissions`**：ワークフローの `GITHUB_TOKEN` に与える既定の権限。`read` か `write` のどちらか
-- **`can_approve_pull_request_reviews`**：GitHub Actions が Pull Request を作成し、承認することを許可するか。GitHub の設定画面の「Allow GitHub Actions to create and approve pull requests」に当たる
+- **`can_approve_pull_request_reviews`**：GitHub Actions が Pull Request を作成し、承認することを許可するか
 
 `default_workflow_permissions` が決めるのは、ワークフローが権限を明示しないときの既定の権限です。`read` にしても、ワークフローやジョブの `permissions` で書き込み権限を明示したワークフローは書き込めます。
 
@@ -135,11 +135,11 @@ repositories:
 
 並べた順が、reco が変更計画を示す順であり、承認後に更新する順です。どの順に並べるとよいかは [複数リポジトリの運用](operations.md#リポジトリを並べる順序) にあります。一つのリポジトリの中の設定は、書いた順ではなく、reco が決めた順に示し、更新します。
 
-YAML のアンカー（`&`）とエイリアス（`*`）は使えません。reco は、リポジトリごとの宣言をほかのリポジトリと共有したり継承したりすることを認めていないためです。多くのリポジトリに同じ設定を書くときも、リポジトリごとに書き並べる必要があります。
+YAML のアンカー（`&`）、エイリアス（`*`）、マージキー（`<<`）は使えません。reco は、宣言の共有や継承を認めていないためです。多くのリポジトリに同じ設定を書くときも、リポジトリごとに書き並べる必要があります。
 
 ## よくある書き方の誤り
 
-設定ファイルに誤りがあると、reco は GitHub にアクセスする前に、エラーを示して終了します。エラーの `error` の値に、誤りの箇所（行と列）と理由が入ります。出会いやすい誤りは次の二つです。
+設定ファイルに誤りがあると、reco は GitHub にアクセスする前に、エラーを示して終了します。エラーは標準エラー出力に JSON の1行で出て（[出力先](commands.md#出力先)）、その `error` の値に、誤りの箇所（行と列）と理由が入ります。出会いやすい誤りは次の二つです。
 
 真偽値を引用符で囲むと、文字列として扱われ、拒否されます。真偽値は、引用符を付けない小文字の `true` か `false` で書きます。
 
@@ -178,5 +178,5 @@ repositories:
 - [YAML 設定仕様](../spec/configuration.md)：設定の型と許容値、管理範囲の考え方、入力の組み合わせ（4.1節）、入力検証の全条件（6章）
 - [CLI 仕様](../spec/cli.md)：`--config` の扱い、副作用の表示、`apply` の結果の区分
 - [アーキテクチャ設計](../design/architecture.md)：Actions 許可ポリシーを変えるときの更新操作の順序と中間状態（5.4節）
-- [GitHub Actions 権限 API 仕様](../research/actions-permissions.md)：Actions の各設定の意味、設定画面の項目名、Actions が無効のリポジトリでの中間状態の値
+- [GitHub Actions 権限 API 仕様](../research/actions-permissions.md)：Actions の各設定の意味、Actions が無効のリポジトリでの中間状態の値
 - [GitHub リポジトリ API 仕様](../research/repositories.md)：GitHub Free の非公開リポジトリでの自動マージ

@@ -73,6 +73,8 @@
 | `allowed_actions` | `all` / `local_only` / `selected` | 任意 | 実行を許可する Actions・再利用可能なワークフローの範囲 |
 | `sha_pinning_required` | boolean | 任意 | Actions を完全な長さのコミット SHA に固定することを必須にするか |
 
+リポジトリ設定のドキュメントは、Actions の無効化と、実行を許可する Actions・再利用可能なワークフローの範囲を、設定画面の「Actions」の「General」ページにある「Actions permissions」の欄で選ぶと記載しています。選択肢のうち、ドキュメントが名前を挙げているのは、4章の条件で許可するものを選ぶ「Allow *OWNER*, and select non-*OWNER*, actions and reusable workflows」だけです。
+
 > [!NOTE]
 > 次は、reco の開発者が実際の動作で確認した事項です。
 >
@@ -84,6 +86,7 @@
 | Relationship | Target | Target Type |
 |---|---|---|
 | `grounding` | [Set GitHub Actions permissions for a repository](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-github-actions-permissions-for-a-repository) | External Document |
+| `grounding` | [Managing GitHub Actions settings for a repository: Managing GitHub Actions permissions for your repository](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository#managing-github-actions-permissions-for-your-repository) | External Document |
 
 ## 4. Selected actions
 
@@ -101,6 +104,7 @@ Selected actions の取得・更新は、どちらもリポジトリの `allowed
 |---|---|---|
 | `grounding` | [Get allowed actions and reusable workflows for a repository](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#get-allowed-actions-and-reusable-workflows-for-a-repository) | External Document |
 | `grounding` | [Set allowed actions and reusable workflows for a repository](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-allowed-actions-and-reusable-workflows-for-a-repository) | External Document |
+| `grounding` | [Managing GitHub Actions settings for a repository: Allowing select actions and reusable workflows to run](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository#allowing-select-actions-and-reusable-workflows-to-run) | External Document |
 
 ### 4.1 `GET /repos/{owner}/{repo}/actions/permissions/selected-actions`
 
@@ -116,6 +120,8 @@ Selected actions の取得・更新は、どちらもリポジトリの `allowed
 | `github_owned_allowed` | boolean | 任意 | GitHub が所有する Actions を許可するか |
 | `verified_allowed` | boolean | 任意 | GitHub Marketplace の認証済み作成者の Actions を許可するか |
 | `patterns_allowed` | 文字列の配列 | 任意 | 許可する Actions・再利用可能なワークフローを指定する文字列パターン。ワイルドカード・タグ・SHA を使用可能 |
+
+リポジトリ設定のドキュメントは、設定画面で「Allow *OWNER*, and select non-*OWNER*, actions and reusable workflows」を選んだときの追加の項目として、GitHub が作成した Actions を許可する「Allow actions created by GitHub」、Marketplace の認証済み作成者の Actions を許可する「Allow actions by Marketplace verified creators」、特定の Actions・再利用可能なワークフローを指定する「Allow or block specified actions and reusable workflows」を挙げています。
 
 `patterns_allowed` の設定は **公開リポジトリにのみ適用される** と記載されています。非公開リポジトリで `patterns_allowed` を送ったときに値が保存されるか、取得時に返るか、空配列がどう扱われるかは記載がありません。
 
@@ -157,7 +163,9 @@ Selected actions の取得・更新は、どちらもリポジトリの `allowed
 
 `permissions` キーでいずれかの権限を指定すると、指定しなかった権限は `none` になります。
 
-`can_approve_pull_request_reviews` について、REST API のドキュメントは承認にしか触れていません。リポジトリ設定のドキュメントは、設定画面の「Allow GitHub Actions to create and approve pull requests」という項目で、GitHub Actions による Pull Request の作成と承認を許可・禁止できると記載しています。
+リポジトリ設定のドキュメントは、`GITHUB_TOKEN` の既定の権限を、設定画面の「Actions」の「General」ページにある「Workflow permissions」の欄で、すべての権限の読み書き（permissive）か、`contents` と `packages` の読み取りだけ（restricted）かから選ぶと記載しています。二つの選択肢の項目名は記載がありません。
+
+`can_approve_pull_request_reviews` について、REST API のドキュメントは承認にしか触れていません。リポジトリ設定のドキュメントは、設定画面の「Workflow permissions」の欄にある「Allow GitHub Actions to create and approve pull requests」という項目で、GitHub Actions による Pull Request の作成と承認を許可・禁止できると記載しています。
 
 > [!NOTE]
 > 次は、reco の開発者が実際の動作で確認した事項です。
@@ -172,4 +180,5 @@ Selected actions の取得・更新は、どちらもリポジトリの `allowed
 |---|---|---|
 | `grounding` | [Set default workflow permissions for a repository](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-default-workflow-permissions-for-a-repository) | External Document |
 | `grounding` | [Workflow syntax for GitHub Actions: permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions) | External Document |
+| `grounding` | [Managing GitHub Actions settings for a repository: Configuring the default GITHUB_TOKEN permissions](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository#configuring-the-default-github_token-permissions) | External Document |
 | `grounding` | [Managing GitHub Actions settings for a repository: Preventing GitHub Actions from creating or approving pull requests](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository#preventing-github-actions-from-creating-or-approving-pull-requests) | External Document |
