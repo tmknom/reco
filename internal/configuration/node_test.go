@@ -235,10 +235,13 @@ func TestDocumentBoolValue(t *testing.T) {
 		{name: "true is read as true", src: "true\n", want: true},
 		{name: "false is read as false", src: "false\n", want: false},
 		{name: "explicit tag is rejected", src: "!!bool \"true\"\n", wantErr: "explicit tags are not allowed"},
-		{name: "quoted true is rejected", src: "\"true\"\n", wantErr: "must be true or false"},
-		{name: "uppercase TRUE is rejected", src: "TRUE\n", wantErr: "must be true or false"},
-		{name: "yes is rejected", src: "yes\n", wantErr: "must be true or false"},
-		{name: "number 1 is rejected", src: "1\n", wantErr: "must be true or false"},
+		{name: "double-quoted true is rejected with a hint to remove the quotes", src: "\"true\"\n", wantErr: `must be true or false; got the quoted string "true"; write true without quotes`},
+		{name: "single-quoted FALSE is rejected with a hint to write lowercase false without quotes", src: "'FALSE'\n", wantErr: `must be true or false; got the quoted string "FALSE"; write false without quotes`},
+		{name: "uppercase TRUE is rejected with a hint to write lowercase", src: "TRUE\n", wantErr: "must be true or false; got TRUE; write true in lowercase"},
+		{name: "yes is rejected without a hint", src: "yes\n", wantErr: `must be true or false (unquoted, lowercase); got "yes"`},
+		{name: "quoted yes is rejected without a hint", src: "\"yes\"\n", wantErr: `must be true or false (unquoted, lowercase); got "yes"`},
+		{name: "folded block true is rejected without a hint", src: ">-\n  true\n", wantErr: `must be true or false (unquoted, lowercase); got "true"`},
+		{name: "number 1 is rejected without a hint", src: "1\n", wantErr: `must be true or false (unquoted, lowercase); got "1"`},
 		{name: "error shows path, line and column", src: "a: TRUE\n", node: []int{1}, wantErr: "v (line 1, column 4): must be true or false"},
 	}
 	for _, tc := range cases {

@@ -174,9 +174,23 @@ func (d document) boolValue(n *yaml.Node, path string) (bool, error) {
 		return false, err
 	}
 	if n.Tag != "!!bool" || (n.Value != "true" && n.Value != "false") {
-		return false, invalid(n, path, "must be true or false (unquoted, lowercase); got %q", n.Value)
+		return false, invalidBool(n, path)
 	}
 	return n.Value == "true", nil
+}
+
+// invalidBool は、真偽値を書くつもりだったと読める表記に限り、拒否の理由に直し方を添える。
+func invalidBool(n *yaml.Node, path string) error {
+	lower := strings.ToLower(n.Value)
+	quoted := n.Style&(yaml.DoubleQuotedStyle|yaml.SingleQuotedStyle) != 0
+	switch {
+	case quoted && (lower == "true" || lower == "false"):
+		return invalid(n, path, "must be true or false; got the quoted string %q; write %s without quotes", n.Value, lower)
+	case n.Tag == "!!bool":
+		return invalid(n, path, "must be true or false; got %s; write %s in lowercase", n.Value, lower)
+	default:
+		return invalid(n, path, "must be true or false (unquoted, lowercase); got %q", n.Value)
+	}
 }
 
 // permissionLevelValue は、文字列のうち定義された権限の値に完全一致するものだけを受理する。
