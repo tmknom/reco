@@ -1,10 +1,6 @@
 # コマンドリファレンス
 
-用語の意味は [用語集](glossary.md) にあります。
-
 ## コマンドの一覧
-
-reco のコマンドは次のとおりです。
 
 ```text
 reco [--log-level LEVEL] show  --repo OWNER/REPO
@@ -22,113 +18,134 @@ reco [--log-level LEVEL] apply [--config PATH] [--repo OWNER/REPO]
 
 | オプション | 使えるコマンド | 意味 | 省略したとき |
 |---|---|---|---|
-| `--config PATH` | `plan`、`apply` | 読む設定ファイルのパス。相対パスは作業ディレクトリを基準にする | `./reco.yaml` |
-| `--repo OWNER/REPO` | すべて | 対象にするリポジトリ | `plan` と `apply` は設定ファイルに書いた全リポジトリを対象にする。`show` では省略できない |
-| `--log-level LEVEL` | すべて | 診断ログの量。`debug`、`info`、`warn`、`error` などを指定する | `info` |
-| `--help`（`-h`） | `reco` とすべてのコマンド | 使い方を表示して終わる | |
-| `--version`（`-v`） | コマンドを付けない `reco` | バージョンを表示して終わる | |
+| `--config PATH` | `plan`、`apply` | 読む設定ファイルのパス | `./reco.yaml` |
+| `--repo OWNER/REPO` | すべて | 対象にするリポジトリを一つ指定する。`plan` と `apply` では、設定ファイルに書いたリポジトリだけを指定できる | `plan` と `apply` は設定ファイルに書いた全リポジトリが対象。`show` では省略できない |
+| `--log-level LEVEL` | すべて | 診断ログの量（`debug`、`info`、`warn`、`error` など） | `info` |
+| `--help`（`-h`） | すべて | 使い方を表示する | |
+| `--version`（`-v`） | コマンドを付けない `reco` | バージョンを表示する | |
 
-`--repo` は一回の実行に一つだけ指定できます。`plan` と `apply` の `--repo` には、設定ファイルに書いたリポジトリだけを指定できます。`--repo` で対象を一つに絞っても、reco は設定ファイル全体を検証するため、ほかのリポジトリの宣言に誤りがあれば止まります。
-
-`--log-level` は、コマンド名の前にも後ろにも置けます。`--log-level` で減らせるのは診断ログだけで、コマンドの結果、変更計画や承認プロンプト、エラーは減りません。
+`--repo` で対象を一つに絞っても、reco は設定ファイル全体を読むため、ほかのリポジトリの書き方に誤りがあれば止まります。
 
 ## `show`
 
-`show` は、`--repo` で指定した一つのリポジトリについて、reco が扱える設定の現在の値を GitHub から読み取って表示します。設定ファイルは使わず、`--config` も指定できません。
+`--repo` で指定したリポジトリの、reco が扱える設定の現在の値を表示します。設定ファイルを書く前に、今の値を確かめるときに使います。
 
 ```text
-reco show --repo example/project-a
+$ reco show --repo example/project-a
+Repository: example/project-a
+
+General:
+  delete_branch_on_merge: false
+  allow_auto_merge: false
+Actions permissions:
+  enabled: true
+  allowed_actions: all
+  selected_actions: unavailable (allowed_actions is not "selected")
+Workflow permissions:
+  default_workflow_permissions: read
+  can_approve_pull_request_reviews: false
 ```
 
-GitHub が値を返さない設定は、観測不能（`unavailable`）と示されます。その意味は [変更計画と変更結果の読み方](reading-output.md#比較不能な設定予定) にあります。表示は人が読むためのもので、そのまま設定ファイルとして使える形ではありません。
+`unavailable` は、リポジトリの状態によって GitHub がその設定の値を返さないことを示します。この例では、`allowed_actions` が `selected` でないため、`selected_actions` の値がありません。
 
 ## `plan`
 
-`plan` は、設定ファイル全体を検証し、対象のリポジトリの設定を GitHub から読み取って、設定ファイルとの差を変更計画として表示します。GitHub の設定は変えません。変更計画の各行の読み方は [変更計画と変更結果の読み方](reading-output.md#変更計画の構成) にあります。
+設定ファイルと GitHub 上の現在の設定を比べ、変える予定の設定（変更計画）を表示します。
 
-`plan` の終了コード `0` は、変更計画を作れたことだけを表します。変更予定がないことも、あとで `apply` が成功することも意味しません。
+```text
+$ reco plan
+Configuration: ./reco.yaml
+
+Repository: example/project-a
+  general.delete_branch_on_merge: false -> true
+
+Plan: 1 repository to update, 1 known change, 0 not-comparable settings
+Repositories checked: 1
+```
+
+変更計画の行は次のように読みます。
+
+| 行 | 意味 |
+|---|---|
+| `Repository:` | 変える予定のあるリポジトリ。変える予定のないリポジトリは出ない |
+| `<設定>: <現在の値> -> <書いた値>` | GitHub の値が設定ファイルの値と違う設定。承認すると右の値に変える |
+| `Current: unavailable (<理由>)` と `Desired: <書いた値>` | リポジトリの状態によって GitHub が今の値を返さないため、比べられなかった設定。承認すると `Desired:` の値にする |
+| `Side effect:` | この変更に伴って GitHub が消す値。読み取れた値は括弧の中に出る |
+| `Plan:`、`Repositories checked:` | 変える予定のリポジトリの数、今の値と違うと分かった設定の数（`known change`）、今の値が分からなかった設定の数（`not-comparable settings`）、読み取ったリポジトリの数 |
+| `No changes.` | 設定ファイルに書いた設定が、すべて GitHub 上でもそのとおりになっている |
+
+`Side effect:` は、`allowed_actions` を `selected` から `all` や `local_only` に変えるときに出ます。あとで同じ値に戻す可能性があるなら、承認の前に括弧の中の値を控えておきます。この変更で何が起きるかは [Actions 許可ポリシーの切り替え](actions-policy.md) にあります。
 
 ## `apply`
 
-`apply` は、次の順に進みます。
+変更計画を表示して承認を求め、承認されたら設定を変えます。
 
-1. 設定ファイル全体を検証し、対象のリポジトリの設定を GitHub から読み取り直して、変更計画を作る
-2. 変更計画を表示する。変更予定がなければ `No changes.` を表示し、承認を求めずに終了コード `0` で終わる
-3. `Apply these changes? [y/N]:` で承認を求める
-4. 承認されたら、変更予定のあるリポジトリを、設定ファイルに書いた順に一つずつ更新する
-5. リポジトリごとに、変更結果か変更不要かを表示する。各行の読み方は [変更計画と変更結果の読み方](reading-output.md#apply-の結果の区分) にある
+```text
+$ reco apply
+Configuration: ./reco.yaml
 
-承認の前に確かめるのは、この `apply` が表示した変更計画です。`plan` を実行したあとに設定ファイルか GitHub の設定が変わっていれば、`apply` の変更計画は `plan` と違うことがあります。
+Repository: example/project-a
+  general.delete_branch_on_merge: false -> true
 
-手順 1 で承認を求めずに止まる場面と理由は、reco の安全性の約束の [全リポジトリを確かめてから更新を始める](safety.md#全リポジトリを確かめてから更新を始める) にあります。
+Plan: 1 repository to update, 1 known change, 0 not-comparable settings
+Repositories checked: 1
+
+Apply these changes? [y/N]: y
+Applying changes...
+  example/project-a: updated
+
+Apply complete.
+Repositories updated: 1
+```
+
+`apply` は次の順に進みます。
+
+1. 設定ファイルと GitHub 上の設定を比べ直し、変更計画を表示する。変える予定がなければ `No changes.` を表示して終わる
+2. `Apply these changes? [y/N]:` で承認を求める
+3. 承認されたら、設定ファイルに書いた順にリポジトリを一つずつ更新する。更新するたびに GitHub の値を読み直し、設定ファイルのとおりになったことを確かめてから次へ進む
+4. リポジトリごとの結果を表示する
+
+結果は次のように読みます。
+
+| 表示 | 意味 |
+|---|---|
+| `updated` | 変更を反映し、設定ファイルのとおりになったことを確かめた |
+| `no change` | 変える予定がなかった |
+| `failed` | 変更を始めたが、完了を確かめられなかった |
+| `not attempted` | 変更を始めなかった |
+| `Apply complete.` | すべてのリポジトリが `updated` か `no change` だった |
+
+どこかの変更が完了しなかったら、reco は残りの変更を始めずに止まります。すでに反映した変更は元に戻りません。`failed` や `not attempted` が出たときにすることは [困ったときは](troubleshooting.md#apply-が途中で止まった) にあります。
 
 ### 承認
 
-承認として受け付けるのは、`y` か `yes` の入力だけです。`Y` のような大文字や、前後に空白のある入力は受け付けません。何も入力せずに Enter を押したときを含め、それ以外の入力や、承認を待つあいだの中断（Ctrl-C）は、承認として扱いません。承認しなかったときは、更新を一つも始めず、終了コード `1` で終わります。
+承認として受け付けるのは、小文字の `y` か `yes` だけです。それ以外の入力や、何も入力せずに Enter を押したときは、何も変えずに終わります。
 
-標準入力が端末でないときは、承認を求めず、更新もしません。パイプで `y` を流し込んでも同じです。このときも変更計画は表示し、変更予定があれば終了コード `1` で終わります。
-
-### 更新の進み方
-
-reco は、更新操作を一つずつ送り、GitHub に反映されたことを確かめてから次へ進みます。あるリポジトリの変更がすべて完了したときだけ、次のリポジトリへ進みます。変更不要のリポジトリには、変更計画を作ったあと要求を送りません。
-
-更新の途中で止まる場面と理由は、reco の安全性の約束の [承認のあとで状況が変わったら止まる](safety.md#承認のあとで状況が変わったら止まる) と [異常を見つけたら、それ以上更新しない](safety.md#異常を見つけたらそれ以上更新しない) にあります。
-
-`apply` には、変更の数に応じて時間がかかります。reco は更新操作のあいだを1秒以上空け、GitHub への反映が遅れているときは、合計で約30秒まで確かめ直すためです。
-
-更新操作のあいだの待ち時間に Ctrl-C で中断すると、reco は次の更新操作を始めずに止まります。
+承認は端末でだけ受け付けます。パイプで `y` を流し込んだときのように、標準入力が端末でないときは、変更計画を表示したあと、設定を変えずにエラーで終わります。
 
 ## 認証情報の環境変数
 
-reco は、GitHub へのアクセスに使うトークンを、次の環境変数から選びます。
+reco は、GitHub へのアクセスに使うトークンを、次の環境変数から読みます。
 
 | 環境変数 | 使う条件 |
 |---|---|
 | `GH_TOKEN` | 空でなければ、こちらを使う |
 | `GITHUB_TOKEN` | `GH_TOKEN` が未設定か空のときに使う |
 
-どちらも未設定か空なら、GitHub にアクセスする前にエラーで止まります。選んだトークンで認証に失敗しても、もう一方には切り替えません。トークンを渡すコマンドラインのオプションはありません。トークンの取得の仕方と、reco で動作を確かめたトークンの持ち主のロールは、[インストールと認証の準備](installation.md#トークンを用意する) にあります。
-
 ## 出力先
 
 | 出力先 | 出るもの |
 |---|---|
-| 標準出力（stdout） | `show` の現在の設定、変更計画、変更結果（末尾の注記 `Note:` を含む）、`--help` の使い方、`--version` のバージョン |
-| 標準エラー出力（stderr） | 承認プロンプト、エラー、診断ログ |
+| 標準出力（stdout） | `show` の現在の設定、変更計画、変更結果、`--help` の使い方、`--version` のバージョン |
+| 標準エラー出力（stderr） | 承認を求める行、エラー、診断ログ |
 
-エラーは、stderr に JSON の1行で出ます。`error` の値に理由が入ります。次は、標準入力が端末でない環境で `apply` したときのエラーです。
-
-```text
-{"time":"...","level":"ERROR","msg":"command failed","error":"apply cancelled: approval not available: standard input is not a terminal; no changes made"}
-```
-
-エラーの読み方と、エラーごとにすることは [困ったときは](troubleshooting.md#エラーの見方) にあります。
+エラーは、stderr に JSON の1行で出ます。エラーの見方と、エラーごとにすることは [困ったときは](troubleshooting.md) にあります。
 
 ## 終了コード
 
-| 状況 | 終了コード |
-|---|---:|
-| `show`：設定を読み取れた（`unavailable` の値を含む場合も） | `0` |
-| `plan`：変更計画を作れた（変更予定がある場合も） | `0` |
-| `apply`：変更予定がなかった | `0` |
-| `apply`：すべてのリポジトリが完了（`updated`）か変更不要（`no change`）だった | `0` |
-| `--help`、`--version`、コマンドを付けない `reco` | `0` |
-| `apply`：承認しなかった、または標準入力が端末でなく承認を求めなかった | `1` |
-| `apply`：失敗（`failed`）か未実行（`not attempted`）の変更があった | `1` |
-| オプションや設定ファイルの誤り、トークンがない、認証・権限・通信の失敗、GitHub からの読み取りの失敗 | `1` |
-
-`apply` が終了コード `1` で終わっても、一部のリポジトリや設定はすでに変わっていることがあります。
-
-## 自動化に組み込むとき
-
-CI のように標準入力が端末でない環境では、`apply` で設定を変えられません。
-
-`plan` の終了コードでは、変更予定があるかどうかを区別できません。設定ファイルの誤りや読み取りの失敗は `1` になるため、`plan` を定期的に実行して、reco が状態を確かめられなくなったことには気付けます。
-
-どちらも現在の reco の制約です。
+reco は、成功したときは終了コード `0`、失敗したときは `1` で終わります。
 
 ## References
 
-- [CLI 仕様](../spec/cli.md)：コマンドとオプション（2章）、認証情報の選択（3章）、`plan` と終了コード `0` の意味（4章）、`apply` の手順、承認と更新の進み方（5章、とくに5.1節）、`show`（6章）、出力先と終了コード（7章）
-- [要求定義](../spec/requirements.md)：承認を省略した設定変更をサポートしないこと（2章のサポート対象外）、対象リポジトリの選択（FR-002）
-- [YAML 設定仕様](../spec/configuration.md)：`--repo` に書けるリポジトリの指定の形（6.2節）
+- [CLI 仕様](../spec/cli.md)：コマンドとオプション（2章）、認証情報の選択（3章）、変更計画の表示（4章）、`apply` の手順、承認、変更結果の表示（5章）、`show`（6章）、出力先と終了コード（7章）
+- [要求定義](../spec/requirements.md)：対象リポジトリの選択（FR-002）

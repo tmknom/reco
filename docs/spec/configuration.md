@@ -124,7 +124,7 @@ repositories:
 
 ```yaml
 patterns_allowed:
-  - "actions/checkout@v4"
+  - "actions/checkout@v7"
   - "actions/setup-go@v6"
 ```
 
