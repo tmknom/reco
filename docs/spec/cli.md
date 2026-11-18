@@ -116,7 +116,7 @@ Repositories checked: 1
 Repository: example/project-a
   actions.permissions.selected_actions:
     github_owned_allowed: true, verified_allowed: false, patterns_allowed: []
-    -> github_owned_allowed: true, verified_allowed: true, patterns_allowed: ["actions/checkout@v4", "example/*"]
+    -> github_owned_allowed: true, verified_allowed: true, patterns_allowed: ["actions/checkout@v7", "example/*"]
 
 Plan: 1 repository to update, 1 known change, 0 not-comparable settings
 Repositories checked: 1
@@ -497,7 +497,7 @@ Actions permissions:
   selected_actions:
     github_owned_allowed: true
     verified_allowed: false
-    patterns_allowed: ["actions/checkout@v4", "example/*"]
+    patterns_allowed: ["actions/checkout@v7", "example/*"]
 ```
 
 Actions が無効のリポジトリでは、`allowed_actions` と `selected_actions` を取得できません。

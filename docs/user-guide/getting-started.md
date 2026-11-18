@@ -1,10 +1,11 @@
 # はじめての適用
 
-一つのリポジトリの一つの設定を、reco で変えてみます。用語の意味は [用語集](glossary.md) にあります。
+一つのリポジトリの一つの設定を、reco で変えてみます。
 
 ## 用意するもの
 
-- [インストールと認証の準備](installation.md) で入れた `reco` と、GitHub CLI（`gh`）のログイン
+- 「インストール」の手順で入れた `reco`
+- GitHub CLI（`gh`）へのログイン
 - 自分の個人アカウントが所有し、自分が Admin ロールを持つ GitHub のリポジトリを一つ。設定が変わっても困らないリポジトリを選ぶ
 - 作業用の空のディレクトリ
 
@@ -36,9 +37,7 @@ Workflow permissions:
   can_approve_pull_request_reviews: false
 ```
 
-ここでは、`General:` の `delete_branch_on_merge`（Pull Request をマージしたあと、head ブランチを自動で削除するか）を変えます。この設定が Pull Request やブランチにどう効くかは、[リポジトリの一般設定](configuration.md#リポジトリの一般設定) にあります。
-
-`unavailable`（観測不能）は、リポジトリの状態によって GitHub がその設定の値を返さないことを示します（[比較不能な設定予定](reading-output.md#比較不能な設定予定)）。この手順では使わない設定なので、気にしなくてかまいません。
+ここでは、`General:` の `delete_branch_on_merge`（Pull Request をマージしたあと、head ブランチを自動で削除するか）を変えます。`unavailable` と表示される設定は、この手順では使わないので気にしなくてかまいません。
 
 ## 最初の設定ファイルを書く
 
@@ -51,11 +50,11 @@ repositories:
       delete_branch_on_merge: true
 ```
 
-reco が管理するのは、設定ファイルに書いた設定だけです。`allow_auto_merge` や Actions の設定は書いていないため、reco は変えません（[書かなかった設定はどうなるか](configuration.md#書かなかった設定はどうなるか)）。
+reco が管理するのは、設定ファイルに書いた設定だけです。`allow_auto_merge` や Actions の設定は書いていないため、reco は変えません。
 
 ## 変更計画を確かめる
 
-`plan` で、設定ファイルと現在の設定を比べた変更計画を表示します。
+`plan` で、設定ファイルと現在の設定を比べた変更計画を表示します。`plan` は GitHub の設定を変えません。
 
 ```text
 $ reco plan
@@ -68,9 +67,7 @@ Plan: 1 repository to update, 1 known change, 0 not-comparable settings
 Repositories checked: 1
 ```
 
-`general.delete_branch_on_merge: false -> true` は、GitHub の現在の値が `false` で、設定ファイルに書いた期待値が `true` であることを示します。最後の2行は、変更予定のあるリポジトリが1件、確認済みの差分が1件、比較不能な設定予定が0件、対象にしたリポジトリが1件であることを示します（[変更計画の集計](reading-output.md#変更計画の集計)）。
-
-`plan` は GitHub の設定を変えません。
+`general.delete_branch_on_merge: false -> true` は、GitHub の現在の値が `false` で、設定ファイルに書いた値が `true` であることを示します。
 
 ## 承認して適用する
 
@@ -94,9 +91,9 @@ Apply complete.
 Repositories updated: 1
 ```
 
-reco が設定を変えるのは、`y` か `yes` を入力したときだけです。何も入力せずに Enter を押すと、何も変えずに終わります（[承認](commands.md#承認)）。
+reco が設定を変えるのは、`y` か `yes` を入力したときだけです。何も入力せずに Enter を押すと、何も変えずに終わります。
 
-`example/project-a: updated` は、このリポジトリの変更が完了したことを示します。`Apply complete.` は、完了しなかった変更がないことを示します（[`apply` の結果の区分](reading-output.md#apply-の結果の区分)）。
+`example/project-a: updated` は、このリポジトリの変更が完了したことを示します。
 
 ## 適用を確かめる
 
@@ -108,20 +105,19 @@ No changes.
 Repositories checked: 1
 ```
 
-`No changes.` は、管理設定が期待値と一致すると確かめたことを示します。`reco show --repo example/project-a` でも、`delete_branch_on_merge` が `true` になったことを確かめられます。
+`No changes.` は、設定ファイルに書いた設定が GitHub 上でもそのとおりになっていることを示します。
 
 ## 元に戻したいとき
 
-元に戻すには、`reco.yaml` の `delete_branch_on_merge` を元の値（この例では `false`）に書き直し、もう一度 `apply` します。設定ファイルから行を消すだけでは、GitHub の値は戻りません（[書かなかった設定はどうなるか](configuration.md#書かなかった設定はどうなるか)）。
-
-## 次に読む文書
-
-- 設定を増やす：[設定ファイルの書き方](configuration.md)
-- 変更計画と変更結果の各行の意味を知る：[変更計画と変更結果の読み方](reading-output.md)
-- 管理するリポジトリを増やす：[複数リポジトリの運用](operations.md)
-- エラーで止まったときにすることを知る：[困ったときは](troubleshooting.md)
+元に戻すには、`reco.yaml` の `delete_branch_on_merge` を元の値（この例では `false`）に書き直し、もう一度 `apply` します。設定ファイルから行を消すだけでは、GitHub の値は戻りません。
 
 ## References
 
+- [インストール](installation.md)：`reco` の入れ方
+- [トークンの用意](authentication.md)：`gh auth token` のトークンを渡す理由と、トークンの持ち主に要るロール
+- [設定ファイルの書き方](configuration.md)：管理できるほかの設定と、未記載の設定の扱い
+- [コマンドリファレンス](commands.md)：各コマンドの出力の読み方と、承認として受け付ける入力
+- [複数リポジトリの運用](operations.md)：管理するリポジトリを増やす手順
+- [困ったときは](troubleshooting.md)：エラーで止まったときにすること
 - [CLI 仕様](../spec/cli.md)：対象が個人アカウントの所有するリポジトリであること（1章）、コマンドの一覧（2.1節）、`plan` の表示（4章）、`apply` の承認と表示（5.1節）、`updated` と `Apply complete.`（5.2節）、`show`（6章）
-- [YAML 設定仕様](../spec/configuration.md)：書かなかった設定を管理しないこと（2章）、`delete_branch_on_merge` の意味（3章）
+- [YAML 設定仕様](../spec/configuration.md)：未記載の設定を管理しないこと（2章）、`delete_branch_on_merge` の意味（3章）
