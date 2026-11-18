@@ -21,7 +21,7 @@ reco のエラーは、標準エラー出力に JSON の1行で出ます。`erro
 ## 設定ファイルの書き方の誤り
 
 ```text
-{"time":"...","level":"ERROR","msg":"command failed","error":"load configuration ./reco.yaml: repositories[0].general.allow_auto_merge (line 4, column 25): must be true or false (unquoted, lowercase); got \"true\""}
+{"time":"...","level":"ERROR","msg":"command failed","error":"load configuration ./reco.yaml: repositories[0].general.allow_auto_merge (line 4, column 25): must be true or false; got the quoted string \"true\"; write true without quotes"}
 ```
 
 エラーが示す行と列を直します。この例は、真偽値を引用符で囲んだ誤りです。`--repo` で誤りのないリポジトリに絞っていても、設定ファイルのどこかに誤りがあれば止まります。
