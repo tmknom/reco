@@ -159,7 +159,7 @@ Relationships の存在は、要求の充足、根拠の正確性、検証の実
 
 ガイドが説明している正本と、ガイドの外の参照先（Issue など）は、各文書の末尾の References に集め、項目ごとにそこで確かめられることを一言添えます。正本を変えるときの逆引き（4.1節）は、この References を手がかりにします。ガイドのセクションには Relationship テーブルを置きません。
 
-ガイドは `docs/` 配下のほかの文書と同じく日本語で書き、英語版は作りません。リポジトリ直下の README は英語のまま、ガイドへのリンクと最小の使い方の例だけを置きます。README の使い方の例は [はじめての適用](../user-guide/getting-started.md) と食い違わないようにします。
+ガイドは `docs/` 配下のほかの文書と同じく日本語で書き、英語版は作りません。リポジトリ直下の README は英語のまま、ガイドへのリンクと最小の使い方の例だけを置きます。README の使い方の例は [Getting Started](../user-guide/getting-started.md) と食い違わないようにします。
 
 ### 5.3 書き方
 
@@ -179,17 +179,17 @@ Relationships の存在は、要求の充足、根拠の正確性、検証の実
 | 区分 | 文書 | 書くこと |
 |---|---|---|
 | 入口 | [reco ユーザーガイド](../user-guide/README.md) | 目的ごとに読む文書。主な文書と詳細文書を分け、読んでほしい文書ほど上に並べる |
-| 主な文書 | [reco の概要](../user-guide/overview.md) | 導入の判断に要る結論（解決する問題、基本の流れ、管理できる設定と設定画面の項目の対応、使う前に気にかける安全性の要点） |
-| 主な文書 | [インストール](../user-guide/installation.md) | reco を入れて `GH_TOKEN` を渡して動かすまでの手順 |
-| 主な文書 | [トークンの用意](../user-guide/authentication.md) | `gh auth token` のトークンの渡し方と、トークンの持ち主に要るロール |
-| 主な文書 | [はじめての適用](../user-guide/getting-started.md) | 一つの設定で `show`、`plan`、`apply` を試す一本道の手順。手順の途中にリンクを置かず、参照先は References にまとめる |
-| 主な文書 | [設定ファイルの書き方](../user-guide/configuration.md) | 設定ファイルの構造、設定項目ごとのキー・値・意味、未記載の設定の扱い、複数のリポジトリの並べ方、よくある書き方の誤り |
-| 主な文書 | [コマンドリファレンス](../user-guide/commands.md) | コマンドとオプション、各コマンドの実行例と通常の出力の読み方、承認、認証情報の環境変数、出力先、終了コード |
-| 主な文書 | [複数リポジトリの運用](../user-guide/operations.md) | リポジトリを管理に加える、対象を絞る、並べる順序、定期的な確認、値を戻す、管理をやめる手順 |
-| 主な文書 | [困ったときは](../user-guide/troubleshooting.md) | エラーや失敗時の出力ごとの、その行の意味、原因の候補、次にすること |
-| 詳細文書 | [Actions 許可ポリシーの切り替え](../user-guide/actions-policy.md) | `allowed_actions` を `selected` とほかの値のあいだで変えるときに GitHub 側で起きること（値の消失と中間状態） |
-| 詳細文書 | [reco の安全性](../user-guide/safety.md) | reco が設定を変えるときに安全を保つ仕組みと、reco がしないこと |
-| 詳細文書 | [配布物の検証](../user-guide/verification.md) | `gh attestation verify` による配布物の検証 |
+| 主な文書 | [Overview](../user-guide/overview.md) | 導入の判断に要る結論（解決する問題、基本の流れ、管理できる設定と設定画面の項目の対応、使う前に気にかける安全性の要点） |
+| 主な文書 | [Installation](../user-guide/installation.md) | reco をインストールして `GH_TOKEN` を渡して動かすまでの手順 |
+| 主な文書 | [Authentication](../user-guide/authentication.md) | `gh auth token` のトークンの渡し方と、トークンの持ち主に要るロール |
+| 主な文書 | [Getting Started](../user-guide/getting-started.md) | 一つの設定で `show`、`plan`、`apply` を試す一本道の手順。手順の途中にリンクを置かず、参照先は References にまとめる |
+| 主な文書 | [Configuration](../user-guide/configuration.md) | 設定ファイルの構造、設定項目ごとのキー・値・意味、未記載の設定の扱い、複数のリポジトリの並べ方、よくある書き方の誤り |
+| 主な文書 | [Commands](../user-guide/commands.md) | コマンドとオプション、各コマンドの実行例と通常の出力の読み方、承認、認証情報の環境変数、出力先、終了コード |
+| 主な文書 | [Operations](../user-guide/operations.md) | リポジトリを管理に加える、対象を絞る、並べる順序、定期的な確認、値を戻す、管理をやめる手順 |
+| 主な文書 | [Troubleshooting](../user-guide/troubleshooting.md) | エラーや失敗時の出力ごとの、その行の意味、原因の候補、次にすること |
+| 詳細文書 | [Actions Policy](../user-guide/actions-policy.md) | `allowed_actions` を `selected` とほかの値のあいだで変えるときに GitHub 側で起きること（値の消失と中間状態） |
+| 詳細文書 | [Safety](../user-guide/safety.md) | reco が設定を変えるときに安全を保つ仕組みと、reco がしないこと |
+| 詳細文書 | [Verification](../user-guide/verification.md) | `gh attestation verify` によるVerification |
 
 一つの事実をどの文書で詳しく説明するかは、この表の「書くこと」で決めます。ほかの文書は、5.3節の「重複」の範囲で短く触れるだけにします。
 

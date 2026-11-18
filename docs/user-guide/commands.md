@@ -1,4 +1,4 @@
-# コマンドリファレンス
+# Commands
 
 ## コマンドの一覧
 
@@ -71,10 +71,11 @@ Repositories checked: 1
 | `<設定>: <現在の値> -> <書いた値>` | GitHub の値が設定ファイルの値と違う設定。承認すると右の値に変える |
 | `Current: unavailable (<理由>)` と `Desired: <書いた値>` | リポジトリの状態によって GitHub が今の値を返さないため、比べられなかった設定。承認すると `Desired:` の値にする |
 | `Side effect:` | この変更に伴って GitHub が消す値。読み取れた値は括弧の中に出る |
-| `Plan:`、`Repositories checked:` | 変える予定のリポジトリの数、今の値と違うと分かった設定の数（`known change`）、今の値が分からなかった設定の数（`not-comparable settings`）、読み取ったリポジトリの数 |
+| `Plan:` | 変える予定のリポジトリの数、今の値と違うと分かった設定の数（`known change`）、今の値が分からなかった設定の数（`not-comparable settings`）|
+| `Repositories checked:` | 読み取ったリポジトリの数 |
 | `No changes.` | 設定ファイルに書いた設定が、すべて GitHub 上でもそのとおりになっている |
 
-`Side effect:` は、`allowed_actions` を `selected` から `all` や `local_only` に変えるときに出ます。あとで同じ値に戻す可能性があるなら、承認の前に括弧の中の値を控えておきます。この変更で何が起きるかは [Actions 許可ポリシーの切り替え](actions-policy.md) にあります。
+`Side effect:` は、`allowed_actions` を `selected` から `all` や `local_only` に変えるときに出ます。
 
 ## `apply`
 
@@ -100,9 +101,9 @@ Repositories updated: 1
 
 `apply` は次の順に進みます。
 
-1. 設定ファイルと GitHub 上の設定を比べ直し、変更計画を表示する。変える予定がなければ `No changes.` を表示して終わる
+1. 設定ファイルと GitHub 上の設定を比べ直し、変更計画を表示する
 2. `Apply these changes? [y/N]:` で承認を求める
-3. 承認されたら、設定ファイルに書いた順にリポジトリを一つずつ更新する。更新するたびに GitHub の値を読み直し、設定ファイルのとおりになったことを確かめてから次へ進む
+3. 承認されたら、設定ファイルに書いた順にリポジトリを一つずつ更新する
 4. リポジトリごとの結果を表示する
 
 結果は次のように読みます。
@@ -115,7 +116,7 @@ Repositories updated: 1
 | `not attempted` | 変更を始めなかった |
 | `Apply complete.` | すべてのリポジトリが `updated` か `no change` だった |
 
-どこかの変更が完了しなかったら、reco は残りの変更を始めずに止まります。すでに反映した変更は元に戻りません。`failed` や `not attempted` が出たときにすることは [困ったときは](troubleshooting.md#apply-が途中で止まった) にあります。
+どこかの変更が完了しなかったら、reco は残りの変更を始めずに止まります。すでに反映した変更は元に戻りません。`failed` や `not attempted` が出たときにすることは [Troubleshooting](troubleshooting.md#apply-が途中で止まった) にあります。
 
 ### 承認
 
@@ -139,13 +140,6 @@ reco は、GitHub へのアクセスに使うトークンを、次の環境変�
 | 標準出力（stdout） | `show` の現在の設定、変更計画、変更結果、`--help` の使い方、`--version` のバージョン |
 | 標準エラー出力（stderr） | 承認を求める行、エラー、診断ログ |
 
-エラーは、stderr に JSON の1行で出ます。エラーの見方と、エラーごとにすることは [困ったときは](troubleshooting.md) にあります。
-
 ## 終了コード
 
 reco は、成功したときは終了コード `0`、失敗したときは `1` で終わります。
-
-## References
-
-- [CLI 仕様](../spec/cli.md)：コマンドとオプション（2章）、認証情報の選択（3章）、変更計画の表示（4章）、`apply` の手順、承認、変更結果の表示（5章）、`show`（6章）、出力先と終了コード（7章）
-- [要求定義](../spec/requirements.md)：対象リポジトリの選択（FR-002）

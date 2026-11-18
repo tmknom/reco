@@ -1,4 +1,4 @@
-# 困ったときは
+# Troubleshooting
 
 ## エラーの見方
 
@@ -108,7 +108,7 @@ Applying changes...
     Possible cause: auto-merge is not available for private repositories on GitHub Free, where GitHub may accept the update without applying it
 ```
 
-GitHub Free のアカウントが所有する非公開リポジトリでは、自動マージを使えません。GitHub は更新を受け付けても、値を変えないことがあります。そのようなリポジトリには、`allow_auto_merge: true` を書かないようにします。
+GitHub Free のアカウントが所有するプライベートリポジトリでは、自動マージを使えません。GitHub は更新を受け付けても、値を変えないことがあります。そのようなリポジトリには、`allow_auto_merge: true` を書かないようにします。
 
 ## そのほかのエラーと行
 
@@ -126,4 +126,4 @@ GitHub Free のアカウントが所有する非公開リポジトリでは、�
 - [CLI 仕様](../spec/cli.md)：エラーの形式と各エラーの示し方（2章、3章、7章）、承認（5.1節）、変更結果の表示と各行（5.2節、5.3節）
 - [要求定義](../spec/requirements.md)：リダイレクトに従わないこと（FR-004）、変更結果の報告（FR-013）、異常のあとに更新を続けないこと（INV-005）
 - [GitHub REST API 共通仕様](../research/rest-api.md)：`404` だけでは不存在を断定できないこと、レート制限と待つべき時間
-- [GitHub リポジトリ API 仕様](../research/repositories.md)：名前を変えたリポジトリへのリダイレクト、GitHub Free の非公開リポジトリでの自動マージ
+- [GitHub リポジトリ API 仕様](../research/repositories.md)：名前を変えたリポジトリへのリダイレクト、GitHub Free のプライベートリポジトリでの自動マージ

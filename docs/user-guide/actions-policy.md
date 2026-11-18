@@ -1,4 +1,4 @@
-# Actions 許可ポリシーの切り替え
+# Actions Policy
 
 `actions.permissions.allowed_actions` を `selected` とほかの値（`all`、`local_only`）のあいだで変えると、GitHub の仕様により、`selected_actions` の値が消えたり、一時的に設定ファイルと違う値になったりします。
 
