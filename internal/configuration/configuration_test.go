@@ -40,6 +40,8 @@ func TestDesiredState_Value(t *testing.T) {
 		{name: "declared allowed_actions returns its desired value", desired: DesiredState{ActionsPermissions: ActionsPermissions{AllowedActions: new(setting.AllowedActionsLocalOnly)}}, key: setting.AllowedActions, want: setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly), wantOK: true},
 		{name: "declared selected_actions returns its desired value with empty patterns kept non-nil", desired: DesiredState{ActionsPermissions: ActionsPermissions{AllowedActions: new(setting.AllowedActionsSelected), SelectedActions: &setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{}}}}, key: setting.SelectedActions, want: setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{}}), wantOK: true},
 		{name: "declared enabled returns its desired value", desired: DesiredState{ActionsPermissions: ActionsPermissions{Enabled: new(false)}}, key: setting.ActionsEnabled, want: setting.BoolValue(false), wantOK: true},
+		{name: "declared sha_pinning_required returns its desired value", desired: DesiredState{ActionsPermissions: ActionsPermissions{SHAPinningRequired: new(false)}}, key: setting.SHAPinningRequired, want: setting.BoolValue(false), wantOK: true},
+		{name: "omitted sha_pinning_required is outside the management scope", desired: DesiredState{ActionsPermissions: ActionsPermissions{AllowedActions: new(setting.AllowedActionsAll)}}, key: setting.SHAPinningRequired, wantOK: false},
 		{name: "omitted allowed_actions is outside the management scope", desired: DesiredState{WorkflowPermissions: WorkflowPermissions{CanApprovePullRequestReviews: new(true)}}, key: setting.AllowedActions, wantOK: false},
 		{name: "omitted selected_actions is outside the management scope", desired: DesiredState{ActionsPermissions: ActionsPermissions{AllowedActions: new(setting.AllowedActionsAll)}}, key: setting.SelectedActions, wantOK: false},
 		{name: "omitted delete_branch_on_merge is outside the management scope", desired: DesiredState{General: General{AllowAutoMerge: new(true)}}, key: setting.DeleteBranchOnMerge, wantOK: false},
@@ -91,15 +93,6 @@ func fillDesiredValues(v reflect.Value) int {
 		}
 	}
 	return n
-}
-
-func TestDesiredState_ValueOfUndeclarableSettingPanics(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Error("Value() did not panic for a setting that cannot be declared")
-		}
-	}()
-	_, _ = DesiredState{}.Value(setting.SHAPinningRequired)
 }
 
 func TestDesiredState_ValueOfUnknownSettingPanics(t *testing.T) {

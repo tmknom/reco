@@ -71,6 +71,7 @@ repositories:
 | `enabled` | `true` / `false` | このリポジトリで GitHub Actions を有効にするか |
 | `allowed_actions` | `all` / `local_only` / `selected` | 実行を許可する Actions と再利用可能なワークフローの範囲（Actions 許可ポリシー） |
 | `selected_actions` | 下の `selected_actions` の表のキー | `allowed_actions: selected` のときに許可するもの |
+| `sha_pinning_required` | `true` / `false` | Actions を完全な長さのコミット SHA に固定することを必須にするか |
 
 #### `actions.permissions.allowed_actions`
 
@@ -96,11 +97,13 @@ repositories:
 
 設定可能な値の組み合わせは、GitHub API の仕様の影響を受けます。
 
-- `enabled: false` と、`allowed_actions` や `selected_actions` は同時に書けない
+- `enabled: false` を書くときは、`allowed_actions`、`selected_actions`、`sha_pinning_required` のどれも書けない
 - `selected_actions` は、`allowed_actions: selected` のときだけ書ける
-- `enabled: false` で Actions を無効にしても、GitHub は `allowed_actions` と `selected_actions` の値を残す。あとで `enabled: true` に戻すと、無効にする前の設定で有効になる。再開するときの設定を自分で決めたいときは、`enabled: true` の代わりに `allowed_actions` を書く
+- `enabled: false` で Actions を無効にしても、GitHub は `allowed_actions`、`selected_actions`、`sha_pinning_required` の値を残す。あとで `enabled: true` に戻すと、無効にする前の設定で有効になる。再開するときの Actions 許可ポリシーを自分で決めたいときは、`enabled: true` の代わりに `allowed_actions` を書く
 - `allowed_actions` を書くと、Actions も有効になる
 - `allowed_actions` を `selected` から `all` や `local_only` に変えると、GitHub は `selected_actions` の値を消す
+- Actions を無効のまま送った `sha_pinning_required` の値は GitHub が保存しないため、Actions が無効のリポジトリで `sha_pinning_required` を書くときは、`enabled: true` か `allowed_actions` も書く。どちらも書かないと、`plan` はその変更に `Applicability: not applicable` を添え、`Plan cannot be applied.` を示す
+- `sha_pinning_required` の変更を含むと、`apply` はその変更にまだ対応していないため、何も変えずにエラーで終了する。`plan` では変更を確認できる
 
 ### ワークフローの権限
 

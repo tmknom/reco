@@ -86,10 +86,13 @@ repositories:
 | `actions.permissions.selected_actions.github_owned_allowed` | 真偽値 | `true` / `false` | GitHub 所有 Actions の許可 | 選択方式の Actions 許可条件（設定グループ） |
 | `actions.permissions.selected_actions.verified_allowed` | 真偽値 | `true` / `false` | Marketplace の認証済み作成者が提供する Actions の許可 | 選択方式の Actions 許可条件（設定グループ） |
 | `actions.permissions.selected_actions.patterns_allowed` | シーケンス | 文字列の要素を0件以上（`[]` 可） | 許可する Actions と再利用可能なワークフローのパターン | 選択方式の Actions 許可条件（設定グループ） |
+| `actions.permissions.sha_pinning_required` | 真偽値 | `true` / `false` | Actions を完全な長さのコミット SHA に固定することを必須にするか | 独立 |
 
 `selected_actions` の3項目は選択方式の Actions 許可条件を表し、 **一つの設定グループ** として扱います。3項目を一体として宣言するのは reco の入力契約であり、GitHub への更新の単位を定めるものではありません。
 
-`enabled: false` は Actions を無効にする宣言です。reco が Actions を無効にするのは、`enabled: false` を宣言したリポジトリに限ります。GitHub API が提供する `sha_pinning_required` は、reco の YAML で宣言できません。
+`enabled: false` は Actions を無効にする宣言です。reco が Actions を無効にするのは、`enabled: false` を宣言したリポジトリに限ります。
+
+`sha_pinning_required` は独立した管理の単位で、`allowed_actions` を宣言しなくても宣言できます。Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言すると、その変更予定は適用不能になります（[アーキテクチャ設計](../design/architecture.md) 5.4）。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。
 
 `allowed_actions` を宣言した場合は、そのポリシーで Actions が実行できること、つまり Actions が有効であることも期待状態に含めます。Actions が無効のリポジトリでは、reco は宣言したポリシーで Actions を有効にします。そのため、`allowed_actions` とともに宣言した `enabled: true` の意味は、`enabled` を省略した場合と同じです。
 
@@ -102,19 +105,22 @@ repositories:
 
 ### 4.1 入力の組み合わせ
 
-| `enabled` | `allowed_actions` | `selected_actions` | 判定 |
-|---|---|---|---|
-| 省略または `true` | `all` または `local_only` | 省略 | 有効 |
-| 省略または `true` | `selected` | 3項目をすべて指定 | 有効 |
-| 省略または `true` | `selected` | 省略、または3項目の一部だけを指定 | エラー |
-| 省略または `true` | `all` または `local_only` | 指定 | エラー |
-| 省略または `true` | 省略 | 指定 | エラー |
-| `true` または `false` | 省略 | 省略 | 有効 |
-| `false` | 指定 | 省略または指定 | エラー |
-| `false` | 省略 | 指定 | エラー |
-| 省略 | 省略 | 省略（`permissions` 自体を宣言） | エラー（空のマッピング） |
+| `enabled` | `allowed_actions` | `selected_actions` | `sha_pinning_required` | 判定 |
+|---|---|---|---|---|
+| 省略または `true` | `all` または `local_only` | 省略 | 省略または指定 | 有効 |
+| 省略または `true` | `selected` | 3項目をすべて指定 | 省略または指定 | 有効 |
+| 省略または `true` | `selected` | 省略、または3項目の一部だけを指定 | 省略または指定 | エラー |
+| 省略または `true` | `all` または `local_only` | 指定 | 省略または指定 | エラー |
+| 省略または `true` | 省略 | 指定 | 省略または指定 | エラー |
+| `true` | 省略 | 省略 | 省略または指定 | 有効 |
+| `false` | 省略 | 省略 | 省略 | 有効 |
+| 省略 | 省略 | 省略 | 指定 | 有効 |
+| `false` | 指定 | 省略または指定 | 省略または指定 | エラー |
+| `false` | 省略 | 指定 | 省略または指定 | エラー |
+| `false` | 省略 | 省略 | 指定 | エラー |
+| 省略 | 省略 | 省略 | 省略（`permissions` 自体を宣言） | エラー（空のマッピング） |
 
-`enabled: false` と `allowed_actions`・`selected_actions` を同時に宣言できないのは、Actions が無効のあいだ GitHub がこれらの値を返さず（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 3.1・4章）、期待状態を確かめられないためです。この組み合わせの誤りは、`allowed_actions` の値や `selected_actions` の中身の誤りより先に示します。`actions.workflow` の設定は、`enabled` の値によらず同時に宣言できます。
+`enabled: false` と `allowed_actions`・`selected_actions`・`sha_pinning_required` を同時に宣言できないのは、Actions が無効のあいだ GitHub がこれらの保存された値を返さず（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 3.1・4章）、期待状態を確かめられないためです。この組み合わせの誤りは、`allowed_actions` の値や `selected_actions` の中身の誤りより先に示します。`actions.workflow` の設定は、`enabled` の値によらず同時に宣言できます。
 
 3項目を必須とする点は **reco 固有の入力契約** です。GitHub REST API では Selected actions の3項目は任意パラメータですが、reco は選択方式の Actions 許可条件の期待状態を一意に定めるため、3項目を必須とします。入力として有効でも、現在の Actions 許可ポリシーや GitHub の制約によって、選択方式の Actions 許可条件を取得・適用できるとは限りません。
 

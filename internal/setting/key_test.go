@@ -6,7 +6,7 @@ import (
 )
 
 func TestManagementUnits_FollowsConfigurationOrder(t *testing.T) {
-	want := []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, DefaultWorkflowPermissions, CanApprovePullRequestReviews}
+	want := []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews}
 	if got := ManagementUnits(); !slices.Equal(got, want) {
 		t.Errorf("ManagementUnits() = %v, want %v", got, want)
 	}

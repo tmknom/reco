@@ -90,58 +90,77 @@ func (d document) actions(n *yaml.Node, path string) (ActionsPermissions, Workfl
 	return permissions, workflow, nil
 }
 
-// permissions は、Actions の有効状態、Actions 許可ポリシー、選択方式の Actions 許可条件の組み合わせを読む。
-// 組み合わせの違反は allowed_actions の値や selected_actions の中身を見ずに拒否し、組み合わせの誤りを値の誤りより先に示す。
+// permissions は、Actions の有効状態、Actions 許可ポリシー、選択方式の Actions 許可条件、sha_pinning_required の組み合わせを読む。
+// 組み合わせの違反は各キーの値を見ずに拒否し、組み合わせの誤りを値の誤りより先に示す。
 func (d document) permissions(n *yaml.Node, path string) (ActionsPermissions, error) {
-	entries, err := d.mappingEntries(n, path, nil, []string{"enabled", "allowed_actions", "selected_actions"})
+	entries, err := d.mappingEntries(n, path, nil, []string{"enabled", "allowed_actions", "selected_actions", "sha_pinning_required"})
 	if err != nil {
 		return ActionsPermissions{}, err
 	}
 	enabledNode, hasEnabled := entries["enabled"]
-	allowedNode, hasAllowed := entries["allowed_actions"]
-	selectedNode, hasSelected := entries["selected_actions"]
+	_, hasAllowed := entries["allowed_actions"]
+	_, hasSelected := entries["selected_actions"]
+	shaPinningNode, hasSHAPinning := entries["sha_pinning_required"]
+	var permissions ActionsPermissions
 	if hasEnabled {
 		enabled, err := d.boolValue(enabledNode, path+".enabled")
 		if err != nil {
 			return ActionsPermissions{}, err
 		}
 		var declared []string
-		if hasAllowed {
-			declared = append(declared, "allowed_actions")
+		for _, k := range []string{"allowed_actions", "selected_actions", "sha_pinning_required"} {
+			if _, ok := entries[k]; ok {
+				declared = append(declared, k)
+			}
 		}
-		if hasSelected {
-			declared = append(declared, "selected_actions")
-		}
-		switch {
-		case len(declared) == 0:
-			return ActionsPermissions{Enabled: &enabled}, nil
-		case !enabled:
+		if !enabled && len(declared) > 0 {
 			return ActionsPermissions{}, invalid(n, path, "enabled false cannot be declared with %s", strings.Join(declared, ", "))
 		}
-		// enabled true は読み捨てる。ActionsPermissions.Enabled を参照。
+		// allowed_actions とともに宣言した enabled true は読み捨てる。ActionsPermissions.Enabled を参照。
+		if !hasAllowed {
+			permissions.Enabled = &enabled
+		}
 	}
+	if hasAllowed || hasSelected {
+		if permissions.AllowedActions, permissions.SelectedActions, err = d.actionsPolicy(n, path, entries); err != nil {
+			return ActionsPermissions{}, err
+		}
+	}
+	if hasSHAPinning {
+		required, err := d.boolValue(shaPinningNode, path+".sha_pinning_required")
+		if err != nil {
+			return ActionsPermissions{}, err
+		}
+		permissions.SHAPinningRequired = &required
+	}
+	return permissions, nil
+}
+
+// actionsPolicy は、Actions 許可ポリシーと、それに従う選択方式の Actions 許可条件の組み合わせを読む。
+// 許可条件は、ポリシーが selected のときだけ返し、それ以外は nil を返す。
+func (d document) actionsPolicy(n *yaml.Node, path string, entries map[string]*yaml.Node) (*setting.AllowedActionsPolicy, *setting.SelectedActionsCriteria, error) {
+	allowedNode, hasAllowed := entries["allowed_actions"]
+	selectedNode, hasSelected := entries["selected_actions"]
 	if !hasAllowed {
-		return ActionsPermissions{}, invalid(n, path, `selected_actions requires allowed_actions "selected"`)
+		return nil, nil, invalid(n, path, `selected_actions requires allowed_actions "selected"`)
 	}
 	policy, err := d.allowedActionsPolicyValue(allowedNode, path+".allowed_actions")
 	if err != nil {
-		return ActionsPermissions{}, err
+		return nil, nil, err
 	}
-	permissions := ActionsPermissions{AllowedActions: &policy}
 	switch {
 	case policy == setting.AllowedActionsSelected && !hasSelected:
-		return ActionsPermissions{}, invalid(n, path, `allowed_actions "selected" requires selected_actions with github_owned_allowed, verified_allowed, patterns_allowed`)
+		return nil, nil, invalid(n, path, `allowed_actions "selected" requires selected_actions with github_owned_allowed, verified_allowed, patterns_allowed`)
 	case policy != setting.AllowedActionsSelected && hasSelected:
-		return ActionsPermissions{}, invalid(selectedNode, path+".selected_actions", `selected_actions is allowed only when allowed_actions is "selected"; got allowed_actions %q`, policy)
+		return nil, nil, invalid(selectedNode, path+".selected_actions", `selected_actions is allowed only when allowed_actions is "selected"; got allowed_actions %q`, policy)
 	case !hasSelected:
-		return permissions, nil
+		return &policy, nil, nil
 	}
 	criteria, err := d.selectedActions(selectedNode, path+".selected_actions")
 	if err != nil {
-		return ActionsPermissions{}, err
+		return nil, nil, err
 	}
-	permissions.SelectedActions = &criteria
-	return permissions, nil
+	return &policy, &criteria, nil
 }
 
 // selectedActions は、3 項目がそろった選択方式の Actions 許可条件を読む。

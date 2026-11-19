@@ -51,5 +51,6 @@ reco が管理可能な設定は、次のとおりです。具体的な設定方
 | 選んだものだけを許可するときに、GitHub が作った Actions を許可するか | 「Allow actions created by GitHub」 |
 | 選んだものだけを許可するときに、Marketplace の認証済み作成者の Actions を許可するか | 「Allow actions by Marketplace verified creators」 |
 | 選んだものだけを許可するときに、個別に許可する Actions と再利用可能なワークフロー | 「Allow or block specified actions and reusable workflows」 |
+| Actions を完全な長さのコミット SHA に固定することを必須にするか | 「Actions」の「General」ページの「Actions permissions」の欄の「Require actions to be pinned to a full-length commit SHA」 |
 | `GITHUB_TOKEN` のデフォルト権限を、読み書きにするか、読み取りに限るか | 「Actions」の「General」ページの「Workflow permissions」の欄 |
 | GitHub Actions に Pull Request の作成と承認を許すか | 「Actions」の「General」ページの「Workflow permissions」の欄の「Allow GitHub Actions to create and approve pull requests」 |

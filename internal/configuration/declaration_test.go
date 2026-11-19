@@ -18,7 +18,7 @@ func mustReference(t *testing.T, name string) repository.Reference {
 	return reference
 }
 
-// TestDocumentPermissions は、allowed_actions と selected_actions の組み合わせの規則と、判定の順序を確かめる。
+// TestDocumentPermissions は、Actions の有効状態、allowed_actions、selected_actions、sha_pinning_required の組み合わせの規則と、判定の順序を確かめる。
 // 拒否のケースは、受理される selected の入力 (selected) の条件を 1 つだけ変えて作る。
 //
 //trace:checks FR-001
@@ -79,17 +79,11 @@ func TestDocumentPermissions(t *testing.T) {
 			wantReason: `must be all, local_only, or selected; got "none"`,
 		},
 		{name: "empty permissions is rejected", src: "{}\n", wantPath: "P", wantReason: "must not be empty"},
-		{name: "unknown key is rejected", src: selected + "unknown: true\n", wantPath: "P", wantReason: `unknown key "unknown"; expected enabled, allowed_actions, selected_actions`},
+		{name: "unknown key is rejected", src: selected + "unknown: true\n", wantPath: "P", wantReason: `unknown key "unknown"; expected enabled, allowed_actions, selected_actions, sha_pinning_required`},
 		{name: "enabled true alone is read as the enabled state", src: "enabled: true\n", want: ActionsPermissions{Enabled: new(true)}},
 		{name: "enabled false alone is read as the enabled state", src: "enabled: false\n", want: ActionsPermissions{Enabled: new(false)}},
 		{name: "enabled true with all is read the same as all alone", src: "enabled: true\nallowed_actions: all\n", want: ActionsPermissions{AllowedActions: new(setting.AllowedActionsAll)}},
 		{name: "enabled true with selected is read the same as selected alone", src: "enabled: true\n" + selected, want: criteria([]string{"a/*", "b/*"})},
-		{
-			name:       "enabled false with allowed_actions and selected_actions is rejected naming both",
-			src:        "enabled: false\n" + selected,
-			wantPath:   "P",
-			wantReason: "enabled false cannot be declared with allowed_actions, selected_actions",
-		},
 		{
 			name:       "enabled false with selected_actions alone is rejected by the enabled combination first",
 			src:        "enabled: false\n" + strings.Replace(selected, "allowed_actions: selected\n", "", 1),
@@ -113,6 +107,33 @@ func TestDocumentPermissions(t *testing.T) {
 			src:        "enabled: true\n" + strings.Replace(selected, "allowed_actions: selected\n", "", 1),
 			wantPath:   "P",
 			wantReason: `selected_actions requires allowed_actions "selected"`,
+		},
+		{name: "sha_pinning_required alone is read without allowed_actions", src: "sha_pinning_required: true\n", want: ActionsPermissions{SHAPinningRequired: new(true)}},
+		{name: "enabled true with sha_pinning_required reads both", src: "enabled: true\nsha_pinning_required: false\n", want: ActionsPermissions{Enabled: new(true), SHAPinningRequired: new(false)}},
+		{name: "all with sha_pinning_required reads both", src: "allowed_actions: all\nsha_pinning_required: true\n", want: ActionsPermissions{AllowedActions: new(setting.AllowedActionsAll), SHAPinningRequired: new(true)}},
+		{
+			name:       "enabled false with sha_pinning_required is rejected naming it",
+			src:        "enabled: false\nsha_pinning_required: true\n",
+			wantPath:   "P",
+			wantReason: "enabled false cannot be declared with sha_pinning_required",
+		},
+		{
+			name:       "enabled false with every other key is rejected naming them in the configuration order",
+			src:        "enabled: false\nsha_pinning_required: true\n" + selected,
+			wantPath:   "P",
+			wantReason: "enabled false cannot be declared with allowed_actions, selected_actions, sha_pinning_required",
+		},
+		{
+			name:       "enabled false with quoted sha_pinning_required is rejected by the combination, not the value",
+			src:        "enabled: false\nsha_pinning_required: \"true\"\n",
+			wantPath:   "P",
+			wantReason: "enabled false cannot be declared with sha_pinning_required",
+		},
+		{
+			name:       "quoted sha_pinning_required is rejected at sha_pinning_required",
+			src:        "sha_pinning_required: \"true\"\n",
+			wantPath:   "P.sha_pinning_required",
+			wantReason: "must be true or false",
 		},
 		{name: "duplicate allowed_actions is rejected", src: selected + "allowed_actions: all\n", wantPath: "P", wantReason: `duplicate key "allowed_actions"`},
 		{

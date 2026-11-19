@@ -37,6 +37,8 @@ type SettingPlan struct {
 	Desired       setting.Value
 	Result        ReconciliationResult
 	Applicability Applicability
+	// NotApplicableReason は、Applicability が NotApplicable のときだけ定まる。
+	NotApplicableReason NotApplicableReason
 	// SideEffects は変更予定に伴う副作用。副作用がなければ nil。
 	SideEffects []SideEffect
 }
@@ -75,6 +77,18 @@ func (r RepositoryPlan) HasPlannedChanges() bool {
 	return slices.ContainsFunc(r.Settings, SettingPlan.IsPlannedChange)
 }
 
+// NotApplicableChanges は、適用不能な変更予定を計画の並びで返す。なければ nil を返す。
+// 適用不能な変更予定を挙げる処理ごとに走査を組み立てると挙げる対象が食い違うため、挙げるときはここで取り出す。
+func (r RepositoryPlan) NotApplicableChanges() []SettingPlan {
+	var found []SettingPlan
+	for _, s := range r.Settings {
+		if s.Applicability == NotApplicable {
+			found = append(found, s)
+		}
+	}
+	return found
+}
+
 // Generate は、selection で選んだ対象の変更計画を生成する。selection が nil なら宣言された全リポジトリを選ぶ。
 // 設定ファイルの読み込みと観測操作の失敗は、文言が設定ファイルのパスか対象名を含むため包み直さずに返す。
 // 観測操作の失敗は比較不能にしない。
@@ -106,7 +120,7 @@ func generateRepositoryPlan(ctx context.Context, client *github.Client, target c
 	}
 	settings := reconcile(target.Desired, observed)
 	for i := range settings {
-		settings[i].Applicability = judgeApplicability(settings[i])
+		settings[i].Applicability, settings[i].NotApplicableReason = judgeApplicability(settings[i], settings)
 		settings[i].SideEffects = sideEffects(settings[i], observed)
 	}
 	return RepositoryPlan{Target: target.Reference, RepositoryID: observed.RepositoryID, Settings: settings}, nil
