@@ -7,7 +7,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/tmknom/reco/internal/display"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
@@ -54,13 +53,9 @@ func writeActionsPermissions(b *strings.Builder, p github.ActionsPermissions) {
 	fmt.Fprintf(b, "Actions permissions:\n  enabled: %t\n", p.Enabled)
 	if policy, ok := p.AllowedActions.Value(); ok {
 		fmt.Fprintf(b, "  allowed_actions: %s\n", policy)
-	} else {
-		fmt.Fprintf(b, "  allowed_actions: %s\n", display.UnavailableText(p.AllowedActions.UnavailableReason()))
 	}
 	if criteria, ok := p.SelectedActions.Value(); ok {
 		fmt.Fprintf(b, "  selected_actions:\n    github_owned_allowed: %t\n    verified_allowed: %t\n    patterns_allowed: %s\n",
 			criteria.GitHubOwnedAllowed, criteria.VerifiedAllowed, criteria.PatternsAllowedString())
-	} else {
-		fmt.Fprintf(b, "  selected_actions: %s\n", display.UnavailableText(p.SelectedActions.UnavailableReason()))
 	}
 }

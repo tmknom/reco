@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/tmknom/reco/internal/changeplan"
-	"github.com/tmknom/reco/internal/display"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
@@ -218,10 +217,22 @@ func confirmationText(record changeRecord) string {
 	case desiredStateIdentityMismatch:
 		return "not confirmed (repository ID changed)"
 	case desiredStateUnavailable:
-		return "not confirmed (" + display.UnavailableReasonText(record.desiredUnavailableReason) + ")"
+		return "not in effect (" + unavailableReasonText(record.desiredUnavailableReason) + ")"
 	default:
 		return "not checked"
 	}
+}
+
+// unavailableReasonText は、期待状態の確認で観測不能だったときに、宣言した設定が効いていない理由を CLI 仕様の文言で返す。
+// 未定義の理由は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+func unavailableReasonText(reason github.UnavailableReason) string {
+	switch reason {
+	case github.UnavailableActionsDisabled:
+		return "GitHub Actions is disabled"
+	case github.UnavailableNotSelected:
+		return `allowed_actions is not "selected"`
+	}
+	panic(fmt.Sprintf("apply: undefined unavailable reason %d", int(reason)))
 }
 
 func writeDetails(b *strings.Builder, indent string, lines []string) {

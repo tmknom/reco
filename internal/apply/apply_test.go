@@ -457,7 +457,7 @@ func TestApplyPlan(t *testing.T) {
 		wantShown := "Configuration: ./reco.yaml\n\n" +
 			"Repository: owner/second\n  general.allow_auto_merge: false -> true\n\n" +
 			"Repository: owner/third\n  general.allow_auto_merge: false -> true\n\n" +
-			"Plan: 2 repositories to update, 2 known changes, 0 not-comparable settings\nRepositories checked: 3\n\n"
+			"Plan: 2 repositories to update, 2 changes\nRepositories checked: 3\n\n"
 		if shown != wantShown {
 			t.Errorf("Out at approval = %q, want %q", shown, wantShown)
 		}
@@ -537,7 +537,7 @@ func TestApplyPlan(t *testing.T) {
 		if err := applyPlan(context.Background(), cfg, newClient(baseURL), newPlan(t, enableActionsNotComparable())); err == nil {
 			t.Error("applyPlan() error = nil, want an error")
 		}
-		for _, want := range []string{"Current: unavailable", "Side effect:"} {
+		for _, want := range []string{"(GitHub Actions disabled) -> ", "Side effect:"} {
 			if !strings.Contains(shown, want) {
 				t.Errorf("Out at approval = %q, want it to contain %q", shown, want)
 			}
@@ -935,7 +935,7 @@ func TestRun(t *testing.T) {
 		if !slices.Equal(server.RequestLines(), want) {
 			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}
-		if calls != 1 || !strings.Contains(out.String(), "actions.permissions.allowed_actions: all -> selected\n  actions.permissions.selected_actions\n") ||
+		if calls != 1 || !strings.Contains(out.String(), "actions.permissions.allowed_actions: all -> selected\n  actions.permissions.selected_actions:\n") ||
 			!strings.Contains(out.String(), "owner/repo: updated") {
 			t.Errorf("approve calls = %d, Out = %q, want one approval, both planned settings, and the repository updated", calls, out.String())
 		}
@@ -957,7 +957,7 @@ func TestRun(t *testing.T) {
 		if !slices.Equal(server.RequestLines(), want) {
 			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}
-		if calls != 1 || strings.Count(out.String(), "Current: unavailable (GitHub Actions is disabled)") != 2 ||
+		if calls != 1 || strings.Count(out.String(), "(GitHub Actions disabled)") != 2 ||
 			!strings.Contains(out.String(), "(enables GitHub Actions)") || !strings.Contains(out.String(), "owner/repo: updated") {
 			t.Errorf("approve calls = %d, Out = %q, want one approval, both not-comparable settings, and the repository updated", calls, out.String())
 		}

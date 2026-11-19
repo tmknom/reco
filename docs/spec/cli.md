@@ -89,13 +89,13 @@ $ GH_TOKEN=$(gh auth token) reco plan
 | 表示区分 | 意味 | 利用者に示す情報 |
 |---|---|---|
 | 確認済みの差分 | 比較可能な現在値と期待値が異なる | リポジトリ、設定、現在値、期待値 |
-| 比較不能な設定予定 | GitHub の取得条件により現在値を比較できず、期待状態の適用を検討する | リポジトリ、設定、期待値、比較できない理由 |
+| 比較不能な設定予定 | GitHub の取得条件により現在値を比較できず、期待状態の適用を検討する | リポジトリ、設定、取得条件から分かるリポジトリの状態、期待値 |
 | 適用不能 | 安全な変更に必要な条件を確認できない | 対象と理由。差分・比較不能の区分とは別に適用不能と示す |
 | 変更不要 | 管理範囲内の設定が期待状態と一致する | 確認した対象の件数 |
 
 照合結果と適用可能性は別に示します。不一致（Mismatch）でも適用不能な場合があり、比較不能（Not Comparable）でも条件を確認できれば適用可能な変更予定となります。観測操作そのものの失敗は比較不能に含めず、エラーとして報告します。
 
-集計では、変更予定のあるリポジトリ数、確認済みの差分数、比較不能な設定予定数を区別します。変更予定のあるリポジトリ数は、そのすべてが適用可能であることを意味しません。確認済みの差分数と比較不能な設定予定数は管理設定の単位で数え、比較不能な項目を確認済みの差分数に加算しません。API 更新操作の数や論理的な設定変更の数とも同一視しません。選択方式の Actions 許可条件（Selected actions の3項目）は一つの設定グループとして集計し、上位の Actions 許可ポリシーとは区別します。変更の必要がないと確認できた場合に限り `No changes.` と表示します。
+集計では、変更予定のあるリポジトリ数と変更予定数を示します。変更予定のあるリポジトリ数は、そのすべてが適用可能であることを意味しません。変更予定数は、確認済みの差分と比較不能な設定予定を合わせて管理設定の単位で数えます。二つを区別するのは変更予定の行の現在値であり、集計では区別しません。比較不能な設定予定も、宣言した値へ変える変更として利用者が承認するものだからです。API 更新操作の数や論理的な設定変更の数とは同一視しません。選択方式の Actions 許可条件（Selected actions の3項目）は一つの設定グループとして集計し、上位の Actions 許可ポリシーとは区別します。変更の必要がないと確認できた場合に限り `No changes.` と表示します。
 
 一つのリポジトリに複数の変更予定があるときは、[YAML 設定仕様](configuration.md) の章と表の並びで表示します。設定宣言での記述順には従いません。
 
@@ -106,7 +106,7 @@ Configuration: ./reco.yaml
 Repository: example/project-a
   general.allow_auto_merge: false -> true
 
-Plan: 1 repository to update, 1 known change, 0 not-comparable settings
+Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
@@ -118,7 +118,7 @@ Repository: example/project-a
     github_owned_allowed: true, verified_allowed: false, patterns_allowed: []
     -> github_owned_allowed: true, verified_allowed: true, patterns_allowed: ["actions/checkout@v7", "example/*"]
 
-Plan: 1 repository to update, 1 known change, 0 not-comparable settings
+Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
@@ -140,7 +140,7 @@ Repository: example/project-a
 Repository: example/project-c
   actions.workflow.default_workflow_permissions: write -> read
 
-Plan: 2 repositories to update, 2 known changes, 0 not-comparable settings
+Plan: 2 repositories to update, 2 changes
 Repositories checked: 3
 ```
 
@@ -150,50 +150,57 @@ Actions の有効状態は、Actions permissions を取得できれば必ず確�
 Repository: example/project-a
   actions.permissions.enabled: true -> false
 
-Plan: 1 repository to update, 1 known change, 0 not-comparable settings
+Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
-`enabled` を `false` から `true` に変える変更予定には、`Previous settings:` の行を添えます。GitHub は無効にする前の `allowed_actions`、`sha_pinning_required`、Selected actions の値を残しており、有効に戻すとそれらの値で Actions を実行できるようになるためです（GitHub Actions 権限 API 仕様 3.2・4章）。無効のあいだは値を取得できないため、値は示さず、残っていた値で再開することだけを示します。値が失われるわけではないため、`Side effect:` とは別の行で示します。再開するときのポリシーを利用者が決めるには、`allowed_actions` を宣言します（[YAML 設定仕様](configuration.md) 4章）。`Previous settings:` は変更予定の最後の行として示し、`apply` では承認プロンプトの前に表示します。
+`enabled` を `false` から `true` に変える変更予定には、`Previous settings:` の行を添えます。GitHub は無効にする前の `allowed_actions`、`sha_pinning_required`、Selected actions の値を残しており、有効に戻すとそれらの値で Actions を実行できるようになるためです（GitHub Actions 権限 API 仕様 3.2・4章）。無効のあいだは値を取得できないため、値は示さず、残っていた値で再開することと、値を示せない理由を示します。値が失われるわけではないため、`Side effect:` とは別の行で示します。再開するときのポリシーを利用者が決めるには、`allowed_actions` を宣言します（[YAML 設定仕様](configuration.md) 4章）。`Previous settings:` は変更予定の最後の行として示し、`apply` では承認プロンプトの前に表示します。
 
 ```text
 Repository: example/project-a
   actions.permissions.enabled: false -> true
-    Previous settings: GitHub Actions resumes with allowed_actions, selected_actions, and sha_pinning_required kept from before it was disabled (current values are unavailable)
+    Previous settings: GitHub Actions resumes with allowed_actions, selected_actions, and sha_pinning_required kept from before it was disabled (reco cannot read them while GitHub Actions is disabled)
 
-Plan: 1 repository to update, 1 known change, 0 not-comparable settings
+Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
-比較不能な設定予定は、現在値を推測せずに示します。Actions が無効のリポジトリでは `allowed_actions` の現在値を取得できませんが、宣言したポリシーで Actions を有効にする変更として適用できます（[YAML 設定仕様](configuration.md) 4章）。
+比較不能な設定予定は、確認済みの差分と同じ `<設定>: <現在> -> <期待値>` の形で示し、現在値の位置に、GitHub が値を返さない理由から分かるリポジトリの状態を括弧で示します。
+
+| 値を返さない理由 | 示す状態 | 意味 |
+|---|---|---|
+| Actions が無効 | `(GitHub Actions disabled)` | Actions が動いておらず、この設定は効いていない |
+| Actions 許可ポリシーが `selected` でない（選択方式の Actions 許可条件だけに当たる） | `(not in use)` | 選択方式の Actions 許可条件が使われていない |
+
+括弧の状態は、観測したリポジトリの状態から決まり、推測した値ではありません。GitHub が保存している値を示すものでもありません。利用者が知りたいのは承認すると何が起きるかであり、その判断には、いま効いている状態と宣言した値があれば足ります。確認済みの差分とは、現在値が括弧で示されることで区別します。
+
+Actions が無効のリポジトリでは `allowed_actions` の現在値を取得できませんが、宣言したポリシーで Actions を有効にする変更として適用できます（[YAML 設定仕様](configuration.md) 4章）。この変更予定には、期待値に `(enables GitHub Actions)` を添えます。
 
 ```text
 Repository: example/project-a
-  actions.permissions.allowed_actions
-    Current: unavailable (GitHub Actions is disabled)
-    Desired: local_only (enables GitHub Actions)
-    Side effect: GitHub may discard selected_actions if allowed_actions was "selected" before GitHub Actions was disabled (current values are unavailable)
+  actions.permissions.allowed_actions: (GitHub Actions disabled) -> local_only (enables GitHub Actions)
+    Side effect: GitHub may discard selected_actions if allowed_actions was "selected" before GitHub Actions was disabled (reco cannot read them while GitHub Actions is disabled)
 
-Plan: 1 repository to update, 0 known changes, 1 not-comparable setting
+Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
-`(enables GitHub Actions)` は、Actions が無効のリポジトリの `allowed_actions` にだけ添えます。選択方式の Actions 許可条件は、`allowed_actions` が `selected` でないリポジトリでは現在値を取得できないため、`allowed_actions` を `selected` へ変える変更予定と並べて、比較不能な設定予定として示します。
+`(enables GitHub Actions)` は、Actions が無効のリポジトリの `allowed_actions` にだけ添えます。選択方式の Actions 許可条件は、`allowed_actions` が `selected` でないリポジトリでは現在値を取得できないため、`allowed_actions` を `selected` へ変える変更予定と並べて、比較不能な設定予定として示します。設定グループの比較不能な設定予定も、確認済みの差分と同じく、設定の行の下に現在の状態と、`->` に続けて期待値を1行ずつ示します。
 
 ```text
 Repository: example/project-a
   actions.permissions.allowed_actions: all -> selected
-  actions.permissions.selected_actions
-    Current: unavailable (allowed_actions is not "selected")
-    Desired: github_owned_allowed: true, verified_allowed: true, patterns_allowed: ["example/*"]
+  actions.permissions.selected_actions:
+    (not in use)
+    -> github_owned_allowed: true, verified_allowed: true, patterns_allowed: ["example/*"]
 
-Plan: 1 repository to update, 1 known change, 1 not-comparable setting
+Plan: 1 repository to update, 2 changes
 Repositories checked: 1
 ```
 
 安全な変更に必要な条件を確認できない場合は、照合結果に加えて `Applicability: not applicable (<理由>)` を示し、集計の後に `Plan cannot be applied.` と表示します。
 
-宣言した変更に伴って GitHub が管理範囲外の設定を削除する場合は、変更予定に `Side effect:` として失われる設定と現在値を添えます。この変更は適用可能であり、利用者が承認すれば実行します。現在は、Actions 許可ポリシーを `selected` から `all` / `local_only` へ変え、既存の選択方式の Actions 許可条件が失われる場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。Actions が無効のリポジトリで `all` / `local_only` を宣言した場合は、無効にする前のポリシーが `selected` であれば同じく失われますが、無効の間は値もポリシーも取得できないため、失われる可能性があることだけを示します。遷移先が `selected` の変更には添えません。3項目は宣言した値で上書きされ、管理範囲内の変更になるためです。`Side effect:` は、副作用を伴う変更予定の最後の行として示します。変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。
+宣言した変更に伴って GitHub が管理範囲外の設定を削除する場合は、変更予定に `Side effect:` として失われる設定と現在値を添えます。この変更は適用可能であり、利用者が承認すれば実行します。現在は、Actions 許可ポリシーを `selected` から `all` / `local_only` へ変え、既存の選択方式の Actions 許可条件が失われる場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。Actions が無効のリポジトリで `all` / `local_only` を宣言した場合は、無効にする前のポリシーが `selected` であれば同じく失われますが、無効の間は値もポリシーも取得できないため、失われる可能性があることと、値を示せない理由を示します。遷移先が `selected` の変更には添えません。3項目は宣言した値で上書きされ、管理範囲内の変更になるためです。`Side effect:` は、副作用を伴う変更予定の最後の行として示します。変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。
 
 ```text
 Repository: example/project-a
@@ -241,7 +248,7 @@ Repositories checked: 2
 
 ### 5.1 承認
 
-変更予定を、確認済みの差分と比較不能な設定予定に分けて提示します。変更がある場合は明示的な対話承認を要求し、`y` または `yes` だけを承認として扱います。それ以外の入力、EOF、入力失敗、承認待ちの間の中断（`SIGINT`、`SIGTERM`）は承認しません。標準入力が対話端末でなければ、パイプなどから承認文字列が与えられても更新しません。この場合は変更予定を提示したうえで、承認を求めず、入力を読みません。
+変更予定を、確認済みの差分と比較不能な設定予定を区別できる形（4章）で提示します。変更がある場合は明示的な対話承認を要求し、`y` または `yes` だけを承認として扱います。それ以外の入力、EOF、入力失敗、承認待ちの間の中断（`SIGINT`、`SIGTERM`）は承認しません。標準入力が対話端末でなければ、パイプなどから承認文字列が与えられても更新しません。この場合は変更予定を提示したうえで、承認を求めず、入力を読みません。
 
 承認の入力は、標準入力の先頭1行だけを読み、行末の改行（LF）1つを除いた文字列を `y`・`yes` と比べます。大文字、前後の空白、CR を含む入力は承認しません。改行で終わらない入力は EOF として扱います。
 
@@ -255,7 +262,7 @@ Repository: example/project-a
 Repository: example/project-c
   actions.workflow.default_workflow_permissions: write -> read
 
-Plan: 2 repositories to update, 2 known changes, 0 not-comparable settings
+Plan: 2 repositories to update, 2 changes
 Repositories checked: 3
 
 Apply these changes? [y/N]: y
@@ -319,7 +326,9 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 `failed` には、更新操作の失敗、更新操作の成否不明、成功応答後の期待状態の確認失敗、成功応答後の期待状態との不一致、成功応答後の変更対象外の設定の予期しない変化のいずれに当たるかを添えて示します。先行操作の成功後に後続操作を開始できなかった場合は、その旨を示します。変更対象外の設定の予期しない変化では、観測した変化を示しますが、reco に起因するとは断定しません。変更対象外の設定には、同じリポジトリのほかの管理設定も含みます。更新要求の応答を確認できない場合は成否不明とし、その後の再観測で期待状態が一致しても、更新操作の成否が判明したことにはならず、`updated` に変更しません。この再観測で変更対象外の設定の変化を観測した場合も、更新操作の結果と分けて示します。成否不明になった原因は、理由の行では区別せず、エラーとして示します。
 
-期待状態の確認失敗には、確認できなかった理由を括弧で添えます。期待値と比べる設定が GitHub の取得条件により観測不能だった場合は、6章の `unavailable` に添える理由と同じ文言を使います。値を確認できていないため、`does not match` とは表示しません。
+再観測の失敗とリポジトリ ID の変化による期待状態の確認失敗は、`not confirmed` に確認できなかった理由を括弧で添えて示します（`not confirmed (read failed)`、`not confirmed (repository ID changed)`）。
+
+期待値と比べる設定が GitHub の取得条件により観測不能だったことによる確認失敗は、`not in effect` に、宣言した設定が効いていない理由を括弧で添えて示します。理由は、Actions が無効なら `GitHub Actions is disabled`、Actions 許可ポリシーが `selected` でなければ `allowed_actions is not "selected"` です。`allowed_actions` を宣言できるのは Actions を有効にする場合に限られ、`selected_actions` を宣言できるのは Actions 許可ポリシーを `selected` と宣言した場合に限られます（[YAML 設定仕様](configuration.md) 4章）。このため、この観測不能は、宣言した設定が効いていないことを意味します。値そのものは確認できていないため、`does not match` とは示しません。`not confirmed` とも示さないのは、reco が確認に失敗したと読ませず、利用者が確かめるべきリポジトリの状態を示すためです。
 
 変更対象外の設定は、管理設定と同じ形の名前で示します。設定宣言に書けない `sha_pinning_required` は `actions.permissions.sha_pinning_required` と示します。この名前は表示のためのもので、[YAML 設定仕様](configuration.md) にこのパスはありません。
 
@@ -386,7 +395,7 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 Applying changes...
   example/project-a: failed
     Update request: succeeded
-    Desired state: not confirmed (GitHub Actions is disabled)
+    Desired state: not in effect (GitHub Actions is disabled)
 
 Note: Some changes may already have been applied. No automatic rollback was performed.
 ```
@@ -479,7 +488,9 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 
 ## 6. `show`：現在状態の表示
 
-`show` は設定宣言を使用せず、指定リポジトリについて GitHub から確認できたサポート対象の設定を表示します。GitHub の取得条件によって確認できない値は、その理由とともに `unavailable` と示し、値を推測しません。認証・権限・通信による観測操作の失敗は、正常な観測結果ではなくエラーとします。GitHub の設定は変更しません。
+`show` は設定宣言を使用せず、指定リポジトリについて GitHub から確認できたサポート対象の設定を表示します。認証・権限・通信による観測操作の失敗は、正常な観測結果ではなくエラーとします。GitHub の設定は変更しません。
+
+GitHub の取得条件によって確認できない設定は、行ごと示しません。取得条件は、上位の設定によってその設定が効いていない状態（Actions が無効、Actions 許可ポリシーが `selected` でない）であり、その状態は上位の設定の行で示されるためです。
 
 ```text
 $ reco show --repo example/project-a
@@ -491,7 +502,6 @@ General:
 Actions permissions:
   enabled: true
   allowed_actions: all
-  selected_actions: unavailable (allowed_actions is not "selected")
 Workflow permissions:
   default_workflow_permissions: read
   can_approve_pull_request_reviews: false
@@ -509,16 +519,14 @@ Actions permissions:
     patterns_allowed: ["actions/checkout@v7", "example/*"]
 ```
 
-Actions が無効のリポジトリでは、`allowed_actions` と `selected_actions` を取得できません。
+Actions が無効のリポジトリでは、`allowed_actions` と `selected_actions` を取得できないため、`enabled` だけを示します。
 
 ```text
 Actions permissions:
   enabled: false
-  allowed_actions: unavailable (GitHub Actions is disabled)
-  selected_actions: unavailable (GitHub Actions is disabled)
 ```
 
-権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。`unavailable` と表示せず、欠けた項目を示してエラーとします。
+権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。行を省かず、欠けた項目を示してエラーとします。
 
 `show` の表示は人が読むためのものであり、設定宣言として再利用できる形式ではありません。
 

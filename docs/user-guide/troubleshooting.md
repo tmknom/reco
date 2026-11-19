@@ -91,6 +91,9 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 | `Update request: unknown` | GitHub が更新を受け付けたか分からない |
 | `Desired state: matches` | 読み直した値は設定ファイルのとおりだった |
 | `Desired state: does not match` | 読み直した値が設定ファイルのとおりでなかった |
+| `Desired state: not confirmed (read failed)` | 更新のあとで値を読み直せず、設定ファイルのとおりになったか確かめられなかった。読み直せなかった原因は、結果のあとに出るエラーの行に出る |
+| `Desired state: not confirmed (repository ID changed)` | 読み直したリポジトリが、承認したときとは別のリポジトリだった。同じ名前のリポジトリが、削除して作り直すなどして入れ替わっている |
+| `Desired state: not in effect (<理由>)` | 書いた設定が GitHub で効いていなかった。括弧の中は、Actions が無効になっている（`GitHub Actions is disabled`）か、`allowed_actions` が `selected` でない（`allowed_actions is not "selected"`）こと |
 
 次の順に進めます。
 

@@ -26,8 +26,8 @@ func TestPluralize(t *testing.T) {
 		singular, plural string
 		want             string
 	}{
-		{name: "zero is plural", n: 0, singular: "known change", plural: "known changes", want: "0 known changes"},
-		{name: "one is singular", n: 1, singular: "known change", plural: "known changes", want: "1 known change"},
+		{name: "zero is plural", n: 0, singular: "change", plural: "changes", want: "0 changes"},
+		{name: "one is singular", n: 1, singular: "change", plural: "changes", want: "1 change"},
 		{name: "two uses the given plural form", n: 2, singular: "repository", plural: "repositories", want: "2 repositories"},
 	}
 	for _, tc := range cases {
@@ -55,7 +55,7 @@ func TestText(t *testing.T) {
 				{Key: "general.allow_auto_merge", Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 			},
 			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n  general.allow_auto_merge: false -> true\n\n" +
-				"Plan: 1 repository to update, 1 known change, 0 not-comparable settings\nRepositories checked: 1\n",
+				"Plan: 1 repository to update, 1 change\nRepositories checked: 1\n",
 		},
 		{
 			name: "general and workflow permissions mismatches are shown in the plan order with enumerated values and counted",
@@ -72,7 +72,7 @@ func TestText(t *testing.T) {
 				"  general.allow_auto_merge: false -> true\n" +
 				"  actions.workflow.default_workflow_permissions: write -> read\n" +
 				"  actions.workflow.can_approve_pull_request_reviews: true -> false\n\n" +
-				"Plan: 1 repository to update, 3 known changes, 0 not-comparable settings\nRepositories checked: 1\n",
+				"Plan: 1 repository to update, 3 changes\nRepositories checked: 1\n",
 		},
 		{
 			name: "matched settings are not shown as changes",
@@ -81,7 +81,7 @@ func TestText(t *testing.T) {
 				{Key: "general.allow_auto_merge", Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 			},
 			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n  general.allow_auto_merge: true -> false\n\n" +
-				"Plan: 1 repository to update, 1 known change, 0 not-comparable settings\nRepositories checked: 1\n",
+				"Plan: 1 repository to update, 1 change\nRepositories checked: 1\n",
 		},
 	}
 	for _, tc := range cases {
@@ -104,7 +104,6 @@ func TestText_ActionsPermissions(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 	criteria := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: true, PatternsAllowed: []string{"example/*"}}
 	policy := setting.AllowedActionsPolicyValue
-	disabled := github.Unavailable[setting.Value](github.UnavailableActionsDisabled)
 	notSelected := github.Unavailable[setting.Value](github.UnavailableNotSelected)
 	const header = "Configuration: ./reco.yaml\n\nRepository: owner/repo\n"
 	cases := []struct {
@@ -113,32 +112,17 @@ func TestText_ActionsPermissions(t *testing.T) {
 		want     string
 	}{
 		{
-			name: "all to selected counts the policy as a known change and the criteria group as one not-comparable setting",
+			name: "all to selected counts the policy mismatch and the not-comparable criteria group as two changes",
 			settings: []changeplan.SettingPlan{
 				{Key: setting.AllowedActions, Observed: github.Observed(policy(setting.AllowedActionsAll)), Desired: policy(setting.AllowedActionsSelected), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 				{Key: setting.SelectedActions, Observed: notSelected, Desired: setting.SelectedActionsCriteriaValue(criteria), Result: changeplan.NotComparable, Applicability: changeplan.Applicable},
 			},
 			want: header +
 				"  actions.permissions.allowed_actions: all -> selected\n" +
-				"  actions.permissions.selected_actions\n" +
-				"    Current: unavailable (allowed_actions is not \"selected\")\n" +
-				"    Desired: github_owned_allowed: true, verified_allowed: true, patterns_allowed: [\"example/*\"]\n\n" +
-				"Plan: 1 repository to update, 1 known change, 1 not-comparable setting\nRepositories checked: 1\n",
-		},
-		{
-			name: "disabled to selected marks only the policy as enabling actions",
-			settings: []changeplan.SettingPlan{
-				{Key: setting.AllowedActions, Observed: disabled, Desired: policy(setting.AllowedActionsSelected), Result: changeplan.NotComparable, Applicability: changeplan.Applicable},
-				{Key: setting.SelectedActions, Observed: disabled, Desired: setting.SelectedActionsCriteriaValue(criteria), Result: changeplan.NotComparable, Applicability: changeplan.Applicable},
-			},
-			want: header +
-				"  actions.permissions.allowed_actions\n" +
-				"    Current: unavailable (GitHub Actions is disabled)\n" +
-				"    Desired: selected (enables GitHub Actions)\n" +
-				"  actions.permissions.selected_actions\n" +
-				"    Current: unavailable (GitHub Actions is disabled)\n" +
-				"    Desired: github_owned_allowed: true, verified_allowed: true, patterns_allowed: [\"example/*\"]\n\n" +
-				"Plan: 1 repository to update, 0 known changes, 2 not-comparable settings\nRepositories checked: 1\n",
+				"  actions.permissions.selected_actions:\n" +
+				"    (not in use)\n" +
+				"    -> github_owned_allowed: true, verified_allowed: true, patterns_allowed: [\"example/*\"]\n\n" +
+				"Plan: 1 repository to update, 2 changes\nRepositories checked: 1\n",
 		},
 	}
 	for _, tc := range cases {
@@ -177,19 +161,19 @@ func TestText_Repositories(t *testing.T) {
 			},
 			want: "Configuration: ./reco.yaml\n\n" +
 				"Repository: owner/alpha\n  general.allow_auto_merge: false -> true\n\n" +
-				"Plan: 1 repository to update, 1 known change, 0 not-comparable settings\nRepositories checked: 2\n",
+				"Plan: 1 repository to update, 1 change\nRepositories checked: 2\n",
 		},
 		{
-			name: "repositories to update are shown as sections in the declared order and their counts are totaled separately",
+			name: "repositories to update are shown as sections in the declared order and mismatches and not-comparable settings are totaled as changes",
 			repositories: []changeplan.RepositoryPlan{
 				{Target: zeta, RepositoryID: 1, Settings: []changeplan.SettingPlan{mismatch, notComparable}},
 				{Target: alpha, RepositoryID: 2, Settings: []changeplan.SettingPlan{mismatch}},
 			},
 			want: "Configuration: ./reco.yaml\n\n" +
 				"Repository: owner/zeta\n  general.allow_auto_merge: false -> true\n" +
-				"  actions.permissions.allowed_actions\n    Current: unavailable (GitHub Actions is disabled)\n    Desired: all (enables GitHub Actions)\n\n" +
+				"  actions.permissions.allowed_actions: (GitHub Actions disabled) -> all (enables GitHub Actions)\n\n" +
 				"Repository: owner/alpha\n  general.allow_auto_merge: false -> true\n\n" +
-				"Plan: 2 repositories to update, 2 known changes, 1 not-comparable setting\nRepositories checked: 2\n",
+				"Plan: 2 repositories to update, 3 changes\nRepositories checked: 2\n",
 		},
 		{
 			name: "two unchanged repositories report no changes and the number checked",

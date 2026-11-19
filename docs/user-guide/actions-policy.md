@@ -14,7 +14,7 @@ Repository: example/project-a
     Side effect: GitHub discards the current selected_actions (github_owned_allowed: true, verified_allowed: true, patterns_allowed: ["example/*"])
 ```
 
-あとで同じ値に戻す可能性があるなら、承認の前に括弧の中の値を控えておきます。Actions が無効のリポジトリでは今の値を読み取れないため、括弧の中は値の代わりに `current values are unavailable` となり、値が消える可能性だけが示されます。
+あとで同じ値に戻す可能性があるなら、承認の前に括弧の中の値を控えておきます。Actions が無効のリポジトリでは今の値を読み取れないため、括弧の中は値の代わりに `reco cannot read them while GitHub Actions is disabled` となり、値が消える可能性だけが示されます。
 
 ## 消えた `selected_actions` を戻すとき
 

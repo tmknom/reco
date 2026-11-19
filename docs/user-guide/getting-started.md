@@ -30,7 +30,6 @@ General:
 Actions permissions:
   enabled: true
   allowed_actions: all
-  selected_actions: unavailable (allowed_actions is not "selected")
 Workflow permissions:
   default_workflow_permissions: read
   can_approve_pull_request_reviews: false
@@ -60,7 +59,7 @@ Configuration: ./reco.yaml
 Repository: example/project-a
   general.delete_branch_on_merge: false -> true
 
-Plan: 1 repository to update, 1 known change, 0 not-comparable settings
+Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
@@ -77,7 +76,7 @@ Configuration: ./reco.yaml
 Repository: example/project-a
   general.delete_branch_on_merge: false -> true
 
-Plan: 1 repository to update, 1 known change, 0 not-comparable settings
+Plan: 1 repository to update, 1 change
 Repositories checked: 1
 
 Apply these changes? [y/N]: # ⇐ y と入力する

@@ -19,7 +19,7 @@ func TestPlannedChangeText(t *testing.T) {
 	policy := setting.AllowedActionsPolicyValue
 	disabled := github.Unavailable[setting.Value](github.UnavailableActionsDisabled)
 	notSelected := github.Unavailable[setting.Value](github.UnavailableNotSelected)
-	const possibleLoss = "    Side effect: GitHub may discard selected_actions if allowed_actions was \"selected\" before GitHub Actions was disabled (current values are unavailable)\n"
+	const possibleLoss = "    Side effect: GitHub may discard selected_actions if allowed_actions was \"selected\" before GitHub Actions was disabled (reco cannot read them while GitHub Actions is disabled)\n"
 	cases := []struct {
 		name string
 		s    changeplan.SettingPlan
@@ -45,24 +45,32 @@ func TestPlannedChangeText(t *testing.T) {
 				"    -> github_owned_allowed: true, verified_allowed: true, patterns_allowed: [\"example/*\"]\n",
 		},
 		{
-			name: "not-comparable setting shows Current and Desired instead of current -> desired",
+			name: "not-comparable criteria group under a policy other than selected shows not in use as the repository state on separate lines",
 			s: changeplan.SettingPlan{
 				Key: setting.SelectedActions, Observed: notSelected, Desired: setting.SelectedActionsCriteriaValue(criteria),
 				Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
 			},
-			want: "  actions.permissions.selected_actions\n" +
-				"    Current: unavailable (allowed_actions is not \"selected\")\n" +
-				"    Desired: github_owned_allowed: true, verified_allowed: true, patterns_allowed: [\"example/*\"]\n",
+			want: "  actions.permissions.selected_actions:\n" +
+				"    (not in use)\n" +
+				"    -> github_owned_allowed: true, verified_allowed: true, patterns_allowed: [\"example/*\"]\n",
 		},
 		{
-			name: "not-comparable policy that enables actions marks the desired value",
+			name: "not-comparable criteria group on disabled actions shows actions disabled as the repository state",
+			s: changeplan.SettingPlan{
+				Key: setting.SelectedActions, Observed: disabled, Desired: setting.SelectedActionsCriteriaValue(criteria),
+				Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
+			},
+			want: "  actions.permissions.selected_actions:\n" +
+				"    (GitHub Actions disabled)\n" +
+				"    -> github_owned_allowed: true, verified_allowed: true, patterns_allowed: [\"example/*\"]\n",
+		},
+		{
+			name: "not-comparable policy that enables actions shows the repository state on one line and marks the desired value",
 			s: changeplan.SettingPlan{
 				Key: setting.AllowedActions, Observed: disabled, Desired: policy(setting.AllowedActionsSelected),
 				Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
 			},
-			want: "  actions.permissions.allowed_actions\n" +
-				"    Current: unavailable (GitHub Actions is disabled)\n" +
-				"    Desired: selected (enables GitHub Actions)\n",
+			want: "  actions.permissions.allowed_actions: (GitHub Actions disabled) -> selected (enables GitHub Actions)\n",
 		},
 		{
 			name: "known change shows the side effect with the observed criteria under it",
@@ -81,9 +89,7 @@ func TestPlannedChangeText(t *testing.T) {
 				Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
 				SideEffects: []changeplan.SideEffect{{Key: setting.SelectedActions, Observed: disabled}},
 			},
-			want: "  actions.permissions.allowed_actions\n" +
-				"    Current: unavailable (GitHub Actions is disabled)\n" +
-				"    Desired: local_only (enables GitHub Actions)\n" +
+			want: "  actions.permissions.allowed_actions: (GitHub Actions disabled) -> local_only (enables GitHub Actions)\n" +
 				possibleLoss,
 		},
 		{
@@ -93,7 +99,7 @@ func TestPlannedChangeText(t *testing.T) {
 				Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 			},
 			want: "  actions.permissions.enabled: false -> true\n" +
-				"    Previous settings: GitHub Actions resumes with allowed_actions, selected_actions, and sha_pinning_required kept from before it was disabled (current values are unavailable)\n",
+				"    Previous settings: GitHub Actions resumes with allowed_actions, selected_actions, and sha_pinning_required kept from before it was disabled (reco cannot read them while GitHub Actions is disabled)\n",
 		},
 		{
 			name: "disabling actions shows no previous settings",
@@ -132,4 +138,13 @@ func TestPlannedChangeText_SideEffectOnOtherSettingPanics(t *testing.T) {
 		Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 		SideEffects: []changeplan.SideEffect{{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true))}},
 	})
+}
+
+func TestRepositoryStateText_UndefinedReasonPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("repositoryStateText() did not panic for an undefined unavailable reason")
+		}
+	}()
+	_ = repositoryStateText(0)
 }
