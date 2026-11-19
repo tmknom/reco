@@ -10,7 +10,7 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// PlannedChangeText は、変更予定を CLI 仕様の現在 -> 期待値の形で返し、副作用をその下に添える。
+// PlannedChangeText は、変更予定を CLI 仕様の現在 -> 期待値の形で返し、適用不能の理由と副作用をその下に添える。
 // 末尾に改行を含む複数行になりうる。一致は空文字列を返す。
 func PlannedChangeText(s changeplan.SettingPlan) string {
 	var b strings.Builder
@@ -34,6 +34,9 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 	} else {
 		fmt.Fprintf(&b, "  %s: %s -> %s\n", s.Key, current, desired)
 	}
+	if s.Applicability == changeplan.NotApplicable {
+		fmt.Fprintf(&b, "    Applicability: not applicable (%s)\n", notApplicableReasonText(s.NotApplicableReason))
+	}
 	if s.ReenablesActions() {
 		b.WriteString("    Previous settings: GitHub Actions resumes with allowed_actions, selected_actions, and sha_pinning_required kept from before it was disabled (" + unreadWhileDisabled + ")\n")
 	}
@@ -55,6 +58,16 @@ func repositoryStateText(reason github.UnavailableReason) string {
 		return "(not in use)"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined unavailable reason %d", int(reason)))
+}
+
+// notApplicableReasonText は、適用不能の理由を、利用者が対処を選べる CLI 仕様の文言で返す。
+// 未定義の理由は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+func notApplicableReasonText(reason changeplan.NotApplicableReason) string {
+	switch reason {
+	case changeplan.NotApplicableActionsRemainDisabled:
+		return "GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it"
+	}
+	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(reason)))
 }
 
 // sideEffectText は、副作用を CLI 仕様の Side effect: の文言で返す。

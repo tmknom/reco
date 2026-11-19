@@ -59,8 +59,7 @@ func (d DesiredState) Value(key setting.Key) (value setting.Value, ok bool) {
 	case setting.CanApprovePullRequestReviews:
 		return optionalBoolValue(d.WorkflowPermissions.CanApprovePullRequestReviews)
 	case setting.SHAPinningRequired:
-		// 宣言を受け付けない設定。(Value{}, false) は期待値の省略と読めるため、返さずに止める。
-		panic("configuration: " + string(key) + " cannot be declared")
+		return optionalBoolValue(d.ActionsPermissions.SHAPinningRequired)
 	}
 	panic(fmt.Sprintf("unknown setting %q", key))
 }
@@ -84,7 +83,8 @@ type ActionsPermissions struct {
 	Enabled        *bool
 	AllowedActions *setting.AllowedActionsPolicy
 	// SelectedActions は設定グループの期待値で、3項目を一体として持つ。
-	SelectedActions *setting.SelectedActionsCriteria
+	SelectedActions    *setting.SelectedActionsCriteria
+	SHAPinningRequired *bool
 }
 
 // WorkflowPermissions はワークフロー権限の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。

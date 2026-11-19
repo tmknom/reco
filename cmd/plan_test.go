@@ -129,6 +129,38 @@ func TestPlan_ActionsPermissions(t *testing.T) {
 	}
 }
 
+// 適用不能な変更予定は、変更計画を stdout に出したうえで、終了コード 1 と 1 件のエラーで知らせる。
+//
+//trace:checks FR-006
+//trace:checks FR-007
+func TestPlan_NotApplicable(t *testing.T) {
+	workDir := t.TempDir()
+	writeConfig(t, workDir, "reco.yaml", "repositories:\n  - name: owner/repo\n    actions:\n      permissions:\n        sha_pinning_required: true\n")
+	server, opts := newGitHubServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+		"GET /repos/owner/repo":                     {Status: http.StatusOK, Body: repositoryBody},
+		"GET /repos/owner/repo/actions/permissions": {Status: http.StatusOK, Body: githubtest.ActionsDisabledBody},
+	}))
+
+	code, stdout, stderr := runExecute(t, Environment{WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue})}, opts, "plan")
+	if code != 1 {
+		t.Errorf("got exit code %d, want 1 (stderr %q)", code, stderr)
+	}
+	if !strings.Contains(stdout, "Repository: owner/repo\n") {
+		t.Errorf("got stdout %q, want the change plan", stdout)
+	}
+	if records := errorRecords(t, stderr); len(records) != 1 || records[0]["msg"] != "command failed" {
+		t.Errorf("got ERROR records %v, want one command failed", records)
+	}
+	if strings.Contains(stdout, `"level"`) {
+		t.Errorf("got stdout %q, want no log records", stdout)
+	}
+	for _, r := range server.Requests() {
+		if r.Method != http.MethodGet {
+			t.Errorf("got request %+v, want only GET", r)
+		}
+	}
+}
+
 func TestPlan_InvalidInput(t *testing.T) {
 	cases := []struct {
 		name string

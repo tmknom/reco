@@ -148,6 +148,16 @@ func TestText_Repositories(t *testing.T) {
 		Key: setting.AllowedActions, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled),
 		Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
 	}
+	notApplicable := changeplan.SettingPlan{
+		Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
+		Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableActionsRemainDisabled,
+	}
+	workflowMismatch := changeplan.SettingPlan{
+		Key: setting.DefaultWorkflowPermissions, Observed: github.Observed(setting.PermissionLevelValue(setting.PermissionWrite)),
+		Desired: setting.PermissionLevelValue(setting.PermissionRead), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+	}
+	const notApplicableText = "  actions.permissions.sha_pinning_required: (GitHub Actions disabled) -> true\n" +
+		"    Applicability: not applicable (GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it)\n"
 	cases := []struct {
 		name         string
 		repositories []changeplan.RepositoryPlan
@@ -174,6 +184,46 @@ func TestText_Repositories(t *testing.T) {
 				"  actions.permissions.allowed_actions: (GitHub Actions disabled) -> all (enables GitHub Actions)\n\n" +
 				"Repository: owner/alpha\n  general.allow_auto_merge: false -> true\n\n" +
 				"Plan: 2 repositories to update, 3 changes\nRepositories checked: 2\n",
+		},
+		{
+			name: "repository with only a not-applicable change is shown and counted, followed by plan cannot be applied",
+			repositories: []changeplan.RepositoryPlan{
+				{Target: zeta, RepositoryID: 1, Settings: []changeplan.SettingPlan{notApplicable}},
+			},
+			want: "Configuration: ./reco.yaml\n\n" +
+				"Repository: owner/zeta\n" + notApplicableText + "\n" +
+				"Plan: 1 repository to update, 1 change\nRepositories checked: 1\n\nPlan cannot be applied.\n",
+		},
+		{
+			name: "applicable and not-applicable changes in one repository are both counted and plan cannot be applied is shown once",
+			repositories: []changeplan.RepositoryPlan{
+				{Target: zeta, RepositoryID: 1, Settings: []changeplan.SettingPlan{notApplicable, workflowMismatch}},
+			},
+			want: "Configuration: ./reco.yaml\n\n" +
+				"Repository: owner/zeta\n" + notApplicableText + "  actions.workflow.default_workflow_permissions: write -> read\n\n" +
+				"Plan: 1 repository to update, 2 changes\nRepositories checked: 1\n\nPlan cannot be applied.\n",
+		},
+		{
+			name: "not-applicable changes in two repositories are both shown and plan cannot be applied is shown once",
+			repositories: []changeplan.RepositoryPlan{
+				{Target: zeta, RepositoryID: 1, Settings: []changeplan.SettingPlan{notApplicable}},
+				{Target: alpha, RepositoryID: 2, Settings: []changeplan.SettingPlan{notApplicable}},
+			},
+			want: "Configuration: ./reco.yaml\n\n" +
+				"Repository: owner/zeta\n" + notApplicableText + "\n" +
+				"Repository: owner/alpha\n" + notApplicableText + "\n" +
+				"Plan: 2 repositories to update, 2 changes\nRepositories checked: 2\n\nPlan cannot be applied.\n",
+		},
+		{
+			name: "not-applicable change in the first repository is followed by plan cannot be applied even when the next has only applicable changes",
+			repositories: []changeplan.RepositoryPlan{
+				{Target: zeta, RepositoryID: 1, Settings: []changeplan.SettingPlan{notApplicable}},
+				{Target: alpha, RepositoryID: 2, Settings: []changeplan.SettingPlan{mismatch}},
+			},
+			want: "Configuration: ./reco.yaml\n\n" +
+				"Repository: owner/zeta\n" + notApplicableText + "\n" +
+				"Repository: owner/alpha\n  general.allow_auto_merge: false -> true\n\n" +
+				"Plan: 2 repositories to update, 2 changes\nRepositories checked: 2\n\nPlan cannot be applied.\n",
 		},
 		{
 			name: "two unchanged repositories report no changes and the number checked",

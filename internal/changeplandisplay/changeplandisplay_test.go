@@ -110,6 +110,23 @@ func TestPlannedChangeText(t *testing.T) {
 			want: "  actions.permissions.enabled: true -> false\n",
 		},
 		{
+			name: "not-applicable change shows the applicability with the reason under it",
+			s: changeplan.SettingPlan{
+				Key: setting.SHAPinningRequired, Observed: disabled, Desired: setting.BoolValue(true),
+				Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableActionsRemainDisabled,
+			},
+			want: "  actions.permissions.sha_pinning_required: (GitHub Actions disabled) -> true\n" +
+				"    Applicability: not applicable (GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it)\n",
+		},
+		{
+			name: "applicable not-comparable sha_pinning_required shows no applicability",
+			s: changeplan.SettingPlan{
+				Key: setting.SHAPinningRequired, Observed: disabled, Desired: setting.BoolValue(true),
+				Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
+			},
+			want: "  actions.permissions.sha_pinning_required: (GitHub Actions disabled) -> true\n",
+		},
+		{
 			name: "match is empty",
 			s: changeplan.SettingPlan{
 				Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true),
@@ -138,6 +155,15 @@ func TestPlannedChangeText_SideEffectOnOtherSettingPanics(t *testing.T) {
 		Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 		SideEffects: []changeplan.SideEffect{{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true))}},
 	})
+}
+
+func TestNotApplicableReasonText_UndefinedReasonPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("notApplicableReasonText() did not panic for an undefined not-applicable reason")
+		}
+	}()
+	_ = notApplicableReasonText(0)
 }
 
 func TestRepositoryStateText_UndefinedReasonPanics(t *testing.T) {

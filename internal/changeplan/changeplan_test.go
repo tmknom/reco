@@ -67,6 +67,32 @@ func TestRepositoryPlan_HasPlannedChanges(t *testing.T) {
 	}
 }
 
+//trace:checks FR-006
+//trace:checks FR-007
+func TestRepositoryPlan_NotApplicableChanges(t *testing.T) {
+	notApplicable := SettingPlan{
+		Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
+		Result: NotComparable, Applicability: NotApplicable, NotApplicableReason: NotApplicableActionsRemainDisabled,
+	}
+	applicable := SettingPlan{Key: setting.AllowAutoMerge, Result: Mismatch, Applicability: Applicable}
+	match := SettingPlan{Key: setting.DeleteBranchOnMerge, Result: Match}
+	cases := []struct {
+		name     string
+		settings []SettingPlan
+		want     []SettingPlan
+	}{
+		{name: "matches and applicable changes have no not-applicable change", settings: []SettingPlan{match, applicable}, want: nil},
+		{name: "only the not-applicable change is returned among the other plans", settings: []SettingPlan{applicable, notApplicable, match}, want: []SettingPlan{notApplicable}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := (RepositoryPlan{Settings: tc.settings}).NotApplicableChanges(); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("NotApplicableChanges() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-007
 func TestSettingPlan_ReenablesActions(t *testing.T) {
 	enabled := func(observed, desired bool, result ReconciliationResult) SettingPlan {
@@ -459,6 +485,54 @@ func TestGenerate_ActionsPermissions(t *testing.T) {
 		}
 		if s := got.Repositories[0].Settings; len(s) != 1 || s[0].Key != setting.AllowedActions || s[0].Result != NotComparable {
 			t.Errorf("Settings = %+v, want only the not-comparable %s", s, setting.AllowedActions)
+		}
+	})
+
+	t.Run("sha_pinning_required alone on disabled actions is judged not applicable with the reason", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo":                     githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/actions/permissions": githubtest.OK(githubtest.ActionsDisabledBody),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+		shaFile := configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(strings.Replace(actionsPermissionsSource, "allowed_actions: all", "sha_pinning_required: true", 1))}}, Name: "reco.yaml", Path: "./reco.yaml"}
+
+		got, err := Generate(context.Background(), client, shaFile, nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		want := []SettingPlan{{
+			Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
+			Result: NotComparable, Applicability: NotApplicable, NotApplicableReason: NotApplicableActionsRemainDisabled,
+		}}
+		if len(got.Repositories) != 1 {
+			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
+		}
+		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
+			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
+		}
+	})
+
+	t.Run("sha_pinning_required with enabled true on disabled actions is judged applicable with the enabling change", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo":                     githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/actions/permissions": githubtest.OK(githubtest.ActionsDisabledBody),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+		shaFile := configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(strings.Replace(actionsPermissionsSource, "allowed_actions: all", "enabled: true\n        sha_pinning_required: true", 1))}}, Name: "reco.yaml", Path: "./reco.yaml"}
+
+		got, err := Generate(context.Background(), client, shaFile, nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		want := []SettingPlan{
+			{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
+			{Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true), Result: NotComparable, Applicability: Applicable},
+		}
+		if len(got.Repositories) != 1 {
+			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
+		}
+		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
+			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
 		}
 	})
 

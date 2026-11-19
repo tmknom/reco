@@ -198,7 +198,30 @@ Plan: 1 repository to update, 2 changes
 Repositories checked: 1
 ```
 
-安全な変更に必要な条件を確認できない場合は、照合結果に加えて `Applicability: not applicable (<理由>)` を示し、集計の後に `Plan cannot be applied.` と表示します。
+安全な変更に必要な条件を確認できない変更予定には、変更予定の行のすぐ下に `Applicability: not applicable (<理由>)` を添えます。理由は、何が成り立っていないかと、適用できるようにする宣言を示します。適用不能な変更予定が一つでもあれば、`Repositories checked:` の後に空行を挟んで `Plan cannot be applied.` を一度だけ表示します。集計は、適用不能な変更予定と、適用不能な変更予定だけを持つリポジトリも数えます。現在は、Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言した場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。
+
+```text
+Repository: example/project-a
+  actions.permissions.sha_pinning_required: (GitHub Actions disabled) -> true
+    Applicability: not applicable (GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it)
+
+Plan: 1 repository to update, 1 change
+Repositories checked: 1
+
+Plan cannot be applied.
+```
+
+同じリポジトリで `enabled: true` か `allowed_actions` を宣言していれば、`sha_pinning_required` の変更予定は比較不能でも適用可能で、`Applicability:` の行を添えません。
+
+```text
+Repository: example/project-a
+  actions.permissions.enabled: false -> true
+    Previous settings: GitHub Actions resumes with allowed_actions, selected_actions, and sha_pinning_required kept from before it was disabled (reco cannot read them while GitHub Actions is disabled)
+  actions.permissions.sha_pinning_required: (GitHub Actions disabled) -> true
+
+Plan: 1 repository to update, 2 changes
+Repositories checked: 1
+```
 
 宣言した変更に伴って GitHub が管理範囲外の設定を削除する場合は、変更予定に `Side effect:` として失われる設定と現在値を添えます。この変更は適用可能であり、利用者が承認すれば実行します。現在は、Actions 許可ポリシーを `selected` から `all` / `local_only` へ変え、既存の選択方式の Actions 許可条件が失われる場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。Actions が無効のリポジトリで `all` / `local_only` を宣言した場合は、無効にする前のポリシーが `selected` であれば同じく失われますが、無効の間は値もポリシーも取得できないため、失われる可能性があることと、値を示せない理由を示します。遷移先が `selected` の変更には添えません。3項目は宣言した値で上書きされ、管理範囲内の変更になるためです。`Side effect:` は、副作用を伴う変更予定の最後の行として示します。変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。
 
@@ -220,6 +243,8 @@ Repository: example/project-a
 ## 5. `apply`：承認と変更結果
 
 `apply` は、選択された全対象について、設定宣言の検証、必要な観測、照合と適用可能性の判断が完了してから承認へ進みます。これらの事前検証で問題が見つかった場合は、対象と理由を示し、承認や更新を開始していないことを報告します。すべて変更不要と確認できた場合は、承認を求めず、更新せずに正常終了します。
+
+`actions.permissions.sha_pinning_required` の適用可能な変更予定を含む変更計画は、`apply` ではまだ実行できません。事前検証の問題として、変更計画を表示せず、承認を求めず、更新を開始せずに、`example/project-a: updating actions.permissions.sha_pinning_required is not supported yet; no changes made` のように対象と設定を示してエラー終了します。`plan` では変更予定を確認できます。
 
 すべて変更不要の場合の表示例は次のとおりです。
 
@@ -330,7 +355,7 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 期待値と比べる設定が GitHub の取得条件により観測不能だったことによる確認失敗は、`not in effect` に、宣言した設定が効いていない理由を括弧で添えて示します。理由は、Actions が無効なら `GitHub Actions is disabled`、Actions 許可ポリシーが `selected` でなければ `allowed_actions is not "selected"` です。`allowed_actions` を宣言できるのは Actions を有効にする場合に限られ、`selected_actions` を宣言できるのは Actions 許可ポリシーを `selected` と宣言した場合に限られます（[YAML 設定仕様](configuration.md) 4章）。このため、この観測不能は、宣言した設定が効いていないことを意味します。値そのものは確認できていないため、`does not match` とは示しません。`not confirmed` とも示さないのは、reco が確認に失敗したと読ませず、利用者が確かめるべきリポジトリの状態を示すためです。
 
-変更対象外の設定は、管理設定と同じ形の名前で示します。設定宣言に書けない `sha_pinning_required` は `actions.permissions.sha_pinning_required` と示します。この名前は表示のためのもので、[YAML 設定仕様](configuration.md) にこのパスはありません。
+変更対象外の設定は、管理設定と同じ形の名前で示します。
 
 更新操作が成功したのに期待状態と一致しない場合、reco は原因を断定しません。設定に既知の原因の候補があれば、`Possible cause:` として可能性の形で添えます。`general.allow_auto_merge` では、GitHub Free の非公開リポジトリで自動マージを利用できず、GitHub が更新を反映しないまま成功を応答する場合があることを示します（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）。更新操作の成否が不明な場合は添えません。
 
@@ -562,6 +587,12 @@ Actions permissions:
 | 更新成功応答後の再観測失敗・期待状態との不一致・変更対象外の設定の予期しない変化 | `1` |
 
 複数のリポジトリを選択した `apply` は、すべてのリポジトリが変更完了または変更不要のときに限り `0` を返します。
+
+`plan` は、適用不能な変更予定があっても変更計画を最後まで stdout へ表示し、そのあとで適用不能な設定を対象ごとに示すエラーを stderr へ表示します。
+
+```text
+{"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-a: actions.permissions.sha_pinning_required is not applicable"}
+```
 
 `apply` の変更失敗時には、既に実行された操作の影響が GitHub 上に残る可能性があります。終了コード `1` だけから、変更が一切行われなかったとは判断できません。
 

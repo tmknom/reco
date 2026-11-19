@@ -2,6 +2,7 @@ package changeplan
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/tmknom/reco/internal/github"
@@ -314,5 +315,34 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			}
 		})
 	}
+
+	shaPinning := func(result ReconciliationResult, applicability Applicability) SettingPlan {
+		s := SettingPlan{Key: setting.SHAPinningRequired, Observed: disabled, Desired: setting.BoolValue(true), Result: result, Applicability: applicability}
+		if result == Match {
+			s.Observed = github.Observed(setting.BoolValue(true))
+		}
+		return s
+	}
+
+	t.Run("applicable sha_pinning_required change is an error naming it as not supported yet", func(t *testing.T) {
+		got, err := newRepositoryPlan(enabling, shaPinning(NotComparable, Applicable)).LogicalChanges()
+		if want := "owner/repo: updating actions.permissions.sha_pinning_required is not supported yet"; err == nil || err.Error() != want {
+			t.Errorf("LogicalChanges() = %+v, error = %v, want %q", got, err, want)
+		}
+	})
+
+	t.Run("not-applicable sha_pinning_required change is an error naming it as not applicable", func(t *testing.T) {
+		got, err := newRepositoryPlan(mismatch, shaPinning(NotComparable, NotApplicable)).LogicalChanges()
+		if want := "owner/repo: actions.permissions.sha_pinning_required cannot be applied"; err == nil || err.Error() != want {
+			t.Errorf("LogicalChanges() = %+v, error = %v, want %q", got, err, want)
+		}
+	})
+
+	t.Run("matched sha_pinning_required does not block the other changes", func(t *testing.T) {
+		got, err := newRepositoryPlan(shaPinning(Match, ApplicabilityNotJudged), mismatch).LogicalChanges()
+		if err != nil || len(got) != 1 || !slices.Equal(got[0].Keys(), []setting.Key{setting.AllowAutoMerge}) {
+			t.Errorf("LogicalChanges() = %+v, error = %v, want only the change of %s", got, err, setting.AllowAutoMerge)
+		}
+	})
 
 }

@@ -321,7 +321,10 @@ func unknownMismatch() changeplan.SettingPlan {
 //trace:checks FR-009
 func TestExecutableChanges(t *testing.T) {
 	match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match}
-	notApplicable := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable}
+	notApplicable := changeplan.SettingPlan{
+		Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
+		Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableActionsRemainDisabled,
+	}
 	// 宣言の並びを名前順と逆にし、名前順に並べ替える実装を失敗させる
 	plans := func(t *testing.T, settings ...[]changeplan.SettingPlan) changeplan.Plan {
 		t.Helper()
@@ -513,7 +516,10 @@ func TestApplyPlan(t *testing.T) {
 		baseURL, server := newSequenceServer(t)
 		var out bytes.Buffer
 		calls := 0
-		notApplicable := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable}
+		notApplicable := changeplan.SettingPlan{
+			Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
+			Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableActionsRemainDisabled,
+		}
 
 		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, notApplicable))
 

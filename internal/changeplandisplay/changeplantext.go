@@ -16,6 +16,7 @@ func Text(configPath string, p changeplan.Plan) string {
 	}
 	var sections strings.Builder
 	repositories, changes := 0, 0
+	notApplicable := false
 	for _, r := range p.Repositories {
 		if !r.HasPlannedChanges() {
 			continue
@@ -26,6 +27,7 @@ func Text(configPath string, p changeplan.Plan) string {
 		for _, s := range r.Settings {
 			sections.WriteString(PlannedChangeText(s))
 		}
+		notApplicable = notApplicable || len(r.NotApplicableChanges()) > 0
 	}
 	if repositories == 0 {
 		return fmt.Sprintf("No changes.\nRepositories checked: %d\n", len(p.Repositories))
@@ -36,6 +38,9 @@ func Text(configPath string, p changeplan.Plan) string {
 		pluralize(repositories, "repository", "repositories"),
 		pluralize(changes, "change", "changes"),
 		len(p.Repositories))
+	if notApplicable {
+		b.WriteString("\nPlan cannot be applied.\n")
+	}
 	return b.String()
 }
 

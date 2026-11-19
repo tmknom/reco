@@ -77,7 +77,7 @@
 | `allowed_actions` | `all` / `local_only` / `selected` | 任意 | 実行を許可する Actions・再利用可能なワークフローの範囲 |
 | `sha_pinning_required` | boolean | 任意 | Actions を完全な長さのコミット SHA に固定することを必須にするか |
 
-リポジトリ設定のドキュメントは、Actions の無効化と、実行を許可する Actions・再利用可能なワークフローの範囲を、設定画面の「Actions」の「General」ページにある「Actions permissions」の欄で選ぶと記載しています。選択肢のうち、ドキュメントが名前を挙げているのは、4章の条件で許可するものを選ぶ「Allow *OWNER*, and select non-*OWNER*, actions and reusable workflows」だけです。
+リポジトリ設定のドキュメントは、Actions の無効化と、実行を許可する Actions・再利用可能なワークフローの範囲を、設定画面の「Actions」の「General」ページにある「Actions permissions」の欄で選ぶと記載しています。選択肢のうち、ドキュメントが名前を挙げているのは、4章の条件で許可するものを選ぶ「Allow *OWNER*, and select non-*OWNER*, actions and reusable workflows」だけです。`sha_pinning_required` に当たるのは、同じ欄の「Require actions to be pinned to a full-length commit SHA」で、有効にするとすべての Actions を完全な長さのコミット SHA に固定しないと使えなくなり、再利用可能なワークフローはタグでも参照できると記載しています。
 
 > [!NOTE]
 > 次は、reco の開発者が実際の動作で確認した事項です。
