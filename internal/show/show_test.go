@@ -42,7 +42,7 @@ func TestWriteObservationResult(t *testing.T) {
 		want     string
 	}{
 		{
-			name: "all areas are shown in the CLI spec order",
+			name: "all areas are shown in the CLI spec order and the all policy omits the criteria",
 			observed: github.ObservationResult{
 				RepositoryID:        1,
 				General:             github.General{DeleteBranchOnMerge: true, AllowAutoMerge: false},
@@ -50,7 +50,7 @@ func TestWriteObservationResult(t *testing.T) {
 				WorkflowPermissions: readOnly,
 			},
 			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: true\n  allow_auto_merge: false\n" +
-				"Actions permissions:\n  enabled: true\n  allowed_actions: all\n  selected_actions: unavailable (allowed_actions is not \"selected\")\n" +
+				"Actions permissions:\n  enabled: true\n  allowed_actions: all\n" +
 				"Workflow permissions:\n  default_workflow_permissions: read\n  can_approve_pull_request_reviews: false\n",
 		},
 		{
@@ -62,7 +62,7 @@ func TestWriteObservationResult(t *testing.T) {
 				WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: true},
 			},
 			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: false\n  allow_auto_merge: true\n" +
-				"Actions permissions:\n  enabled: true\n  allowed_actions: all\n  selected_actions: unavailable (allowed_actions is not \"selected\")\n" +
+				"Actions permissions:\n  enabled: true\n  allowed_actions: all\n" +
 				"Workflow permissions:\n  default_workflow_permissions: write\n  can_approve_pull_request_reviews: true\n",
 		},
 		{
@@ -87,7 +87,7 @@ func TestWriteObservationResult(t *testing.T) {
 				"Workflow permissions:\n  default_workflow_permissions: read\n  can_approve_pull_request_reviews: false\n",
 		},
 		{
-			name: "disabled actions shows the policy and criteria as unavailable",
+			name: "disabled actions shows only enabled without the policy and criteria",
 			observed: github.ObservationResult{
 				RepositoryID: 1,
 				ActionsPermissions: &github.ActionsPermissions{
@@ -98,7 +98,7 @@ func TestWriteObservationResult(t *testing.T) {
 				WorkflowPermissions: readOnly,
 			},
 			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: false\n  allow_auto_merge: false\n" +
-				"Actions permissions:\n  enabled: false\n  allowed_actions: unavailable (GitHub Actions is disabled)\n  selected_actions: unavailable (GitHub Actions is disabled)\n" +
+				"Actions permissions:\n  enabled: false\n" +
 				"Workflow permissions:\n  default_workflow_permissions: read\n  can_approve_pull_request_reviews: false\n",
 		},
 	}
@@ -163,7 +163,7 @@ func TestRun(t *testing.T) {
 		name       string
 		failedPath string
 	}{
-		{name: "actions permissions failure is returned instead of showing unavailable", failedPath: actionsPermissionsPath},
+		{name: "actions permissions failure is returned as an error instead of omitting the settings", failedPath: actionsPermissionsPath},
 		{name: "workflow permissions failure is returned without writing to Out", failedPath: workflowPermissionsPath},
 	}
 	for _, tc := range failures {

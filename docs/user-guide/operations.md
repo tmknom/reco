@@ -30,7 +30,7 @@ Configuration: ./reco.yaml
 Repository: example/project-d
   general.delete_branch_on_merge: false -> true
 
-Plan: 1 repository to update, 1 known change, 0 not-comparable settings
+Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 

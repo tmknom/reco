@@ -31,6 +31,33 @@ func started(update github.UpdateOutcome) operationRecord {
 	return operationRecord{precondition: preconditionHolds, update: update}
 }
 
+//trace:checks QR-002
+func TestUnavailableReasonText(t *testing.T) {
+	cases := []struct {
+		reason github.UnavailableReason
+		want   string
+	}{
+		{reason: github.UnavailableActionsDisabled, want: "GitHub Actions is disabled"},
+		{reason: github.UnavailableNotSelected, want: `allowed_actions is not "selected"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.want, func(t *testing.T) {
+			if got := unavailableReasonText(tc.reason); got != tc.want {
+				t.Errorf("unavailableReasonText() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("undefined reason panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("unavailableReasonText() did not panic for an undefined reason")
+			}
+		}()
+		_ = unavailableReasonText(0)
+	})
+}
+
 //trace:checks FR-013
 //trace:checks INV-005
 func TestChangesError(t *testing.T) {
@@ -221,12 +248,12 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 				rollbackNote,
 		},
 		{
-			name: "success with an unavailable desired value shows the unavailable reason",
+			name: "success with an unavailable desired value shows that the declaration is not in effect with the reason",
 			record: changeRecord{
 				change: allowedActionsChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}},
 				confirmation: desiredStateUnavailable, desiredUnavailableReason: github.UnavailableActionsDisabled,
 			},
-			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not confirmed (GitHub Actions is disabled)\n\n" +
+			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not in effect (GitHub Actions is disabled)\n\n" +
 				rollbackNote,
 		},
 		{

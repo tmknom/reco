@@ -15,14 +15,13 @@ func Text(configPath string, p changeplan.Plan) string {
 		panic("changeplandisplay: change plan has no repository plan")
 	}
 	var sections strings.Builder
-	repositories, changes, notComparables := 0, 0, 0
+	repositories, changes := 0, 0
 	for _, r := range p.Repositories {
 		if !r.HasPlannedChanges() {
 			continue
 		}
 		repositories++
-		changes += r.Count(changeplan.Mismatch)
-		notComparables += r.Count(changeplan.NotComparable)
+		changes += r.Count(changeplan.Mismatch) + r.Count(changeplan.NotComparable)
 		fmt.Fprintf(&sections, "\nRepository: %s\n", r.Target)
 		for _, s := range r.Settings {
 			sections.WriteString(PlannedChangeText(s))
@@ -33,10 +32,9 @@ func Text(configPath string, p changeplan.Plan) string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "Configuration: %s\n%s", configPath, sections.String())
-	fmt.Fprintf(&b, "\nPlan: %s to update, %s, %s\nRepositories checked: %d\n",
+	fmt.Fprintf(&b, "\nPlan: %s to update, %s\nRepositories checked: %d\n",
 		pluralize(repositories, "repository", "repositories"),
-		pluralize(changes, "known change", "known changes"),
-		pluralize(notComparables, "not-comparable setting", "not-comparable settings"),
+		pluralize(changes, "change", "changes"),
 		len(p.Repositories))
 	return b.String()
 }
