@@ -154,6 +154,17 @@ Plan: 1 repository to update, 1 known change, 0 not-comparable settings
 Repositories checked: 1
 ```
 
+`enabled` を `false` から `true` に変える変更予定には、`Previous settings:` の行を添えます。GitHub は無効にする前の `allowed_actions`、`sha_pinning_required`、Selected actions の値を残しており、有効に戻すとそれらの値で Actions を実行できるようになるためです（GitHub Actions 権限 API 仕様 3.2・4章）。無効のあいだは値を取得できないため、値は示さず、残っていた値で再開することだけを示します。値が失われるわけではないため、`Side effect:` とは別の行で示します。再開するときのポリシーを利用者が決めるには、`allowed_actions` を宣言します（[YAML 設定仕様](configuration.md) 4章）。`Previous settings:` は変更予定の最後の行として示し、`apply` では承認プロンプトの前に表示します。
+
+```text
+Repository: example/project-a
+  actions.permissions.enabled: false -> true
+    Previous settings: GitHub Actions resumes with allowed_actions, selected_actions, and sha_pinning_required kept from before it was disabled (current values are unavailable)
+
+Plan: 1 repository to update, 1 known change, 0 not-comparable settings
+Repositories checked: 1
+```
+
 比較不能な設定予定は、現在値を推測せずに示します。Actions が無効のリポジトリでは `allowed_actions` の現在値を取得できませんが、宣言したポリシーで Actions を有効にする変更として適用できます（[YAML 設定仕様](configuration.md) 4章）。
 
 ```text
@@ -202,8 +213,6 @@ Repository: example/project-a
 ## 5. `apply`：承認と変更結果
 
 `apply` は、選択された全対象について、設定宣言の検証、必要な観測、照合と適用可能性の判断が完了してから承認へ進みます。これらの事前検証で問題が見つかった場合は、対象と理由を示し、承認や更新を開始していないことを報告します。すべて変更不要と確認できた場合は、承認を求めず、更新せずに正常終了します。
-
-`actions.permissions.enabled` の変更予定を含む変更計画は、`apply` ではまだ実行できません。事前検証の問題として、変更計画を表示せず、承認を求めず、更新を開始せずに、`example/project-a: updating actions.permissions.enabled is not supported yet; no changes made` のように対象と設定を示してエラー終了します。`plan` では変更予定を確認できます。
 
 すべて変更不要の場合の表示例は次のとおりです。
 

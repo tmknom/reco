@@ -26,7 +26,7 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.O
 			continue
 		}
 		compared = append(compared, endpoint)
-		changes = append(changes, outsideChangesAt(endpoint, change.Keys(), b, after)...)
+		changes = append(changes, outsideChangesAt(endpoint, change.SettingsToChange(), b, after)...)
 	}
 	return changes
 }

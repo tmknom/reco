@@ -135,7 +135,7 @@ Actions が有効のときに `allowed_actions` または `sha_pinning_required`
 
 Reconciliation は管理範囲内の期待状態と観測結果を比較し、一致（Match）、不一致（Mismatch）、比較不能（Not Comparable）を返します。比較可能な集合値は設定の意味に沿って比較し、例えば許可パターンは要素の順序だけで差分を作りません。Change Execution が変更前提、更新後の期待状態、変更対象外の設定を比べるときも、同じ判定を使います（[ドメインモデル](domain.md) の設定の値）。未観測値を既定値で補わず、観測操作の失敗を比較不能として処理しません。比較不能にするのは、管理設定の観測結果が取得条件による観測不能のときだけで、その理由をそのまま管理設定の計画に持たせます。
 
-Change Planning は照合とは別に適用可能性（Applicability）を判断します。不一致でも適用不能な場合があり、比較不能でも必要な条件を確認できれば適用可能な場合があります。照合結果だけから適用可否を導出せず、変更予定ごとの計画時の観測結果と期待値から、API の前提条件と未管理設定への影響を考慮して判断します。5.4節の遷移表には適用不能になる条件がないため、そこに挙げた遷移の変更予定は、比較不能を含めて適用可能です。
+Change Planning は照合とは別に適用可能性（Applicability）を判断します。不一致でも適用不能な場合があり、比較不能でも必要な条件を確認できれば適用可能な場合があります。照合結果だけから適用可否を導出せず、変更予定ごとの計画時の観測結果と期待値から、API の前提条件と未管理設定への影響を考慮して判断します。5.4節の遷移表（Actions 許可ポリシーと Actions の有効状態）には適用不能になる条件がないため、そこに挙げた遷移の変更予定は、比較不能を含めて適用可能です。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -255,6 +255,7 @@ API へ送信するフィールドは、設定宣言の管理範囲とは異な�
 | 更新の対象 | 更新方式で守ること |
 |---|---|
 | General | 宣言された変更対象だけを送り、省略したフィールドの保持に依拠して部分更新する |
+| Actions の有効状態 | `enabled` だけを送り、省略した `allowed_actions` と `sha_pinning_required` の保持に依拠して更新する |
 | Actions 許可ポリシー | 必須の `enabled` には `true` を送り、`sha_pinning_required` など未管理値を変えないことを確認できる方式で更新する |
 | 選択方式の Actions 許可条件 | 3項目を一体として扱い、Actions 許可ポリシーとの依存関係を考慮する |
 | Workflow permissions | 管理する値だけを送り、省略したもう一方のフィールドの保持に依拠して部分更新する |
@@ -265,7 +266,9 @@ API パラメータが任意であることは、省略した値の保持を保�
 
 General では、`PATCH /repos/{owner}/{repo}` で省略したフィールドが保持されることを実際の動作で確認しています（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）。これが、宣言された変更対象だけを送る方式の根拠です。更新後に再取得して更新直前の値と比べるのは、reco が観測する General のうち、その論理的な設定変更が変えない設定です（`delete_branch_on_merge` を変える論理的な設定変更では `allow_auto_merge`）。名前、説明、公開範囲など、reco が観測しないフィールドは再確認せず、保持の確認結果を根拠に保全されるとみなします。
 
-Actions 許可ポリシーでは、`PUT /repos/{owner}/{repo}/actions/permissions` で省略した `sha_pinning_required` が保持されることを実際の動作で確認しています（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 3.2）。必須の `enabled` には `true` を送ります。`allowed_actions` の宣言は Actions が有効であることを期待状態に含むためです（[YAML 設定仕様](../spec/configuration.md) 4章）。`sha_pinning_required` は送りません。更新後は `sha_pinning_required` を再取得し、更新直前の値と比べます。Actions が無効のときは `sha_pinning_required` の応答が保存された値を示さないため（GitHub Actions 権限 API 仕様 3.1）、更新直前の値と比べられません。この場合は、無効の状態から有効化と同時にポリシーを変えても `sha_pinning_required` が保持されるという確認結果（GitHub Actions 権限 API 仕様 3.2）を根拠に、保全されるとみなします。更新後に Actions が無効で `sha_pinning_required` を再取得できない場合は、この根拠に当たりません。期待値の Actions 許可ポリシーも同じ取得条件で観測不能になるため、期待状態の確認失敗として完了にしません。
+Actions の有効状態では、`PUT /repos/{owner}/{repo}/actions/permissions` に `enabled` だけを送ります。省略した `allowed_actions` と `sha_pinning_required` が保持され、選択方式の Actions 許可条件も変わらないことを、無効にする更新と有効に戻す更新のどちらでも、公開・非公開のリポジトリで実際の動作により確認しています（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 3.2・4章）。これが、`enabled` だけを送る方式の根拠です。無効にする更新では、更新後に Actions 許可ポリシーと `sha_pinning_required` が取得条件により観測不能になり（GitHub Actions 権限 API 仕様 3.1）、更新直前の値と比べられません。有効にする更新では、更新直前に同じ理由で観測不能で、比べる基準がありません。どちらの場合も、この確認結果を根拠に保全されるとみなします。無効にする更新が反映されず有効のままだった場合は、どちらも観測できるため、更新直前の値と比べます。
+
+Actions 許可ポリシーでは、`PUT /repos/{owner}/{repo}/actions/permissions` で省略した `sha_pinning_required` が保持されることを実際の動作で確認しています（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 3.2）。必須の `enabled` には `true` を送ります。`allowed_actions` の宣言は Actions が有効であることを期待状態に含むためです（[YAML 設定仕様](../spec/configuration.md) 4章）。`sha_pinning_required` は送りません。この更新要求は Actions の有効状態も書くため、Actions 許可ポリシーを変える論理的な設定変更は有効状態も変える設定に含め（[ドメインモデル](domain.md) の変更対象外の設定）、更新直前の値と比べません。更新後は `sha_pinning_required` を再取得し、更新直前の値と比べます。Actions が無効のときは `sha_pinning_required` の応答が保存された値を示さないため（GitHub Actions 権限 API 仕様 3.1）、更新直前の値と比べられません。この場合は、無効の状態から有効化と同時にポリシーを変えても `sha_pinning_required` が保持されるという確認結果（GitHub Actions 権限 API 仕様 3.2）を根拠に、保全されるとみなします。更新後に Actions が無効で `sha_pinning_required` を再取得できない場合は、この根拠に当たりません。期待値の Actions 許可ポリシーも同じ取得条件で観測不能になるため、期待状態の確認失敗として完了にしません。
 
 選択方式の Actions 許可条件では、`PUT /repos/{owner}/{repo}/actions/permissions/selected-actions` に3項目をすべて送ります。3項目は一つの設定グループで、どれも期待値を持つためです。省略したフィールドが保持されることは実際の動作で確認していますが（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 4章）、この方式は保持に依拠しません。空の許可パターンは、`null` の扱いが公開ドキュメントにないため、空の配列として送ります。この更新エンドポイントで reco が観測する設定は選択方式の Actions 許可条件だけのため、更新後に更新直前の値と比べる設定はありません。この更新が `allowed_actions` と `sha_pinning_required` を変えないことは、実際の動作で確認しています（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 4.2）。
 
@@ -306,7 +309,14 @@ Actions 許可ポリシーの遷移は次の表に従います。遷移元は観
 
 遷移元が無効の遷移では、(1) の直前の変更前提に、Actions が無効で Actions 許可ポリシーを取得できないままであることを含めます。承認時に予定した値が観測不能であるためです（[ドメインモデル](domain.md) の承認と変更前提）。
 
-Actions 許可ポリシーを宣言せずに Actions の有効状態を宣言した場合（[YAML 設定仕様](../spec/configuration.md) 4.1）、有効状態の変更予定は、有効から無効、無効から有効のどちらも適用可能です。無効にしても、GitHub は Actions 許可ポリシー、`sha_pinning_required`、選択方式の Actions 許可条件の値を保持するため（GitHub Actions 権限 API 仕様 3.2・4章）、変更計画に示す消失はありません。Actions 許可ポリシーとともに有効を宣言した場合は、有効状態が管理設定にならないため（[ドメインモデル](domain.md) の管理の単位と管理設定）、遷移表の遷移元が「無効」の行だけが当たります。
+Actions 許可ポリシーを宣言せずに Actions の有効状態を宣言した場合（[YAML 設定仕様](../spec/configuration.md) 4.1）、有効状態の変更予定は、次の表のどちらの向きも適用可能で、一つの更新操作からなる一つの論理的な設定変更になります。
+
+| 遷移元 | 宣言 | 更新操作 | 更新後に取得できない値 |
+|---|---|---|---|
+| 無効 | `enabled: true` | (1) Actions の有効状態（`enabled: true` だけを送る） | なし。無効にする前の Actions 許可ポリシーと `sha_pinning_required` で有効になり、そのことを変更計画に示す（[CLI 仕様](../spec/cli.md) 4章） |
+| 有効 | `enabled: false` | (1) Actions の有効状態（`enabled: false` だけを送る） | Actions 許可ポリシー、`sha_pinning_required`、選択方式の Actions 許可条件 |
+
+変更前提で比べる関係する現在値は、Actions の有効状態だけです。無効にしても、GitHub は Actions 許可ポリシー、`sha_pinning_required`、選択方式の Actions 許可条件の値を保持するため（GitHub Actions 権限 API 仕様 3.2・4章）、変更計画に示す消失はなく、これらの値を変更前提に含めません。Actions 許可ポリシーとともに有効を宣言した場合は、有効状態が管理設定にならないため（[ドメインモデル](domain.md) の管理の単位と管理設定）、Actions 許可ポリシーの遷移表の遷移元が「無効」の行だけが当たります。無効と Actions 許可ポリシーは同時に宣言できないため（YAML 設定仕様 4.1）、有効状態の変更予定と Actions 許可ポリシーの変更予定が、同じ対象リポジトリの変更計画に並ぶことはありません。
 
 `selected` のまま3項目だけを変える場合は、Actions 許可ポリシーの更新を送りません。現在の値と同じ `selected` を送っても、GitHub は `github_owned_allowed` を `true` に変えるためです（GitHub Actions 権限 API 仕様 3.2）。
 

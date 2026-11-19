@@ -787,6 +787,36 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 			wantResult:  completed,
 		},
 		{
+			// 更新後は Actions 許可ポリシーと sha_pinning_required が観測不能で、保持の確認結果を根拠に保全されるとみなす
+			name:   "disabling actions sends only enabled and completes with the policy unavailable after the update",
+			change: enabledStateChange(false),
+			responses: []response{
+				okRepository(1, false, false), okAllowedActions("all", true), noContent,
+				okRepository(1, false, false), okActionsDisabled(),
+			},
+			wantRequests: []string{getRepository, getActionsPermissions, putActionsPermissions, getRepository, getActionsPermissions},
+			wantBodies:   []map[string]any{nil, nil, {"enabled": false}, nil, nil},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
+		{
+			// 更新直前は sha_pinning_required が観測不能で、更新後の true と比べない
+			name:   "enabling actions sends only enabled and completes with the policy restored as selected",
+			change: enabledStateChange(true),
+			responses: []response{
+				okRepository(1, false, false), okActionsDisabled(), noContent,
+				okRepository(1, false, false), okAllowedActions("selected", true), okSelectedActions(false, true, "a/*"),
+			},
+			wantRequests: []string{getRepository, getActionsPermissions, putActionsPermissions, getRepository, getActionsPermissions, getSelectedActions},
+			wantBodies:   []map[string]any{nil, nil, {"enabled": true}, nil, nil, nil},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
+		{
 			name:         "selected criteria change with the policy no longer selected sends no update request",
 			change:       selectedActionsChange(),
 			responses:    []response{okRepository(1, false, false), okAllowedActions("all", false)},

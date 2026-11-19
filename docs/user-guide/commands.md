@@ -71,6 +71,7 @@ Repositories checked: 1
 | `<設定>: <現在の値> -> <書いた値>` | GitHub の値が設定ファイルの値と違う設定。承認すると右の値に変える |
 | `Current: unavailable (<理由>)` と `Desired: <書いた値>` | リポジトリの状態によって GitHub が今の値を返さないため、比べられなかった設定。承認すると `Desired:` の値にする |
 | `Side effect:` | この変更に伴って GitHub が消す値。読み取れた値は括弧の中に出る |
+| `Previous settings:` | Actions を `enabled: true` で有効に戻すと、無効にする前の `allowed_actions` などの設定で再開すること。無効のあいだは値を読み取れないため、値は出ない |
 | `Plan:` | 変える予定のリポジトリの数、今の値と違うと分かった設定の数（`known change`）、今の値が分からなかった設定の数（`not-comparable settings`）|
 | `Repositories checked:` | 読み取ったリポジトリの数 |
 | `No changes.` | 設定ファイルに書いた設定が、すべて GitHub 上でもそのとおりになっている |

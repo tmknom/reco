@@ -15,6 +15,45 @@ func TestLogicalChange_Keys(t *testing.T) {
 	}
 }
 
+// TestLogicalChange_SettingsToChange は、変更対象外の設定から除く、論理的な設定変更が変える設定の範囲を確かめる。
+//
+//trace:checks INV-001
+//trace:checks FR-012
+func TestLogicalChange_SettingsToChange(t *testing.T) {
+	cases := []struct {
+		name string
+		keys []setting.Key
+		want []setting.Key
+	}{
+		{
+			name: "policy change also changes the enabled state",
+			keys: []setting.Key{setting.AllowedActions},
+			want: []setting.Key{setting.AllowedActions, setting.ActionsEnabled},
+		},
+		{
+			name: "enabled state change changes only the enabled state",
+			keys: []setting.Key{setting.ActionsEnabled},
+			want: []setting.Key{setting.ActionsEnabled},
+		},
+		{
+			name: "criteria change does not change the enabled state",
+			keys: []setting.Key{setting.SelectedActions},
+			want: []setting.Key{setting.SelectedActions},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var change LogicalChange
+			for _, key := range tc.keys {
+				change.Operations = append(change.Operations, UpdateOperation{Key: key})
+			}
+			if got := change.SettingsToChange(); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("SettingsToChange() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 //trace:checks INV-001
 //trace:checks INV-002
 //trace:checks INV-004
@@ -67,6 +106,22 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 				RelevantSettings: []RelevantSetting{relevant(setting.AllowAutoMerge, github.Observed(setting.BoolValue(false)))},
 			}}},
 		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
+		}
+	})
+
+	enabling := SettingPlan{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
+
+	t.Run("applicable change of the enabled state becomes a logical change relevant only to its own observed value", func(t *testing.T) {
+		got, err := newRepositoryPlan(enabling).LogicalChanges()
+		if err != nil {
+			t.Fatalf("LogicalChanges() error = %v", err)
+		}
+		want := []LogicalChange{{Operations: []UpdateOperation{{
+			Key: setting.ActionsEnabled, Desired: setting.BoolValue(true),
+			RelevantSettings: []RelevantSetting{relevant(setting.ActionsEnabled, github.Observed(setting.BoolValue(false)))},
+		}}}}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
 		}
@@ -185,7 +240,8 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 		}
 	})
 
-	// 設定宣言は selected と3項目を組で求め、許可条件はポリシーが selected でなければ観測不能になるため、Generate からは到達しない組
+	// 設定宣言は selected と3項目を組で求め、有効状態とポリシーを同時に管理設定にせず、
+	// 許可条件はポリシーが selected でなければ観測不能になるため、Generate からは到達しない組
 	panicCases := []struct {
 		name     string
 		settings []SettingPlan
@@ -211,6 +267,10 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 				policyChange(setting.AllowedActionsAll, setting.AllowedActionsSelected),
 				{Key: setting.SelectedActions, Observed: github.Observed(criteria), Desired: criteria, Result: Mismatch, Applicability: Applicable},
 			},
+		},
+		{
+			name:     "enabled state with a policy panics",
+			settings: []SettingPlan{enabling, {Key: setting.AllowedActions, Observed: disabled, Desired: policy(setting.AllowedActionsLocalOnly), Result: NotComparable, Applicability: Applicable}},
 		},
 	}
 	for _, tc := range panicCases {
@@ -255,20 +315,4 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 		})
 	}
 
-	t.Run("applicable change of the enabled state is an error naming the setting", func(t *testing.T) {
-		enabling := SettingPlan{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
-		// 適用可能な変更予定と並べ、ほかの変更予定があっても承認の対象にしないことを確かめる
-		got, err := newRepositoryPlan(enabling, mismatch).LogicalChanges()
-		if want := "owner/repo: updating actions.permissions.enabled is not supported yet"; err == nil || err.Error() != want {
-			t.Errorf("LogicalChanges() = %+v, error = %v, want error %q", got, err, want)
-		}
-	})
-
-	t.Run("matched enabled state does not prevent the other changes", func(t *testing.T) {
-		matched := SettingPlan{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(false), Result: Match}
-		got, err := newRepositoryPlan(matched, mismatch).LogicalChanges()
-		if err != nil || len(got) != 1 || !reflect.DeepEqual(got[0].Keys(), []setting.Key{setting.AllowAutoMerge}) {
-			t.Errorf("LogicalChanges() = %+v, error = %v, want one logical change of %s", got, err, setting.AllowAutoMerge)
-		}
-	})
 }

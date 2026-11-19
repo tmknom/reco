@@ -98,7 +98,7 @@ repositories:
 
 - `enabled: false` と、`allowed_actions` や `selected_actions` は同時に書けない
 - `selected_actions` は、`allowed_actions: selected` のときだけ書ける
-- `enabled` の変更は、現在は `plan` で確かめられるだけである。この変更を含む設定ファイルで `apply` すると、承認を求めず、何も変えずにエラーで止まる
+- `enabled: false` で Actions を無効にしても、GitHub は `allowed_actions` と `selected_actions` の値を残す。あとで `enabled: true` に戻すと、無効にする前の設定で有効になる。再開するときの設定を自分で決めたいときは、`enabled: true` の代わりに `allowed_actions` を書く
 - `allowed_actions` を書くと、Actions も有効になる
 - `allowed_actions` を `selected` から `all` や `local_only` に変えると、GitHub は `selected_actions` の値を消す
 

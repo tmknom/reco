@@ -46,6 +46,8 @@ func updateRequestOf(key setting.Key) updateRequest {
 		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateDeleteBranchOnMerge)}
 	case setting.AllowAutoMerge:
 		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateAllowAutoMerge)}
+	case setting.ActionsEnabled:
+		return updateRequest{ActionsPermissionsEndpoint, boolUpdate((*Client).updateActionsEnabled)}
 	case setting.AllowedActions:
 		return updateRequest{ActionsPermissionsEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
 			return c.updateAllowedActions(ctx, reference, value.AllowedActionsPolicy())
@@ -62,7 +64,7 @@ func updateRequestOf(key setting.Key) updateRequest {
 		}}
 	case setting.CanApprovePullRequestReviews:
 		return updateRequest{WorkflowPermissionsEndpoint, boolUpdate((*Client).updateCanApprovePullRequestReviews)}
-	case setting.SHAPinningRequired, setting.ActionsEnabled:
+	case setting.SHAPinningRequired:
 		// 更新要求を持たない設定
 	}
 	panic("github: no update request for " + string(key))
@@ -112,11 +114,22 @@ func (c *Client) updateWorkflowPermissions(ctx context.Context, reference reposi
 	return describeUpdateOutcome("update workflow permissions", reference, status, err)
 }
 
+// updateActionsEnabled は reference のリポジトリの Actions の有効状態を enabled に更新する。
+// allowed_actions と sha_pinning_required は送らず、GitHub が省略した値を保持することに依拠する（アーキテクチャ設計の未管理設定を保全する更新方式）。
+func (c *Client) updateActionsEnabled(ctx context.Context, reference repository.Reference, enabled bool) (UpdateOutcome, error) {
+	return c.updateActionsPermissions(ctx, reference, fmt.Appendf(nil, `{"enabled":%t}`, enabled))
+}
+
 // updateAllowedActions は reference のリポジトリの Actions 許可ポリシーを policy に更新する。
 // Actions が無効のリポジトリでは、同じ要求が Actions を有効にする。
 func (c *Client) updateAllowedActions(ctx context.Context, reference repository.Reference, policy setting.AllowedActionsPolicy) (UpdateOutcome, error) {
 	// policy は英小文字と _ だけの定義済みの値で、%q の表記が JSON の文字列と一致する
-	body := fmt.Appendf(nil, `{"enabled":true,"allowed_actions":%q}`, policy)
+	return c.updateActionsPermissions(ctx, reference, fmt.Appendf(nil, `{"enabled":true,"allowed_actions":%q}`, policy))
+}
+
+// updateActionsPermissions は body を本文とする更新要求を送る。
+// 正常応答の 204 は本文を持たず、成功の判定に本文を使わない。
+func (c *Client) updateActionsPermissions(ctx context.Context, reference repository.Reference, body []byte) (UpdateOutcome, error) {
 	status, _, err := c.send(ctx, http.MethodPut, c.actionsPermissionsURL(reference), body, http.StatusNoContent)
 	return describeUpdateOutcome("update actions permissions", reference, status, err)
 }

@@ -26,6 +26,9 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 		} else {
 			fmt.Fprintf(&b, "  %s: %s -> %s\n", s.Key, observed.String(), s.Desired.String())
 		}
+		if s.ReenablesActions() {
+			b.WriteString("    Previous settings: GitHub Actions resumes with allowed_actions, selected_actions, and sha_pinning_required kept from before it was disabled (current values are unavailable)\n")
+		}
 	case changeplan.NotComparable:
 		desired := s.Desired.String()
 		if s.EnablesActionsByPolicy() {

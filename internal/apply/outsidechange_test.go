@@ -216,9 +216,26 @@ func TestOutsideChangesAt(t *testing.T) {
 			name:     "selected_actions change does not compare allowed_actions or sha_pinning_required",
 			change:   selectedActionsChange(),
 			endpoint: github.SelectedActionsEndpoint,
-			before:   github.ObservationResult{ActionsPermissions: &github.ActionsPermissions{AllowedActions: github.Observed(setting.AllowedActionsSelected), SHAPinningRequired: github.Observed(false)}},
-			after:    github.ObservationResult{ActionsPermissions: &github.ActionsPermissions{AllowedActions: github.Observed(setting.AllowedActionsAll), SHAPinningRequired: github.Observed(true)}},
+			before:   github.ObservationResult{ActionsPermissions: actionsSelected(setting.SelectedActionsCriteria{})},
+			after:    github.ObservationResult{ActionsPermissions: actionsEnabled(setting.AllowedActionsAll, true)},
 			want:     nil,
+		},
+		{
+			// 値の保全は、GitHub が省略した値を保持するという確認結果を根拠にする
+			name:     "disabling actions does not report allowed_actions or sha_pinning_required unavailable after the update",
+			change:   enabledStateChange(false),
+			endpoint: github.ActionsPermissionsEndpoint,
+			before:   github.ObservationResult{ActionsPermissions: actionsEnabled(setting.AllowedActionsAll, true)},
+			after:    github.ObservationResult{ActionsPermissions: actionsDisabled()},
+			want:     nil,
+		},
+		{
+			name:     "disabling actions not reflected reports different sha_pinning_required with both values",
+			change:   enabledStateChange(false),
+			endpoint: github.ActionsPermissionsEndpoint,
+			before:   github.ObservationResult{ActionsPermissions: actionsEnabled(setting.AllowedActionsAll, false)},
+			after:    github.ObservationResult{ActionsPermissions: actionsEnabled(setting.AllowedActionsAll, true)},
+			want:     []unexpectedOutsideChange{{Key: setting.SHAPinningRequired, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
 		},
 		{
 			// apply の実行からは到達しない組。選択方式の Actions 許可条件を変更対象外の設定にする更新エンドポイントがないため、
@@ -233,7 +250,7 @@ func TestOutsideChangesAt(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := outsideChangesAt(tc.endpoint, tc.change.Keys(), tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
+			if got := outsideChangesAt(tc.endpoint, tc.change.SettingsToChange(), tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("outsideChangesAt() = %v, want %v", got, tc.want)
 			}
 		})
