@@ -1,6 +1,6 @@
-# 配布物の検証
+# Verification
 
-GitHub CLI（`gh`）の `gh attestation verify` で、配布物が reco のリポジトリのリリース用ワークフローによって、指定したタグから作られたものかを検証できます。reco を使うだけなら、この手順は省いてかまいません。
+GitHub CLI（`gh`）の `gh attestation verify` で、配布物が reco のリポジトリのリリース用ワークフローによって、指定したタグから作られたものかを検証できます。
 
 ## 配布アーカイブを検証する
 

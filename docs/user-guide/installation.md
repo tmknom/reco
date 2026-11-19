@@ -1,81 +1,118 @@
-# インストール
+# Installation
 
-reco は、配布アーカイブかコンテナイメージで入れます。どちらで動かす場合も、GitHub にアクセスするためのトークンを環境変数 `GH_TOKEN` で渡します。
+reco は、配布アーカイブかコンテナイメージでインストールします。どちらで動かす場合も、GitHub にアクセスするためのトークンを環境変数 `GH_TOKEN` で渡します。本ドキュメントの例では、GitHub CLI（`gh`）の `gh auth token` が出力するトークンを使います。
 
 ## 配布物の種類
 
 | 配布物 | 対象 | 置き場所 |
 |---|---|---|
-| 配布アーカイブ | Linux、macOS、Windows の、それぞれ amd64 と arm64 | GitHub Releases（`tmknom/reco` のリリース） |
+| 配布アーカイブ | Linux、macOS、Windows の、それぞれ amd64 と arm64 | [GitHub Releases](https://github.com/tmknom/reco/releases) |
 | コンテナイメージ | `linux/amd64`、`linux/arm64` | `ghcr.io/tmknom/reco` |
 
-## 配布アーカイブから入れる
+## 配布アーカイブからインストールする
 
-配布アーカイブの名前は `reco_<バージョン>_<OS>_<アーキテクチャ>.tar.gz` の形です。`<OS>` は `linux`、`darwin`（macOS）、`windows` のどれかです。Windows 向けだけは拡張子が `.zip` です。`<バージョン>` には、タグの先頭の `v` を除いた値（タグ `v0.1.1` なら `0.1.1`）が入ります。
+自分の OS とアーキテクチャに合うコードブロックを、そのまま端末に貼り付けて実行します。どのコードブロックも、配布アーカイブをカレントディレクトリにダウンロードし、実行ファイルだけを取り出して、`PATH` の通ったディレクトリへ置きます。ダウンロードした配布アーカイブは、[Verification](verification.md) の手順で検証できるように、名前を変えずに残します。
 
-次は、Linux の amd64 向けに `0.1.1` を入れる例です。バージョン、OS、アーキテクチャは自分の環境に合わせて読み替えてください。
+コードブロックは `v0.1.1` をインストールします。別のバージョンを入れるときは、URL とファイル名に含まれる `v0.1.1` と `0.1.1` を、入れたいバージョンに置き換えてください。配布アーカイブの名前は `reco_<バージョン>_<OS>_<アーキテクチャ>.tar.gz`（Windows 向けだけ `.zip`）の形で、`<バージョン>` にはタグの先頭の `v` を除いた値が入ります。
 
-1. 配布アーカイブを取得する。GitHub Releases のページからダウンロードしてもよい
+### macOS
 
-    ```bash
-    gh release download v0.1.1 --repo tmknom/reco --pattern reco_0.1.1_linux_amd64.tar.gz
-    ```
+arm64（Apple シリコン）の場合
 
-2. 展開する。アーカイブの直下には、実行ファイル `reco`（Windows では `reco.exe`）と `LICENSE` がある
+```bash
+curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_darwin_arm64.tar.gz
+tar -xzf reco_0.1.1_darwin_arm64.tar.gz reco
+sudo mv reco /usr/local/bin/reco
+```
 
-    ```bash
-    tar -xzf reco_0.1.1_linux_amd64.tar.gz
-    ```
+amd64（Intel）の場合
 
-3. `reco` を、`PATH` の通ったディレクトリに置く
-4. バージョンを表示して、入れた reco が動くことを確かめる。`0.1.1` のように、入れたバージョンが表示されればよい
+```bash
+curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_darwin_amd64.tar.gz
+tar -xzf reco_0.1.1_darwin_amd64.tar.gz reco
+sudo mv reco /usr/local/bin/reco
+```
 
-    ```bash
-    reco --version
-    ```
+### Windows
 
-トークンを渡して、リポジトリの現在の設定を表示します。`OWNER/REPO` は自分のリポジトリに読み替えてください。
+PowerShell で実行します。PowerShell のバージョンによっては `curl` が `Invoke-WebRequest` の別名になっているため、`curl.exe` と書きます。
+
+amd64 の場合
+
+```powershell
+curl.exe -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_windows_amd64.zip
+tar -xf reco_0.1.1_windows_amd64.zip reco.exe
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\reco" | Out-Null
+Move-Item -Force reco.exe "$env:LOCALAPPDATA\Programs\reco\reco.exe"
+```
+
+arm64 の場合
+
+```powershell
+curl.exe -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_windows_arm64.zip
+tar -xf reco_0.1.1_windows_arm64.zip reco.exe
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\reco" | Out-Null
+Move-Item -Force reco.exe "$env:LOCALAPPDATA\Programs\reco\reco.exe"
+```
+
+初めてインストールするときだけ、置いたディレクトリを利用者の `PATH` に加えます。変更した `PATH` は、新しく開いた PowerShell から有効になります。
+
+```powershell
+[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$env:LOCALAPPDATA\Programs\reco", "User")
+```
+
+### Linux
+
+amd64 の場合
+
+```bash
+curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_linux_amd64.tar.gz
+tar -xzf reco_0.1.1_linux_amd64.tar.gz reco
+sudo mv reco /usr/local/bin/reco
+```
+
+arm64 の場合
+
+```bash
+curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_linux_arm64.tar.gz
+tar -xzf reco_0.1.1_linux_arm64.tar.gz reco
+sudo mv reco /usr/local/bin/reco
+```
+
+### インストールした reco が動くことの確認
+
+バージョンを表示します。`0.1.1` のように、インストールしたバージョンが表示されれば、インストールは完了です。
+
+```bash
+reco --version
+```
+
+続けて、トークンを渡して、リポジトリの現在の設定を表示します。`OWNER/REPO` は自分のリポジトリに読み替えてください。
 
 ```bash
 export GH_TOKEN=$(gh auth token)
 reco show --repo OWNER/REPO
 ```
 
+Windows の PowerShell では、1行目を `$env:GH_TOKEN = gh auth token` に置き換えます。
+
 ## コンテナイメージで動かす
 
-コンテナイメージは、`v0.1.1` のようなバージョンのタグで指定します。
-
-`show` は設定ファイルを使わないため、トークンを渡すだけで動きます。
+コンテナイメージは、`v0.1.1` のようなバージョンのタグで指定して取得します。
 
 ```bash
-GH_TOKEN=$(gh auth token) docker run --rm -e GH_TOKEN \
-  ghcr.io/tmknom/reco:v0.1.1 show --repo OWNER/REPO
+docker pull ghcr.io/tmknom/reco:v0.1.1
 ```
 
-`plan` と `apply` は、設定ファイルのあるディレクトリで次のように実行します。
+設定ファイルのあるディレクトリで、次のように実行します。
 
 ```bash
-GH_TOKEN=$(gh auth token) docker run --rm -e GH_TOKEN \
-  -v "$PWD":/work -w /work \
-  ghcr.io/tmknom/reco:v0.1.1 plan
-
 GH_TOKEN=$(gh auth token) docker run --rm -it -e GH_TOKEN \
   -v "$PWD":/work -w /work \
-  ghcr.io/tmknom/reco:v0.1.1 apply
+  ghcr.io/tmknom/reco:v0.1.1 plan
 ```
-
-それぞれのオプションの役割は次のとおりです。
-
-- **`-e GH_TOKEN`**：手元の環境変数 `GH_TOKEN` をコンテナへ渡す
-- **`-v` と `-w`**：設定ファイルのあるディレクトリをコンテナの `/work` にマウントし、`/work` をカレントディレクトリにする。`-w` を省くと、reco は設定ファイル `reco.yaml` を見つけられずに止まる
-- **`-it`**（`apply` だけ）：端末を割り当てる。`apply` は端末でしか承認を受け付けない
-
-## 次にすること
-
-トークンの持ち主に要るロールは [トークンの用意](authentication.md) に、一つのリポジトリの一つの設定を reco で変えてみる手順は [はじめての適用](getting-started.md) にあります。配布物がリリース用ワークフローで作られたものかを確かめたい場合は、[配布物の検証](verification.md) の手順を使えます。
 
 ## References
 
-- [CLI 仕様](../spec/cli.md)：`--version` の表示（2.2節）、承認と端末（5.1節）
-- [リリースワークフロー設計](../contributing/release.md)：配布物の種類（「対象と前提」）、配布アーカイブの名前と中身（「成果物とジョブ間の受け渡し」）、イメージのタグとカレントディレクトリ（「コンテナイメージ」）
-- [reco のリリース](https://github.com/tmknom/reco/releases)：配布アーカイブの置き場所
+- [Verification](verification.md)：配布アーカイブとコンテナイメージが reco のリリース用ワークフローで作られたものかを、GitHub Attestations で検証する手順
+- [Authentication](authentication.md)：`gh auth token` のトークンを渡す理由と、トークンの持ち主に要るロール

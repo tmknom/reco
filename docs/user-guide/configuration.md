@@ -1,4 +1,4 @@
-# 設定ファイルの書き方
+# Configuration
 
 reco は、リポジトリごとの設定値を書いた YAML の設定ファイルを読み、GitHub 上の設定と比べて、書いた値になるように設定を変えます。
 
@@ -44,8 +44,6 @@ repositories:
         can_approve_pull_request_reviews: false
 ```
 
-真偽値は、引用符を付けない小文字の `true` か `false` で書きます。
-
 ## リポジトリの一般設定
 
 `general` には、Pull Request のマージに関する設定を書きます。
@@ -55,13 +53,16 @@ repositories:
 | `delete_branch_on_merge` | `true` / `false` | Pull Request をマージしたあと、head ブランチを自動で削除するか |
 | `allow_auto_merge` | `true` / `false` | Pull Request の自動マージを許可するか |
 
-GitHub Free のアカウントが所有する非公開リポジトリでは自動マージを使えないため、`allow_auto_merge: true` を書いても反映されないことがあります。
+> [!NOTE]
+> GitHub の仕様上、GitHub Free のアカウントが所有するプライベートリポジトリでは、自動マージは使えません。
 
 ## GitHub Actions の設定
 
 `actions` には、`permissions`（Actions の実行許可）と `workflow`（ワークフローの権限）を書きます。使わないほうは省けます。
 
 ### Actions の実行許可
+
+#### `actions.permissions`
 
 `actions.permissions` には、次のキーを書きます。
 
@@ -71,6 +72,8 @@ GitHub Free のアカウントが所有する非公開リポジトリでは自�
 | `allowed_actions` | `all` / `local_only` / `selected` | 実行を許可する Actions と再利用可能なワークフローの範囲（Actions 許可ポリシー） |
 | `selected_actions` | 下の `selected_actions` の表のキー | `allowed_actions: selected` のときに許可するもの |
 
+#### `actions.permissions.allowed_actions`
+
 `allowed_actions` の値の意味は次のとおりです。
 
 | 値 | 許可するもの |
@@ -78,6 +81,8 @@ GitHub Free のアカウントが所有する非公開リポジトリでは自�
 | `all` | すべての Actions と再利用可能なワークフロー |
 | `local_only` | ローカルの Actions と再利用可能なワークフローだけ |
 | `selected` | `selected_actions` に書いた条件に合うものだけ |
+
+#### `actions.permissions.selected_actions`
 
 `selected_actions` には、次のキーをすべて書きます。
 
@@ -87,13 +92,15 @@ GitHub Free のアカウントが所有する非公開リポジトリでは自�
 | `verified_allowed` | `true` / `false` | Marketplace で認証済みの作成者が提供する Actions を許可するか |
 | `patterns_allowed` | 文字列のリスト | 許可する Actions と再利用可能なワークフローのパターン。何も許可しないときは `[]` と書く |
 
-書くときは、次の点に気を付けます。
+#### GitHub API の仕様
 
-- `allowed_actions` を書くと、Actions も有効になる。Actions を無効のままにしておきたいリポジトリには、`allowed_actions` を書かない
+設定可能な値の組み合わせは、GitHub API の仕様の影響を受けます。
+
 - `enabled: false` と、`allowed_actions` や `selected_actions` は同時に書けない
 - `selected_actions` は、`allowed_actions: selected` のときだけ書ける
 - `enabled` の変更は、現在は `plan` で確かめられるだけである。この変更を含む設定ファイルで `apply` すると、承認を求めず、何も変えずにエラーで止まる
-- `allowed_actions` を `selected` から `all` や `local_only` に変えると、GitHub は `selected_actions` の値を消す。消える値は変更計画の `Side effect:` の行に出る。詳しくは [Actions 許可ポリシーの切り替え](actions-policy.md) にある
+- `allowed_actions` を書くと、Actions も有効になる
+- `allowed_actions` を `selected` から `all` や `local_only` に変えると、GitHub は `selected_actions` の値を消す
 
 ### ワークフローの権限
 
@@ -101,10 +108,8 @@ GitHub Free のアカウントが所有する非公開リポジトリでは自�
 
 | キー | 値 | 意味 |
 |---|---|---|
-| `default_workflow_permissions` | `read` / `write` | ワークフローの `GITHUB_TOKEN` に与える既定の権限 |
+| `default_workflow_permissions` | `read` / `write` | ワークフローの `GITHUB_TOKEN` に与えるデフォルト権限 |
 | `can_approve_pull_request_reviews` | `true` / `false` | GitHub Actions が Pull Request を作成し、承認することを許可するか |
-
-`default_workflow_permissions` が決めるのは、ワークフローが権限を明示しないときの既定の権限です。`read` にしても、ワークフローやジョブの `permissions` で書き込み権限を明示したワークフローは書き込めます。
 
 ## 未記載の設定の扱い
 
@@ -117,9 +122,10 @@ repositories:
       allow_auto_merge: false
 ```
 
-この例で reco が見るのは `allow_auto_merge` だけです。`false` は「`false` にしたい」という意味であり、「管理しない」という意味ではありません。書いていない `delete_branch_on_merge` は変えません。
+この例で reco が操作するのは `allow_auto_merge` だけです。未記載の `delete_branch_on_merge` の設定は変更しません。
 
-設定ファイルから設定を消しても、GitHub 上の値は元に戻りません。値を変えたいときは、消すのではなく、設定したい値を書いて `apply` します。
+> [!NOTE]
+> **設定ファイルから設定を消しても、GitHub 上の値は元に戻りません**。値を変えたいときは、消すのではなく、設定したい値を書いて `apply` します。
 
 ## 複数のリポジトリを並べる
 
@@ -134,15 +140,16 @@ repositories:
 
   - name: example/project-b
     general:
-      delete_branch_on_merge: true
+      delete_branch_on_merge: false
 ```
 
-- reco は、並べた順にリポジトリを更新する
-- YAML のアンカー（`&`）、エイリアス（`*`）、マージキー（`<<`）は使えない。多くのリポジトリに同じ設定を書くときも、リポジトリごとに書き並べる
+なお、reco では YAML のアンカー（`&`）、エイリアス（`*`）、マージキー（`<<`）はサポートしていません。
 
 ## よくある書き方の誤り
 
 設定ファイルに誤りがあると、reco は GitHub にアクセスする前に、誤りの箇所（行と列）と理由を示して終了します。出会いやすい誤りは次のとおりです。
+
+### 真偽値
 
 真偽値を引用符で囲むと、文字列として扱われ、拒否されます。
 
@@ -150,14 +157,12 @@ repositories:
 repositories:
   - name: example/project-a
     general:
-      allow_auto_merge: "true"
+      allow_auto_merge: "true" # 引用符なしで true と書くべき
 ```
 
-```text
-{"time":"...","level":"ERROR","msg":"command failed","error":"load configuration ./reco.yaml: repositories[0].general.allow_auto_merge (line 4, column 25): must be true or false; got the quoted string \"true\"; write true without quotes"}
-```
+### 必須キーの欠如
 
-`allowed_actions: selected` のときに `selected_actions` のキーの一部を書き忘れると、足りないキーが示されます。
+たとえば `allowed_actions: selected` のときに `selected_actions` のキーの一部を書き忘れると、足りないキーが示されます。
 
 ```yaml
 repositories:
@@ -169,14 +174,3 @@ repositories:
           github_owned_allowed: true
           verified_allowed: true
 ```
-
-```text
-{"time":"...","level":"ERROR","msg":"command failed","error":"load configuration ./reco.yaml: repositories[0].actions.permissions.selected_actions (line 7, column 11): missing patterns_allowed; selected_actions requires all of github_owned_allowed, verified_allowed, patterns_allowed"}
-```
-
-## References
-
-- [YAML 設定仕様](../spec/configuration.md)：設定の型と許容値、未記載の設定の扱い（2章）、入力の組み合わせ（4.1節）、入力検証の全条件（6章）
-- [CLI 仕様](../spec/cli.md)：`--config` の扱い、副作用の表示
-- [GitHub Actions 権限 API 仕様](../research/actions-permissions.md)：Actions の各設定の意味
-- [GitHub リポジトリ API 仕様](../research/repositories.md)：GitHub Free の非公開リポジトリでの自動マージ

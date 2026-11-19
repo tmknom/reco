@@ -1,4 +1,4 @@
-# 複数リポジトリの運用
+# Operations
 
 ## リポジトリを管理に加える
 
@@ -66,7 +66,7 @@ reco で変えた設定を元の値に戻すには、設定ファイルにその
 
 元の値は、変更する前の変更計画で `->` の前に出ています。戻す可能性がある変更は、承認の前にこの値を控えておきます。
 
-`allowed_actions` を `selected` から変えたときに消えた `selected_actions` を戻す手順は、[Actions 許可ポリシーの切り替え](actions-policy.md) にあります。
+`allowed_actions` を `selected` から変えたときに消えた `selected_actions` を戻す手順は、[Actions Policy](actions-policy.md) にあります。
 
 ## 管理をやめる
 
