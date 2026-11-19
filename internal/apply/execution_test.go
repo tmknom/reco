@@ -825,6 +825,56 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 			wantChanged:  setting.SelectedActions,
 			wantResult:   notAttempted,
 		},
+		{
+			name:   "sha_pinning_required change sends enabled true and sha_pinning_required only and completes",
+			change: shaPinningRequiredChange(),
+			responses: []response{
+				okRepository(1, false, false), okAllowedActions("all", false), noContent,
+				okRepository(1, false, false), okAllowedActions("all", true),
+			},
+			wantRequests: []string{getRepository, getActionsPermissions, putActionsPermissions, getRepository, getActionsPermissions},
+			wantBodies:   []map[string]any{nil, nil, {"enabled": true, "sha_pinning_required": true}, nil, nil},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
+		{
+			name:   "changed allowed_actions after the sha_pinning_required update fails even if the value matches",
+			change: shaPinningRequiredChange(),
+			responses: []response{
+				okRepository(1, false, false), okAllowedActions("all", false), noContent,
+				okRepository(1, false, false), okAllowedActions("local_only", true),
+			},
+			wantRequests: []string{getRepository, getActionsPermissions, putActionsPermissions, getRepository, getActionsPermissions},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantOutside: []unexpectedOutsideChange{{
+				Key: setting.AllowedActions, Before: setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), After: setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly),
+			}},
+			wantResult: failed,
+		},
+		{
+			// 計画時に観測した sha_pinning_required が観測不能になったことを、Actions の有効状態より優先して示す
+			name:         "sha_pinning_required change with actions disabled since approval reports sha_pinning_required changed",
+			change:       shaPinningRequiredChange(),
+			responses:    []response{okRepository(1, false, false), okActionsDisabled()},
+			wantRequests: []string{getRepository, getActionsPermissions},
+			wantPrecond:  preconditionCurrentValueChanged,
+			wantChanged:  setting.SHAPinningRequired,
+			wantResult:   notAttempted,
+		},
+		{
+			// 更新要求が enabled: true を送るため、無効のまま送ると利用者が宣言していない有効化を行う
+			name:         "sha_pinning_required update after enabling with actions still disabled sends no update request",
+			change:       shaPinningRequiredAfterEnablingChange(),
+			responses:    []response{okRepository(1, false, false), okActionsDisabled()},
+			wantRequests: []string{getRepository, getActionsPermissions},
+			wantPrecond:  preconditionCurrentValueChanged,
+			wantChanged:  setting.ActionsEnabled,
+			wantResult:   notAttempted,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

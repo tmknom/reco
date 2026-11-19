@@ -53,7 +53,6 @@ func (c LogicalChange) SettingsToChange() []setting.Key {
 
 // LogicalChanges は、変更予定から論理的な設定変更を、計画の並びで導く。
 // 適用可能でない変更予定があれば、承認の対象にしないため error にする。
-// 更新要求を持たない sha_pinning_required の変更予定は、論理的な設定変更にできないため、適用可能でも error にする。
 // 副作用を伴う変更予定の更新操作は、operationOf が副作用として提示した設定を必ず基準に載せる。載せずに受け付けると承認の前に示していない値を失わせ得るため。
 // 遷移先が selected のポリシーの変更予定と、選択方式の Actions 許可条件の比較不能な変更予定は、ポリシーの位置で一つの論理的な設定変更にまとめ、
 // ポリシー、許可条件の順に二つの更新操作で実現する。
@@ -66,9 +65,6 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 		if s.IsPlannedChange() && s.Applicability != Applicable {
 			return nil, fmt.Errorf("%s: %s cannot be applied", r.Target, s.Key)
 		}
-	}
-	if s, ok := r.settingPlanOf(setting.SHAPinningRequired); ok && s.IsPlannedChange() {
-		return nil, fmt.Errorf("%s: updating %s is not supported yet", r.Target, s.Key)
 	}
 	_, hasEnabled := r.settingPlanOf(setting.ActionsEnabled)
 	if _, hasPolicy := r.settingPlanOf(setting.AllowedActions); hasEnabled && hasPolicy {
@@ -86,7 +82,11 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 			}
 			continue
 		}
-		operations := []UpdateOperation{operationOf(s)}
+		operation := operationOf(s)
+		if s.Key == setting.SHAPinningRequired {
+			operation = shaPinningRequiredOperationOf(s)
+		}
+		operations := []UpdateOperation{operation}
 		if targetsSelectedPolicy(s) {
 			if !paired {
 				panic(fmt.Sprintf("changeplan: %s to selected has no not-comparable %s to follow", s.Key, setting.SelectedActions))
@@ -130,6 +130,18 @@ func operationOf(s SettingPlan) UpdateOperation {
 	for _, effect := range s.SideEffects {
 		relevant = append(relevant, RelevantSetting{Key: effect.Key, AtApproval: effect.Observed})
 	}
+	return UpdateOperation{Key: s.Key, Desired: s.Desired, RelevantSettings: relevant}
+}
+
+// shaPinningRequiredOperationOf は、sha_pinning_required の変更予定 s の更新操作を返す。
+// 更新要求は必須の enabled に true を送るため、Actions が有効であることを基準に載せ、無効のリポジトリへ送って Actions を有効にしないようにする。
+// 計画時に Actions が無効で観測不能だった値は基準に載せない（ドメインモデルの承認と変更前提）。
+func shaPinningRequiredOperationOf(s SettingPlan) UpdateOperation {
+	var relevant []RelevantSetting
+	if s.Result == Mismatch {
+		relevant = append(relevant, RelevantSetting{Key: s.Key, AtApproval: s.Observed})
+	}
+	relevant = append(relevant, RelevantSetting{Key: setting.ActionsEnabled, AtApproval: github.Observed(setting.BoolValue(true))})
 	return UpdateOperation{Key: s.Key, Desired: s.Desired, RelevantSettings: relevant}
 }
 

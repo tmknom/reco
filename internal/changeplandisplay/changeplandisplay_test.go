@@ -93,21 +93,36 @@ func TestPlannedChangeText(t *testing.T) {
 				possibleLoss,
 		},
 		{
+			name: "policy enabling actions shows the one previous setting before the side effect",
+			s: changeplan.SettingPlan{
+				Key: setting.AllowedActions, Observed: disabled, Desired: policy(setting.AllowedActionsLocalOnly),
+				Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
+				SideEffects:      []changeplan.SideEffect{{Key: setting.SelectedActions, Observed: disabled}},
+				PreviousSettings: []setting.Key{setting.SHAPinningRequired},
+			},
+			want: "  actions.permissions.allowed_actions: (GitHub Actions disabled) -> local_only (enables GitHub Actions)\n" +
+				"    Previous settings: GitHub Actions resumes with sha_pinning_required kept from before it was disabled (reco cannot read it while GitHub Actions is disabled)\n" +
+				possibleLoss,
+		},
+		{
 			name: "reenabling actions shows that it resumes with the previous settings",
 			s: changeplan.SettingPlan{
 				Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
 				Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+				PreviousSettings: []setting.Key{setting.AllowedActions, setting.SelectedActions, setting.SHAPinningRequired},
 			},
 			want: "  actions.permissions.enabled: false -> true\n" +
 				"    Previous settings: GitHub Actions resumes with allowed_actions, selected_actions, and sha_pinning_required kept from before it was disabled (reco cannot read them while GitHub Actions is disabled)\n",
 		},
 		{
-			name: "disabling actions shows no previous settings",
+			name: "reenabling actions with sha_pinning_required declared lists only the policy and the criteria",
 			s: changeplan.SettingPlan{
-				Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false),
+				Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
 				Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+				PreviousSettings: []setting.Key{setting.AllowedActions, setting.SelectedActions},
 			},
-			want: "  actions.permissions.enabled: true -> false\n",
+			want: "  actions.permissions.enabled: false -> true\n" +
+				"    Previous settings: GitHub Actions resumes with allowed_actions and selected_actions kept from before it was disabled (reco cannot read them while GitHub Actions is disabled)\n",
 		},
 		{
 			name: "not-applicable change shows the applicability with the reason under it",

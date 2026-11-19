@@ -292,6 +292,19 @@ func enabledStateChange(to bool) changeplan.LogicalChange {
 	return singleUpdate(setting.ActionsEnabled, setting.BoolValue(to), relevantTo(setting.ActionsEnabled, setting.BoolValue(!to)))
 }
 
+// shaPinningRequiredChange は、Actions が有効のリポジトリで sha_pinning_required を false から true にする論理的な設定変更。
+func shaPinningRequiredChange() changeplan.LogicalChange {
+	return singleUpdate(setting.SHAPinningRequired, setting.BoolValue(true), []changeplan.RelevantSetting{
+		{Key: setting.SHAPinningRequired, AtApproval: github.Observed(setting.BoolValue(false))},
+		{Key: setting.ActionsEnabled, AtApproval: github.Observed(setting.BoolValue(true))},
+	})
+}
+
+// shaPinningRequiredAfterEnablingChange は、Actions が無効のリポジトリで、Actions を有効にする変更のあとに sha_pinning_required を true にする論理的な設定変更。
+func shaPinningRequiredAfterEnablingChange() changeplan.LogicalChange {
+	return singleUpdate(setting.SHAPinningRequired, setting.BoolValue(true), relevantTo(setting.ActionsEnabled, setting.BoolValue(true)))
+}
+
 // shaPinningRequiredNotApplicable は、Actions が無効で観測不能だった sha_pinning_required の、理由つきの適用不能な変更予定。
 func shaPinningRequiredNotApplicable() changeplan.SettingPlan {
 	return changeplan.SettingPlan{
@@ -560,41 +573,21 @@ func TestApplyPlan(t *testing.T) {
 		}
 	})
 
-	// Actions が有効で観測値と異なる sha_pinning_required は適用可能だが、更新要求がまだない
-	shaPinningRequiredMismatch := changeplan.SettingPlan{
-		Key: setting.SHAPinningRequired, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
-		Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
-	}
-
-	t.Run("applicable sha_pinning_required is rejected as not supported yet without output or approval", func(t *testing.T) {
+	// 適用可能性の判断がない変更予定は Generate が作らないが、作られたときに承認へ進まないことを確かめる
+	t.Run("planned change without an applicability judgment returns an error without output, approval, or requests", func(t *testing.T) {
 		baseURL, server := newSequenceServer(t)
 		var out bytes.Buffer
 		calls := 0
+		notJudged := allowAutoMergeMismatch()
+		notJudged.Applicability = changeplan.ApplicabilityNotJudged
 
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, shaPinningRequiredMismatch))
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, notJudged))
 
-		if want := "owner/repo: updating actions.permissions.sha_pinning_required is not supported yet; no changes made"; err == nil || err.Error() != want {
-			t.Errorf("applyPlan() error = %v, want %q", err, want)
+		if err == nil || !strings.HasSuffix(err.Error(), "; no changes made") {
+			t.Errorf("applyPlan() error = %v, want an error ending with %q", err, "; no changes made")
 		}
 		if calls != 0 || out.Len() != 0 || len(server.Methods()) != 0 {
 			t.Errorf("approve calls = %d, Out = %q, requests = %v, want none", calls, out.String(), server.Methods())
-		}
-	})
-
-	t.Run("not-applicable change in the second repository is reported before the not supported yet first", func(t *testing.T) {
-		calls := 0
-		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{
-			newRepositoryPlanOf(t, "owner/first", 1, shaPinningRequiredMismatch),
-			newRepositoryPlanOf(t, "owner/second", 2, shaPinningRequiredNotApplicable()),
-		}}
-
-		err := applyPlan(context.Background(), Config{Out: &bytes.Buffer{}, Approve: approve(&calls)}, nil, p)
-
-		if wantErr := p.NotApplicableError().Error() + "; no changes made"; err == nil || err.Error() != wantErr {
-			t.Errorf("applyPlan() error = %v, want %q", err, wantErr)
-		}
-		if calls != 0 {
-			t.Errorf("approve calls = %d, want none", calls)
 		}
 	})
 
@@ -993,6 +986,70 @@ func TestRun(t *testing.T) {
 			t.Errorf("approve calls = %d, Out = %q, want one approval and the repository updated", calls, out.String())
 		}
 	})
+
+	// sha_pinning_required の変更は、先行する論理的な設定変更とは別の更新要求で、更新要求の間隔を置いてから送ることを、計画の生成から確かめる
+	shaPinningCases := []struct {
+		name       string
+		source     string
+		responses  []response
+		wantBodies []map[string]any
+		wantOut    string
+	}{
+		{
+			name:   "disabled actions declaring enabled true and sha_pinning_required true is enabled and then updated",
+			source: "repositories:\n  - name: owner/repo\n    actions:\n      permissions:\n        enabled: true\n        sha_pinning_required: true\n",
+			responses: []response{
+				okRepository(1, false, false), okActionsDisabled(),
+				okRepository(1, false, false), okActionsDisabled(), {status: http.StatusNoContent}, okRepository(1, false, false), okAllowedActions("all", false),
+				okRepository(1, false, false), okAllowedActions("all", false), {status: http.StatusNoContent}, okRepository(1, false, false), okAllowedActions("all", true),
+			},
+			wantBodies: []map[string]any{nil, nil, nil, nil, {"enabled": true}, nil, nil, nil, nil, {"enabled": true, "sha_pinning_required": true}, nil, nil},
+			wantOut:    "Previous settings: GitHub Actions resumes with allowed_actions and selected_actions kept",
+		},
+		{
+			name:   "policy and sha_pinning_required changes are applied in two update requests",
+			source: "repositories:\n  - name: owner/repo\n    actions:\n      permissions:\n        allowed_actions: local_only\n        sha_pinning_required: true\n",
+			responses: []response{
+				okRepository(1, false, false), okAllowedActions("all", false),
+				okRepository(1, false, false), okAllowedActions("all", false), {status: http.StatusNoContent}, okRepository(1, false, false), okAllowedActions("local_only", false),
+				okRepository(1, false, false), okAllowedActions("local_only", false), {status: http.StatusNoContent}, okRepository(1, false, false), okAllowedActions("local_only", true),
+			},
+			wantBodies: []map[string]any{nil, nil, nil, nil, {"enabled": true, "allowed_actions": "local_only"}, nil, nil, nil, nil, {"enabled": true, "sha_pinning_required": true}, nil, nil},
+			wantOut:    "actions.permissions.sha_pinning_required: false -> true",
+		},
+	}
+	for _, tc := range shaPinningCases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, server := newSequenceServer(t, tc.responses...)
+			var out bytes.Buffer
+			calls := 0
+			var requestsAtWait []int
+			cfg := newConfig(fstest.MapFS{"reco.yaml": {Data: []byte(tc.source)}}, &out, baseURL, &calls)
+			cfg.After = func(d time.Duration) <-chan time.Time {
+				requestsAtWait = append(requestsAtWait, len(server.RequestLines()))
+				return elapsedAtOnce(d)
+			}
+
+			if err := Run(context.Background(), cfg); err != nil {
+				t.Fatalf("Run() error = %v", err)
+			}
+			readAndUpdate := []string{getRepository, getActionsPermissions, putActionsPermissions, getRepository, getActionsPermissions}
+			want := slices.Concat([]string{getRepository, getActionsPermissions}, readAndUpdate, readAndUpdate)
+			if !slices.Equal(server.RequestLines(), want) {
+				t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+			}
+			if !reflect.DeepEqual(server.Bodies(), tc.wantBodies) {
+				t.Errorf("request bodies = %v, want %v", server.Bodies(), tc.wantBodies)
+			}
+			// 間隔は1つ目の更新後の観測のあと、2つ目の更新直前の観測より前に入る
+			if want := []int{7}; !slices.Equal(requestsAtWait, want) {
+				t.Errorf("requests received at each wait = %v, want %v", requestsAtWait, want)
+			}
+			if calls != 1 || !strings.Contains(out.String(), tc.wantOut) || !strings.Contains(out.String(), "owner/repo: updated") {
+				t.Errorf("approve calls = %d, Out = %q, want one approval, %q, and the repository updated", calls, out.String(), tc.wantOut)
+			}
+		})
+	}
 
 	// 計画時の観測から導いた2つの更新操作の基準が、それぞれの直前の観測で成立することを確かめる
 	selectedSource := "repositories:\n  - name: owner/repo\n    actions:\n      permissions:\n        allowed_actions: selected\n" +

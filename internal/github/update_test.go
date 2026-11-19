@@ -73,6 +73,11 @@ func TestClientUpdate(t *testing.T) {
 			wantRequest: "PUT /repos/owner/repo/actions/permissions", wantBody: map[string]any{"enabled": true, "allowed_actions": "local_only"},
 		},
 		{
+			name: "sha_pinning_required sends enabled true and sha_pinning_required only", key: setting.SHAPinningRequired,
+			value:       setting.BoolValue(true),
+			wantRequest: "PUT /repos/owner/repo/actions/permissions", wantBody: map[string]any{"enabled": true, "sha_pinning_required": true},
+		},
+		{
 			name: "selected_actions sends all three items", key: setting.SelectedActions,
 			value:       setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{"b/*", "a/*"}}),
 			wantRequest: "PUT /repos/owner/repo/actions/permissions/selected-actions",
@@ -121,16 +126,17 @@ func TestClientUpdate(t *testing.T) {
 		})
 	}
 
-	t.Run("setting without an update request panics before sending a request", func(t *testing.T) {
+	t.Run("undefined setting panics before sending a request", func(t *testing.T) {
+		undefined := setting.Key("general.undefined")
 		defer func() {
 			if recover() == nil {
-				t.Errorf("Update(%q) did not panic", setting.SHAPinningRequired)
+				t.Errorf("Update(%q) did not panic", undefined)
 			}
 		}()
 		c := newTestClient(t, func(http.ResponseWriter, *http.Request) {
-			t.Error("Update() sent a request for a setting without an update request")
+			t.Error("Update() sent a request for an undefined setting")
 		})
-		_, _ = c.Update(t.Context(), mustReference(t, "owner/repo"), setting.SHAPinningRequired, setting.BoolValue(true))
+		_, _ = c.Update(t.Context(), mustReference(t, "owner/repo"), undefined, setting.BoolValue(true))
 	})
 }
 
@@ -626,6 +632,32 @@ func TestUpdateActionsEnabled(t *testing.T) {
 				t.Errorf("request body = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestUpdateSHAPinningRequired は、false を送るときも enabled が true のままであることを確かめる。
+// true を送る形は TestClientUpdate が確かめる。
+//
+//trace:checks FR-011
+//trace:checks INV-001
+func TestUpdateSHAPinningRequired(t *testing.T) {
+	var gotBody []byte
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	outcome, err := c.updateSHAPinningRequired(t.Context(), mustReference(t, "owner/repo"), false)
+	if err != nil || outcome != UpdateSucceeded {
+		t.Fatalf("updateSHAPinningRequired() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(gotBody, &got); err != nil {
+		t.Fatalf("request body %q is not JSON: %v", gotBody, err)
+	}
+	if want := map[string]any{"enabled": true, "sha_pinning_required": false}; !reflect.DeepEqual(got, want) {
+		t.Errorf("request body = %v, want %v", got, want)
 	}
 }
 

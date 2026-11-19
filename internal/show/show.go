@@ -35,7 +35,6 @@ func Run(ctx context.Context, cfg Config) error {
 // Repository 行には GitHub が返す名前ではなく、利用者が指定したリポジトリ指定を出す。
 // 観測操作の失敗の文言と同じ名前で対象を示すためで、リダイレクトに追従しないため両者の差は大文字小文字に限られる。
 // observed はすべての設定の領域を読み取った観測の結果に限る。読み取っていなければ nil 参照で止まり、値を補って表示しない。
-// sha_pinning_required は観測するが、CLI 仕様の show に含まれないため表示しない。
 func writeObservationResult(w io.Writer, target repository.Reference, observed github.ObservationResult) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Repository: %s\n\nGeneral:\n  delete_branch_on_merge: %t\n  allow_auto_merge: %t\n",
@@ -57,5 +56,8 @@ func writeActionsPermissions(b *strings.Builder, p github.ActionsPermissions) {
 	if criteria, ok := p.SelectedActions.Value(); ok {
 		fmt.Fprintf(b, "  selected_actions:\n    github_owned_allowed: %t\n    verified_allowed: %t\n    patterns_allowed: %s\n",
 			criteria.GitHubOwnedAllowed, criteria.VerifiedAllowed, criteria.PatternsAllowedString())
+	}
+	if required, ok := p.SHAPinningRequired.Value(); ok {
+		fmt.Fprintf(b, "  sha_pinning_required: %t\n", required)
 	}
 }

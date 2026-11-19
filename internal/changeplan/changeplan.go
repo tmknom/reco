@@ -44,6 +44,8 @@ type SettingPlan struct {
 	NotApplicableReason NotApplicableReason
 	// SideEffects は変更予定に伴う副作用。副作用がなければ nil。
 	SideEffects []SideEffect
+	// PreviousSettings は、Actions を有効にする変更予定で、無効にする前の値のまま再開する設定。当たらなければ nil。
+	PreviousSettings []setting.Key
 }
 
 // Generate は、selection で選んだ対象の変更計画を生成する。selection が nil なら宣言された全リポジトリを選ぶ。
@@ -112,12 +114,6 @@ func (r RepositoryPlan) NotApplicableChanges() []SettingPlan {
 	return found
 }
 
-// ReenablesActions は、この変更予定が Actions の有効状態だけで GitHub Actions を有効に戻すかを返す。
-// GitHub は無効にする前の Actions 許可ポリシーと sha_pinning_required を残しているため、それらの値で再開する。
-func (s SettingPlan) ReenablesActions() bool {
-	return s.Key == setting.ActionsEnabled && s.Result == Mismatch && s.Desired.Bool()
-}
-
 // EnablesActionsByPolicy は、この変更予定が Actions 許可ポリシーの変更として GitHub Actions を有効にするかを返す。
 // Actions 許可ポリシーの期待値は Actions が有効であることを含むため、Actions が無効で観測不能だったポリシーの変更予定が当たる。
 func (s SettingPlan) EnablesActionsByPolicy() bool {
@@ -140,6 +136,7 @@ func generateRepositoryPlan(ctx context.Context, client *github.Client, target c
 	for i := range settings {
 		settings[i].Applicability, settings[i].NotApplicableReason = judgeApplicability(settings[i], settings)
 		settings[i].SideEffects = sideEffects(settings[i], observed)
+		settings[i].PreviousSettings = previousSettings(settings[i], settings)
 	}
 	return RepositoryPlan{Target: target.Reference, RepositoryID: observed.RepositoryID, Settings: settings}, nil
 }
