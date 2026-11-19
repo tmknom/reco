@@ -2,6 +2,7 @@ package changeplan
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
@@ -31,7 +32,7 @@ type RelevantSetting struct {
 	AtApproval github.SettingObservation[setting.Value]
 }
 
-// Keys は、c が変える設定を更新操作の順に返す。
+// Keys は、c が変える管理設定を更新操作の順に返す。
 func (c LogicalChange) Keys() []setting.Key {
 	keys := make([]setting.Key, len(c.Operations))
 	for i, operation := range c.Operations {
@@ -40,21 +41,34 @@ func (c LogicalChange) Keys() []setting.Key {
 	return keys
 }
 
+// SettingsToChange は、ドメインモデルの「論理的な設定変更が変える設定」を返す。変更対象外の設定から除く範囲である。
+// Keys の管理設定に、その期待値が含む状態の設定を足したもの。
+func (c LogicalChange) SettingsToChange() []setting.Key {
+	keys := c.Keys()
+	if slices.Contains(keys, setting.AllowedActions) {
+		keys = append(keys, setting.ActionsEnabled)
+	}
+	return keys
+}
+
 // LogicalChanges は、変更予定から論理的な設定変更を、計画の並びで導く。
-// 適用可能でない変更予定と、適用可能でも更新操作を導けない Actions の有効状態の変更予定があれば、承認の対象にしないため error にする。
+// 適用可能でない変更予定があれば、承認の対象にしないため error にする。
 // 副作用を伴う変更予定の更新操作は、operationOf が副作用として提示した設定を必ず基準に載せる。載せずに受け付けると承認の前に示していない値を失わせ得るため。
 // 遷移先が selected のポリシーの変更予定と、選択方式の Actions 許可条件の比較不能な変更予定は、ポリシーの位置で一つの論理的な設定変更にまとめ、
 // ポリシー、許可条件の順に二つの更新操作で実現する。
 // 対にならない形は、設定宣言の組み合わせの規則と観測の取得条件のどちらかが破れたときにしか生じないため、不変条件の破れとして panic する。
+// Actions の有効状態と Actions 許可ポリシーの計画が、照合結果によらず同じリポジトリの計画に並ぶ形も、
+// 設定宣言の組み合わせの規則が破れたときにしか生じないため panic する。
+// 有効状態の変更予定とポリシーの組を実行すると、有効状態の更新操作が無効にする前のポリシーで Actions を有効にし、宣言していない状態を残し得るため。
 func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 	for _, s := range r.Settings {
-		switch {
-		case !s.IsPlannedChange():
-		case s.Applicability != Applicable:
+		if s.IsPlannedChange() && s.Applicability != Applicable {
 			return nil, fmt.Errorf("%s: %s cannot be applied", r.Target, s.Key)
-		case s.Key == setting.ActionsEnabled:
-			return nil, fmt.Errorf("%s: updating %s is not supported yet", r.Target, s.Key)
 		}
+	}
+	_, hasEnabled := r.settingPlanOf(setting.ActionsEnabled)
+	if _, hasPolicy := r.settingPlanOf(setting.AllowedActions); hasEnabled && hasPolicy {
+		panic(fmt.Sprintf("changeplan: plans of %s and %s are in the same repository plan", setting.ActionsEnabled, setting.AllowedActions))
 	}
 	criteria, paired := r.criteriaFollowingPolicy()
 	var changes []LogicalChange

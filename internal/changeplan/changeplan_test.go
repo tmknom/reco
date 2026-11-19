@@ -68,6 +68,33 @@ func TestRepositoryPlan_HasPlannedChanges(t *testing.T) {
 }
 
 //trace:checks FR-007
+func TestSettingPlan_ReenablesActions(t *testing.T) {
+	enabled := func(observed, desired bool, result ReconciliationResult) SettingPlan {
+		return SettingPlan{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(observed)), Desired: setting.BoolValue(desired), Result: result}
+	}
+	cases := []struct {
+		name string
+		plan SettingPlan
+		want bool
+	}{
+		{name: "enabled from false to true reenables actions", plan: enabled(false, true, Mismatch), want: true},
+		{name: "enabled from true to false does not reenable actions", plan: enabled(true, false, Mismatch), want: false},
+		{name: "enabled already true does not reenable actions", plan: enabled(true, true, Match), want: false},
+		{
+			name: "another setting from false to true does not reenable actions",
+			plan: SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch},
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.plan.ReenablesActions(); got != tc.want {
+				t.Errorf("ReenablesActions() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSettingPlan_EnablesActionsByPolicy(t *testing.T) {
 	cases := []struct {
 		name string

@@ -64,6 +64,10 @@ func TestClientUpdate(t *testing.T) {
 			wantRequest: "PATCH /repos/owner/repo", wantBody: map[string]any{"allow_auto_merge": true},
 		},
 		{
+			name: "enabled sends only enabled", key: setting.ActionsEnabled, value: setting.BoolValue(false),
+			wantRequest: "PUT /repos/owner/repo/actions/permissions", wantBody: map[string]any{"enabled": false},
+		},
+		{
 			name: "allowed_actions sends enabled and allowed_actions only", key: setting.AllowedActions,
 			value:       setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly),
 			wantRequest: "PUT /repos/owner/repo/actions/permissions", wantBody: map[string]any{"enabled": true, "allowed_actions": "local_only"},
@@ -584,6 +588,44 @@ func TestUpdateWorkflowPermissionsOutcomeUnknown(t *testing.T) {
 	}
 	if n := redirected.Load(); n != 0 {
 		t.Errorf("redirect target received %d requests, want 0", n)
+	}
+}
+
+// TestUpdateActionsEnabled は、本文が enabled だけで、allowed_actions と sha_pinning_required を送らないことを確かめる。
+// 要求の見出しと送り先は、同じ更新エンドポイントの TestUpdateAllowedActions と TestClientUpdate が確かめる。
+//
+//trace:checks FR-011
+//trace:checks INV-001
+func TestUpdateActionsEnabled(t *testing.T) {
+	cases := []struct {
+		name    string
+		enabled bool
+		want    map[string]any
+	}{
+		{name: "true sends only enabled true", enabled: true, want: map[string]any{"enabled": true}},
+		{name: "false sends only enabled false", enabled: false, want: map[string]any{"enabled": false}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotBody []byte
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				gotBody, _ = io.ReadAll(r.Body)
+				w.WriteHeader(http.StatusNoContent)
+			})
+
+			outcome, err := c.updateActionsEnabled(t.Context(), mustReference(t, "owner/repo"), tc.enabled)
+			if err != nil || outcome != UpdateSucceeded {
+				t.Fatalf("updateActionsEnabled() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+			}
+
+			var got map[string]any
+			if err := json.Unmarshal(gotBody, &got); err != nil {
+				t.Fatalf("request body %q is not JSON: %v", gotBody, err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("request body = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 

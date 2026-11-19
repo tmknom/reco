@@ -286,6 +286,11 @@ func enableSelectedChange() changeplan.LogicalChange {
 	return change
 }
 
+// enabledStateChange は、Actions の有効状態を to にする論理的な設定変更。基準は有効状態の反対の観測値だけである。
+func enabledStateChange(to bool) changeplan.LogicalChange {
+	return singleUpdate(setting.ActionsEnabled, setting.BoolValue(to), relevantTo(setting.ActionsEnabled, setting.BoolValue(!to)))
+}
+
 func newRepositoryPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.RepositoryPlan {
 	t.Helper()
 	return newRepositoryPlanOf(t, "owner/repo", 1, settings...)
@@ -514,22 +519,6 @@ func TestApplyPlan(t *testing.T) {
 
 		if err == nil {
 			t.Error("applyPlan() error = nil, want an error")
-		}
-		if calls != 0 || out.Len() != 0 || len(server.Methods()) != 0 {
-			t.Errorf("approve calls = %d, Out = %q, requests = %v, want none", calls, out.String(), server.Methods())
-		}
-	})
-
-	t.Run("enabled state change returns an error naming it without approval, output, or request", func(t *testing.T) {
-		baseURL, server := newSequenceServer(t)
-		var out bytes.Buffer
-		calls := 0
-		disabling := changeplan.SettingPlan{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
-
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, disabling))
-
-		if want := "owner/repo: updating actions.permissions.enabled is not supported yet; no changes made"; err == nil || err.Error() != want {
-			t.Errorf("applyPlan() error = %v, want %q", err, want)
 		}
 		if calls != 0 || out.Len() != 0 || len(server.Methods()) != 0 {
 			t.Errorf("approve calls = %d, Out = %q, requests = %v, want none", calls, out.String(), server.Methods())
@@ -884,6 +873,29 @@ func TestRun(t *testing.T) {
 		var out bytes.Buffer
 		calls := 0
 		files := fstest.MapFS{"reco.yaml": {Data: []byte(actionsPermissionsConfigSource("local_only"))}}
+
+		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		want := []string{getRepository, getActionsPermissions, getRepository, getActionsPermissions, putActionsPermissions, getRepository, getActionsPermissions}
+		if !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		if calls != 1 || !strings.Contains(out.String(), "owner/repo: updated") {
+			t.Errorf("approve calls = %d, Out = %q, want one approval and the repository updated", calls, out.String())
+		}
+	})
+
+	t.Run("disabling actions is applied in a single update after a single approval", func(t *testing.T) {
+		baseURL, server := newSequenceServer(t,
+			okRepository(1, false, false), okAllowedActions("all", true),
+			okRepository(1, false, false), okAllowedActions("all", true),
+			response{status: http.StatusNoContent},
+			okRepository(1, false, false), okActionsDisabled())
+		var out bytes.Buffer
+		calls := 0
+		source := "repositories:\n  - name: owner/repo\n    actions:\n      permissions:\n        enabled: false\n"
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(source)}}
 
 		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
 			t.Fatalf("Run() error = %v", err)

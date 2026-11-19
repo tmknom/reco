@@ -27,7 +27,7 @@ func (e UpdateEndpoint) ObservedSettings() []setting.Key {
 	case WorkflowPermissionsEndpoint:
 		return []setting.Key{setting.DefaultWorkflowPermissions, setting.CanApprovePullRequestReviews}
 	case ActionsPermissionsEndpoint:
-		return []setting.Key{setting.AllowedActions, setting.SHAPinningRequired}
+		return []setting.Key{setting.ActionsEnabled, setting.AllowedActions, setting.SHAPinningRequired}
 	case SelectedActionsEndpoint:
 		return []setting.Key{setting.SelectedActions}
 	}

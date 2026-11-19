@@ -87,6 +87,23 @@ func TestPlannedChangeText(t *testing.T) {
 				possibleLoss,
 		},
 		{
+			name: "reenabling actions shows that it resumes with the previous settings",
+			s: changeplan.SettingPlan{
+				Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
+				Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+			},
+			want: "  actions.permissions.enabled: false -> true\n" +
+				"    Previous settings: GitHub Actions resumes with allowed_actions, selected_actions, and sha_pinning_required kept from before it was disabled (current values are unavailable)\n",
+		},
+		{
+			name: "disabling actions shows no previous settings",
+			s: changeplan.SettingPlan{
+				Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false),
+				Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+			},
+			want: "  actions.permissions.enabled: true -> false\n",
+		},
+		{
 			name: "match is empty",
 			s: changeplan.SettingPlan{
 				Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true),

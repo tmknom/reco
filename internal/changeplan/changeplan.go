@@ -41,6 +41,12 @@ type SettingPlan struct {
 	SideEffects []SideEffect
 }
 
+// ReenablesActions は、この変更予定が Actions の有効状態だけで GitHub Actions を有効に戻すかを返す。
+// GitHub は無効にする前の Actions 許可ポリシーと sha_pinning_required を残しているため、それらの値で再開する。
+func (s SettingPlan) ReenablesActions() bool {
+	return s.Key == setting.ActionsEnabled && s.Result == Mismatch && s.Desired.Bool()
+}
+
 // EnablesActionsByPolicy は、この変更予定が Actions 許可ポリシーの変更として GitHub Actions を有効にするかを返す。
 // Actions 許可ポリシーの期待値は Actions が有効であることを含むため、Actions が無効で観測不能だったポリシーの変更予定が当たる。
 func (s SettingPlan) EnablesActionsByPolicy() bool {
