@@ -10,12 +10,10 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/githubtest"
 	"github.com/tmknom/reco/internal/repository"
-	"github.com/tmknom/reco/internal/setting"
 )
 
 func mustReference(t *testing.T, name string) repository.Reference {
@@ -138,48 +136,4 @@ func TestRun(t *testing.T) {
 			t.Errorf("got Out %q, want empty", out.String())
 		}
 	})
-}
-
-//trace:checks FR-006
-//trace:checks FR-007
-func TestNotApplicableError(t *testing.T) {
-	zeta, alpha := mustReference(t, "owner/zeta"), mustReference(t, "owner/alpha")
-	match := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match}
-	applicable := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
-	notApplicable := changeplan.SettingPlan{
-		Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
-		Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableActionsRemainDisabled,
-	}
-	cases := []struct {
-		name         string
-		repositories []changeplan.RepositoryPlan
-		want         string
-	}{
-		{
-			name:         "plan without not-applicable changes has no error",
-			repositories: []changeplan.RepositoryPlan{{Target: zeta, Settings: []changeplan.SettingPlan{match, applicable}}},
-		},
-		{
-			name: "not-applicable settings in two repositories are all named in the change plan order",
-			repositories: []changeplan.RepositoryPlan{
-				{Target: zeta, Settings: []changeplan.SettingPlan{applicable, notApplicable}},
-				{Target: alpha, Settings: []changeplan.SettingPlan{notApplicable}},
-			},
-			want: "plan cannot be applied: owner/zeta: actions.permissions.sha_pinning_required is not applicable; owner/alpha: actions.permissions.sha_pinning_required is not applicable",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := notApplicableError(changeplan.Plan{Repositories: tc.repositories})
-			if tc.want == "" {
-				if err != nil {
-					t.Errorf("notApplicableError() = %v, want nil", err)
-				}
-				return
-			}
-			if err == nil || err.Error() != tc.want {
-				t.Errorf("notApplicableError() = %v, want %q", err, tc.want)
-			}
-		})
-	}
 }

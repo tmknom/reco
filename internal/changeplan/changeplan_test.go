@@ -18,6 +18,51 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
+//trace:checks FR-006
+//trace:checks FR-007
+//trace:checks FR-008
+func TestPlan_NotApplicableError(t *testing.T) {
+	zeta, alpha := mustReference(t, "owner/zeta"), mustReference(t, "owner/alpha")
+	match := SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: Match}
+	applicable := SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
+	notApplicable := SettingPlan{
+		Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
+		Result: NotComparable, Applicability: NotApplicable, NotApplicableReason: NotApplicableActionsRemainDisabled,
+	}
+	cases := []struct {
+		name         string
+		repositories []RepositoryPlan
+		want         string
+	}{
+		{
+			name:         "plan without not-applicable changes has no error",
+			repositories: []RepositoryPlan{{Target: zeta, Settings: []SettingPlan{match, applicable}}},
+		},
+		{
+			name: "not-applicable settings in two repositories are all named in the change plan order",
+			repositories: []RepositoryPlan{
+				{Target: zeta, Settings: []SettingPlan{applicable, notApplicable}},
+				{Target: alpha, Settings: []SettingPlan{notApplicable}},
+			},
+			want: "plan cannot be applied: owner/zeta: actions.permissions.sha_pinning_required is not applicable; owner/alpha: actions.permissions.sha_pinning_required is not applicable",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Plan{Repositories: tc.repositories}.NotApplicableError()
+			if tc.want == "" {
+				if err != nil {
+					t.Errorf("NotApplicableError() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != tc.want {
+				t.Errorf("NotApplicableError() = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestRepositoryPlan_Count(t *testing.T) {
 	r := RepositoryPlan{Settings: []SettingPlan{{Result: Mismatch}, {Result: Match}, {Result: Mismatch}, {Result: NotComparable}}}
 	if got := r.Count(Mismatch); got != 2 {

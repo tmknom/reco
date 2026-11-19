@@ -56,6 +56,29 @@ export GH_TOKEN=$(gh auth token)
 
 `HTTP 404`、`HTTP 403`、`missing fields` のどれかを含むエラーは、トークンの持ち主（`gh` にログインしたアカウント）がそのリポジトリで十分なロールを持っていないときや、トークンの権限が足りないときに出ます。そのリポジトリで Admin ロールを持つアカウントの、`gh auth token` で取ったトークンを渡します。`HTTP 404` は、リポジトリの名前の綴りを誤ったときにも出ます。
 
+## `Plan cannot be applied.` と表示された
+
+変更計画に `Applicability: not applicable` の行が付いた変更があると、`plan` と `apply` は変更計画の最後に `Plan cannot be applied.` を表示し、エラーで終わります。`apply` は承認を求めず、ほかのリポジトリも含めて何も変えません。
+
+```text
+Repository: example/project-a
+  actions.permissions.sha_pinning_required: (GitHub Actions disabled) -> true
+    Applicability: not applicable (GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it)
+
+Plan: 1 repository to update, 1 change
+Repositories checked: 1
+
+Plan cannot be applied.
+```
+
+`apply` では、続けて次のエラーが出ます。
+
+```text
+{"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-a: actions.permissions.sha_pinning_required is not applicable; no changes made"}
+```
+
+理由は、変更計画の `Applicability:` の行の括弧の中にあります。セミコロンの前が成り立っていないこと、後ろが設定ファイルの直し方です。この例では Actions が無効のため、同じリポジトリに `enabled: true` か `allowed_actions` を書き足してから、`plan` で `Plan cannot be applied.` が消えたことを確かめ、`apply` を実行し直します。
+
 ## 承認できない
 
 承認を求められずに `approval not available` で終わるときは、標準入力が端末になっていません。端末から直接 `apply` を実行します。コンテナイメージでは `-it` を付けます。
@@ -126,7 +149,7 @@ GitHub Free のアカウントが所有するプライベートリポジトリ�
 
 ## References
 
-- [CLI 仕様](../spec/cli.md)：エラーの形式と各エラーの示し方（2章、3章、7章）、承認（5.1節）、変更結果の表示と各行（5.2節、5.3節）
-- [要求定義](../spec/requirements.md)：リダイレクトに従わないこと（FR-004）、変更結果の報告（FR-013）、異常のあとに更新を続けないこと（INV-005）
+- [CLI 仕様](../spec/cli.md)：エラーの形式と各エラーの示し方（2章、3章、7章）、適用できない変更の表示と `apply` が止まること（4章、5章）、承認（5.1節）、変更結果の表示と各行（5.2節、5.3節）
+- [要求定義](../spec/requirements.md)：適用できない変更をまとめて報告すること（FR-008）、リダイレクトに従わないこと（FR-004）、変更結果の報告（FR-013）、異常のあとに更新を続けないこと（INV-005）
 - [GitHub REST API 共通仕様](../research/rest-api.md)：`404` だけでは不存在を断定できないこと、レート制限と待つべき時間
 - [GitHub リポジトリ API 仕様](../research/repositories.md)：名前を変えたリポジトリへのリダイレクト、GitHub Free のプライベートリポジトリでの自動マージ

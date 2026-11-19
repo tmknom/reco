@@ -244,7 +244,34 @@ Repository: example/project-a
 
 `apply` は、選択された全対象について、設定宣言の検証、必要な観測、照合と適用可能性の判断が完了してから承認へ進みます。これらの事前検証で問題が見つかった場合は、対象と理由を示し、承認や更新を開始していないことを報告します。すべて変更不要と確認できた場合は、承認を求めず、更新せずに正常終了します。
 
-`actions.permissions.sha_pinning_required` の適用可能な変更予定を含む変更計画は、`apply` ではまだ実行できません。事前検証の問題として、変更計画を表示せず、承認を求めず、更新を開始せずに、`example/project-a: updating actions.permissions.sha_pinning_required is not supported yet; no changes made` のように対象と設定を示してエラー終了します。`plan` では変更予定を確認できます。
+選択された対象のどこかに適用不能な変更予定があれば、変更計画を4章の `plan` と同じ形で stdout へ最後まで表示し、承認を求めず、どのリポジトリも更新せずにエラー終了します。適用可能な変更予定だけを持つリポジトリも更新しません。理由は、`plan` と同じく変更予定の下の `Applicability:` の行で示します。stderr のエラーは、適用不能な変更予定のすべてを変更計画の並びで対象と設定を挙げ、`no changes made` を添えて、更新を開始していないことを伝えます。観測操作に失敗した場合は、その時点で打ち切るため変更計画を表示せず、ほかの対象に適用不能な変更予定があっても観測操作の失敗だけを報告します（FR-008）。
+
+```text
+$ reco apply
+Configuration: ./reco.yaml
+
+Repository: example/project-a
+  general.allow_auto_merge: false -> true
+
+Repository: example/project-b
+  actions.permissions.sha_pinning_required: (GitHub Actions disabled) -> true
+    Applicability: not applicable (GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it)
+
+Repository: example/project-c
+  actions.permissions.sha_pinning_required: (GitHub Actions disabled) -> true
+    Applicability: not applicable (GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it)
+
+Plan: 3 repositories to update, 3 changes
+Repositories checked: 3
+
+Plan cannot be applied.
+```
+
+```text
+{"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-b: actions.permissions.sha_pinning_required is not applicable; example/project-c: actions.permissions.sha_pinning_required is not applicable; no changes made"}
+```
+
+`actions.permissions.sha_pinning_required` の適用可能な変更予定を含む変更計画は、`apply` ではまだ実行できません。事前検証の問題として、変更計画を表示せず、承認を求めず、更新を開始せずに、`example/project-a: updating actions.permissions.sha_pinning_required is not supported yet; no changes made` のように対象と設定を示してエラー終了します。適用不能な変更予定がほかにあれば、適用不能の報告を先に行い、このエラーは表示しません。`plan` では変更予定を確認できます。
 
 すべて変更不要の場合の表示例は次のとおりです。
 
@@ -581,7 +608,7 @@ Actions permissions:
 | `apply`：変更完了、または変更不要 | `0` |
 | `show`：観測成功（取得条件による観測不能な値を含み得る） | `0` |
 | `plan`：適用不能な変更・観測操作の失敗 | `1` |
-| `apply`：承認拒否・承認不能・変更失敗・更新操作の成否不明・変更前提の不成立 | `1` |
+| `apply`：適用不能な変更・承認拒否・承認不能・変更失敗・更新操作の成否不明・変更前提の不成立 | `1` |
 | 入力不正、認証・権限・API 通信の失敗、対象の不一致や確認不能 | `1` |
 | GitHub API の HTTP リダイレクト応答（読み取り・更新） | `1` |
 | 更新成功応答後の再観測失敗・期待状態との不一致・変更対象外の設定の予期しない変化 | `1` |
