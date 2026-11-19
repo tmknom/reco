@@ -3,7 +3,10 @@ package changeplan
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
@@ -43,52 +46,6 @@ type SettingPlan struct {
 	SideEffects []SideEffect
 }
 
-// ReenablesActions は、この変更予定が Actions の有効状態だけで GitHub Actions を有効に戻すかを返す。
-// GitHub は無効にする前の Actions 許可ポリシーと sha_pinning_required を残しているため、それらの値で再開する。
-func (s SettingPlan) ReenablesActions() bool {
-	return s.Key == setting.ActionsEnabled && s.Result == Mismatch && s.Desired.Bool()
-}
-
-// EnablesActionsByPolicy は、この変更予定が Actions 許可ポリシーの変更として GitHub Actions を有効にするかを返す。
-// Actions 許可ポリシーの期待値は Actions が有効であることを含むため、Actions が無効で観測不能だったポリシーの変更予定が当たる。
-func (s SettingPlan) EnablesActionsByPolicy() bool {
-	return s.Key == setting.AllowedActions && s.Result == NotComparable && s.Observed.UnavailableReason() == github.UnavailableActionsDisabled
-}
-
-// Count は、照合結果が result の設定の数を返す。
-func (r RepositoryPlan) Count(result ReconciliationResult) int {
-	n := 0
-	for _, s := range r.Settings {
-		if s.Result == result {
-			n++
-		}
-	}
-	return n
-}
-
-// IsPlannedChange は、この管理設定が変更予定 (不一致か比較不能の管理設定) かを返す。
-// 変更予定かどうかを読む処理ごとに条件を組み立てると定義が食い違うため、ここだけで判定する。
-func (s SettingPlan) IsPlannedChange() bool {
-	return s.Result != Match
-}
-
-// HasPlannedChanges は、変更予定があるかを返す。
-func (r RepositoryPlan) HasPlannedChanges() bool {
-	return slices.ContainsFunc(r.Settings, SettingPlan.IsPlannedChange)
-}
-
-// NotApplicableChanges は、適用不能な変更予定を計画の並びで返す。なければ nil を返す。
-// 適用不能な変更予定を挙げる処理ごとに走査を組み立てると挙げる対象が食い違うため、挙げるときはここで取り出す。
-func (r RepositoryPlan) NotApplicableChanges() []SettingPlan {
-	var found []SettingPlan
-	for _, s := range r.Settings {
-		if s.Applicability == NotApplicable {
-			found = append(found, s)
-		}
-	}
-	return found
-}
-
 // Generate は、selection で選んだ対象の変更計画を生成する。selection が nil なら宣言された全リポジトリを選ぶ。
 // 設定ファイルの読み込みと観測操作の失敗は、文言が設定ファイルのパスか対象名を含むため包み直さずに返す。
 // 観測操作の失敗は比較不能にしない。
@@ -110,6 +67,67 @@ func Generate(ctx context.Context, client *github.Client, file configuration.Fil
 		repositories = append(repositories, r)
 	}
 	return Plan{Repositories: repositories}, nil
+}
+
+// NotApplicableError は、変更計画の適用不能な変更予定を、変更計画の並びで対象と設定を挙げた error を返す。なければ nil を返す。
+// 理由の文言は変更計画の表示が持ち、利用者は表示の Applicability: の行で読むため、error には含めない。
+func (p Plan) NotApplicableError() error {
+	var found []string
+	for _, r := range p.Repositories {
+		for _, s := range r.NotApplicableChanges() {
+			found = append(found, fmt.Sprintf("%s: %s is not applicable", r.Target, s.Key))
+		}
+	}
+	if len(found) == 0 {
+		return nil
+	}
+	return errors.New("plan cannot be applied: " + strings.Join(found, "; "))
+}
+
+// Count は、照合結果が result の設定の数を返す。
+func (r RepositoryPlan) Count(result ReconciliationResult) int {
+	n := 0
+	for _, s := range r.Settings {
+		if s.Result == result {
+			n++
+		}
+	}
+	return n
+}
+
+// HasPlannedChanges は、変更予定があるかを返す。
+func (r RepositoryPlan) HasPlannedChanges() bool {
+	return slices.ContainsFunc(r.Settings, SettingPlan.IsPlannedChange)
+}
+
+// NotApplicableChanges は、適用不能な変更予定を計画の並びで返す。なければ nil を返す。
+// 適用不能な変更予定を挙げる処理ごとに走査を組み立てると挙げる対象が食い違うため、挙げるときはここで取り出す。
+func (r RepositoryPlan) NotApplicableChanges() []SettingPlan {
+	var found []SettingPlan
+	for _, s := range r.Settings {
+		if s.Applicability == NotApplicable {
+			found = append(found, s)
+		}
+	}
+	return found
+}
+
+// ReenablesActions は、この変更予定が Actions の有効状態だけで GitHub Actions を有効に戻すかを返す。
+// GitHub は無効にする前の Actions 許可ポリシーと sha_pinning_required を残しているため、それらの値で再開する。
+func (s SettingPlan) ReenablesActions() bool {
+	return s.Key == setting.ActionsEnabled && s.Result == Mismatch && s.Desired.Bool()
+}
+
+// EnablesActionsByPolicy は、この変更予定が Actions 許可ポリシーの変更として GitHub Actions を有効にするかを返す。
+// Actions 許可ポリシーの期待値は Actions が有効であることを含むため、Actions が無効で観測不能だったポリシーの変更予定が当たる。
+func (s SettingPlan) EnablesActionsByPolicy() bool {
+	return s.Key == setting.AllowedActions && s.Result == NotComparable && s.Observed.UnavailableReason() == github.UnavailableActionsDisabled
+}
+
+// IsPlannedChange は、この管理設定が変更予定 (不一致か比較不能の管理設定) かを返す。
+// 変更予定かどうかを読む処理ごとに条件を組み立てると定義が食い違うため、ここだけで判定する。
+func (s SettingPlan) IsPlannedChange() bool {
+	return s.Result != Match
 }
 
 // generateRepositoryPlan は、一つの対象リポジトリを計画時に観測し、リポジトリの計画を生成する。

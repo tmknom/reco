@@ -66,12 +66,14 @@ Repositories checked: 1
 |---|---|
 | `Repository:` | 変える予定のあるリポジトリ。変える予定のないリポジトリは出ない |
 | `<設定>: <現在の値> -> <書いた値>` | GitHub の値が設定ファイルの値と違う設定。承認すると右の値に変える |
-| `<設定>: (<今の状態>) -> <書いた値>` | 今は使われていない設定。`(not in use)` は `allowed_actions` が `selected` でないこと、`(GitHub Actions disabled)` は Actions が無効なことを示す。承認すると右の値に変える |
+| `<設定>: (<今の状態>) -> <書いた値>` | 今は使われていない設定。`(not in use)` は `allowed_actions` が `selected` でないこと、`(GitHub Actions disabled)` は Actions が無効なことを示す。下に `Applicability:` の行がなければ、承認すると右の値に変える |
+| `Applicability: not applicable (<理由>)` | 安全に変えるための条件が成り立たないため、reco はこの設定を変えない。括弧の中は、何が成り立っていないかと、設定ファイルにどう書けばよいか |
 | `Side effect:` | この変更に伴って GitHub が消す値。読み取れた値は括弧の中に出る |
 | `Previous settings:` | Actions を `enabled: true` で有効に戻すと、無効にする前の `allowed_actions` などの設定で再開すること。無効のあいだは値を読み取れないため、値は出ない |
 | `Plan:` | 変える予定のリポジトリの数と、変える設定の数 |
 | `Repositories checked:` | 読み取ったリポジトリの数 |
 | `No changes.` | 設定ファイルに書いた設定が、すべて GitHub 上でもそのとおりになっている |
+| `Plan cannot be applied.` | `Applicability: not applicable` の変更が一つ以上ある。このままでは `apply` で変えられない |
 
 `Side effect:` は、`allowed_actions` を `selected` から `all` や `local_only` に変えるときに出ます。
 
@@ -114,6 +116,8 @@ Repositories updated: 1
 | `not attempted` | 変更を始めなかった |
 | `Apply complete.` | すべてのリポジトリが `updated` か `no change` だった |
 
+変更計画に `Plan cannot be applied.` が出たときは、承認を求めず、どのリポジトリの設定も変えずにエラーで終わります。ほかのリポジトリの変更が問題なく行えても変えません。直し方は [Troubleshooting](troubleshooting.md#plan-cannot-be-applied-と表示された) にあります。
+
 どこかの変更が完了しなかったら、reco は残りの変更を始めずに止まります。すでに反映した変更は元に戻りません。`failed` や `not attempted` が出たときにすることは [Troubleshooting](troubleshooting.md#apply-が途中で止まった) にあります。
 
 ### 承認
@@ -140,4 +144,4 @@ reco は、GitHub へのアクセスに使うトークンを、次の環境変�
 
 ## 終了コード
 
-reco は、成功したときは終了コード `0`、失敗したときは `1` で終わります。
+reco は、成功したときは終了コード `0`、失敗したときは `1` で終わります。`plan` も、変更計画に `Plan cannot be applied.` が出たときは、変更計画を最後まで表示したあと `1` で終わります。

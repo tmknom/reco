@@ -42,12 +42,20 @@ func Run(ctx context.Context, cfg Config) error {
 }
 
 // applyPlan は、選択したすべての対象リポジトリの論理的な設定変更を確定してから、変更計画の全体に承認を一度だけ求め、宣言順に実行する。
+// 適用不能な変更予定が一つでもあれば、利用者がすべての理由を読めるよう変更計画を表示し、承認を求めずに止める。
+// executableChanges の拒否は最初の一件で返るため、それより先に変更計画の全体から適用不能を挙げる。
 func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changeplan.Plan) error {
+	text := changeplandisplay.Text(cfg.Configuration.Path, p)
+	if notApplicable := p.NotApplicableError(); notApplicable != nil {
+		if _, err := io.WriteString(cfg.Out, text); err != nil {
+			return err
+		}
+		return fmt.Errorf("%w; no changes made", notApplicable)
+	}
 	repositories, err := executableChanges(p)
 	if err != nil {
 		return err
 	}
-	text := changeplandisplay.Text(cfg.Configuration.Path, p)
 	if !slices.ContainsFunc(p.Repositories, changeplan.RepositoryPlan.HasPlannedChanges) {
 		_, err := io.WriteString(cfg.Out, text)
 		return err

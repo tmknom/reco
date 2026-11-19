@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/tmknom/reco/internal/changeplan"
+	"github.com/tmknom/reco/internal/changeplandisplay"
 	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/githubtest"
@@ -291,6 +292,14 @@ func enabledStateChange(to bool) changeplan.LogicalChange {
 	return singleUpdate(setting.ActionsEnabled, setting.BoolValue(to), relevantTo(setting.ActionsEnabled, setting.BoolValue(!to)))
 }
 
+// shaPinningRequiredNotApplicable は、Actions が無効で観測不能だった sha_pinning_required の、理由つきの適用不能な変更予定。
+func shaPinningRequiredNotApplicable() changeplan.SettingPlan {
+	return changeplan.SettingPlan{
+		Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
+		Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableActionsRemainDisabled,
+	}
+}
+
 func newRepositoryPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.RepositoryPlan {
 	t.Helper()
 	return newRepositoryPlanOf(t, "owner/repo", 1, settings...)
@@ -321,10 +330,6 @@ func unknownMismatch() changeplan.SettingPlan {
 //trace:checks FR-009
 func TestExecutableChanges(t *testing.T) {
 	match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match}
-	notApplicable := changeplan.SettingPlan{
-		Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
-		Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableActionsRemainDisabled,
-	}
 	// 宣言の並びを名前順と逆にし、名前順に並べ替える実装を失敗させる
 	plans := func(t *testing.T, settings ...[]changeplan.SettingPlan) changeplan.Plan {
 		t.Helper()
@@ -368,7 +373,7 @@ func TestExecutableChanges(t *testing.T) {
 	})
 
 	t.Run("not applicable planned change in the second repository returns an error", func(t *testing.T) {
-		got, err := executableChanges(plans(t, []changeplan.SettingPlan{allowAutoMergeMismatch()}, []changeplan.SettingPlan{notApplicable}))
+		got, err := executableChanges(plans(t, []changeplan.SettingPlan{allowAutoMergeMismatch()}, []changeplan.SettingPlan{shaPinningRequiredNotApplicable()}))
 		if err == nil {
 			t.Errorf("executableChanges() = %+v, want an error", got)
 		}
@@ -512,22 +517,96 @@ func TestApplyPlan(t *testing.T) {
 		_ = applyPlan(context.Background(), Config{Out: &bytes.Buffer{}, Approve: approve(&calls)}, nil, changeplan.Plan{})
 	})
 
-	t.Run("unappliable plan returns an error without approval or output", func(t *testing.T) {
+	t.Run("not-applicable changes in two repositories are all reported with the change plan without approval or requests", func(t *testing.T) {
 		baseURL, server := newSequenceServer(t)
 		var out bytes.Buffer
 		calls := 0
-		notApplicable := changeplan.SettingPlan{
-			Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
-			Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableActionsRemainDisabled,
+		cfg := Config{Configuration: configuration.File{Path: "./reco.yaml"}, Out: &out, Approve: approve(&calls), After: elapsedAtOnce}
+		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{
+			newRepositoryPlanOf(t, "owner/first", 1, shaPinningRequiredNotApplicable()),
+			newRepositoryPlanOf(t, "owner/second", 2, shaPinningRequiredNotApplicable()),
+		}}
+
+		err := applyPlan(context.Background(), cfg, newClient(baseURL), p)
+
+		// 報告の文言と全件の列挙は changeplan と changeplandisplay が持つため、apply は表示を書くことと no changes made を足すことだけを確かめる
+		if wantErr := p.NotApplicableError().Error() + "; no changes made"; err == nil || err.Error() != wantErr {
+			t.Errorf("applyPlan() error = %v, want %q", err, wantErr)
 		}
+		if wantOut := changeplandisplay.Text("./reco.yaml", p); out.String() != wantOut {
+			t.Errorf("got Out %q, want %q", out.String(), wantOut)
+		}
+		if calls != 0 || len(server.Methods()) != 0 {
+			t.Errorf("approve calls = %d, requests = %v, want none", calls, server.Methods())
+		}
+	})
 
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, notApplicable))
+	t.Run("applicable first repository is not updated when the second has a not-applicable change", func(t *testing.T) {
+		baseURL, server := newSequenceServer(t)
+		var out bytes.Buffer
+		calls := 0
+		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{
+			newRepositoryPlanOf(t, "owner/first", 1, allowAutoMergeMismatch()),
+			newRepositoryPlanOf(t, "owner/second", 2, shaPinningRequiredNotApplicable()),
+		}}
 
-		if err == nil {
-			t.Error("applyPlan() error = nil, want an error")
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), p)
+
+		if wantErr := p.NotApplicableError().Error() + "; no changes made"; err == nil || err.Error() != wantErr {
+			t.Errorf("applyPlan() error = %v, want %q", err, wantErr)
+		}
+		if calls != 0 || len(server.Methods()) != 0 {
+			t.Errorf("approve calls = %d, requests = %v, want none", calls, server.Methods())
+		}
+	})
+
+	// Actions が有効で観測値と異なる sha_pinning_required は適用可能だが、更新要求がまだない
+	shaPinningRequiredMismatch := changeplan.SettingPlan{
+		Key: setting.SHAPinningRequired, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
+		Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+	}
+
+	t.Run("applicable sha_pinning_required is rejected as not supported yet without output or approval", func(t *testing.T) {
+		baseURL, server := newSequenceServer(t)
+		var out bytes.Buffer
+		calls := 0
+
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, shaPinningRequiredMismatch))
+
+		if want := "owner/repo: updating actions.permissions.sha_pinning_required is not supported yet; no changes made"; err == nil || err.Error() != want {
+			t.Errorf("applyPlan() error = %v, want %q", err, want)
 		}
 		if calls != 0 || out.Len() != 0 || len(server.Methods()) != 0 {
 			t.Errorf("approve calls = %d, Out = %q, requests = %v, want none", calls, out.String(), server.Methods())
+		}
+	})
+
+	t.Run("not-applicable change in the second repository is reported before the not supported yet first", func(t *testing.T) {
+		calls := 0
+		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{
+			newRepositoryPlanOf(t, "owner/first", 1, shaPinningRequiredMismatch),
+			newRepositoryPlanOf(t, "owner/second", 2, shaPinningRequiredNotApplicable()),
+		}}
+
+		err := applyPlan(context.Background(), Config{Out: &bytes.Buffer{}, Approve: approve(&calls)}, nil, p)
+
+		if wantErr := p.NotApplicableError().Error() + "; no changes made"; err == nil || err.Error() != wantErr {
+			t.Errorf("applyPlan() error = %v, want %q", err, wantErr)
+		}
+		if calls != 0 {
+			t.Errorf("approve calls = %d, want none", calls)
+		}
+	})
+
+	t.Run("not-applicable change plan write failure is returned without approval", func(t *testing.T) {
+		calls := 0
+		err := applyPlan(context.Background(), Config{Out: failingWriter{}, Approve: approve(&calls)}, nil, newPlan(t, shaPinningRequiredNotApplicable()))
+
+		if !errors.Is(err, errWrite) {
+			t.Errorf("applyPlan() error = %v, want %v", err, errWrite)
+		}
+		if calls != 0 {
+			t.Errorf("approve calls = %d, want none", calls)
 		}
 	})
 
@@ -1104,6 +1183,51 @@ func TestRun(t *testing.T) {
 		}
 		if len(server.Methods()) != 0 {
 			t.Errorf("requests = %v, want none", server.Methods())
+		}
+	})
+
+	// 1件目は Actions が無効のまま sha_pinning_required だけを宣言し、適用不能になる
+	notApplicableFirstSource := "repositories:\n" +
+		"  - name: owner/first\n    actions:\n      permissions:\n        sha_pinning_required: true\n" +
+		"  - name: owner/second\n    general:\n      allow_auto_merge: true\n"
+
+	t.Run("observation failure of the second repository is reported instead of the not-applicable first", func(t *testing.T) {
+		baseURL, server := newSequenceServer(t, okRepository(1, false, false), okActionsDisabled(), response{status: http.StatusNotFound})
+		var out bytes.Buffer
+		calls := 0
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(notApplicableFirstSource)}}
+
+		err := Run(context.Background(), newConfig(files, &out, baseURL, &calls))
+
+		if !errors.Is(err, github.ErrNotFound) {
+			t.Errorf("Run() error = %v, want %v", err, github.ErrNotFound)
+		}
+		if out.Len() != 0 || calls != 0 {
+			t.Errorf("Out = %q, approve calls = %d, want neither", out.String(), calls)
+		}
+		want := []string{"GET /repos/owner/first", "GET /repos/owner/first/actions/permissions", "GET /repos/owner/second"}
+		if !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+	})
+
+	t.Run("selected repository without not-applicable changes is not stopped by the unselected one", func(t *testing.T) {
+		baseURL, server := newSequenceServer(t, okRepository(2, true, false))
+		var out bytes.Buffer
+		calls := 0
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(notApplicableFirstSource)}}
+		cfg := newConfig(files, &out, baseURL, &calls)
+		selection := mustReference(t, "owner/second")
+		cfg.Selection = &selection
+
+		if err := Run(context.Background(), cfg); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		if want := "No changes.\nRepositories checked: 1\n"; out.String() != want {
+			t.Errorf("got Out %q, want %q", out.String(), want)
+		}
+		if want := []string{"GET /repos/owner/second"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}
 	})
 }

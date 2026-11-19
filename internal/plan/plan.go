@@ -3,10 +3,7 @@ package plan
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"io"
-	"strings"
 
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/changeplandisplay"
@@ -37,19 +34,5 @@ func Run(ctx context.Context, cfg Config) error {
 	if _, err := io.WriteString(cfg.Out, changeplandisplay.Text(cfg.Configuration.Path, p)); err != nil {
 		return err
 	}
-	return notApplicableError(p)
-}
-
-// notApplicableError は、変更計画の適用不能な変更予定を、変更計画の並びで対象と設定を挙げた error を返す。なければ nil を返す。
-func notApplicableError(p changeplan.Plan) error {
-	var found []string
-	for _, r := range p.Repositories {
-		for _, s := range r.NotApplicableChanges() {
-			found = append(found, fmt.Sprintf("%s: %s is not applicable", r.Target, s.Key))
-		}
-	}
-	if len(found) == 0 {
-		return nil
-	}
-	return errors.New("plan cannot be applied: " + strings.Join(found, "; "))
+	return p.NotApplicableError()
 }
