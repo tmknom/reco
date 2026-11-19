@@ -172,6 +172,8 @@ func notAttemptedReason(record changeRecord) string {
 // preconditionText は、change の index 番目の更新操作の変更前提が成立しなかった理由を表示の 1 行で返す。
 // 後続の更新操作の関係する現在値の変化は、先行する更新操作の反映の遅れでも外部主体の変更でも起き、
 // 値が承認のあとに変わったとは限らないため、予定どおりの値でないことを示す。
+// 先頭の更新操作の承認時に予定した値が、先行する論理的な設定変更の結果 (有効にした Actions) の場合も、
+// その変更は完了を確かめていて観測し直しの対象にしないため、原因を断定せずに関係する現在値の変化として示す。
 // 不成立の記録だけを受け取るため、変更前提が成立した記録と確かめていない記録は不変条件の破れとして panic する。
 func preconditionText(change changeplan.LogicalChange, index int, o operationRecord) string {
 	switch o.precondition {

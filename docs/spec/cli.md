@@ -154,7 +154,7 @@ Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
-`enabled` を `false` から `true` に変える変更予定には、`Previous settings:` の行を添えます。GitHub は無効にする前の `allowed_actions`、`sha_pinning_required`、Selected actions の値を残しており、有効に戻すとそれらの値で Actions を実行できるようになるためです（GitHub Actions 権限 API 仕様 3.2・4章）。無効のあいだは値を取得できないため、値は示さず、残っていた値で再開することと、値を示せない理由を示します。値が失われるわけではないため、`Side effect:` とは別の行で示します。再開するときのポリシーを利用者が決めるには、`allowed_actions` を宣言します（[YAML 設定仕様](configuration.md) 4章）。`Previous settings:` は変更予定の最後の行として示し、`apply` では承認プロンプトの前に表示します。
+Actions を無効から有効にする変更予定には、`Previous settings:` の行を添えます。GitHub は無効にする前の `allowed_actions`、`sha_pinning_required`、Selected actions の値を残しており、有効に戻すとそれらの値で Actions を実行できるようになるためです（GitHub Actions 権限 API 仕様 3.2・4章）。`enabled` を `false` から `true` に変える変更予定では、この3つを挙げます。Actions が無効のリポジトリで `allowed_actions` を宣言した変更予定（`(enables GitHub Actions)`）では、`sha_pinning_required` だけを挙げます。ポリシーは宣言した値になり、Selected actions は宣言した値になるか、失われ得ることを `Side effect:` で示すためです。同じリポジトリで宣言している設定は挙げず、挙げる設定が残らなければ行を添えません。再開のあとで、同じ変更計画が宣言した値に変えるためです。無効のあいだは値を取得できないため、値は示さず、残っていた値で再開することと、値を示せない理由を示します。値が失われるわけではないため、`Side effect:` とは別の行で示します。再開するときのポリシーを利用者が決めるには、`allowed_actions` を宣言します（[YAML 設定仕様](configuration.md) 4章）。`Previous settings:` は `Side effect:` の前に示し、`apply` では承認プロンプトの前に表示します。
 
 ```text
 Repository: example/project-a
@@ -179,6 +179,7 @@ Actions が無効のリポジトリでは `allowed_actions` の現在値を取�
 ```text
 Repository: example/project-a
   actions.permissions.allowed_actions: (GitHub Actions disabled) -> local_only (enables GitHub Actions)
+    Previous settings: GitHub Actions resumes with sha_pinning_required kept from before it was disabled (reco cannot read it while GitHub Actions is disabled)
     Side effect: GitHub may discard selected_actions if allowed_actions was "selected" before GitHub Actions was disabled (reco cannot read them while GitHub Actions is disabled)
 
 Plan: 1 repository to update, 1 change
@@ -216,7 +217,7 @@ Plan cannot be applied.
 ```text
 Repository: example/project-a
   actions.permissions.enabled: false -> true
-    Previous settings: GitHub Actions resumes with allowed_actions, selected_actions, and sha_pinning_required kept from before it was disabled (reco cannot read them while GitHub Actions is disabled)
+    Previous settings: GitHub Actions resumes with allowed_actions and selected_actions kept from before it was disabled (reco cannot read them while GitHub Actions is disabled)
   actions.permissions.sha_pinning_required: (GitHub Actions disabled) -> true
 
 Plan: 1 repository to update, 2 changes
@@ -270,8 +271,6 @@ Plan cannot be applied.
 ```text
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-b: actions.permissions.sha_pinning_required is not applicable; example/project-c: actions.permissions.sha_pinning_required is not applicable; no changes made"}
 ```
-
-`actions.permissions.sha_pinning_required` の適用可能な変更予定を含む変更計画は、`apply` ではまだ実行できません。事前検証の問題として、変更計画を表示せず、承認を求めず、更新を開始せずに、`example/project-a: updating actions.permissions.sha_pinning_required is not supported yet; no changes made` のように対象と設定を示してエラー終了します。適用不能な変更予定がほかにあれば、適用不能の報告を先に行い、このエラーは表示しません。`plan` では変更予定を確認できます。
 
 すべて変更不要の場合の表示例は次のとおりです。
 
@@ -341,7 +340,7 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 一つの論理的な設定変更が二つの更新操作からなるときは、後続の更新操作の直前の確認にも同じ遅れが現れ得ます。先行する更新操作が成功したのに、その更新操作が変えた設定が更新前の値のままのときは、同じ間隔で確認し直します。合計約30秒が経っても変わらなければ、後続の更新操作を開始せずに `failed` とします。先行する更新操作の更新要求は再送しません。
 
-一つのリポジトリに複数の変更予定があるときは、承認の前に提示する順も、論理的な設定変更を実行する順も、4章が定める変更予定の表示順に従います。
+一つのリポジトリに複数の変更予定があるときは、承認の前に提示する順も、論理的な設定変更を実行する順も、4章が定める変更予定の表示順に従います。`allowed_actions` と `sha_pinning_required` の両方に変更予定があるときも、別々の論理的な設定変更として一つずつ更新します。
 
 ### 5.2 結果の表示区分
 
@@ -374,13 +373,13 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 更新を一度も開始していない変更は `not attempted` とし、変更前提の不成立と、先行する異常による停止のどちらに当たるかを区別して理由を示します。先行する異常による停止は、同じリポジトリの先行する論理的な設定変更が完了しなかった場合（`Stopped: a preceding change did not complete`）と、先行するリポジトリが完了しなかった場合（`Stopped: a preceding repository did not complete`）を文言で区別します。
 
-変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を示します（`Precondition: <設定> changed since approval`）。`Side effect:` で示した設定の値が承認の前に示した値から変わっていた場合は、その設定を示します。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。複数の設定が変わっていた場合は、論理的な設定変更が変える設定を優先して一つだけ示します。
+変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を示します（`Precondition: <設定> changed since approval`）。`Side effect:` で示した設定の値が承認の前に示した値から変わっていた場合は、その設定を示します。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。複数の設定が変わっていた場合は、論理的な設定変更が変える設定を優先して一つだけ示します。ただし、Actions が無効のリポジトリで、承認した変更が Actions を有効にしたあとに `sha_pinning_required` を確認できるようになったことは、予定どおりの変化で、示しません。`sha_pinning_required` の更新は `enabled: true` を送るため、その直前に Actions が無効だった場合は `Precondition: actions.permissions.enabled changed since approval` と示します。計画時に Actions が有効だった場合は、`sha_pinning_required` を確認できなくなったことを優先し、`actions.permissions.sha_pinning_required` を示します。
 
 `failed` には、更新操作の失敗、更新操作の成否不明、成功応答後の期待状態の確認失敗、成功応答後の期待状態との不一致、成功応答後の変更対象外の設定の予期しない変化のいずれに当たるかを添えて示します。先行操作の成功後に後続操作を開始できなかった場合は、その旨を示します。変更対象外の設定の予期しない変化では、観測した変化を示しますが、reco に起因するとは断定しません。変更対象外の設定には、同じリポジトリのほかの管理設定も含みます。更新要求の応答を確認できない場合は成否不明とし、その後の再観測で期待状態が一致しても、更新操作の成否が判明したことにはならず、`updated` に変更しません。この再観測で変更対象外の設定の変化を観測した場合も、更新操作の結果と分けて示します。成否不明になった原因は、理由の行では区別せず、エラーとして示します。
 
 再観測の失敗とリポジトリ ID の変化による期待状態の確認失敗は、`not confirmed` に確認できなかった理由を括弧で添えて示します（`not confirmed (read failed)`、`not confirmed (repository ID changed)`）。
 
-期待値と比べる設定が GitHub の取得条件により観測不能だったことによる確認失敗は、`not in effect` に、宣言した設定が効いていない理由を括弧で添えて示します。理由は、Actions が無効なら `GitHub Actions is disabled`、Actions 許可ポリシーが `selected` でなければ `allowed_actions is not "selected"` です。`allowed_actions` を宣言できるのは Actions を有効にする場合に限られ、`selected_actions` を宣言できるのは Actions 許可ポリシーを `selected` と宣言した場合に限られます（[YAML 設定仕様](configuration.md) 4章）。このため、この観測不能は、宣言した設定が効いていないことを意味します。値そのものは確認できていないため、`does not match` とは示しません。`not confirmed` とも示さないのは、reco が確認に失敗したと読ませず、利用者が確かめるべきリポジトリの状態を示すためです。
+期待値と比べる設定が GitHub の取得条件により観測不能だったことによる確認失敗は、`not in effect` に、宣言した設定が効いていない理由を括弧で添えて示します。理由は、Actions が無効なら `GitHub Actions is disabled`、Actions 許可ポリシーが `selected` でなければ `allowed_actions is not "selected"` です。`allowed_actions` を宣言できるのは Actions を有効にする場合に限られ、`sha_pinning_required` は Actions を無効にする宣言と同時には宣言できず、`selected_actions` を宣言できるのは Actions 許可ポリシーを `selected` と宣言した場合に限られます（[YAML 設定仕様](configuration.md) 4章）。このため、この観測不能は、宣言した設定が効いていないことを意味します。値そのものは確認できていないため、`does not match` とは示しません。`not confirmed` とも示さないのは、reco が確認に失敗したと読ませず、利用者が確かめるべきリポジトリの状態を示すためです。
 
 変更対象外の設定は、管理設定と同じ形の名前で示します。
 
@@ -554,12 +553,13 @@ General:
 Actions permissions:
   enabled: true
   allowed_actions: all
+  sha_pinning_required: false
 Workflow permissions:
   default_workflow_permissions: read
   can_approve_pull_request_reviews: false
 ```
 
-`allowed_actions` が `selected` のときは、`selected_actions` の3項目を字下げして示します。`patterns_allowed` は、パターンを二重引用符で囲んで並べます。空の集合は `[]` と示します。
+`allowed_actions` が `selected` のときは、`selected_actions` の3項目を字下げして、`sha_pinning_required` の前に示します。`patterns_allowed` は、パターンを二重引用符で囲んで並べます。空の集合は `[]` と示します。
 
 ```text
 Actions permissions:
@@ -569,9 +569,10 @@ Actions permissions:
     github_owned_allowed: true
     verified_allowed: false
     patterns_allowed: ["actions/checkout@v7", "example/*"]
+  sha_pinning_required: false
 ```
 
-Actions が無効のリポジトリでは、`allowed_actions` と `selected_actions` を取得できないため、`enabled` だけを示します。
+Actions が無効のリポジトリでは、`allowed_actions`、`selected_actions`、`sha_pinning_required` を取得できないため、`enabled` だけを示します。
 
 ```text
 Actions permissions:

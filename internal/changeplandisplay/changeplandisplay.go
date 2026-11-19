@@ -37,8 +37,8 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 	if s.Applicability == changeplan.NotApplicable {
 		fmt.Fprintf(&b, "    Applicability: not applicable (%s)\n", notApplicableReasonText(s.NotApplicableReason))
 	}
-	if s.ReenablesActions() {
-		b.WriteString("    Previous settings: GitHub Actions resumes with allowed_actions, selected_actions, and sha_pinning_required kept from before it was disabled (" + unreadWhileDisabled + ")\n")
+	if len(s.PreviousSettings) > 0 {
+		fmt.Fprintf(&b, "    Previous settings: %s\n", previousSettingsText(s.PreviousSettings))
 	}
 	for _, effect := range s.SideEffects {
 		fmt.Fprintf(&b, "    Side effect: %s\n", sideEffectText(effect))
@@ -68,6 +68,25 @@ func notApplicableReasonText(reason changeplan.NotApplicableReason) string {
 		return "GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(reason)))
+}
+
+// previousSettingsText は、無効にする前の値のまま再開する設定を、CLI 仕様の Previous settings: の文言で返す。
+// 設定の名前は英語の列挙にし、値を示せない理由の代名詞を挙げる設定の数に合わせる。
+func previousSettingsText(keys []setting.Key) string {
+	names := make([]string, len(keys))
+	for i, key := range keys {
+		names[i] = strings.TrimPrefix(string(key), "actions.permissions.")
+	}
+	var listed, unread string
+	switch len(names) {
+	case 1:
+		listed, unread = names[0], "reco cannot read it while GitHub Actions is disabled"
+	case 2:
+		listed, unread = strings.Join(names, " and "), unreadWhileDisabled
+	default:
+		listed, unread = strings.Join(names[:len(names)-1], ", ")+", and "+names[len(names)-1], unreadWhileDisabled
+	}
+	return "GitHub Actions resumes with " + listed + " kept from before it was disabled (" + unread + ")"
 }
 
 // sideEffectText は、副作用を CLI 仕様の Side effect: の文言で返す。

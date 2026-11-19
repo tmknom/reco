@@ -41,6 +41,11 @@ func TestLogicalChange_SettingsToChange(t *testing.T) {
 			keys: []setting.Key{setting.SelectedActions},
 			want: []setting.Key{setting.SelectedActions},
 		},
+		{
+			name: "sha_pinning_required change does not change the enabled state",
+			keys: []setting.Key{setting.SHAPinningRequired},
+			want: []setting.Key{setting.SHAPinningRequired},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -316,33 +321,50 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 		})
 	}
 
-	shaPinning := func(result ReconciliationResult, applicability Applicability) SettingPlan {
-		s := SettingPlan{Key: setting.SHAPinningRequired, Observed: disabled, Desired: setting.BoolValue(true), Result: result, Applicability: applicability}
-		if result == Match {
-			s.Observed = github.Observed(setting.BoolValue(true))
-		}
-		return s
+	shaPinningMismatch := SettingPlan{
+		Key: setting.SHAPinningRequired, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable,
+	}
+	actionsEnabled := relevant(setting.ActionsEnabled, github.Observed(setting.BoolValue(true)))
+	shaPinningOperation := UpdateOperation{
+		Key: setting.SHAPinningRequired, Desired: setting.BoolValue(true),
+		RelevantSettings: []RelevantSetting{relevant(setting.SHAPinningRequired, github.Observed(setting.BoolValue(false))), actionsEnabled},
 	}
 
-	t.Run("applicable sha_pinning_required change is an error naming it as not supported yet", func(t *testing.T) {
-		got, err := newRepositoryPlan(enabling, shaPinning(NotComparable, Applicable)).LogicalChanges()
-		if want := "owner/repo: updating actions.permissions.sha_pinning_required is not supported yet"; err == nil || err.Error() != want {
-			t.Errorf("LogicalChanges() = %+v, error = %v, want %q", got, err, want)
+	t.Run("sha_pinning_required mismatch is relevant to its observed value and then to actions being enabled", func(t *testing.T) {
+		got, err := newRepositoryPlan(shaPinningMismatch).LogicalChanges()
+		if err != nil {
+			t.Fatalf("LogicalChanges() error = %v", err)
+		}
+		if want := []LogicalChange{{Operations: []UpdateOperation{shaPinningOperation}}}; !reflect.DeepEqual(got, want) {
+			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
 		}
 	})
 
-	t.Run("not-applicable sha_pinning_required change is an error naming it as not applicable", func(t *testing.T) {
-		got, err := newRepositoryPlan(mismatch, shaPinning(NotComparable, NotApplicable)).LogicalChanges()
-		if want := "owner/repo: actions.permissions.sha_pinning_required cannot be applied"; err == nil || err.Error() != want {
-			t.Errorf("LogicalChanges() = %+v, error = %v, want %q", got, err, want)
+	t.Run("sha_pinning_required not comparable after enabling is a separate logical change relevant only to actions being enabled", func(t *testing.T) {
+		shaPinningNotComparable := SettingPlan{Key: setting.SHAPinningRequired, Observed: disabled, Desired: setting.BoolValue(true), Result: NotComparable, Applicability: Applicable}
+		got, err := newRepositoryPlan(enabling, shaPinningNotComparable).LogicalChanges()
+		if err != nil {
+			t.Fatalf("LogicalChanges() error = %v", err)
+		}
+		want := []LogicalChange{
+			{Operations: []UpdateOperation{{
+				Key: setting.ActionsEnabled, Desired: setting.BoolValue(true),
+				RelevantSettings: []RelevantSetting{relevant(setting.ActionsEnabled, github.Observed(setting.BoolValue(false)))},
+			}}},
+			{Operations: []UpdateOperation{{Key: setting.SHAPinningRequired, Desired: setting.BoolValue(true), RelevantSettings: []RelevantSetting{actionsEnabled}}}},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
 		}
 	})
 
-	t.Run("matched sha_pinning_required does not block the other changes", func(t *testing.T) {
-		got, err := newRepositoryPlan(shaPinning(Match, ApplicabilityNotJudged), mismatch).LogicalChanges()
-		if err != nil || len(got) != 1 || !slices.Equal(got[0].Keys(), []setting.Key{setting.AllowAutoMerge}) {
-			t.Errorf("LogicalChanges() = %+v, error = %v, want only the change of %s", got, err, setting.AllowAutoMerge)
+	t.Run("policy change and sha_pinning_required mismatch are separate logical changes in the plan order", func(t *testing.T) {
+		got, err := newRepositoryPlan(policyChange(setting.AllowedActionsAll, setting.AllowedActionsLocalOnly), shaPinningMismatch).LogicalChanges()
+		if err != nil {
+			t.Fatalf("LogicalChanges() error = %v", err)
+		}
+		if len(got) != 2 || !slices.Equal(got[0].Keys(), []setting.Key{setting.AllowedActions}) || !reflect.DeepEqual(got[1], LogicalChange{Operations: []UpdateOperation{shaPinningOperation}}) {
+			t.Errorf("LogicalChanges() = %+v, want the policy change and then %+v", got, shaPinningOperation)
 		}
 	})
-
 }

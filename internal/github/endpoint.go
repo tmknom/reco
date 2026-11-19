@@ -35,7 +35,7 @@ func (e UpdateEndpoint) ObservedSettings() []setting.Key {
 }
 
 // UpdateEndpointOf は、key の設定を変える更新要求を受け付ける更新エンドポイントを返す。
-// 更新要求を持たない設定は、不変条件の破れとして panic する。
+// 未定義の設定は、不変条件の破れとして panic する。
 func UpdateEndpointOf(key setting.Key) UpdateEndpoint {
 	return updateRequestOf(key).endpoint
 }

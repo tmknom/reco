@@ -38,7 +38,7 @@ type updateRequest struct {
 }
 
 // updateRequestOf は、key の設定を変える更新要求を返す。
-// 更新要求を持たない設定は、不変条件の破れとして panic する。
+// 未定義の設定は、不変条件の破れとして panic する。
 // 定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func updateRequestOf(key setting.Key) updateRequest {
 	switch key {
@@ -65,7 +65,7 @@ func updateRequestOf(key setting.Key) updateRequest {
 	case setting.CanApprovePullRequestReviews:
 		return updateRequest{WorkflowPermissionsEndpoint, boolUpdate((*Client).updateCanApprovePullRequestReviews)}
 	case setting.SHAPinningRequired:
-		// 更新要求を持たない設定
+		return updateRequest{ActionsPermissionsEndpoint, boolUpdate((*Client).updateSHAPinningRequired)}
 	}
 	panic("github: no update request for " + string(key))
 }
@@ -125,6 +125,13 @@ func (c *Client) updateActionsEnabled(ctx context.Context, reference repository.
 func (c *Client) updateAllowedActions(ctx context.Context, reference repository.Reference, policy setting.AllowedActionsPolicy) (UpdateOutcome, error) {
 	// policy は英小文字と _ だけの定義済みの値で、%q の表記が JSON の文字列と一致する
 	return c.updateActionsPermissions(ctx, reference, fmt.Appendf(nil, `{"enabled":true,"allowed_actions":%q}`, policy))
+}
+
+// updateSHAPinningRequired は reference のリポジトリの sha_pinning_required を required に更新する。
+// 必須の enabled には true を送り、allowed_actions は送らない（アーキテクチャ設計の未管理設定を保全する更新方式）。
+// 無効のリポジトリへ送ると Actions を有効にするため、呼び出し側が更新直前に有効と確かめる。
+func (c *Client) updateSHAPinningRequired(ctx context.Context, reference repository.Reference, required bool) (UpdateOutcome, error) {
+	return c.updateActionsPermissions(ctx, reference, fmt.Appendf(nil, `{"enabled":true,"sha_pinning_required":%t}`, required))
 }
 
 // updateActionsPermissions は body を本文とする更新要求を送る。

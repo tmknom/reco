@@ -99,11 +99,10 @@ repositories:
 
 - `enabled: false` を書くときは、`allowed_actions`、`selected_actions`、`sha_pinning_required` のどれも書けない
 - `selected_actions` は、`allowed_actions: selected` のときだけ書ける
-- `enabled: false` で Actions を無効にしても、GitHub は `allowed_actions`、`selected_actions`、`sha_pinning_required` の値を残す。あとで `enabled: true` に戻すと、無効にする前の設定で有効になる。再開するときの Actions 許可ポリシーを自分で決めたいときは、`enabled: true` の代わりに `allowed_actions` を書く
+- `enabled: false` で Actions を無効にしても、GitHub は `allowed_actions`、`selected_actions`、`sha_pinning_required` の値を残す。あとで `enabled: true` に戻すと、無効にする前の設定で有効になる。再開するときの Actions 許可ポリシーを自分で決めたいときは、`enabled: true` の代わりに `allowed_actions` を書く。`allowed_actions` を書いても、`sha_pinning_required` は無効にする前の値で再開する。変えたいときは `sha_pinning_required` も書く
 - `allowed_actions` を書くと、Actions も有効になる
 - `allowed_actions` を `selected` から `all` や `local_only` に変えると、GitHub は `selected_actions` の値を消す
-- Actions を無効のまま送った `sha_pinning_required` の値は GitHub が保存しないため、Actions が無効のリポジトリで `sha_pinning_required` を書くときは、`enabled: true` か `allowed_actions` も書く。どちらも書かないと、`plan` と `apply` はその変更に `Applicability: not applicable` を添え、`Plan cannot be applied.` を示す。`apply` は何も変えずにエラーで終了する
-- `sha_pinning_required` の変更を含むと、`apply` はその変更にまだ対応していないため、何も変えずにエラーで終了する。`plan` では変更を確認できる
+- Actions を無効のまま送った `sha_pinning_required` の値は GitHub が保存しないため、Actions が無効のリポジトリで `sha_pinning_required` を書くときは、`enabled: true` か `allowed_actions` も書く。書けば、`apply` は Actions を有効にしたあとで `sha_pinning_required` を変える。どちらも書かないと、`plan` と `apply` はその変更に `Applicability: not applicable` を添え、`Plan cannot be applied.` を示す。`apply` は何も変えずにエラーで終了する
 
 ### ワークフローの権限
 

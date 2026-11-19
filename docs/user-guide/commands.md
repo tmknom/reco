@@ -40,6 +40,7 @@ General:
 Actions permissions:
   enabled: true
   allowed_actions: all
+  sha_pinning_required: false
 Workflow permissions:
   default_workflow_permissions: read
   can_approve_pull_request_reviews: false
@@ -69,7 +70,7 @@ Repositories checked: 1
 | `<設定>: (<今の状態>) -> <書いた値>` | 今は使われていない設定。`(not in use)` は `allowed_actions` が `selected` でないこと、`(GitHub Actions disabled)` は Actions が無効なことを示す。下に `Applicability:` の行がなければ、承認すると右の値に変える |
 | `Applicability: not applicable (<理由>)` | 安全に変えるための条件が成り立たないため、reco はこの設定を変えない。括弧の中は、何が成り立っていないかと、設定ファイルにどう書けばよいか |
 | `Side effect:` | この変更に伴って GitHub が消す値。読み取れた値は括弧の中に出る |
-| `Previous settings:` | Actions を `enabled: true` で有効に戻すと、無効にする前の `allowed_actions` などの設定で再開すること。無効のあいだは値を読み取れないため、値は出ない |
+| `Previous settings:` | Actions を `enabled: true` か `allowed_actions` で有効に戻すと、無効にする前の `sha_pinning_required` などの設定で再開すること。設定ファイルに書いた設定は挙げない。無効のあいだは値を読み取れないため、値は出ない |
 | `Plan:` | 変える予定のリポジトリの数と、変える設定の数 |
 | `Repositories checked:` | 読み取ったリポジトリの数 |
 | `No changes.` | 設定ファイルに書いた設定が、すべて GitHub 上でもそのとおりになっている |

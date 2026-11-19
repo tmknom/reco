@@ -28,7 +28,6 @@ func mustReference(t *testing.T, name string) repository.Reference {
 //trace:checks QR-002
 func TestWriteObservationResult(t *testing.T) {
 	target := mustReference(t, "owner/repo")
-	// sha_pinning_required は CLI 仕様の show に含まれないため、true にしても出力に現れないことを確かめる
 	allPolicy := &github.ActionsPermissions{
 		Enabled:            true,
 		AllowedActions:     github.Observed(setting.AllowedActionsAll),
@@ -50,7 +49,7 @@ func TestWriteObservationResult(t *testing.T) {
 				WorkflowPermissions: readOnly,
 			},
 			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: true\n  allow_auto_merge: false\n" +
-				"Actions permissions:\n  enabled: true\n  allowed_actions: all\n" +
+				"Actions permissions:\n  enabled: true\n  allowed_actions: all\n  sha_pinning_required: true\n" +
 				"Workflow permissions:\n  default_workflow_permissions: read\n  can_approve_pull_request_reviews: false\n",
 		},
 		{
@@ -62,7 +61,7 @@ func TestWriteObservationResult(t *testing.T) {
 				WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: true},
 			},
 			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: false\n  allow_auto_merge: true\n" +
-				"Actions permissions:\n  enabled: true\n  allowed_actions: all\n" +
+				"Actions permissions:\n  enabled: true\n  allowed_actions: all\n  sha_pinning_required: true\n" +
 				"Workflow permissions:\n  default_workflow_permissions: write\n  can_approve_pull_request_reviews: true\n",
 		},
 		{
@@ -83,11 +82,11 @@ func TestWriteObservationResult(t *testing.T) {
 			},
 			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: false\n  allow_auto_merge: false\n" +
 				"Actions permissions:\n  enabled: true\n  allowed_actions: selected\n  selected_actions:\n" +
-				"    github_owned_allowed: true\n    verified_allowed: false\n    patterns_allowed: [\"actions/checkout@v4\", \"example/*\"]\n" +
+				"    github_owned_allowed: true\n    verified_allowed: false\n    patterns_allowed: [\"actions/checkout@v4\", \"example/*\"]\n  sha_pinning_required: false\n" +
 				"Workflow permissions:\n  default_workflow_permissions: read\n  can_approve_pull_request_reviews: false\n",
 		},
 		{
-			name: "disabled actions shows only enabled without the policy and criteria",
+			name: "disabled actions shows only enabled without the policy, the criteria, and sha_pinning_required",
 			observed: github.ObservationResult{
 				RepositoryID: 1,
 				ActionsPermissions: &github.ActionsPermissions{
