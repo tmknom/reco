@@ -39,6 +39,7 @@ func TestUnavailableReasonText(t *testing.T) {
 	}{
 		{reason: github.UnavailableActionsDisabled, want: "GitHub Actions is disabled"},
 		{reason: github.UnavailableNotSelected, want: `allowed_actions is not "selected"`},
+		{reason: github.UnavailablePublicRepository, want: "the repository is public"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.want, func(t *testing.T) {
@@ -57,15 +58,6 @@ func TestUnavailableReasonText(t *testing.T) {
 		_ = unavailableReasonText(0)
 	})
 
-	// access_level は管理の単位でないため、期待状態の確認に現れず、文言を持たない
-	t.Run("public repository reason panics", func(t *testing.T) {
-		defer func() {
-			if recover() == nil {
-				t.Error("unavailableReasonText() did not panic for the public repository reason")
-			}
-		}()
-		_ = unavailableReasonText(github.UnavailablePublicRepository)
-	})
 }
 
 //trace:checks FR-013

@@ -15,13 +15,14 @@ const (
 	SHAPinningRequired           Key = "actions.permissions.sha_pinning_required"
 	DefaultWorkflowPermissions   Key = "actions.workflow.default_workflow_permissions"
 	CanApprovePullRequestReviews Key = "actions.workflow.can_approve_pull_request_reviews"
+	ActionsAccessLevel           Key = "actions.access.access_level"
 )
 
 // ManagementUnits は、管理の単位 (reco が期待値の宣言を受け付ける設定) を YAML 設定仕様の章と表の並びで返す。
 // 設定グループは一つの Key で表す。
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
 func ManagementUnits() []Key {
-	return []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews}
+	return []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel}
 }
 
 // Area は、k が属する設定の領域を返す。未知の設定は不変条件の破れとして panic する。
@@ -34,6 +35,8 @@ func (k Key) Area() Area {
 		return AreaActionsPermissions
 	case DefaultWorkflowPermissions, CanApprovePullRequestReviews:
 		return AreaWorkflowPermissions
+	case ActionsAccessLevel:
+		return AreaActionsAccess
 	}
 	panic(fmt.Sprintf("unknown setting %q", k))
 }

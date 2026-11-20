@@ -925,6 +925,103 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 	}
 }
 
+// TestExecuteChange_ActionsAccess は、access_level の論理的な設定変更について、観測と更新の要求の送り先と、
+// リポジトリが公開に変わって access_level が観測不能になったときの変更結果を確かめる。
+//
+//trace:checks INV-001
+//trace:checks INV-004
+//trace:checks FR-010
+//trace:checks FR-011
+//trace:checks FR-012
+//trace:checks FR-013
+func TestExecuteChange_ActionsAccess(t *testing.T) {
+	const (
+		getRepository    = "GET /repos/owner/repo"
+		getActionsAccess = "GET /repos/owner/repo/actions/permissions/access"
+		putActionsAccess = "PUT /repos/owner/repo/actions/permissions/access"
+	)
+	noContent := response{status: http.StatusNoContent}
+	allDelays := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second}
+	cases := []struct {
+		name         string
+		responses    []response
+		wantRequests []string
+		wantBodies   []map[string]any
+		wantDelays   []time.Duration
+		wantPrecond  preconditionCheck
+		wantChanged  setting.Key
+		wantDesired  desiredStateConfirmation
+		wantReason   github.UnavailableReason
+		wantResult   changeResult
+	}{
+		{
+			name:         "private repository sends only access_level and completes",
+			responses:    []response{okPrivateRepository(1), okActionsAccess("none"), noContent, okPrivateRepository(1), okActionsAccess("user")},
+			wantRequests: []string{getRepository, getActionsAccess, putActionsAccess, getRepository, getActionsAccess},
+			wantBodies:   []map[string]any{nil, nil, {"access_level": "user"}, nil, nil},
+			wantPrecond:  preconditionHolds,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
+		{
+			// 観測値だった access_level が観測不能になったことは、関係する現在値の変化に当たる
+			name:         "repository made public since approval sends no update request",
+			responses:    []response{okRepository(1, false, false)},
+			wantRequests: []string{getRepository},
+			wantPrecond:  preconditionCurrentValueChanged,
+			wantChanged:  setting.ActionsAccessLevel,
+			wantResult:   notAttempted,
+		},
+		{
+			name: "repository made public after the update is a failed confirmation with the public reason",
+			responses: []response{
+				okPrivateRepository(1), okActionsAccess("none"), noContent,
+				okRepository(1, false, false), okRepository(1, false, false), okRepository(1, false, false),
+				okRepository(1, false, false), okRepository(1, false, false), okRepository(1, false, false),
+			},
+			wantRequests: []string{getRepository, getActionsAccess, putActionsAccess, getRepository, getRepository, getRepository, getRepository, getRepository, getRepository},
+			wantDelays:   allDelays,
+			wantPrecond:  preconditionHolds,
+			wantDesired:  desiredStateUnavailable,
+			wantReason:   github.UnavailablePublicRepository,
+			wantResult:   failed,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, server := newSequenceServer(t, tc.responses...)
+			delays := &delayRecorder{}
+
+			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), accessLevelChange(), delays.after, &updateInterval{})
+
+			if !slices.Equal(server.RequestLines(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", server.RequestLines(), tc.wantRequests)
+			}
+			if tc.wantBodies != nil && !reflect.DeepEqual(server.Bodies(), tc.wantBodies) {
+				t.Errorf("request bodies = %v, want %v", server.Bodies(), tc.wantBodies)
+			}
+			if !slices.Equal(delays.delays, tc.wantDelays) {
+				t.Errorf("delays = %v, want %v", delays.delays, tc.wantDelays)
+			}
+			if got.operation(0).precondition != tc.wantPrecond {
+				t.Errorf("precondition = %v, want %v", got.operation(0).precondition, tc.wantPrecond)
+			}
+			if got.operation(0).changedSetting != tc.wantChanged {
+				t.Errorf("changedSetting = %q, want %q", got.operation(0).changedSetting, tc.wantChanged)
+			}
+			if got.confirmation != tc.wantDesired {
+				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
+			}
+			if got.desiredUnavailableReason != tc.wantReason {
+				t.Errorf("desiredUnavailableReason = %v, want %v", got.desiredUnavailableReason, tc.wantReason)
+			}
+			if got.result() != tc.wantResult {
+				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)
+			}
+		})
+	}
+}
+
 // TestExecuteChange_TwoUpdates は、二つの更新操作からなる論理的な設定変更について、
 // 更新操作ごとの直前の観測と変更前提、先行する更新操作が成功したときだけ後続へ進むこと、更新後の確認のつなぎ目を確かめる。
 //

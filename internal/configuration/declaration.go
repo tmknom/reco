@@ -61,33 +61,39 @@ func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDe
 		}
 	}
 	if hasActions {
-		if desired.ActionsPermissions, desired.WorkflowPermissions, err = d.actions(actionsNode, path+".actions"); err != nil {
+		if desired.ActionsPermissions, desired.WorkflowPermissions, desired.ActionsAccess, err = d.actions(actionsNode, path+".actions"); err != nil {
 			return RepositoryDeclaration{}, err
 		}
 	}
 	return RepositoryDeclaration{Reference: reference, Desired: desired}, nil
 }
 
-// actions は、Actions の階層のうち reco が受け付ける permissions と workflow だけを読む。
-// どちらも任意のキーだが、空のマッピングは拒否されるため、成功すればどちらかは必ずある。
-func (d document) actions(n *yaml.Node, path string) (ActionsPermissions, WorkflowPermissions, error) {
-	entries, err := d.mappingEntries(n, path, nil, []string{"permissions", "workflow"})
+// actions は、Actions の階層のうち reco が受け付ける permissions、workflow、access だけを読む。
+// どれも任意のキーだが、空のマッピングは拒否されるため、成功すればどれかは必ずある。
+func (d document) actions(n *yaml.Node, path string) (ActionsPermissions, WorkflowPermissions, ActionsAccess, error) {
+	entries, err := d.mappingEntries(n, path, nil, []string{"permissions", "workflow", "access"})
 	if err != nil {
-		return ActionsPermissions{}, WorkflowPermissions{}, err
+		return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, err
 	}
 	var permissions ActionsPermissions
 	if value, ok := entries["permissions"]; ok {
 		if permissions, err = d.permissions(value, path+".permissions"); err != nil {
-			return ActionsPermissions{}, WorkflowPermissions{}, err
+			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, err
 		}
 	}
 	var workflow WorkflowPermissions
 	if value, ok := entries["workflow"]; ok {
 		if workflow, err = d.workflow(value, path+".workflow"); err != nil {
-			return ActionsPermissions{}, WorkflowPermissions{}, err
+			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, err
 		}
 	}
-	return permissions, workflow, nil
+	var access ActionsAccess
+	if value, ok := entries["access"]; ok {
+		if access, err = d.access(value, path+".access"); err != nil {
+			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, err
+		}
+	}
+	return permissions, workflow, access, nil
 }
 
 // permissions は、Actions の有効状態、Actions 許可ポリシー、選択方式の Actions 許可条件、sha_pinning_required の組み合わせを読む。
@@ -216,6 +222,20 @@ func (d document) workflow(n *yaml.Node, path string) (WorkflowPermissions, erro
 		workflow.CanApprovePullRequestReviews = &v
 	}
 	return workflow, nil
+}
+
+// access は、リポジトリ外のワークフローからのアクセスを読む。
+// キーは access_level だけのため必須として渡す。空のマッピングは mappingEntries が拒否する。
+func (d document) access(n *yaml.Node, path string) (ActionsAccess, error) {
+	entries, err := d.mappingEntries(n, path, []string{"access_level"}, nil)
+	if err != nil {
+		return ActionsAccess{}, err
+	}
+	level, err := d.accessLevelValue(entries["access_level"], path+".access_level")
+	if err != nil {
+		return ActionsAccess{}, err
+	}
+	return ActionsAccess{AccessLevel: &level}, nil
 }
 
 func (d document) general(n *yaml.Node, path string) (General, error) {

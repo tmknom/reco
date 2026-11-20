@@ -1082,6 +1082,26 @@ func TestObservationResult_SettingOfActionsPermissions(t *testing.T) {
 	}
 }
 
+//trace:checks FR-004
+//trace:checks QR-002
+func TestObservationResult_SettingOfActionsAccess(t *testing.T) {
+	cases := []struct {
+		name     string
+		observed ActionsAccess
+		want     SettingObservation[setting.Value]
+	}{
+		{name: "access_level returns the observed level", observed: ActionsAccess{AccessLevel: Observed(setting.AccessUser)}, want: Observed(setting.AccessLevelValue(setting.AccessUser))},
+		{name: "access_level keeps the unavailable reason", observed: ActionsAccess{AccessLevel: Unavailable[setting.AccessLevel](UnavailablePublicRepository)}, want: Unavailable[setting.Value](UnavailablePublicRepository)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := (ObservationResult{ActionsAccess: &tc.observed}).Setting(setting.ActionsAccessLevel); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Setting(%q) = %+v, want %+v", setting.ActionsAccessLevel, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestObservationResult_SettingOfUnknownSettingPanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {

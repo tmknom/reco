@@ -15,6 +15,7 @@ func TestJudgeApplicability(t *testing.T) {
 	shaPinningDisabled := notComparable(setting.SHAPinningRequired, github.UnavailableActionsDisabled)
 	generalMismatch := SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch}
 	enablesActions := SettingPlan{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch}
+	accessLevelPublic := notComparable(setting.ActionsAccessLevel, github.UnavailablePublicRepository)
 	cases := []struct {
 		name string
 		in   SettingPlan
@@ -66,6 +67,19 @@ func TestJudgeApplicability(t *testing.T) {
 			settings: []SettingPlan{enablesActions, shaPinningDisabled},
 			want:     Applicable,
 		},
+		{
+			name:       "access_level not comparable because the repository is public is not applicable",
+			in:         accessLevelPublic,
+			want:       NotApplicable,
+			wantReason: NotApplicablePublicRepository,
+		},
+		{
+			name:       "access_level not comparable because the repository is public stays not applicable when the same plan enables actions",
+			in:         accessLevelPublic,
+			settings:   []SettingPlan{enablesActions, accessLevelPublic},
+			want:       NotApplicable,
+			wantReason: NotApplicablePublicRepository,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -88,6 +102,8 @@ func TestJudgeApplicability(t *testing.T) {
 		{name: "allowed_actions not comparable for a reason other than disabled actions panics", in: notComparable(setting.AllowedActions, github.UnavailableNotSelected)},
 		{name: "not comparable setting without a fetch condition panics", in: notComparable(setting.AllowAutoMerge, github.UnavailableActionsDisabled)},
 		{name: "sha_pinning_required not comparable for a reason other than disabled actions panics", in: notComparable(setting.SHAPinningRequired, github.UnavailableNotSelected)},
+		{name: "access_level not comparable for a reason other than a public repository panics", in: notComparable(setting.ActionsAccessLevel, github.UnavailableActionsDisabled)},
+		{name: "setting other than access_level not comparable because the repository is public panics", in: notComparable(setting.AllowAutoMerge, github.UnavailablePublicRepository)},
 	}
 	for _, tc := range panics {
 		t.Run(tc.name, func(t *testing.T) {

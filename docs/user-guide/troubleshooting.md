@@ -77,7 +77,7 @@ Plan cannot be applied.
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-a: actions.permissions.sha_pinning_required is not applicable; no changes made"}
 ```
 
-理由は、変更計画の `Applicability:` の行の括弧の中にあります。セミコロンの前が成り立っていないこと、後ろが設定ファイルの直し方です。この例では Actions が無効のため、同じリポジトリに `enabled: true` か `allowed_actions` を書き足してから、`plan` で `Plan cannot be applied.` が消えたことを確かめ、`apply` を実行し直します。
+理由は、変更計画の `Applicability:` の行の括弧の中にあります。セミコロンの前が成り立っていないこと、後ろが設定ファイルの直し方です。この例では Actions が無効のため、同じリポジトリに `enabled: true` か `allowed_actions` を書き足してから、`plan` で `Plan cannot be applied.` が消えたことを確かめ、`apply` を実行し直します。パブリックリポジトリに `access_level` を書いて `(the repository is public; remove access_level, ...)` と示されたら、そのリポジトリの `access_level` を設定ファイルから消します。
 
 ## 承認できない
 
@@ -116,7 +116,7 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 | `Desired state: does not match` | 読み直した値が設定ファイルのとおりでなかった |
 | `Desired state: not confirmed (read failed)` | 更新のあとで値を読み直せず、設定ファイルのとおりになったか確かめられなかった。読み直せなかった原因は、結果のあとに出るエラーの行に出る |
 | `Desired state: not confirmed (repository ID changed)` | 読み直したリポジトリが、承認したときとは別のリポジトリだった。同じ名前のリポジトリが、削除して作り直すなどして入れ替わっている |
-| `Desired state: not in effect (<理由>)` | 書いた設定が GitHub で効いていなかった。括弧の中は、Actions が無効になっている（`GitHub Actions is disabled`）か、`allowed_actions` が `selected` でない（`allowed_actions is not "selected"`）こと |
+| `Desired state: not in effect (<理由>)` | 書いた設定が GitHub で効いていなかった。括弧の中は、Actions が無効になっている（`GitHub Actions is disabled`）か、`allowed_actions` が `selected` でない（`allowed_actions is not "selected"`）か、リポジトリがパブリックになっている（`the repository is public`）こと |
 
 次の順に進めます。
 

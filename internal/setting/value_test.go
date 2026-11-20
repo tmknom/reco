@@ -14,6 +14,7 @@ func TestValue_String(t *testing.T) {
 		{value: BoolValue(true), want: "true"},
 		{value: PermissionLevelValue(PermissionRead), want: "read"},
 		{value: AllowedActionsPolicyValue(AllowedActionsSelected), want: "selected"},
+		{value: AccessLevelValue(AccessUser), want: "user"},
 		{
 			value: SelectedActionsCriteriaValue(SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: []string{"z/*", "a/*"}}),
 			want:  `github_owned_allowed: true, verified_allowed: false, patterns_allowed: ["z/*", "a/*"]`,
@@ -44,6 +45,8 @@ func TestValue_Equal(t *testing.T) {
 		{name: "different permission levels differ", a: PermissionLevelValue(PermissionRead), b: PermissionLevelValue(PermissionWrite), equal: false},
 		{name: "same policies are equal", a: AllowedActionsPolicyValue(AllowedActionsAll), b: AllowedActionsPolicyValue(AllowedActionsAll), equal: true},
 		{name: "different policies differ", a: AllowedActionsPolicyValue(AllowedActionsAll), b: AllowedActionsPolicyValue(AllowedActionsSelected), equal: false},
+		{name: "same access levels are equal", a: AccessLevelValue(AccessNone), b: AccessLevelValue(AccessNone), equal: true},
+		{name: "different access levels differ", a: AccessLevelValue(AccessNone), b: AccessLevelValue(AccessUser), equal: false},
 		{name: "criteria differing only in pattern order are equal", a: criteria("a/*", "b/*"), b: criteria("b/*", "a/*"), equal: true},
 		{name: "criteria with a different pattern differ", a: criteria("a/*"), b: criteria("b/*"), equal: false},
 		{name: "values of different kinds differ", a: BoolValue(false), b: SelectedActionsCriteriaValue(SelectedActionsCriteria{}), equal: false},
@@ -143,6 +146,23 @@ func TestValue_AllowedActionsPolicyOfBoolPanics(t *testing.T) {
 		}
 	}()
 	_ = BoolValue(true).AllowedActionsPolicy()
+}
+
+func TestValue_AccessLevel(t *testing.T) {
+	for _, want := range []AccessLevel{AccessNone, AccessUser, AccessOrganization} {
+		if got := AccessLevelValue(want).AccessLevel(); got != want {
+			t.Errorf("AccessLevelValue(%q).AccessLevel() = %q, want %q", want, got, want)
+		}
+	}
+}
+
+func TestValue_AccessLevelOfBoolPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("AccessLevel() did not panic for a boolean value")
+		}
+	}()
+	_ = BoolValue(true).AccessLevel()
 }
 
 func TestValue_SelectedActionsCriteria(t *testing.T) {

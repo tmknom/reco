@@ -20,6 +20,8 @@ repositories:
       workflow:
         default_workflow_permissions: read
         can_approve_pull_request_reviews: false
+      access:
+        access_level: none
 
   - name: example/project-b
     general:
@@ -32,7 +34,7 @@ repositories:
 | `repositories` | シーケンス | 1件以上のリポジトリごとの宣言を含む |
 | `repositories[]` | マッピング | `name` と、少なくとも一つの管理設定を含む `general` または `actions` を持つ |
 | `repositories[].name` | 文字列 | 必須。空でない `OWNER/REPO` 形式 |
-| `general`、`actions`、`permissions`、`selected_actions`、`workflow` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions` と `workflow` の一方だけでもよい |
+| `general`、`actions`、`permissions`、`selected_actions`、`workflow`、`access` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions`、`workflow`、`access` のうち一つ以上を含めばよい |
 
 定義していないフィールドは、どの階層でも受け付けません。どの位置でも、`null` を指定して省略を表現することはできません。
 
@@ -153,7 +155,26 @@ GitHub の公式資料は `patterns_allowed` を公開リポジトリに適用�
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
 
-## 6. 入力検証と対象名
+## 6. Actions access
+
+| YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
+|---|---|---|---|---|
+| `actions.access.access_level` | 文字列 | `none` / `user` | リポジトリの外のワークフローが、このリポジトリの Actions と再利用可能なワークフローを使える範囲 | 独立 |
+
+`none` はリポジトリの外のワークフローからのアクセスを許可しません。`user` は、同じユーザーが所有するほかの非公開リポジトリのワークフローからのアクセスを許可します。
+
+GitHub の値には `organization` もありますが、reco は宣言として受け付けません。`organization` は Organization が所有するリポジトリのための値で、reco がサポートするユーザー所有のリポジトリでは、GitHub がこの値への更新を拒否するためです（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 6章）。一方、Organization から移転したリポジトリなどで `organization` を観測した場合は、宣言した値と異なる値として扱い、宣言した値への変更を計画します。
+
+`access_level` は非公開リポジトリにだけ適用される設定です。公開リポジトリで宣言すると、その変更予定は適用不能になります（[アーキテクチャ設計](../design/architecture.md) 5.4）。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。Actions の有効状態は、この設定の宣言にも適用可能性にも関係しません。`actions.permissions.enabled: false` と同時に宣言できます。
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `alignment` | `FR-001` | Functional Requirement |
+| `alignment` | `FR-006` | Functional Requirement |
+| `alignment` | `INV-001` | Invariant |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
+
+## 7. 入力検証と対象名
 
 入力検証では、YAML の構造・値の形式と、宣言されたリポジトリ名・重複の条件を確認します。不正な入力は、問題の箇所と理由を示して拒否します。
 
@@ -162,7 +183,7 @@ GitHub の公式資料は `patterns_allowed` を公開リポジトリに適用�
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `FR-002` | Functional Requirement |
 
-### 6.1 YAML の形式と値
+### 7.1 YAML の形式と値
 
 | 条件 | 判定 |
 |---|---|
@@ -192,8 +213,9 @@ GitHub の公式資料は `patterns_allowed` を公開リポジトリに適用�
 | `allow_auto_merge: TRUE` | エラー（受理する表記ではない） |
 | `allow_auto_merge: !!bool "true"` | エラー（明示タグ） |
 | `allowed_actions: "selected"` | 値の形式は有効。ただし `selected_actions` の3項目も必要 |
+| `access_level: organization` | エラー（宣言で受け付ける値ではない） |
 
-### 6.2 リポジトリ名と重複
+### 7.2 リポジトリ名と重複
 
 `name` は、`OWNER` と `REPO` を一つの `/` で区切った `OWNER/REPO` 形式の文字列です。`OWNER` と `REPO` はともに空ではなく、ASCII の英数字と `-`、`_`、`.` だけからなり、`.` と `..` ではありません。このため、空白、制御文字、ASCII 以外の文字を含む名前は受け付けません。URL や、末尾に `.git` を付けたクローン用の表記（`.GIT` のように大文字小文字が異なるものを含む）は受け付けません。この値は名前による **リポジトリ指定** であり、GitHub のリポジトリ ID や、実体の存在確認を表すものではありません。
 
@@ -207,7 +229,7 @@ GitHub は所有者名・リポジトリ名を大文字小文字非依存で扱�
 | `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
 | `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
 
-## 7. References
+## 8. References
 
 - [要求定義](requirements.md)
 - [CLI 仕様](cli.md)

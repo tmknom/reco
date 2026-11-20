@@ -11,11 +11,12 @@ import (
 // 種別ごとに使わないフィールドをゼロ値に保つため、フィールドを公開せず、コンストラクタでだけ作る。
 // 二つの値が同じかどうかは Equal で判定する。許可パターンのスライスを持つため、== はコンパイルエラーになる。
 type Value struct {
-	kind     valueKind
-	boolean  bool
-	level    PermissionLevel
-	policy   AllowedActionsPolicy
-	criteria SelectedActionsCriteria
+	kind        valueKind
+	boolean     bool
+	level       PermissionLevel
+	policy      AllowedActionsPolicy
+	criteria    SelectedActionsCriteria
+	accessLevel AccessLevel
 }
 
 type valueKind int
@@ -26,6 +27,7 @@ const (
 	kindPermissionLevel
 	kindAllowedActionsPolicy
 	kindSelectedActionsCriteria
+	kindAccessLevel
 )
 
 // BoolValue は、真偽値の設定の値を作る。
@@ -50,6 +52,11 @@ func SelectedActionsCriteriaValue(criteria SelectedActionsCriteria) Value {
 	return Value{kind: kindSelectedActionsCriteria, criteria: criteria}
 }
 
+// AccessLevelValue は、リポジトリ外のワークフローからのアクセスの範囲の値を作る。
+func AccessLevelValue(level AccessLevel) Value {
+	return Value{kind: kindAccessLevel, accessLevel: level}
+}
+
 // Equal は、二つの値が設定の意味で同じ値かどうかを返す。
 // 値のないゼロ値は設定の値ではなく、比べようとするのは不変条件の破れのため panic する。
 // 同じ値として扱うと、確かめていない値が一致や変更前提の成立として黙って通るため。
@@ -62,7 +69,8 @@ func (v Value) Equal(other Value) bool {
 		v.boolean == other.boolean &&
 		v.level == other.level &&
 		v.policy == other.policy &&
-		v.criteria.equal(other.criteria)
+		v.criteria.equal(other.criteria) &&
+		v.accessLevel == other.accessLevel
 }
 
 // String は、表示に使う表記で値を返す。値のないゼロ値を表示しようとするのは不変条件の破れのため panic する。
@@ -79,6 +87,8 @@ func (v Value) String() string {
 		return "github_owned_allowed: " + strconv.FormatBool(v.criteria.GitHubOwnedAllowed) +
 			", verified_allowed: " + strconv.FormatBool(v.criteria.VerifiedAllowed) +
 			", patterns_allowed: " + v.criteria.PatternsAllowedString()
+	case kindAccessLevel:
+		return string(v.accessLevel)
 	case kindNone:
 	}
 	panic("setting: no value to format")
@@ -117,4 +127,12 @@ func (v Value) SelectedActionsCriteria() SelectedActionsCriteria {
 	criteria := v.criteria
 	criteria.PatternsAllowed = slices.Clone(criteria.PatternsAllowed)
 	return criteria
+}
+
+// AccessLevel は、リポジトリ外のワークフローからのアクセスの範囲の値を返す。それ以外の値は不変条件の破れのため panic する。
+func (v Value) AccessLevel() AccessLevel {
+	if v.kind != kindAccessLevel {
+		panic("setting: value is not an access level")
+	}
+	return v.accessLevel
 }

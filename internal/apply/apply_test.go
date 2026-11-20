@@ -96,6 +96,16 @@ func okRepository(id int64, allowAutoMerge, deleteBranchOnMerge bool) response {
 	return response{status: http.StatusOK, body: githubtest.RepositoryBody{ID: id, AllowAutoMerge: allowAutoMerge, DeleteBranchOnMerge: deleteBranchOnMerge}.JSON()}
 }
 
+// okPrivateRepository は、非公開のリポジトリの取得の正常応答。okRepository は公開のリポジトリを返す。
+func okPrivateRepository(id int64) response {
+	return response{status: http.StatusOK, body: githubtest.RepositoryBody{ID: id, Private: true}.JSON()}
+}
+
+// okActionsAccess は、リポジトリ外のワークフローからのアクセスの取得の正常応答。
+func okActionsAccess(level string) response {
+	return response{status: http.StatusOK, body: githubtest.ActionsAccessBody{AccessLevel: level}.JSON()}
+}
+
 func okWorkflowPermissions(defaultWorkflowPermissions string, canApprovePullRequestReviews bool) response {
 	return response{status: http.StatusOK, body: githubtest.WorkflowPermissionsBody{
 		DefaultWorkflowPermissions: defaultWorkflowPermissions, CanApprovePullRequestReviews: canApprovePullRequestReviews}.JSON()}
@@ -152,6 +162,11 @@ func relevantTo(key setting.Key, observed setting.Value) []changeplan.RelevantSe
 // singleUpdate は、key を desired にする更新操作一つからなる論理的な設定変更。
 func singleUpdate(key setting.Key, desired setting.Value, relevant []changeplan.RelevantSetting) changeplan.LogicalChange {
 	return changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{{Key: key, Desired: desired, RelevantSettings: relevant}}}
+}
+
+// accessLevelChange は、access_level を none から user にする論理的な設定変更。
+func accessLevelChange() changeplan.LogicalChange {
+	return singleUpdate(setting.ActionsAccessLevel, setting.AccessLevelValue(setting.AccessUser), relevantTo(setting.ActionsAccessLevel, setting.AccessLevelValue(setting.AccessNone)))
 }
 
 // allowAutoMergeChange は、allow_auto_merge を false から true にする論理的な設定変更。
@@ -908,6 +923,29 @@ func TestRun(t *testing.T) {
 		}
 		if !strings.Contains(out.String(), "owner/repo: updated") {
 			t.Errorf("got Out %q, want the repository to be updated", out.String())
+		}
+	})
+
+	// 計画時の観測値を関係する現在値とし、更新直前と更新後の観測が Actions access の領域を読むことを確かめる
+	t.Run("access_level of a private repository is applied after a single approval", func(t *testing.T) {
+		baseURL, server := newSequenceServer(t,
+			okPrivateRepository(1), okActionsAccess("none"),
+			okPrivateRepository(1), okActionsAccess("none"), response{status: http.StatusNoContent},
+			okPrivateRepository(1), okActionsAccess("user"))
+		var out bytes.Buffer
+		calls := 0
+		files := fstest.MapFS{"reco.yaml": {Data: []byte("repositories:\n  - name: owner/repo\n    actions:\n      access:\n        access_level: user\n")}}
+
+		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		reads := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions/access"}
+		want := slices.Concat(reads, reads, []string{"PUT /repos/owner/repo/actions/permissions/access"}, reads)
+		if !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		if calls != 1 || !strings.Contains(out.String(), "actions.access.access_level: none -> user") || !strings.Contains(out.String(), "owner/repo: updated") {
+			t.Errorf("approve calls = %d, Out = %q, want one approval, the access level change, and the repository updated", calls, out.String())
 		}
 	})
 

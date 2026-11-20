@@ -46,6 +46,8 @@ func (o ObservationResult) Setting(key setting.Key) SettingObservation[setting.V
 		return Observed(setting.PermissionLevelValue(o.WorkflowPermissions.DefaultWorkflowPermissions))
 	case setting.CanApprovePullRequestReviews:
 		return Observed(setting.BoolValue(o.WorkflowPermissions.CanApprovePullRequestReviews))
+	case setting.ActionsAccessLevel:
+		return valueObservation(o.ActionsAccess.AccessLevel, setting.AccessLevelValue)
 	}
 	panic(fmt.Sprintf("unknown setting %q", key))
 }

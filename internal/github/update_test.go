@@ -93,6 +93,11 @@ func TestClientUpdate(t *testing.T) {
 			value:       setting.BoolValue(false),
 			wantRequest: "PUT /repos/owner/repo/actions/permissions/workflow", wantBody: map[string]any{"can_approve_pull_request_reviews": false},
 		},
+		{
+			name: "access_level sends only access_level", key: setting.ActionsAccessLevel,
+			value:       setting.AccessLevelValue(setting.AccessUser),
+			wantRequest: "PUT /repos/owner/repo/actions/permissions/access", wantBody: map[string]any{"access_level": "user"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -738,6 +743,28 @@ func TestUpdateAllowedActionsRejected(t *testing.T) {
 		t.Fatalf("updateAllowedActions() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrForbidden)
 	}
 	if !strings.HasPrefix(err.Error(), "update actions permissions owner/repo: ") {
+		t.Errorf("error = %q, want it to start with the operation and owner/repo", err)
+	}
+	if n := received.Load(); n != 1 {
+		t.Errorf("server received %d requests, want 1", n)
+	}
+}
+
+// TestUpdateAccessLevelRejected は、GitHub が拒否した更新要求を拒否と判定し、操作と対象を error に添えることを確かめる。
+//
+//trace:checks FR-013
+func TestUpdateAccessLevelRejected(t *testing.T) {
+	var received atomic.Int32
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		received.Add(1)
+		w.WriteHeader(http.StatusUnprocessableEntity)
+	})
+
+	outcome, err := c.updateAccessLevel(t.Context(), mustReference(t, "owner/repo"), setting.AccessNone)
+	if outcome != UpdateRejected || !errors.Is(err, ErrUnprocessable) {
+		t.Fatalf("updateAccessLevel() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrUnprocessable)
+	}
+	if !strings.HasPrefix(err.Error(), "update actions access owner/repo: ") {
 		t.Errorf("error = %q, want it to start with the operation and owner/repo", err)
 	}
 	if n := received.Load(); n != 1 {

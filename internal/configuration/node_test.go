@@ -305,6 +305,40 @@ func TestDocumentPermissionLevelValue(t *testing.T) {
 }
 
 //trace:checks FR-001
+func TestDocumentAccessLevelValue(t *testing.T) {
+	cases := []struct {
+		name    string
+		src     string
+		want    setting.AccessLevel
+		wantErr string
+	}{
+		{name: "none is accepted", src: "none\n", want: setting.AccessNone},
+		{name: "user is accepted", src: "user\n", want: setting.AccessUser},
+		{name: "organization is rejected with the reason it cannot be declared", src: "organization\n", wantErr: `must be none or user; got "organization"; organization is for organization-owned repositories, which reco does not support`},
+		{name: "undefined enterprise is rejected", src: "enterprise\n", wantErr: `must be none or user; got "enterprise"`},
+		{name: "boolean true is rejected as not a string", src: "true\n", wantErr: "must be a string"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.accessLevelValue(doc.root, "v")
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("accessLevelValue() error = %v, want it to contain %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("accessLevelValue() error = %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("accessLevelValue() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+//trace:checks FR-001
 func TestDocumentAllowedActionsPolicyValue(t *testing.T) {
 	cases := []struct {
 		name    string
