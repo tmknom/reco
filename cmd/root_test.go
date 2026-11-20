@@ -13,48 +13,6 @@ import (
 	"github.com/tmknom/reco/internal/github"
 )
 
-func runExecute(t *testing.T, env Environment, opts []github.Option, args ...string) (code int, stdout, stderr string) {
-	t.Helper()
-	var out, errOut bytes.Buffer
-	env.Stdout = &out
-	env.Stderr = &errOut
-	code = execute(context.Background(), args, env, dependencies{after: elapsedAtOnce, githubOptions: opts})
-	return code, out.String(), errOut.String()
-}
-
-// elapsedAtOnce は、待つ時間を確かめないテストで、実時間を待たずに経過を知らせる。
-func elapsedAtOnce(time.Duration) <-chan time.Time {
-	elapsed := make(chan time.Time, 1)
-	elapsed <- time.Time{}
-	return elapsed
-}
-
-// fakeGetenv は、vars にない環境変数を空として返す、os.Getenv の代わりの関数を返す。
-func fakeGetenv(vars map[string]string) func(string) string {
-	return func(key string) string {
-		return vars[key]
-	}
-}
-
-// errorRecords は、stderr の JSON 行のうち ERROR レベルのレコードを返す。
-func errorRecords(t *testing.T, stderr string) []map[string]any {
-	t.Helper()
-	var got []map[string]any
-	for line := range strings.SplitSeq(stderr, "\n") {
-		if line == "" {
-			continue
-		}
-		var m map[string]any
-		if err := json.Unmarshal([]byte(line), &m); err != nil {
-			t.Fatalf("got invalid JSON line %q: %v", line, err)
-		}
-		if m["level"] == "ERROR" {
-			got = append(got, m)
-		}
-	}
-	return got
-}
-
 func TestExecute_Success(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -173,4 +131,46 @@ func TestNewRootCmd_LogLevel(t *testing.T) {
 	if got := level.Level(); got != slog.LevelDebug {
 		t.Errorf("got level %v, want %v", got, slog.LevelDebug)
 	}
+}
+
+func runExecute(t *testing.T, env Environment, opts []github.Option, args ...string) (code int, stdout, stderr string) {
+	t.Helper()
+	var out, errOut bytes.Buffer
+	env.Stdout = &out
+	env.Stderr = &errOut
+	code = execute(context.Background(), args, env, dependencies{after: elapsedAtOnce, githubOptions: opts})
+	return code, out.String(), errOut.String()
+}
+
+// elapsedAtOnce は、待つ時間を確かめないテストで、実時間を待たずに経過を知らせる。
+func elapsedAtOnce(time.Duration) <-chan time.Time {
+	elapsed := make(chan time.Time, 1)
+	elapsed <- time.Time{}
+	return elapsed
+}
+
+// fakeGetenv は、vars にない環境変数を空として返す、os.Getenv の代わりの関数を返す。
+func fakeGetenv(vars map[string]string) func(string) string {
+	return func(key string) string {
+		return vars[key]
+	}
+}
+
+// errorRecords は、stderr の JSON 行のうち ERROR レベルのレコードを返す。
+func errorRecords(t *testing.T, stderr string) []map[string]any {
+	t.Helper()
+	var got []map[string]any
+	for line := range strings.SplitSeq(stderr, "\n") {
+		if line == "" {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			t.Fatalf("got invalid JSON line %q: %v", line, err)
+		}
+		if m["level"] == "ERROR" {
+			got = append(got, m)
+		}
+	}
+	return got
 }

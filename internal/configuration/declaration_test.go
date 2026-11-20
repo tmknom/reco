@@ -5,18 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
 )
-
-func mustReference(t *testing.T, name string) repository.Reference {
-	t.Helper()
-	reference, err := repository.ParseReference(name)
-	if err != nil {
-		t.Fatalf("ParseReference(%q) error = %v", name, err)
-	}
-	return reference
-}
 
 // TestDocumentPermissions は、Actions の有効状態、allowed_actions、selected_actions、sha_pinning_required の組み合わせの規則と、判定の順序を確かめる。
 // 拒否のケースは、受理される selected の入力 (selected) の条件を 1 つだけ変えて作る。

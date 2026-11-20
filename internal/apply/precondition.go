@@ -33,7 +33,7 @@ func checkPrecondition(approvedID repository.ID, operation changeplan.UpdateOper
 		return preconditionIdentityMismatch, ""
 	}
 	for _, relevant := range operation.RelevantSettings {
-		if !matchesValueAtApproval(relevant.AtApproval, observed.Setting(relevant.Key)) {
+		if !matchesValueAtApproval(relevant.ValueAtApproval, observed.Setting(relevant.Key)) {
 			return preconditionCurrentValueChanged, relevant.Key
 		}
 	}

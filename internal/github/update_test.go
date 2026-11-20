@@ -339,17 +339,6 @@ func TestUpdateAllowAutoMergeOutcomeUnknown(t *testing.T) {
 	}
 }
 
-// closeConnection は応答を書き終えずに接続を閉じ、応答の喪失を作る。
-func closeConnection(t *testing.T, w http.ResponseWriter) {
-	t.Helper()
-	conn, _, err := http.NewResponseController(w).Hijack()
-	if err != nil {
-		t.Errorf("Hijack() error = %v", err)
-		return
-	}
-	_ = conn.Close()
-}
-
 //trace:checks FR-013
 func TestDescribeUpdateOutcome(t *testing.T) {
 	cases := []struct {
@@ -895,4 +884,15 @@ func TestUpdateSelectedActionsRejected(t *testing.T) {
 	if n := received.Load(); n != 1 {
 		t.Errorf("server received %d requests, want 1", n)
 	}
+}
+
+// closeConnection は応答を書き終えずに接続を閉じ、応答の喪失を作る。
+func closeConnection(t *testing.T, w http.ResponseWriter) {
+	t.Helper()
+	conn, _, err := http.NewResponseController(w).Hijack()
+	if err != nil {
+		t.Errorf("Hijack() error = %v", err)
+		return
+	}
+	_ = conn.Close()
 }

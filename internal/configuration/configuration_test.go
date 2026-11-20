@@ -7,23 +7,6 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// minimal は受理される最小の宣言。宣言全体を入力にするテストの基準にする。
-const minimal = `repositories:
-  - name: owner/repo
-    general:
-      allow_auto_merge: true
-`
-
-// decodeSnippet は、検証の各段階に渡す YAML 文書を src から作る。
-func decodeSnippet(t *testing.T, src string) document {
-	t.Helper()
-	doc, err := decodeDocument([]byte(src))
-	if err != nil {
-		t.Fatalf("decodeDocument(%q) error = %v", src, err)
-	}
-	return doc
-}
-
 //trace:checks FR-001
 func TestDesiredState_Value(t *testing.T) {
 	cases := []struct {
@@ -79,6 +62,15 @@ func TestDesiredState_ValueCoversEveryDesiredValue(t *testing.T) {
 	}
 }
 
+func TestDesiredState_ValueOfUnknownSettingPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("Value() did not panic for an unknown setting")
+		}
+	}()
+	_, _ = DesiredState{}.Value("general.unknown")
+}
+
 // fillDesiredValues は、v の中の期待値 (ポインタのフィールド) をすべてゼロ値への参照で埋め、その数を返す。
 // 列挙値のゼロ値は定義外の値だが、ここでは期待値の有無だけを数える。
 func fillDesiredValues(v reflect.Value) int {
@@ -95,13 +87,4 @@ func fillDesiredValues(v reflect.Value) int {
 		}
 	}
 	return n
-}
-
-func TestDesiredState_ValueOfUnknownSettingPanics(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Error("Value() did not panic for an unknown setting")
-		}
-	}()
-	_, _ = DesiredState{}.Value("general.unknown")
 }

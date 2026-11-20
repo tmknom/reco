@@ -22,41 +22,6 @@ type spyTB struct {
 	failures []string
 }
 
-func (s *spyTB) Errorf(format string, args ...any) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.failures = append(s.failures, fmt.Sprintf(format, args...))
-}
-
-func (s *spyTB) reported() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return slices.Clone(s.failures)
-}
-
-// send は、stub に要求を送り、応答のステータスと本文を返す。Authorization にはパスを入れ、要求ごとに異なる値にする。
-func send(t *testing.T, s *Server, method, path, body string) (int, string) {
-	t.Helper()
-	req, err := http.NewRequestWithContext(t.Context(), method, s.URL().String()+path, strings.NewReader(body))
-	if err != nil {
-		t.Fatalf("NewRequestWithContext() error = %v", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+path)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("Do() error = %v", err)
-	}
-	defer func() {
-		// 読み取りの済んだ応答の本文で、閉じる失敗は検証の結果に影響しない
-		_ = resp.Body.Close()
-	}()
-	got, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("ReadAll() error = %v", err)
-	}
-	return resp.StatusCode, string(got)
-}
-
 func TestServer_Requests(t *testing.T) {
 	t.Run("requests are recorded with method, path, authorization, and body in the order received", func(t *testing.T) {
 		s := NewServer(t, Response{Status: http.StatusNoContent})
@@ -170,4 +135,39 @@ func TestSequence(t *testing.T) {
 			t.Errorf("reported failures = %q, want one naming the request", got)
 		}
 	})
+}
+
+func (s *spyTB) Errorf(format string, args ...any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failures = append(s.failures, fmt.Sprintf(format, args...))
+}
+
+func (s *spyTB) reported() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.failures)
+}
+
+// send は、stub に要求を送り、応答のステータスと本文を返す。Authorization にはパスを入れ、要求ごとに異なる値にする。
+func send(t *testing.T, s *Server, method, path, body string) (int, string) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), method, s.URL().String()+path, strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequestWithContext() error = %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+path)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+	defer func() {
+		// 読み取りの済んだ応答の本文で、閉じる失敗は検証の結果に影響しない
+		_ = resp.Body.Close()
+	}()
+	got, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+	return resp.StatusCode, string(got)
 }

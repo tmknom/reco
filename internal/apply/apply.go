@@ -31,6 +31,13 @@ type Config struct {
 	GitHubOptions []github.Option
 }
 
+// repositoryChanges は、承認の前に確定した、一つの対象リポジトリのリポジトリの計画と、その論理的な設定変更の実行順の並び。
+// 変更不要の対象リポジトリは changes が空になる。
+type repositoryChanges struct {
+	plan    changeplan.RepositoryPlan
+	changes []changeplan.LogicalChange
+}
+
 // Run は変更計画を生成し、承認されたときだけ GitHub の設定を更新して、結果を Out に書く。
 func Run(ctx context.Context, cfg Config) error {
 	client := github.New(cfg.Token, cfg.GitHubOptions...)
@@ -75,13 +82,6 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 	records := executeRepositories(ctx, client, repositories, cfg.After)
 	writeErr := writeChangeReport(cfg.Out, records)
 	return errors.Join(repositoriesError(records), writeErr)
-}
-
-// repositoryChanges は、承認の前に確定した、一つの対象リポジトリのリポジトリの計画と、その論理的な設定変更の実行順の並び。
-// 変更不要の対象リポジトリは changes が空になる。
-type repositoryChanges struct {
-	plan    changeplan.RepositoryPlan
-	changes []changeplan.LogicalChange
 }
 
 // executableChanges は、選択したすべての対象リポジトリについて、論理的な設定変更を実行順で返す。

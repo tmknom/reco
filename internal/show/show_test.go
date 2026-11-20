@@ -15,14 +15,11 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-func mustReference(t *testing.T, name string) repository.Reference {
-	t.Helper()
-	reference, err := repository.ParseReference(name)
-	if err != nil {
-		t.Fatalf("ParseReference(%q) error = %v", name, err)
-	}
-	return reference
-}
+var errWrite = errors.New("write failed")
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errWrite }
 
 //trace:checks FR-004
 //trace:checks QR-002
@@ -158,11 +155,12 @@ func TestWriteObservationResult(t *testing.T) {
 	})
 }
 
-var errWrite = errors.New("write failed")
-
-type failingWriter struct{}
-
-func (failingWriter) Write([]byte) (int, error) { return 0, errWrite }
+const (
+	repositoryPath          = "/repos/owner/repo"
+	actionsPermissionsPath  = "/repos/owner/repo/actions/permissions"
+	workflowPermissionsPath = "/repos/owner/repo/actions/permissions/workflow"
+	actionsAccessPath       = "/repos/owner/repo/actions/permissions/access"
+)
 
 //trace:checks FR-004
 func TestRun(t *testing.T) {
@@ -225,9 +223,11 @@ func TestRun(t *testing.T) {
 	}
 }
 
-const (
-	repositoryPath          = "/repos/owner/repo"
-	actionsPermissionsPath  = "/repos/owner/repo/actions/permissions"
-	workflowPermissionsPath = "/repos/owner/repo/actions/permissions/workflow"
-	actionsAccessPath       = "/repos/owner/repo/actions/permissions/access"
-)
+func mustReference(t *testing.T, name string) repository.Reference {
+	t.Helper()
+	reference, err := repository.ParseReference(name)
+	if err != nil {
+		t.Fatalf("ParseReference(%q) error = %v", name, err)
+	}
+	return reference
+}

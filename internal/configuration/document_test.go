@@ -12,15 +12,6 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// nodeAt は、root から Content の添字を順にたどったノードを返す。添字がなければ root を返す。
-func nodeAt(root *yaml.Node, indexes []int) *yaml.Node {
-	n := root
-	for _, i := range indexes {
-		n = n.Content[i]
-	}
-	return n
-}
-
 //trace:checks FR-001
 func TestDocumentHasTag(t *testing.T) {
 	cases := []struct {
@@ -457,4 +448,13 @@ func TestDocumentStringValue(t *testing.T) {
 			}
 		})
 	}
+}
+
+// nodeAt は、root から Content の添字を順にたどったノードを返す。添字がなければ root を返す。
+func nodeAt(root *yaml.Node, indexes []int) *yaml.Node {
+	n := root
+	for _, i := range indexes {
+		n = n.Content[i]
+	}
+	return n
 }

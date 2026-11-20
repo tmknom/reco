@@ -9,7 +9,7 @@ import (
 )
 
 //trace:checks FR-007
-func TestPreviousSettings(t *testing.T) {
+func TestResumedSettings(t *testing.T) {
 	enabled := func(observed, desired bool, result ReconciliationResult) SettingPlan {
 		return SettingPlan{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(observed)), Desired: setting.BoolValue(desired), Result: result}
 	}
@@ -37,27 +37,26 @@ func TestPreviousSettings(t *testing.T) {
 			want: []setting.Key{setting.AllowedActions, setting.SelectedActions},
 		},
 		{
-			// ポリシーは宣言した値になり、選択方式の Actions 許可条件が失われ得ることは副作用として示すため、sha_pinning_required だけを挙げる
 			name: "policy enabling actions resumes with sha_pinning_required only",
 			plan: enablingPolicy, settings: []SettingPlan{enablingPolicy},
 			want: []setting.Key{setting.SHAPinningRequired},
 		},
 		{
-			name: "policy enabling actions with sha_pinning_required declared has no previous settings",
+			name: "policy enabling actions with sha_pinning_required declared has no resumed settings",
 			plan: enablingPolicy, settings: []SettingPlan{enablingPolicy, shaPinningRequired},
 		},
-		{name: "policy change on enabled actions has no previous settings", plan: policyMismatch, settings: []SettingPlan{policyMismatch}},
-		{name: "disabling actions has no previous settings", plan: enabled(true, false, Mismatch), settings: []SettingPlan{enabled(true, false, Mismatch)}},
-		{name: "enabled already true has no previous settings", plan: enabled(true, true, Match), settings: []SettingPlan{enabled(true, true, Match)}},
+		{name: "policy change on enabled actions has no resumed settings", plan: policyMismatch, settings: []SettingPlan{policyMismatch}},
+		{name: "disabling actions has no resumed settings", plan: enabled(true, false, Mismatch), settings: []SettingPlan{enabled(true, false, Mismatch)}},
+		{name: "enabled already true has no resumed settings", plan: enabled(true, true, Match), settings: []SettingPlan{enabled(true, true, Match)}},
 		{
-			name: "another setting from false to true has no previous settings",
+			name: "another setting from false to true has no resumed settings",
 			plan: SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := previousSettings(tc.plan, tc.settings); !slices.Equal(got, tc.want) {
-				t.Errorf("previousSettings() = %v, want %v", got, tc.want)
+			if got := resumedSettings(tc.plan, tc.settings); !slices.Equal(got, tc.want) {
+				t.Errorf("resumedSettings() = %v, want %v", got, tc.want)
 			}
 		})
 	}

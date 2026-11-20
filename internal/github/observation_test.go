@@ -5,136 +5,17 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"reflect"
 	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 
-	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
 )
 
-const testToken = "ghp_test-secret-token"
-
-// repositoryBody は GET /repos/{owner}/{repo} の応答に似せ、reco が読まないフィールドも含める。
-const repositoryBody = `{
-	"id": 1296269,
-	"name": "repo",
-	"full_name": "owner/repo",
-	"owner": {"login": "owner"},
-	"private": false,
-	"html_url": "https://github.com/owner/repo",
-	"allow_auto_merge": true,
-	"delete_branch_on_merge": false
-}`
-
-// privateRepositoryBody は repositoryBody の非公開のリポジトリである。
-const privateRepositoryBody = `{
-	"id": 1296269,
-	"name": "repo",
-	"full_name": "owner/repo",
-	"owner": {"login": "owner"},
-	"private": true,
-	"html_url": "https://github.com/owner/repo",
-	"allow_auto_merge": true,
-	"delete_branch_on_merge": false
-}`
-
-func newTestClient(t *testing.T, handler http.HandlerFunc) *Client {
-	t.Helper()
-	srv := httptest.NewServer(handler)
-	t.Cleanup(srv.Close)
-	u, err := url.Parse(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return New(testToken, WithBaseURL(u))
-}
-
-func mustReference(t *testing.T, name string) repository.Reference {
-	t.Helper()
-	reference, err := repository.ParseReference(name)
-	if err != nil {
-		t.Fatalf("ParseReference(%q) error = %v", name, err)
-	}
-	return reference
-}
-
-func TestRepositoryURL(t *testing.T) {
-	cases := []struct {
-		name   string
-		client *Client
-		want   string
-	}{
-		{
-			name:   "default client targets api.github.com",
-			client: New(testToken),
-			want:   "https://api.github.com/repos/owner/repo",
-		},
-		{
-			name:   "base URL path and query are ignored",
-			client: New(testToken, WithBaseURL(&url.URL{Scheme: "http", Host: "127.0.0.1:1", Path: "/api/v3", RawQuery: "x=1"})),
-			want:   "http://127.0.0.1:1/repos/owner/repo",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.client.repositoryURL(mustReference(t, "owner/repo")).String(); got != tc.want {
-				t.Errorf("repositoryURL() = %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
-//trace:checks FR-004
-func TestDecodeRepository(t *testing.T) {
-	successes := []struct {
-		name        string
-		body        string
-		wantPrivate bool
-	}{
-		{name: "public repository is read with all fields", body: repositoryBody, wantPrivate: false},
-		{name: "private repository is read with all fields", body: privateRepositoryBody, wantPrivate: true},
-	}
-	for _, tc := range successes {
-		t.Run(tc.name, func(t *testing.T) {
-			got, private, err := decodeRepository([]byte(tc.body))
-			if err != nil {
-				t.Fatalf("decodeRepository() error = %v", err)
-			}
-			want := ObservationResult{RepositoryID: 1296269, General: General{AllowAutoMerge: true, DeleteBranchOnMerge: false}}
-			if got != want || private != tc.wantPrivate {
-				t.Errorf("decodeRepository() = (%+v, %t), want (%+v, %t)", got, private, want, tc.wantPrivate)
-			}
-		})
-	}
-
-	failures := []struct {
-		name        string
-		body        string
-		errContains string
-	}{
-		{name: "missing id is unexpected response", body: `{"full_name": "o/r", "allow_auto_merge": true, "delete_branch_on_merge": true, "private": false}`, errContains: "id"},
-		{name: "missing allow_auto_merge is unexpected response", body: `{"id": 1, "full_name": "o/r", "delete_branch_on_merge": true, "private": false}`, errContains: "allow_auto_merge"},
-		{name: "missing delete_branch_on_merge is unexpected response", body: `{"id": 1, "full_name": "o/r", "allow_auto_merge": true, "private": false}`, errContains: "delete_branch_on_merge"},
-		{name: "null allow_auto_merge is unexpected response", body: `{"id": 1, "full_name": "o/r", "allow_auto_merge": null, "delete_branch_on_merge": true, "private": false}`, errContains: "allow_auto_merge"},
-		{name: "missing private is unexpected response", body: `{"id": 1, "full_name": "o/r", "allow_auto_merge": true, "delete_branch_on_merge": true}`, errContains: "private"},
-		{name: "non-JSON body is unexpected response", body: `<html>`},
-	}
-	for _, tc := range failures {
-		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := decodeRepository([]byte(tc.body))
-			if !errors.Is(err, ErrUnexpectedResponse) {
-				t.Fatalf("decodeRepository() error = %v, want %v", err, ErrUnexpectedResponse)
-			}
-			if !strings.Contains(err.Error(), tc.errContains) {
-				t.Errorf("decodeRepository() error = %q, want it to contain %q", err, tc.errContains)
-			}
-		})
-	}
-}
+// actionsDisabledBody は Actions が無効のときの応答で、確認した動作のとおり allowed_actions を含まず sha_pinning_required が false である。
+const actionsDisabledBody = `{"enabled": false, "sha_pinning_required": false}`
 
 //trace:checks FR-004
 //trace:checks QR-002
@@ -307,25 +188,6 @@ func TestObserveRepositoryFailure(t *testing.T) {
 		}
 	})
 }
-
-const (
-	repositoryPath          = "/repos/owner/repo"
-	actionsPermissionsPath  = "/repos/owner/repo/actions/permissions"
-	selectedActionsPath     = "/repos/owner/repo/actions/permissions/selected-actions"
-	workflowPermissionsPath = "/repos/owner/repo/actions/permissions/workflow"
-	actionsAccessPath       = "/repos/owner/repo/actions/permissions/access"
-	actionsAccessBody       = `{"access_level": "user"}`
-	workflowPermissionsBody = `{"default_workflow_permissions": "read", "can_approve_pull_request_reviews": false}`
-	selectedActionsBody     = `{"github_owned_allowed": true, "verified_allowed": false, "patterns_allowed": ["z/*", "a/*"]}`
-)
-
-// actionsPermissionsBody は GET .../actions/permissions の Actions が有効のときの応答に似せ、reco が読まないフィールドも含める。
-func actionsPermissionsBody(policy string) string {
-	return `{"enabled": true, "allowed_actions": "` + policy + `", "selected_actions_url": "https://api.github.com/repos/owner/repo/actions/permissions/selected-actions", "sha_pinning_required": true}`
-}
-
-// actionsDisabledBody は Actions が無効のときの応答で、確認した動作のとおり allowed_actions を含まず sha_pinning_required が false である。
-const actionsDisabledBody = `{"enabled": false, "sha_pinning_required": false}`
 
 //trace:checks FR-004
 //trace:checks QR-002
@@ -1251,4 +1113,9 @@ func TestObserveActionsAccessFailure(t *testing.T) {
 	if n := redirected.Load(); n != 0 {
 		t.Errorf("redirect target received %d requests, want 0", n)
 	}
+}
+
+// actionsPermissionsBody は GET .../actions/permissions の Actions が有効のときの応答に似せ、reco が読まないフィールドも含める。
+func actionsPermissionsBody(policy string) string {
+	return `{"enabled": true, "allowed_actions": "` + policy + `", "selected_actions_url": "https://api.github.com/repos/owner/repo/actions/permissions/selected-actions", "sha_pinning_required": true}`
 }

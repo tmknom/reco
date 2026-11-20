@@ -7,29 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
-
-// completedRecord は、change のすべての更新操作が成功し、期待状態との一致を確認できた記録。
-func completedRecord(change changeplan.LogicalChange) changeRecord {
-	operations := make([]operationRecord, len(change.Operations))
-	for i := range operations {
-		operations[i] = operationRecord{precondition: preconditionHolds, update: github.UpdateSucceeded}
-	}
-	return changeRecord{change: change, operations: operations, confirmation: desiredStateMatches}
-}
-
-// toSelectedRecord は、toSelectedChange の更新操作の記録が operations の記録。
-func toSelectedRecord(confirmation desiredStateConfirmation, operations ...operationRecord) changeRecord {
-	return changeRecord{change: toSelectedChange(), operations: operations, confirmation: confirmation}
-}
-
-// started は、変更前提が成立して開始し、update に終わった更新操作の記録。
-func started(update github.UpdateOutcome) operationRecord {
-	return operationRecord{precondition: preconditionHolds, update: update}
-}
 
 //trace:checks QR-002
 func TestUnavailableReasonText(t *testing.T) {
@@ -177,12 +157,6 @@ func TestNotAttemptedReason_StartedUpdatePanics(t *testing.T) {
 		}
 	}()
 	notAttemptedReason(changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionHolds}}})
-}
-
-// updateRequestRows は、toSelectedChange の2つの更新操作の結果を、リポジトリの行の下の字下げで示す行。
-func updateRequestRows(first, second string) string {
-	return "    Update request (actions.permissions.allowed_actions): " + first + "\n" +
-		"    Update request (actions.permissions.selected_actions): " + second + "\n"
 }
 
 // TestWriteChangeReport_SingleChange は、論理的な設定変更が1件のとき、リポジトリの行に結果と理由を書く表示を確かめる。
@@ -647,4 +621,15 @@ func TestRepositoriesError(t *testing.T) {
 			t.Errorf("repositoriesError() = %v, want an error naming %s and not %s", err, second, first)
 		}
 	})
+}
+
+// toSelectedRecord は、toSelectedChange の更新操作の記録が operations の記録。
+func toSelectedRecord(confirmation desiredStateConfirmation, operations ...operationRecord) changeRecord {
+	return changeRecord{change: toSelectedChange(), operations: operations, confirmation: confirmation}
+}
+
+// updateRequestRows は、toSelectedChange の2つの更新操作の結果を、リポジトリの行の下の字下げで示す行。
+func updateRequestRows(first, second string) string {
+	return "    Update request (actions.permissions.allowed_actions): " + first + "\n" +
+		"    Update request (actions.permissions.selected_actions): " + second + "\n"
 }

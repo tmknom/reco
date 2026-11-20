@@ -20,65 +20,14 @@ const (
 	UpdateRejected
 )
 
-// Update は、reference のリポジトリの key の設定を value にする更新要求を、UpdateEndpointOf(key) へ一度だけ送る。再送はしない。
-// error が nil になるのは UpdateSucceeded のときだけで、呼び出し側は error から結果を導かない。
-func (c *Client) Update(ctx context.Context, reference repository.Reference, key setting.Key, value setting.Value) (UpdateOutcome, error) {
-	return updateRequestOf(key).send(c, ctx, reference, value)
-}
-
 // updateRequestFunc は、reference のリポジトリの設定を value にする更新要求を一度送る。
 // メソッド式 ((*Client).updateAllowAutoMerge など) をそのまま渡せるよう、受け手の Client を先頭に置く。
 type updateRequestFunc func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error)
 
-// updateRequest は、一つの設定を変える更新要求の、送り先の更新エンドポイントと送り方の組。
-// 送る更新要求と比べる設定の範囲を別々の場所で足し忘れないよう、同じ switch から返す。
-type updateRequest struct {
-	endpoint UpdateEndpoint
-	send     updateRequestFunc
-}
-
-// updateRequestOf は、key の設定を変える更新要求を返す。
-// 未定義の設定は、不変条件の破れとして panic する。
-// 定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
-func updateRequestOf(key setting.Key) updateRequest {
-	switch key {
-	case setting.DeleteBranchOnMerge:
-		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateDeleteBranchOnMerge)}
-	case setting.AllowAutoMerge:
-		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateAllowAutoMerge)}
-	case setting.ActionsEnabled:
-		return updateRequest{ActionsPermissionsEndpoint, boolUpdate((*Client).updateActionsEnabled)}
-	case setting.AllowedActions:
-		return updateRequest{ActionsPermissionsEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
-			return c.updateAllowedActions(ctx, reference, value.AllowedActionsPolicy())
-		}}
-	case setting.SelectedActions:
-		// Actions 許可ポリシーが selected のまま3項目だけを変えるときも、ポリシーの更新要求は送らない。
-		// selected を送り直すと、GitHub が github_owned_allowed を true に変えるため。
-		return updateRequest{SelectedActionsEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
-			return c.updateSelectedActions(ctx, reference, value.SelectedActionsCriteria())
-		}}
-	case setting.DefaultWorkflowPermissions:
-		return updateRequest{WorkflowPermissionsEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
-			return c.updateDefaultWorkflowPermissions(ctx, reference, value.PermissionLevel())
-		}}
-	case setting.CanApprovePullRequestReviews:
-		return updateRequest{WorkflowPermissionsEndpoint, boolUpdate((*Client).updateCanApprovePullRequestReviews)}
-	case setting.SHAPinningRequired:
-		return updateRequest{ActionsPermissionsEndpoint, boolUpdate((*Client).updateSHAPinningRequired)}
-	case setting.ActionsAccessLevel:
-		return updateRequest{ActionsAccessEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
-			return c.updateAccessLevel(ctx, reference, value.AccessLevel())
-		}}
-	}
-	panic("github: no update request for " + string(key))
-}
-
-// boolUpdate は、真偽値を受ける更新メソッドを、設定の値を受ける更新要求にする。
-func boolUpdate(update func(*Client, context.Context, repository.Reference, bool) (UpdateOutcome, error)) updateRequestFunc {
-	return func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
-		return update(c, ctx, reference, value.Bool())
-	}
+// Update は、reference のリポジトリの key の設定を value にする更新要求を、UpdateEndpointOf(key) へ一度だけ送る。再送はしない。
+// error が nil になるのは UpdateSucceeded のときだけで、呼び出し側は error から結果を導かない。
+func (c *Client) Update(ctx context.Context, reference repository.Reference, key setting.Key, value setting.Value) (UpdateOutcome, error) {
+	return updateRequestOf(key).send(c, ctx, reference, value)
 }
 
 // updateAllowAutoMerge は reference のリポジトリの allow_auto_merge を allow に更新する。
@@ -159,6 +108,57 @@ func (c *Client) updateAccessLevel(ctx context.Context, reference repository.Ref
 func (c *Client) updateSelectedActions(ctx context.Context, reference repository.Reference, criteria setting.SelectedActionsCriteria) (UpdateOutcome, error) {
 	status, _, err := c.send(ctx, http.MethodPut, c.selectedActionsURL(reference), encodeSelectedActions(criteria), http.StatusNoContent)
 	return describeUpdateOutcome("update selected actions", reference, status, err)
+}
+
+// updateRequest は、一つの設定を変える更新要求の、送り先の更新エンドポイントと送り方の組。
+// 送る更新要求と比べる設定の範囲を別々の場所で足し忘れないよう、同じ switch から返す。
+type updateRequest struct {
+	endpoint UpdateEndpoint
+	send     updateRequestFunc
+}
+
+// updateRequestOf は、key の設定を変える更新要求を返す。
+// 未定義の設定は、不変条件の破れとして panic する。
+// 定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+func updateRequestOf(key setting.Key) updateRequest {
+	switch key {
+	case setting.DeleteBranchOnMerge:
+		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateDeleteBranchOnMerge)}
+	case setting.AllowAutoMerge:
+		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateAllowAutoMerge)}
+	case setting.ActionsEnabled:
+		return updateRequest{ActionsPermissionsEndpoint, boolUpdate((*Client).updateActionsEnabled)}
+	case setting.AllowedActions:
+		return updateRequest{ActionsPermissionsEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+			return c.updateAllowedActions(ctx, reference, value.AllowedActionsPolicy())
+		}}
+	case setting.SelectedActions:
+		// Actions 許可ポリシーが selected のまま3項目だけを変えるときも、ポリシーの更新要求は送らない。
+		// selected を送り直すと、GitHub が github_owned_allowed を true に変えるため。
+		return updateRequest{SelectedActionsEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+			return c.updateSelectedActions(ctx, reference, value.SelectedActionsCriteria())
+		}}
+	case setting.DefaultWorkflowPermissions:
+		return updateRequest{WorkflowPermissionsEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+			return c.updateDefaultWorkflowPermissions(ctx, reference, value.PermissionLevel())
+		}}
+	case setting.CanApprovePullRequestReviews:
+		return updateRequest{WorkflowPermissionsEndpoint, boolUpdate((*Client).updateCanApprovePullRequestReviews)}
+	case setting.SHAPinningRequired:
+		return updateRequest{ActionsPermissionsEndpoint, boolUpdate((*Client).updateSHAPinningRequired)}
+	case setting.ActionsAccessLevel:
+		return updateRequest{ActionsAccessEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+			return c.updateAccessLevel(ctx, reference, value.AccessLevel())
+		}}
+	}
+	panic("github: no update request for " + string(key))
+}
+
+// boolUpdate は、真偽値を受ける更新メソッドを、設定の値を受ける更新要求にする。
+func boolUpdate(update func(*Client, context.Context, repository.Reference, bool) (UpdateOutcome, error)) updateRequestFunc {
+	return func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+		return update(c, ctx, reference, value.Bool())
+	}
 }
 
 // encodeSelectedActions は criteria を Selected actions の更新要求の本文にする。
