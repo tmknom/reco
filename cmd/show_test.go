@@ -29,6 +29,7 @@ func TestShow_Success(t *testing.T) {
 				"GET /repos/owner/repo/actions/permissions/selected-actions": {Status: http.StatusOK, Body: selectedActionsBody},
 				"GET /repos/owner/repo/actions/permissions/workflow":         {Status: http.StatusOK, Body: workflowPermissionsBody},
 				"GET /repos/owner/repo/actions/permissions/access":           githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
+				"GET /repos/owner/repo/environments":                         githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
 			}))
 
 			code, stdout, stderr := runExecute(t, Environment{Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue, "GITHUB_TOKEN": githubEnvValue})}, opts, tc.args...)
@@ -47,6 +48,7 @@ func TestShow_Success(t *testing.T) {
 				"/repos/owner/repo/actions/permissions/selected-actions",
 				"/repos/owner/repo/actions/permissions/workflow",
 				"/repos/owner/repo/actions/permissions/access",
+				"/repos/owner/repo/environments",
 			}
 			got := server.Requests()
 			if len(got) != len(wantPaths) {

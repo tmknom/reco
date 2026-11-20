@@ -57,6 +57,7 @@ Environment の名前は、パスパラメータ `environment_name` に URL エ�
 >
 > - 大文字と小文字：`reco-check-case` を作成したあと、大文字に変えた名前への取得は同じ `id` の Environment を返し、`name` は作成したときの綴りのままだった。大文字に変えた名前への `PUT` も、本文の有無によらず同じ Environment を更新し、新しい Environment は作られなかった
 > - 空白と `/`：`%20` と `%2F` にエンコードした名前で、作成と取得ができ、`name` は空白と `/` を含む元の名前で返った。`/` をエンコードせずに送った取得は `404` を返し、`documentation_url` は Environment の取得の節ではなく `https://docs.github.com/rest` だった
+> - `..`：パスの要素を `%2E%2E` にした `PUT` は `404` を返し、Environment は作られなかった。同じ本文で名前を `a..` にした `PUT` は `200` を返した
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -119,7 +120,8 @@ Environment の名前は、パスパラメータ `environment_name` に URL エ�
 > - 保護ルールの `type`：待機時間の形は `wait_timer`、レビュアーの形は `required_reviewers`、デプロイ元の制限は `branch_policy`（ほかのフィールドを持たない形）だった。`branch_policy` の要素は、`deployment_branch_policy` が `null` でないときに限り含まれた
 > - `deployment_branch_policy` の値：すべてのブランチを許可するときは `null`、保護ブランチに限るときは `protected_branches: true`、`custom_branch_policies: false`、指定したパターンに限るときは `protected_branches: false`、`custom_branch_policies: true` だった
 > - `id`：同じ名前の Environment を削除して作り直すと、作り直すたびに別の `id` になった（2回の作り直しで確認）。デプロイ元の制限を別の値に変えると、`branch_policy` の保護ルールの `id` が変わった
-> - レビュアーの形：`reviewers` に `type: User` とユーザーの `id` を送ると、`reviewers` の要素は `type: User` と、そのユーザーを `reviewer` に持つ形で返った。`reviewer.id` は送った `id` と同じだった
+> - レビュアーの形：`reviewers` に `type: User` とユーザーの `id` を送ると、`reviewers` の要素は `type: User` と、そのユーザーを `reviewer` に持つ形で返った。`reviewer.id` は送った `id` と同じだった。`prevent_self_review` を `false` で送った場合も、`required_reviewers` の要素は `prevent_self_review: false` を含んだ
+> - 保護ルールを外す更新：`wait_timer: 0` と `reviewers: []` を送ると、`wait_timer` と `required_reviewers` の要素はどちらも `protection_rules` からなくなった。値が `0` の待機時間の要素や、`reviewers` が空のレビュアーの要素は返らなかった
 
 | Relationship | Target | Target Type |
 |---|---|---|

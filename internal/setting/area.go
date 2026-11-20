@@ -9,4 +9,5 @@ const (
 	AreaActionsPermissions
 	AreaWorkflowPermissions
 	AreaActionsAccess
+	AreaEnvironments
 )
