@@ -219,6 +219,22 @@ func (d document) allowedActionsPolicyValue(n *yaml.Node, path string) (setting.
 	return policy, nil
 }
 
+// accessLevelValue は、取り得る値のうち宣言で受け付ける none と user だけを受理する。
+// organization は show が表示し得る値のため、そのまま書いた利用者に拒否の理由を添える。
+func (d document) accessLevelValue(n *yaml.Node, path string) (setting.AccessLevel, error) {
+	s, err := d.stringValue(n, path)
+	if err != nil {
+		return "", err
+	}
+	switch level, _ := setting.ParseAccessLevel(s); level {
+	case setting.AccessNone, setting.AccessUser:
+		return level, nil
+	case setting.AccessOrganization:
+		return "", invalid(n, path, "must be none or user; got %q; organization is for organization-owned repositories, which reco does not support", s)
+	}
+	return "", invalid(n, path, "must be none or user; got %q", s)
+}
+
 func (d document) stringValue(n *yaml.Node, path string) (string, error) {
 	if err := d.checkNode(n, path); err != nil {
 		return "", err

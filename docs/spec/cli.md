@@ -42,7 +42,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 ### 2.3 リポジトリ指定と対象選択
 
-`--repo` の値は、[YAML 設定仕様](configuration.md) の第6.2節で定めるリポジトリ指定です。
+`--repo` の値は、[YAML 設定仕様](configuration.md) の第7.2節で定めるリポジトリ指定です。
 
 `plan` / `apply` の `--repo` には、設定ファイルで宣言したリポジトリだけを指定できます。設定宣言全体は対象選択の有無にかかわらず検証します。
 
@@ -171,6 +171,7 @@ Repositories checked: 1
 |---|---|---|
 | Actions が無効 | `(GitHub Actions disabled)` | Actions が動いておらず、この設定は効いていない |
 | Actions 許可ポリシーが `selected` でない（選択方式の Actions 許可条件だけに当たる） | `(not in use)` | 選択方式の Actions 許可条件が使われていない |
+| リポジトリが公開（`access_level` だけに当たる） | `(public repository)` | この設定は公開リポジトリに適用されない |
 
 括弧の状態は、観測したリポジトリの状態から決まり、推測した値ではありません。GitHub が保存している値を示すものでもありません。利用者が知りたいのは承認すると何が起きるかであり、その判断には、いま効いている状態と宣言した値があれば足ります。確認済みの差分とは、現在値が括弧で示されることで区別します。
 
@@ -199,7 +200,7 @@ Plan: 1 repository to update, 2 changes
 Repositories checked: 1
 ```
 
-安全な変更に必要な条件を確認できない変更予定には、変更予定の行のすぐ下に `Applicability: not applicable (<理由>)` を添えます。理由は、何が成り立っていないかと、適用できるようにする宣言を示します。適用不能な変更予定が一つでもあれば、`Repositories checked:` の後に空行を挟んで `Plan cannot be applied.` を一度だけ表示します。集計は、適用不能な変更予定と、適用不能な変更予定だけを持つリポジトリも数えます。現在は、Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言した場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。
+安全な変更に必要な条件を確認できない変更予定には、変更予定の行のすぐ下に `Applicability: not applicable (<理由>)` を添えます。理由は、セミコロンの前に何が成り立っていないかを、後ろに設定ファイルの直し方を示します。適用不能な変更予定が一つでもあれば、`Repositories checked:` の後に空行を挟んで `Plan cannot be applied.` を一度だけ表示します。集計は、適用不能な変更予定と、適用不能な変更予定だけを持つリポジトリも数えます。現在は、Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言した場合と、公開リポジトリで `access_level` を宣言した場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。
 
 ```text
 Repository: example/project-a
@@ -222,6 +223,19 @@ Repository: example/project-a
 
 Plan: 1 repository to update, 2 changes
 Repositories checked: 1
+```
+
+公開リポジトリの `access_level` は、ほかの宣言によらず適用不能です（[アーキテクチャ設計](../design/architecture.md) 5.4）。直し方は、その宣言を設定ファイルから消すことです。
+
+```text
+Repository: example/project-a
+  actions.access.access_level: (public repository) -> none
+    Applicability: not applicable (the repository is public; remove access_level, which applies only to private repositories)
+
+Plan: 1 repository to update, 1 change
+Repositories checked: 1
+
+Plan cannot be applied.
 ```
 
 宣言した変更に伴って GitHub が管理範囲外の設定を削除する場合は、変更予定に `Side effect:` として失われる設定と現在値を添えます。この変更は適用可能であり、利用者が承認すれば実行します。現在は、Actions 許可ポリシーを `selected` から `all` / `local_only` へ変え、既存の選択方式の Actions 許可条件が失われる場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。Actions が無効のリポジトリで `all` / `local_only` を宣言した場合は、無効にする前のポリシーが `selected` であれば同じく失われますが、無効の間は値もポリシーも取得できないため、失われる可能性があることと、値を示せない理由を示します。遷移先が `selected` の変更には添えません。3項目は宣言した値で上書きされ、管理範囲内の変更になるためです。`Side effect:` は、副作用を伴う変更予定の最後の行として示します。変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。
@@ -373,13 +387,13 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 更新を一度も開始していない変更は `not attempted` とし、変更前提の不成立と、先行する異常による停止のどちらに当たるかを区別して理由を示します。先行する異常による停止は、同じリポジトリの先行する論理的な設定変更が完了しなかった場合（`Stopped: a preceding change did not complete`）と、先行するリポジトリが完了しなかった場合（`Stopped: a preceding repository did not complete`）を文言で区別します。
 
-変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を示します（`Precondition: <設定> changed since approval`）。`Side effect:` で示した設定の値が承認の前に示した値から変わっていた場合は、その設定を示します。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。複数の設定が変わっていた場合は、論理的な設定変更が変える設定を優先して一つだけ示します。ただし、Actions が無効のリポジトリで、承認した変更が Actions を有効にしたあとに `sha_pinning_required` を確認できるようになったことは、予定どおりの変化で、示しません。`sha_pinning_required` の更新は `enabled: true` を送るため、その直前に Actions が無効だった場合は `Precondition: actions.permissions.enabled changed since approval` と示します。計画時に Actions が有効だった場合は、`sha_pinning_required` を確認できなくなったことを優先し、`actions.permissions.sha_pinning_required` を示します。
+変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を示します（`Precondition: <設定> changed since approval`）。`Side effect:` で示した設定の値が承認の前に示した値から変わっていた場合は、その設定を示します。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。複数の設定が変わっていた場合は、論理的な設定変更が変える設定を優先して一つだけ示します。ただし、Actions が無効のリポジトリで、承認した変更が Actions を有効にしたあとに `sha_pinning_required` を確認できるようになったことは、予定どおりの変化で、示しません。`sha_pinning_required` の更新は `enabled: true` を送るため、その直前に Actions が無効だった場合は `Precondition: actions.permissions.enabled changed since approval` と示します。計画時に Actions が有効だった場合は、`sha_pinning_required` を確認できなくなったことを優先し、`actions.permissions.sha_pinning_required` を示します。`access_level` の更新の直前にリポジトリが公開になっていた場合も、`access_level` を確認できなくなったため、`Precondition: actions.access.access_level changed since approval` と示します。
 
 `failed` には、更新操作の失敗、更新操作の成否不明、成功応答後の期待状態の確認失敗、成功応答後の期待状態との不一致、成功応答後の変更対象外の設定の予期しない変化のいずれに当たるかを添えて示します。先行操作の成功後に後続操作を開始できなかった場合は、その旨を示します。変更対象外の設定の予期しない変化では、観測した変化を示しますが、reco に起因するとは断定しません。変更対象外の設定には、同じリポジトリのほかの管理設定も含みます。更新要求の応答を確認できない場合は成否不明とし、その後の再観測で期待状態が一致しても、更新操作の成否が判明したことにはならず、`updated` に変更しません。この再観測で変更対象外の設定の変化を観測した場合も、更新操作の結果と分けて示します。成否不明になった原因は、理由の行では区別せず、エラーとして示します。
 
 再観測の失敗とリポジトリ ID の変化による期待状態の確認失敗は、`not confirmed` に確認できなかった理由を括弧で添えて示します（`not confirmed (read failed)`、`not confirmed (repository ID changed)`）。
 
-期待値と比べる設定が GitHub の取得条件により観測不能だったことによる確認失敗は、`not in effect` に、宣言した設定が効いていない理由を括弧で添えて示します。理由は、Actions が無効なら `GitHub Actions is disabled`、Actions 許可ポリシーが `selected` でなければ `allowed_actions is not "selected"` です。`allowed_actions` を宣言できるのは Actions を有効にする場合に限られ、`sha_pinning_required` は Actions を無効にする宣言と同時には宣言できず、`selected_actions` を宣言できるのは Actions 許可ポリシーを `selected` と宣言した場合に限られます（[YAML 設定仕様](configuration.md) 4章）。このため、この観測不能は、宣言した設定が効いていないことを意味します。値そのものは確認できていないため、`does not match` とは示しません。`not confirmed` とも示さないのは、reco が確認に失敗したと読ませず、利用者が確かめるべきリポジトリの状態を示すためです。
+期待値と比べる設定が GitHub の取得条件により観測不能だったことによる確認失敗は、`not in effect` に、宣言した設定が効いていない理由を括弧で添えて示します。理由は、Actions が無効なら `GitHub Actions is disabled`、Actions 許可ポリシーが `selected` でなければ `allowed_actions is not "selected"`、リポジトリが公開なら `the repository is public` です。`allowed_actions` を宣言できるのは Actions を有効にする場合に限られ、`sha_pinning_required` は Actions を無効にする宣言と同時には宣言できず、`selected_actions` を宣言できるのは Actions 許可ポリシーを `selected` と宣言した場合に限られます（[YAML 設定仕様](configuration.md) 4章）。`access_level` は公開リポジトリには適用されません（[YAML 設定仕様](configuration.md) 6章）。このため、この観測不能は、宣言した設定が効いていないことを意味します。値そのものは確認できていないため、`does not match` とは示しません。`not confirmed` とも示さないのは、reco が確認に失敗したと読ませず、利用者が確かめるべきリポジトリの状態を示すためです。
 
 変更対象外の設定は、管理設定と同じ形の名前で示します。
 

@@ -572,3 +572,42 @@ func TestGenerate_ActionsPermissions(t *testing.T) {
 		}
 	})
 }
+
+const actionsAccessSource = `repositories:
+  - name: owner/repo
+    actions:
+      access:
+        access_level: none
+`
+
+//trace:checks FR-005
+//trace:checks FR-006
+func TestGenerate_ActionsAccess(t *testing.T) {
+	file := configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(actionsAccessSource)}}, Name: "reco.yaml", Path: "./reco.yaml"}
+
+	t.Run("private repository is observed and organization is reconciled as an applicable mismatch", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo":                            githubtest.OK(githubtest.RepositoryBody{ID: 7, Private: true}.JSON()),
+			"GET /repos/owner/repo/actions/permissions/access": githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "organization"}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+		got, err := Generate(context.Background(), client, file, nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		if want := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions/access"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		want := []SettingPlan{{
+			Key: setting.ActionsAccessLevel, Observed: github.Observed(setting.AccessLevelValue(setting.AccessOrganization)), Desired: setting.AccessLevelValue(setting.AccessNone),
+			Result: Mismatch, Applicability: Applicable,
+		}}
+		if len(got.Repositories) != 1 {
+			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
+		}
+		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
+			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
+		}
+	})
+}

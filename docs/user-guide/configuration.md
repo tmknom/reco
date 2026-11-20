@@ -42,6 +42,8 @@ repositories:
       workflow:
         default_workflow_permissions: read
         can_approve_pull_request_reviews: false
+      access:
+        access_level: none
 ```
 
 ## リポジトリの一般設定
@@ -58,7 +60,7 @@ repositories:
 
 ## GitHub Actions の設定
 
-`actions` には、`permissions`（Actions の実行許可）と `workflow`（ワークフローの権限）を書きます。使わないほうは省けます。
+`actions` には、`permissions`（Actions の実行許可）、`workflow`（ワークフローの権限）、`access`（ほかのリポジトリのワークフローからのアクセス）を書きます。使わないものは省けます。
 
 ### Actions の実行許可
 
@@ -112,6 +114,20 @@ repositories:
 |---|---|---|
 | `default_workflow_permissions` | `read` / `write` | ワークフローの `GITHUB_TOKEN` に与えるデフォルト権限 |
 | `can_approve_pull_request_reviews` | `true` / `false` | GitHub Actions が Pull Request を作成し、承認することを許可するか |
+
+### ほかのリポジトリのワークフローからのアクセス
+
+`actions.access` には、次のキーを書きます。
+
+| キー | 値 | 意味 |
+|---|---|---|
+| `access_level` | `none` / `user` | ほかのリポジトリのワークフローが、このリポジトリの Actions と再利用可能なワークフローを使える範囲 |
+
+`none` はほかのリポジトリからのアクセスを許可しません。`user` は、同じユーザーが所有するほかのプライベートリポジトリのワークフローからのアクセスを許可します。
+
+- この設定はプライベートリポジトリにだけ適用される。パブリックリポジトリに書くと、`plan` と `apply` はその変更に `Applicability: not applicable` を添え、`Plan cannot be applied.` を示す。`apply` は何も変えずにエラーで終了する。設定ファイルから `access_level` を消せば解消する
+- `organization` は設定ファイルに書けない。Organization が所有するリポジトリのための値で、reco が扱うユーザー所有のリポジトリでは GitHub が受け付けないため。Organization から移転したリポジトリなどで `show` が `organization` を示したときは、`none` か `user` を書けば、書いた値に変わる
+- Actions が無効のリポジトリでも書ける
 
 ## 未記載の設定の扱い
 

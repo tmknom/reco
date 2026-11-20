@@ -25,6 +25,8 @@ type NotApplicableReason int
 const (
 	// NotApplicableActionsRemainDisabled は、Actions が無効で、同じリポジトリの期待状態が Actions の有効を含まないこと。
 	NotApplicableActionsRemainDisabled NotApplicableReason = iota + 1
+	// NotApplicablePublicRepository は、リポジトリが公開で、その設定が公開リポジトリに適用されないこと。
+	NotApplicablePublicRepository
 )
 
 // judgeApplicability は、管理設定の計画 s の観測結果と、同じリポジトリの管理設定の計画 settings の期待値から、
@@ -51,6 +53,9 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan) (Applicability, N
 			return Applicable, 0
 		}
 		return NotApplicable, NotApplicableActionsRemainDisabled
+	case s.Key == setting.ActionsAccessLevel && reason == github.UnavailablePublicRepository:
+		// 公開範囲は reco が変える設定ではないため、同じリポジトリのほかの宣言では解消しない
+		return NotApplicable, NotApplicablePublicRepository
 	}
 	panic(fmt.Sprintf("changeplan: %s is not comparable for an unexpected reason %d", s.Key, int(reason)))
 }

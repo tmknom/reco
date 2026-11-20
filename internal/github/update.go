@@ -66,6 +66,10 @@ func updateRequestOf(key setting.Key) updateRequest {
 		return updateRequest{WorkflowPermissionsEndpoint, boolUpdate((*Client).updateCanApprovePullRequestReviews)}
 	case setting.SHAPinningRequired:
 		return updateRequest{ActionsPermissionsEndpoint, boolUpdate((*Client).updateSHAPinningRequired)}
+	case setting.ActionsAccessLevel:
+		return updateRequest{ActionsAccessEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+			return c.updateAccessLevel(ctx, reference, value.AccessLevel())
+		}}
 	}
 	panic("github: no update request for " + string(key))
 }
@@ -139,6 +143,15 @@ func (c *Client) updateSHAPinningRequired(ctx context.Context, reference reposit
 func (c *Client) updateActionsPermissions(ctx context.Context, reference repository.Reference, body []byte) (UpdateOutcome, error) {
 	status, _, err := c.send(ctx, http.MethodPut, c.actionsPermissionsURL(reference), body, http.StatusNoContent)
 	return describeUpdateOutcome("update actions permissions", reference, status, err)
+}
+
+// updateAccessLevel は reference のリポジトリの、リポジトリ外のワークフローからのアクセスの範囲を level に更新する。
+// 正常応答の 204 は本文を持たず、成功の判定に本文を使わない。
+func (c *Client) updateAccessLevel(ctx context.Context, reference repository.Reference, level setting.AccessLevel) (UpdateOutcome, error) {
+	// level は英小文字だけの定義済みの値で、%q の表記が JSON の文字列と一致する
+	body := fmt.Appendf(nil, `{"access_level":%q}`, level)
+	status, _, err := c.send(ctx, http.MethodPut, c.actionsAccessURL(reference), body, http.StatusNoContent)
+	return describeUpdateOutcome("update actions access", reference, status, err)
 }
 
 // updateSelectedActions は reference のリポジトリの選択方式の Actions 許可条件を criteria に更新する。

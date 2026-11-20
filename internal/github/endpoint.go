@@ -15,6 +15,7 @@ const (
 	WorkflowPermissionsEndpoint
 	ActionsPermissionsEndpoint
 	SelectedActionsEndpoint
+	ActionsAccessEndpoint
 )
 
 // ObservedSettings は、e で reco が観測する設定を返す。
@@ -30,6 +31,8 @@ func (e UpdateEndpoint) ObservedSettings() []setting.Key {
 		return []setting.Key{setting.ActionsEnabled, setting.AllowedActions, setting.SHAPinningRequired}
 	case SelectedActionsEndpoint:
 		return []setting.Key{setting.SelectedActions}
+	case ActionsAccessEndpoint:
+		return []setting.Key{setting.ActionsAccessLevel}
 	}
 	panic(fmt.Sprintf("github: unknown update endpoint %d", e))
 }

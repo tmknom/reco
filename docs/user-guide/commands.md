@@ -48,7 +48,7 @@ Actions access:
   access_level: none
 ```
 
-公開リポジトリでは、`access_level` を `unavailable (the repository is public)` と表示します。この設定は非公開リポジトリにだけ適用されるためです。
+パブリックリポジトリでは、`access_level` を `unavailable (the repository is public)` と表示します。この設定はプライベートリポジトリにだけ適用されるためです。
 
 ## `plan`
 
@@ -71,7 +71,7 @@ Repositories checked: 1
 |---|---|
 | `Repository:` | 変える予定のあるリポジトリ。変える予定のないリポジトリは出ない |
 | `<設定>: <現在の値> -> <書いた値>` | GitHub の値が設定ファイルの値と違う設定。承認すると右の値に変える |
-| `<設定>: (<今の状態>) -> <書いた値>` | 今は使われていない設定。`(not in use)` は `allowed_actions` が `selected` でないこと、`(GitHub Actions disabled)` は Actions が無効なことを示す。下に `Applicability:` の行がなければ、承認すると右の値に変える |
+| `<設定>: (<今の状態>) -> <書いた値>` | 今は使われていない設定。`(not in use)` は `allowed_actions` が `selected` でないこと、`(GitHub Actions disabled)` は Actions が無効なこと、`(public repository)` はリポジトリがパブリックで `access_level` が適用されないことを示す。`(public repository)` の行には必ず `Applicability:` の行が付く。下に `Applicability:` の行がなければ、承認すると右の値に変える |
 | `Applicability: not applicable (<理由>)` | 安全に変えるための条件が成り立たないため、reco はこの設定を変えない。括弧の中は、何が成り立っていないかと、設定ファイルにどう書けばよいか |
 | `Side effect:` | この変更に伴って GitHub が消す値。読み取れた値は括弧の中に出る |
 | `Previous settings:` | Actions を `enabled: true` か `allowed_actions` で有効に戻すと、無効にする前の `sha_pinning_required` などの設定で再開すること。設定ファイルに書いた設定は挙げない。無効のあいだは値を読み取れないため、値は出ない |

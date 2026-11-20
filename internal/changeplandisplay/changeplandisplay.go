@@ -57,7 +57,7 @@ func repositoryStateText(reason github.UnavailableReason) string {
 	case github.UnavailableNotSelected:
 		return "(not in use)"
 	case github.UnavailablePublicRepository:
-		// access_level は管理の単位でなく、この理由はここに届かないため、文言を持たせず panic に落とす
+		return "(public repository)"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined unavailable reason %d", int(reason)))
 }
@@ -68,6 +68,8 @@ func notApplicableReasonText(reason changeplan.NotApplicableReason) string {
 	switch reason {
 	case changeplan.NotApplicableActionsRemainDisabled:
 		return "GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it"
+	case changeplan.NotApplicablePublicRepository:
+		return "the repository is public; remove access_level, which applies only to private repositories"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(reason)))
 }

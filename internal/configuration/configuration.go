@@ -28,6 +28,7 @@ type DesiredState struct {
 	General             General
 	ActionsPermissions  ActionsPermissions
 	WorkflowPermissions WorkflowPermissions
+	ActionsAccess       ActionsAccess
 }
 
 // Value は、key の設定の期待値を返す。期待値が省略されていれば ok は偽になる。
@@ -60,6 +61,11 @@ func (d DesiredState) Value(key setting.Key) (value setting.Value, ok bool) {
 		return optionalBoolValue(d.WorkflowPermissions.CanApprovePullRequestReviews)
 	case setting.SHAPinningRequired:
 		return optionalBoolValue(d.ActionsPermissions.SHAPinningRequired)
+	case setting.ActionsAccessLevel:
+		if level := d.ActionsAccess.AccessLevel; level != nil {
+			return setting.AccessLevelValue(*level), true
+		}
+		return setting.Value{}, false
 	}
 	panic(fmt.Sprintf("unknown setting %q", key))
 }
@@ -91,4 +97,10 @@ type ActionsPermissions struct {
 type WorkflowPermissions struct {
 	DefaultWorkflowPermissions   *setting.PermissionLevel
 	CanApprovePullRequestReviews *bool
+}
+
+// ActionsAccess は、リポジトリ外のワークフローからのアクセスの期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
+type ActionsAccess struct {
+	// AccessLevel は none か user。organization は宣言で受け付けない (YAML 設定仕様の Actions access)。
+	AccessLevel *setting.AccessLevel
 }

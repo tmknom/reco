@@ -134,6 +134,15 @@ func TestPlannedChangeText(t *testing.T) {
 				"    Applicability: not applicable (GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it)\n",
 		},
 		{
+			name: "access_level of a public repository shows the repository state and the reason to remove the declaration",
+			s: changeplan.SettingPlan{
+				Key: setting.ActionsAccessLevel, Observed: github.Unavailable[setting.Value](github.UnavailablePublicRepository), Desired: setting.AccessLevelValue(setting.AccessNone),
+				Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicablePublicRepository,
+			},
+			want: "  actions.access.access_level: (public repository) -> none\n" +
+				"    Applicability: not applicable (the repository is public; remove access_level, which applies only to private repositories)\n",
+		},
+		{
 			name: "applicable not-comparable sha_pinning_required shows no applicability",
 			s: changeplan.SettingPlan{
 				Key: setting.SHAPinningRequired, Observed: disabled, Desired: setting.BoolValue(true),
@@ -181,23 +190,11 @@ func TestNotApplicableReasonText_UndefinedReasonPanics(t *testing.T) {
 	_ = notApplicableReasonText(0)
 }
 
-// 公開のリポジトリの理由は、access_level が管理の単位でないため変更計画に現れず、文言を持たない。
-func TestRepositoryStateText_ReasonWithoutTextPanics(t *testing.T) {
-	cases := []struct {
-		name   string
-		reason github.UnavailableReason
-	}{
-		{name: "undefined reason panics", reason: 0},
-		{name: "public repository reason panics", reason: github.UnavailablePublicRepository},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			defer func() {
-				if recover() == nil {
-					t.Errorf("repositoryStateText(%d) did not panic", int(tc.reason))
-				}
-			}()
-			_ = repositoryStateText(tc.reason)
-		})
-	}
+func TestRepositoryStateText_UndefinedReasonPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("repositoryStateText() did not panic for an undefined unavailable reason")
+		}
+	}()
+	_ = repositoryStateText(0)
 }

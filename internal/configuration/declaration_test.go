@@ -432,10 +432,37 @@ func TestDocumentDeclaration(t *testing.T) {
 			}},
 		},
 		{
-			name:       "unknown key in actions is rejected listing permissions and workflow",
+			name: "access alone is read into the actions access desired state",
+			src:  second + "    actions:\n      access:\n        access_level: user\n",
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				{
+					Reference: mustReference(t, "owner/second"),
+					Desired: DesiredState{
+						General:       General{AllowAutoMerge: new(false)},
+						ActionsAccess: ActionsAccess{AccessLevel: new(setting.AccessUser)},
+					},
+				},
+			}},
+		},
+		{
+			name:       "unknown key in actions is rejected listing permissions, workflow, and access",
 			src:        second + "    actions:\n      secrets: {}\n",
 			wantPath:   "repositories[1].actions",
-			wantReason: `unknown key "secrets"; expected permissions, workflow`,
+			wantReason: `unknown key "secrets"; expected permissions, workflow, access`,
+		},
+		// Actions access
+		{
+			name:       "unknown key in access is rejected",
+			src:        second + "    actions:\n      access:\n        access_level: none\n        scope: all\n",
+			wantPath:   "repositories[1].actions.access",
+			wantReason: `unknown key "scope"; expected access_level`,
+		},
+		{
+			name:       "organization access_level is rejected at actions.access.access_level",
+			src:        second + "    actions:\n      access:\n        access_level: organization\n",
+			wantPath:   "repositories[1].actions.access.access_level",
+			wantReason: "must be none or user",
 		},
 		{
 			name:       "invalid permissions is rejected at actions.permissions",
