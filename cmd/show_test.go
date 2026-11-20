@@ -23,10 +23,12 @@ func TestShow_Success(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			server, opts := newGitHubServer(t, githubtest.Routes(t, map[string]githubtest.Response{
-				"GET /repos/owner/repo":                                      {Status: http.StatusOK, Body: repositoryBody},
+				// 非公開のリポジトリにし、show がリポジトリ外のワークフローからのアクセスまで読むことを確かめる
+				"GET /repos/owner/repo":                                      githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowAutoMerge: true, Private: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions":                  {Status: http.StatusOK, Body: actionsPermissionsBody},
 				"GET /repos/owner/repo/actions/permissions/selected-actions": {Status: http.StatusOK, Body: selectedActionsBody},
 				"GET /repos/owner/repo/actions/permissions/workflow":         {Status: http.StatusOK, Body: workflowPermissionsBody},
+				"GET /repos/owner/repo/actions/permissions/access":           githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
 			}))
 
 			code, stdout, stderr := runExecute(t, Environment{Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue, "GITHUB_TOKEN": githubEnvValue})}, opts, tc.args...)
@@ -44,6 +46,7 @@ func TestShow_Success(t *testing.T) {
 				"/repos/owner/repo/actions/permissions",
 				"/repos/owner/repo/actions/permissions/selected-actions",
 				"/repos/owner/repo/actions/permissions/workflow",
+				"/repos/owner/repo/actions/permissions/access",
 			}
 			got := server.Requests()
 			if len(got) != len(wantPaths) {

@@ -17,10 +17,11 @@ import (
 type ObservationResult struct {
 	RepositoryID repository.ID
 	General      General
-	// ActionsPermissions と WorkflowPermissions は、その設定の領域を選ばなかった観測では nil になる。
+	// ActionsPermissions、WorkflowPermissions、ActionsAccess は、その設定の領域を選ばなかった観測では nil になる。
 	// 読み取っていない値を false や read として読ませず、観測不能とも取り違えさせないため、値型にしない。
 	ActionsPermissions  *ActionsPermissions
 	WorkflowPermissions *WorkflowPermissions
+	ActionsAccess       *ActionsAccess
 }
 
 // Setting は、key の設定の観測結果を返す。取得条件を持たない設定は、常に観測値になる。
@@ -72,6 +73,11 @@ type WorkflowPermissions struct {
 	CanApprovePullRequestReviews bool
 }
 
+// ActionsAccess はリポジトリ外のワークフローからのアクセスのうち、reco が観測する設定である。
+type ActionsAccess struct {
+	AccessLevel SettingObservation[setting.AccessLevel]
+}
+
 // General はリポジトリ一般設定のうち、reco が観測する値である。管理範囲を知らないため、未管理設定の値も含む。
 type General struct {
 	AllowAutoMerge      bool
@@ -82,7 +88,7 @@ type General struct {
 // General は常に読み取るため、areas に AreaGeneral を含めても結果は変わらない。
 // 読み取り要求は areas の並びによらず、設計で定めた固定の順に送る。
 func (c *Client) ObserveRepository(ctx context.Context, reference repository.Reference, areas ...setting.Area) (ObservationResult, error) {
-	o, err := c.observeRepository(ctx, reference)
+	o, private, err := c.observeRepository(ctx, reference)
 	if err != nil {
 		return ObservationResult{}, fmt.Errorf("fetch repository %s: %w", reference, err)
 	}
@@ -104,13 +110,22 @@ func (c *Client) ObserveRepository(ctx context.Context, reference repository.Ref
 		}
 		o.WorkflowPermissions = &wp
 	}
+	if slices.Contains(areas, setting.AreaActionsAccess) {
+		aa, err := c.observeActionsAccess(ctx, reference, private)
+		if err != nil {
+			return ObservationResult{}, fmt.Errorf("fetch actions access %s: %w", reference, err)
+		}
+		o.ActionsAccess = &aa
+	}
 	return o, nil
 }
 
-func (c *Client) observeRepository(ctx context.Context, reference repository.Reference) (ObservationResult, error) {
+// observeRepository はリポジトリを読み取り、観測結果と公開範囲を返す。
+// 公開範囲は取得条件の判定にだけ使い、観測結果には載せない。
+func (c *Client) observeRepository(ctx context.Context, reference repository.Reference) (ObservationResult, bool, error) {
 	_, body, err := c.send(ctx, http.MethodGet, c.repositoryURL(reference), nil, http.StatusOK)
 	if err != nil {
-		return ObservationResult{}, err
+		return ObservationResult{}, false, err
 	}
 	return decodeRepository(body)
 }
@@ -134,14 +149,15 @@ type repositoryPayload struct {
 	ID                  *int64 `json:"id"`
 	AllowAutoMerge      *bool  `json:"allow_auto_merge"`
 	DeleteBranchOnMerge *bool  `json:"delete_branch_on_merge"`
+	Private             *bool  `json:"private"`
 }
 
-// decodeRepository はリポジトリの応答本文を観測結果に変換する。
+// decodeRepository はリポジトリの応答本文を、観測結果と、非公開のときに真になる公開範囲に変換する。
 // 欠落の理由を応答から確認できないため、欠けた値を既定値で補わず、契約外の応答として返す。
-func decodeRepository(data []byte) (ObservationResult, error) {
+func decodeRepository(data []byte) (ObservationResult, bool, error) {
 	var p repositoryPayload
 	if err := json.Unmarshal(data, &p); err != nil {
-		return ObservationResult{}, fmt.Errorf("%w: %w", ErrUnexpectedResponse, err)
+		return ObservationResult{}, false, fmt.Errorf("%w: %w", ErrUnexpectedResponse, err)
 	}
 	var missing []string
 	if p.ID == nil {
@@ -153,8 +169,11 @@ func decodeRepository(data []byte) (ObservationResult, error) {
 	if p.DeleteBranchOnMerge == nil {
 		missing = append(missing, "delete_branch_on_merge")
 	}
+	if p.Private == nil {
+		missing = append(missing, "private")
+	}
 	if len(missing) > 0 {
-		return ObservationResult{}, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missing, ", "))
+		return ObservationResult{}, false, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missing, ", "))
 	}
 	return ObservationResult{
 		RepositoryID: repository.ID(*p.ID),
@@ -162,7 +181,7 @@ func decodeRepository(data []byte) (ObservationResult, error) {
 			AllowAutoMerge:      *p.AllowAutoMerge,
 			DeleteBranchOnMerge: *p.DeleteBranchOnMerge,
 		},
-	}, nil
+	}, *p.Private, nil
 }
 
 func (c *Client) observeWorkflowPermissions(ctx context.Context, reference repository.Reference) (WorkflowPermissions, error) {
@@ -342,4 +361,58 @@ func decodeSelectedActions(data []byte) (setting.SelectedActionsCriteria, error)
 		VerifiedAllowed:    *p.VerifiedAllowed,
 		PatternsAllowed:    patterns,
 	}, nil
+}
+
+func (c *Client) actionsAccessURL(reference repository.Reference) *url.URL {
+	u := c.actionsPermissionsURL(reference)
+	u.Path += "/access"
+	return u
+}
+
+// observeActionsAccess は、公開範囲が取得条件に当たれば要求を送らずに観測不能とし、当たらなければ access_level を読み取る。
+// 非公開と観測したあとの失敗は、二つの要求のあいだに公開範囲が変わった可能性があっても、422 を含めて観測不能にせず error として返す。
+func (c *Client) observeActionsAccess(ctx context.Context, reference repository.Reference, private bool) (ActionsAccess, error) {
+	if reason, unavailable := accessLevelUnavailability(private); unavailable {
+		return ActionsAccess{AccessLevel: Unavailable[setting.AccessLevel](reason)}, nil
+	}
+	_, body, err := c.send(ctx, http.MethodGet, c.actionsAccessURL(reference), nil, http.StatusOK)
+	if err != nil {
+		return ActionsAccess{}, err
+	}
+	level, err := decodeActionsAccess(body)
+	if err != nil {
+		return ActionsAccess{}, err
+	}
+	return ActionsAccess{AccessLevel: Observed(level)}, nil
+}
+
+// accessLevelUnavailability は、観測した公開範囲から、access_level が取得条件により観測不能になる理由を返す。
+// 読み取り要求を送るかもこの戻り値で決め、表す理由と送る条件を食い違わせない。
+func accessLevelUnavailability(private bool) (reason UnavailableReason, unavailable bool) {
+	if !private {
+		return UnavailablePublicRepository, true
+	}
+	return 0, false
+}
+
+// actionsAccessPayload は欠落と null を検出するため、フィールドをポインタで受ける。
+type actionsAccessPayload struct {
+	AccessLevel *string `json:"access_level"`
+}
+
+// decodeActionsAccess はリポジトリ外のワークフローからのアクセスの応答本文を access_level の観測値に変換する。
+// 定義外の値は応答本文の一部のため、文言に入れない。
+func decodeActionsAccess(data []byte) (setting.AccessLevel, error) {
+	var p actionsAccessPayload
+	if err := json.Unmarshal(data, &p); err != nil {
+		return "", fmt.Errorf("%w: %w", ErrUnexpectedResponse, err)
+	}
+	if p.AccessLevel == nil {
+		return "", fmt.Errorf("%w: missing fields: access_level", ErrUnexpectedResponse)
+	}
+	level, ok := setting.ParseAccessLevel(*p.AccessLevel)
+	if !ok {
+		return "", fmt.Errorf("%w: unsupported value: access_level", ErrUnexpectedResponse)
+	}
+	return level, nil
 }

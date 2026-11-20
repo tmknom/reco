@@ -66,18 +66,23 @@
 ## 3. `GET /repos/{owner}/{repo}`
 
 - 用途：リポジトリの情報と一般設定の取得
-- 主な応答フィールド：`id`（整数、必須）、`name`（文字列、必須）、`full_name`（文字列、必須）、`owner`（必須）、`updated_at`（日時の文字列、必須）、`delete_branch_on_merge`（boolean、必須ではない）、`allow_auto_merge`（boolean、必須ではない）
+- 主な応答フィールド：`id`（整数、必須）、`name`（文字列、必須）、`full_name`（文字列、必須）、`owner`（必須）、`updated_at`（日時の文字列、必須）、`delete_branch_on_merge`（boolean、必須ではない）、`allow_auto_merge`（boolean、必須ではない）、`private`（boolean、必須）、`visibility`（文字列、必須ではない）
 
 `updated_at` がどの変更で更新されるかは、スキーマに記載がありません。
+
+リポジトリの公開範囲は、作成時に公開（public）か非公開（private）から選びます。内部（internal）の公開範囲を持てるのは、GitHub Enterprise Cloud を使い、Enterprise アカウントが所有する Organization のリポジトリだけです。個人アカウント所有のリポジトリは公開か非公開のどちらかで、`private` の真偽で区別できます。
 
 > [!NOTE]
 > 次は、reco の開発者が実際の動作で確認した事項です。
 >
 > - `updated_at` と一般設定の変更：`PATCH /repos/{owner}/{repo}` で `allow_auto_merge` や `delete_branch_on_merge` を変更しても `updated_at` は変わらず、名前を変更すると変わった
+> - `private` と `visibility`：トークン所有者が Admin ロールを持つ個人アカウント所有の非公開リポジトリでは `private: true` と `visibility: "private"`、公開リポジトリでは `private: false` と `visibility: "public"` が返った。トークン所有者が Write 以上のロールを持たない第三者の公開リポジトリ（1.1節でマージ関連のフィールドが欠けたもの）でも、`private: false` は欠けずに返った
+> - internal のリポジトリの応答は確認していない
 
 | Relationship | Target | Target Type |
 |---|---|---|
 | `grounding` | [Get a repository](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#get-a-repository) | External Document |
+| `grounding` | [About repositories: About repository visibility](https://docs.github.com/en/repositories/creating-and-managing-repositories/about-repositories#about-repository-visibility) | External Document |
 
 ## 4. `PATCH /repos/{owner}/{repo}`
 

@@ -34,6 +34,8 @@ Actions permissions:
 Workflow permissions:
   default_workflow_permissions: read
   can_approve_pull_request_reviews: false
+Actions access:
+  access_level: none
 ```
 
 本ドキュメントでは、`General:` の `delete_branch_on_merge`（Pull Request をマージしたあと、head ブランチを自動で削除するか）を変えます。以後は、`delete_branch_on_merge` の設定が `false` の場合に、`true` へ変更するシナリオで説明します。

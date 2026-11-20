@@ -30,6 +30,18 @@ const repositoryBody = `{
 	"delete_branch_on_merge": false
 }`
 
+// privateRepositoryBody は repositoryBody の非公開のリポジトリである。
+const privateRepositoryBody = `{
+	"id": 1296269,
+	"name": "repo",
+	"full_name": "owner/repo",
+	"owner": {"login": "owner"},
+	"private": true,
+	"html_url": "https://github.com/owner/repo",
+	"allow_auto_merge": true,
+	"delete_branch_on_merge": false
+}`
+
 func newTestClient(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Helper()
 	srv := httptest.NewServer(handler)
@@ -78,31 +90,42 @@ func TestRepositoryURL(t *testing.T) {
 
 //trace:checks FR-004
 func TestDecodeRepository(t *testing.T) {
-	t.Run("all fields are read", func(t *testing.T) {
-		got, err := decodeRepository([]byte(repositoryBody))
-		if err != nil {
-			t.Fatalf("decodeRepository() error = %v", err)
-		}
-		want := ObservationResult{RepositoryID: 1296269, General: General{AllowAutoMerge: true, DeleteBranchOnMerge: false}}
-		if got != want {
-			t.Errorf("decodeRepository() = %+v, want %+v", got, want)
-		}
-	})
+	successes := []struct {
+		name        string
+		body        string
+		wantPrivate bool
+	}{
+		{name: "public repository is read with all fields", body: repositoryBody, wantPrivate: false},
+		{name: "private repository is read with all fields", body: privateRepositoryBody, wantPrivate: true},
+	}
+	for _, tc := range successes {
+		t.Run(tc.name, func(t *testing.T) {
+			got, private, err := decodeRepository([]byte(tc.body))
+			if err != nil {
+				t.Fatalf("decodeRepository() error = %v", err)
+			}
+			want := ObservationResult{RepositoryID: 1296269, General: General{AllowAutoMerge: true, DeleteBranchOnMerge: false}}
+			if got != want || private != tc.wantPrivate {
+				t.Errorf("decodeRepository() = (%+v, %t), want (%+v, %t)", got, private, want, tc.wantPrivate)
+			}
+		})
+	}
 
 	failures := []struct {
 		name        string
 		body        string
 		errContains string
 	}{
-		{name: "missing id is unexpected response", body: `{"full_name": "o/r", "allow_auto_merge": true, "delete_branch_on_merge": true}`, errContains: "id"},
-		{name: "missing allow_auto_merge is unexpected response", body: `{"id": 1, "full_name": "o/r", "delete_branch_on_merge": true}`, errContains: "allow_auto_merge"},
-		{name: "missing delete_branch_on_merge is unexpected response", body: `{"id": 1, "full_name": "o/r", "allow_auto_merge": true}`, errContains: "delete_branch_on_merge"},
-		{name: "null allow_auto_merge is unexpected response", body: `{"id": 1, "full_name": "o/r", "allow_auto_merge": null, "delete_branch_on_merge": true}`, errContains: "allow_auto_merge"},
+		{name: "missing id is unexpected response", body: `{"full_name": "o/r", "allow_auto_merge": true, "delete_branch_on_merge": true, "private": false}`, errContains: "id"},
+		{name: "missing allow_auto_merge is unexpected response", body: `{"id": 1, "full_name": "o/r", "delete_branch_on_merge": true, "private": false}`, errContains: "allow_auto_merge"},
+		{name: "missing delete_branch_on_merge is unexpected response", body: `{"id": 1, "full_name": "o/r", "allow_auto_merge": true, "private": false}`, errContains: "delete_branch_on_merge"},
+		{name: "null allow_auto_merge is unexpected response", body: `{"id": 1, "full_name": "o/r", "allow_auto_merge": null, "delete_branch_on_merge": true, "private": false}`, errContains: "allow_auto_merge"},
+		{name: "missing private is unexpected response", body: `{"id": 1, "full_name": "o/r", "allow_auto_merge": true, "delete_branch_on_merge": true}`, errContains: "private"},
 		{name: "non-JSON body is unexpected response", body: `<html>`},
 	}
 	for _, tc := range failures {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := decodeRepository([]byte(tc.body))
+			_, _, err := decodeRepository([]byte(tc.body))
 			if !errors.Is(err, ErrUnexpectedResponse) {
 				t.Fatalf("decodeRepository() error = %v, want %v", err, ErrUnexpectedResponse)
 			}
@@ -234,7 +257,7 @@ func TestObserveRepositoryFailure(t *testing.T) {
 		{
 			name: "200 without allow_auto_merge is unexpected response",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write([]byte(`{"id": 1, "full_name": "owner/repo", "delete_branch_on_merge": false}`))
+				_, _ = w.Write([]byte(`{"id": 1, "full_name": "owner/repo", "delete_branch_on_merge": false, "private": false}`))
 			},
 			want: ErrUnexpectedResponse,
 		},
@@ -290,6 +313,8 @@ const (
 	actionsPermissionsPath  = "/repos/owner/repo/actions/permissions"
 	selectedActionsPath     = "/repos/owner/repo/actions/permissions/selected-actions"
 	workflowPermissionsPath = "/repos/owner/repo/actions/permissions/workflow"
+	actionsAccessPath       = "/repos/owner/repo/actions/permissions/access"
+	actionsAccessBody       = `{"access_level": "user"}`
 	workflowPermissionsBody = `{"default_workflow_permissions": "read", "can_approve_pull_request_reviews": false}`
 	selectedActionsBody     = `{"github_owned_allowed": true, "verified_allowed": false, "patterns_allowed": ["z/*", "a/*"]}`
 )
@@ -535,12 +560,15 @@ func TestObserveRepositoryAreas(t *testing.T) {
 	}
 	selectedCriteria := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{"z/*", "a/*"}}
 	cases := []struct {
-		name        string
-		areas       []setting.Area
-		actionsBody string
-		wantPaths   []string
-		wantAP      *ActionsPermissions
-		wantWP      *WorkflowPermissions
+		name string
+		// repositoryBody は空のとき公開のリポジトリの repositoryBody を使う
+		repositoryBody string
+		areas          []setting.Area
+		actionsBody    string
+		wantPaths      []string
+		wantAP         *ActionsPermissions
+		wantWP         *WorkflowPermissions
+		wantAA         *ActionsAccess
 	}{
 		{
 			name:        "selected policy sends the selected actions GET after the actions permissions",
@@ -612,6 +640,45 @@ func TestObserveRepositoryAreas(t *testing.T) {
 			name:      "no area observes the repository only",
 			wantPaths: []string{repositoryPath},
 		},
+		{
+			name:           "private repository reads all areas in the fixed order with the actions access last",
+			repositoryBody: privateRepositoryBody,
+			areas:          []setting.Area{setting.AreaActionsAccess, setting.AreaWorkflowPermissions, setting.AreaActionsPermissions},
+			actionsBody:    actionsPermissionsBody("all"),
+			wantPaths:      []string{repositoryPath, actionsPermissionsPath, workflowPermissionsPath, actionsAccessPath},
+			wantAP: &ActionsPermissions{
+				Enabled:            true,
+				AllowedActions:     Observed(setting.AllowedActionsAll),
+				SHAPinningRequired: Observed(true),
+				SelectedActions:    Unavailable[setting.SelectedActionsCriteria](UnavailableNotSelected),
+			},
+			wantWP: &WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: false},
+			wantAA: &ActionsAccess{AccessLevel: Observed(setting.AccessUser)},
+		},
+		{
+			name:      "public repository does not send the actions access GET and is unavailable",
+			areas:     []setting.Area{setting.AreaActionsAccess},
+			wantPaths: []string{repositoryPath},
+			wantAA:    &ActionsAccess{AccessLevel: Unavailable[setting.AccessLevel](UnavailablePublicRepository)},
+		},
+		{
+			name:           "private repository without the actions access area does not send its GET",
+			repositoryBody: privateRepositoryBody,
+			wantPaths:      []string{repositoryPath},
+		},
+		{
+			name:           "private repository with disabled actions still observes the access level",
+			repositoryBody: privateRepositoryBody,
+			areas:          []setting.Area{setting.AreaActionsPermissions, setting.AreaActionsAccess},
+			actionsBody:    actionsDisabledBody,
+			wantPaths:      []string{repositoryPath, actionsPermissionsPath, actionsAccessPath},
+			wantAP: &ActionsPermissions{
+				AllowedActions:     Unavailable[setting.AllowedActionsPolicy](UnavailableActionsDisabled),
+				SHAPinningRequired: Unavailable[bool](UnavailableActionsDisabled),
+				SelectedActions:    Unavailable[setting.SelectedActionsCriteria](UnavailableActionsDisabled),
+			},
+			wantAA: &ActionsAccess{AccessLevel: Observed(setting.AccessUser)},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -620,13 +687,19 @@ func TestObserveRepositoryAreas(t *testing.T) {
 				got = append(got, request{method: r.Method, path: r.URL.Path, contentLength: r.ContentLength, header: r.Header.Clone()})
 				switch r.URL.Path {
 				case repositoryPath:
-					_, _ = w.Write([]byte(repositoryBody))
+					body := repositoryBody
+					if tc.repositoryBody != "" {
+						body = tc.repositoryBody
+					}
+					_, _ = w.Write([]byte(body))
 				case actionsPermissionsPath:
 					_, _ = w.Write([]byte(tc.actionsBody))
 				case selectedActionsPath:
 					_, _ = w.Write([]byte(selectedActionsBody))
 				case workflowPermissionsPath:
 					_, _ = w.Write([]byte(workflowPermissionsBody))
+				case actionsAccessPath:
+					_, _ = w.Write([]byte(actionsAccessBody))
 				default:
 					t.Errorf("unexpected request path %q", r.URL.Path)
 					w.WriteHeader(http.StatusInternalServerError)
@@ -646,6 +719,9 @@ func TestObserveRepositoryAreas(t *testing.T) {
 			}
 			if !reflect.DeepEqual(observed.WorkflowPermissions, tc.wantWP) {
 				t.Errorf("ObserveRepository().WorkflowPermissions = %+v, want %+v", observed.WorkflowPermissions, tc.wantWP)
+			}
+			if !reflect.DeepEqual(observed.ActionsAccess, tc.wantAA) {
+				t.Errorf("ObserveRepository().ActionsAccess = %+v, want %+v", observed.ActionsAccess, tc.wantAA)
 			}
 
 			if len(got) != len(tc.wantPaths) {
@@ -1013,4 +1089,146 @@ func TestObservationResult_SettingOfUnknownSettingPanics(t *testing.T) {
 		}
 	}()
 	_ = ObservationResult{}.Setting("general.unknown")
+}
+
+//trace:checks FR-004
+//trace:checks QR-002
+func TestAccessLevelUnavailability(t *testing.T) {
+	cases := []struct {
+		name            string
+		private         bool
+		wantReason      UnavailableReason
+		wantUnavailable bool
+	}{
+		{name: "public repository is unavailable as public", private: false, wantReason: UnavailablePublicRepository, wantUnavailable: true},
+		{name: "private repository is available", private: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reason, unavailable := accessLevelUnavailability(tc.private)
+			if reason != tc.wantReason || unavailable != tc.wantUnavailable {
+				t.Errorf("accessLevelUnavailability(%t) = (%v, %t), want (%v, %t)", tc.private, reason, unavailable, tc.wantReason, tc.wantUnavailable)
+			}
+		})
+	}
+}
+
+//trace:checks FR-004
+//trace:checks QR-002
+func TestDecodeActionsAccess(t *testing.T) {
+	// 受け付ける値の規則は setting.ParseAccessLevel が持つため、ここでは読み取りの経路を1つの値で確かめる
+	t.Run("defined access_level is read", func(t *testing.T) {
+		got, err := decodeActionsAccess([]byte(`{"access_level": "user"}`))
+		if err != nil {
+			t.Fatalf("decodeActionsAccess() error = %v", err)
+		}
+		if got != setting.AccessUser {
+			t.Errorf("decodeActionsAccess() = %q, want %q", got, setting.AccessUser)
+		}
+	})
+
+	failures := []struct {
+		name           string
+		body           string
+		errContains    string
+		errNotContains string
+	}{
+		{name: "missing access_level is unexpected response", body: `{}`, errContains: "access_level"},
+		{
+			name:           "undefined access_level is unexpected response without the value",
+			body:           `{"access_level": "enterprise"}`,
+			errContains:    "access_level",
+			errNotContains: "enterprise",
+		},
+		{name: "non-JSON body is unexpected response", body: `<html>`},
+	}
+	for _, tc := range failures {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := decodeActionsAccess([]byte(tc.body))
+			if !errors.Is(err, ErrUnexpectedResponse) {
+				t.Fatalf("decodeActionsAccess() error = %v, want %v", err, ErrUnexpectedResponse)
+			}
+			if !strings.Contains(err.Error(), tc.errContains) {
+				t.Errorf("decodeActionsAccess() error = %q, want it to contain %q", err, tc.errContains)
+			}
+			if tc.errNotContains != "" && strings.Contains(err.Error(), tc.errNotContains) {
+				t.Errorf("decodeActionsAccess() error = %q, must not contain %q", err, tc.errNotContains)
+			}
+		})
+	}
+}
+
+// TestObserveActionsAccessFailure は、非公開と観測したあとのリポジトリ外のワークフローからのアクセスの取得の失敗が、
+// 422 を含めて観測不能にならず、種類を保った観測操作の失敗になることを確かめる。種類の判定規則は TestClassifyFailure が確かめる。
+//
+//trace:checks FR-003
+//trace:checks FR-004
+//trace:checks QR-001
+//trace:checks QR-002
+func TestObserveActionsAccessFailure(t *testing.T) {
+	const bodyMarker = "BODY-MARKER"
+	var redirected atomic.Int32
+	redirectTarget := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		redirected.Add(1)
+	}))
+	t.Cleanup(redirectTarget.Close)
+	location := redirectTarget.URL + "/repositories/1296269/actions/permissions/access"
+
+	cases := []struct {
+		name   string
+		access http.HandlerFunc
+		want   error
+	}{
+		{
+			name: "422 after observing private is unprocessable",
+			access: func(w http.ResponseWriter, _ *http.Request) {
+				http.Error(w, bodyMarker, http.StatusUnprocessableEntity)
+			},
+			want: ErrUnprocessable,
+		},
+		{
+			name: "301 is redirect and is not followed",
+			access: func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, location, http.StatusMovedPermanently)
+			},
+			want: ErrRedirect,
+		},
+		{
+			name: "200 with an undefined access_level is unexpected response",
+			access: func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`{"access_level": "enterprise"}`))
+			},
+			want: ErrUnexpectedResponse,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == actionsAccessPath {
+					tc.access(w, r)
+					return
+				}
+				_, _ = w.Write([]byte(privateRepositoryBody))
+			})
+			observed, err := c.ObserveRepository(t.Context(), mustReference(t, "owner/repo"), setting.AreaActionsAccess)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("ObserveRepository() error = %v, want %v", err, tc.want)
+			}
+			if observed != (ObservationResult{}) {
+				t.Errorf("ObserveRepository() = %+v, want the zero value without the observed General", observed)
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, "fetch actions access owner/repo") {
+				t.Errorf("error = %q, want it to name the actions access fetch of owner/repo", msg)
+			}
+			for _, secret := range []string{testToken, bodyMarker, location} {
+				if strings.Contains(msg, secret) {
+					t.Errorf("error = %q, must not contain %q", msg, secret)
+				}
+			}
+		})
+	}
+	if n := redirected.Load(); n != 0 {
+		t.Errorf("redirect target received %d requests, want 0", n)
+	}
 }

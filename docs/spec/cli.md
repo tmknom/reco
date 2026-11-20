@@ -541,7 +541,10 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 
 `show` は設定宣言を使用せず、指定リポジトリについて GitHub から確認できたサポート対象の設定を表示します。認証・権限・通信による観測操作の失敗は、正常な観測結果ではなくエラーとします。GitHub の設定は変更しません。
 
-GitHub の取得条件によって確認できない設定は、行ごと示しません。取得条件は、上位の設定によってその設定が効いていない状態（Actions が無効、Actions 許可ポリシーが `selected` でない）であり、その状態は上位の設定の行で示されるためです。
+GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
+
+- **ほかの行から分かる**：行ごと示さない。上位の設定によってその設定が効いていない状態（Actions が無効、Actions 許可ポリシーが `selected` でない）がこれに当たり、その状態は上位の設定の行で示されるためである
+- **ほかの行から分からない**：行を省かず、値の位置に `unavailable (<理由>)` と示す。行を省くと、確認できなかった設定と reco が表示しない設定を区別できないためである。公開リポジトリの `access_level` がこれに当たる
 
 ```text
 $ reco show --repo example/project-a
@@ -557,6 +560,8 @@ Actions permissions:
 Workflow permissions:
   default_workflow_permissions: read
   can_approve_pull_request_reviews: false
+Actions access:
+  access_level: none
 ```
 
 `allowed_actions` が `selected` のときは、`selected_actions` の3項目を字下げして、`sha_pinning_required` の前に示します。`patterns_allowed` は、パターンを二重引用符で囲んで並べます。空の集合は `[]` と示します。
@@ -577,6 +582,13 @@ Actions が無効のリポジトリでは、`allowed_actions`、`selected_action
 ```text
 Actions permissions:
   enabled: false
+```
+
+`access_level` は非公開リポジトリにだけ適用される設定で、公開リポジトリでは取得できません（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 6章）。Actions が無効のリポジトリでも、非公開であれば値を示します。
+
+```text
+Actions access:
+  access_level: unavailable (the repository is public)
 ```
 
 権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。行を省かず、欠けた項目を示してエラーとします。

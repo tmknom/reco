@@ -56,6 +56,8 @@ func repositoryStateText(reason github.UnavailableReason) string {
 		return "(GitHub Actions disabled)"
 	case github.UnavailableNotSelected:
 		return "(not in use)"
+	case github.UnavailablePublicRepository:
+		// access_level は管理の単位でなく、この理由はここに届かないため、文言を持たせず panic に落とす
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined unavailable reason %d", int(reason)))
 }

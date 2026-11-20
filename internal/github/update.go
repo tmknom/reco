@@ -92,7 +92,7 @@ func (c *Client) updateDeleteBranchOnMerge(ctx context.Context, reference reposi
 func (c *Client) updateRepository(ctx context.Context, reference repository.Reference, body []byte) (UpdateOutcome, error) {
 	status, data, err := c.send(ctx, http.MethodPatch, c.repositoryURL(reference), body, http.StatusOK)
 	if err == nil {
-		_, err = decodeRepository(data)
+		_, _, err = decodeRepository(data)
 	}
 	return describeUpdateOutcome("update repository", reference, status, err)
 }
