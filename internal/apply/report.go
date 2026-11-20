@@ -233,6 +233,8 @@ func unavailableReasonText(reason github.UnavailableReason) string {
 		return "GitHub Actions is disabled"
 	case github.UnavailableNotSelected:
 		return `allowed_actions is not "selected"`
+	case github.UnavailablePublicRepository:
+		// access_level は管理の単位でなく、この理由はここに届かないため、文言を持たせず panic に落とす
 	}
 	panic(fmt.Sprintf("apply: undefined unavailable reason %d", int(reason)))
 }

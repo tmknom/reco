@@ -14,9 +14,9 @@ func TestBodies(t *testing.T) {
 		want map[string]any
 	}{
 		{
-			name: "repository body has id and the two merge-related fields",
-			body: RepositoryBody{ID: 7, AllowAutoMerge: true}.JSON(),
-			want: map[string]any{"id": float64(7), "allow_auto_merge": true, "delete_branch_on_merge": false},
+			name: "repository body has id, the two merge-related fields, and the visibility",
+			body: RepositoryBody{ID: 7, AllowAutoMerge: true, Private: true}.JSON(),
+			want: map[string]any{"id": float64(7), "allow_auto_merge": true, "delete_branch_on_merge": false, "private": true},
 		},
 		{
 			name: "actions permissions body is enabled with the policy and SHA pinning",
@@ -37,6 +37,11 @@ func TestBodies(t *testing.T) {
 			name: "workflow permissions body has the default permissions and approval",
 			body: WorkflowPermissionsBody{DefaultWorkflowPermissions: "write", CanApprovePullRequestReviews: true}.JSON(),
 			want: map[string]any{"default_workflow_permissions": "write", "can_approve_pull_request_reviews": true},
+		},
+		{
+			name: "actions access body has the access level",
+			body: ActionsAccessBody{AccessLevel: "user"}.JSON(),
+			want: map[string]any{"access_level": "user"},
 		},
 	}
 	for _, tc := range cases {

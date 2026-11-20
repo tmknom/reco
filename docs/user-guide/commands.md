@@ -44,7 +44,11 @@ Actions permissions:
 Workflow permissions:
   default_workflow_permissions: read
   can_approve_pull_request_reviews: false
+Actions access:
+  access_level: none
 ```
+
+公開リポジトリでは、`access_level` を `unavailable (the repository is public)` と表示します。この設定は非公開リポジトリにだけ適用されるためです。
 
 ## `plan`
 

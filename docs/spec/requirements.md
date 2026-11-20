@@ -25,7 +25,7 @@ GitHub 上に実際に存在する設定を現在状態（Current State）と呼
 | 分類 | 対応する設定 |
 |---|---|
 | リポジトリ一般設定 | Pull Request の Auto-merge の許可、マージ後のブランチ自動削除の許可 |
-| GitHub Actions 設定 | GitHub Actions の有効・無効、Actions と再利用可能なワークフローの実行許可範囲および個別の許可条件、Actions のコミット SHA への固定の必須化、ワークフローの `GITHUB_TOKEN` の既定権限、GitHub Actions による Pull Request の作成と承認の許可 |
+| GitHub Actions 設定 | GitHub Actions の有効・無効、Actions と再利用可能なワークフローの実行許可範囲および個別の許可条件、Actions のコミット SHA への固定の必須化、ワークフローの `GITHUB_TOKEN` の既定権限、GitHub Actions による Pull Request の作成と承認の許可、リポジトリ外のワークフローからの Actions と再利用可能なワークフローへのアクセス |
 
 ### サポート対象外
 

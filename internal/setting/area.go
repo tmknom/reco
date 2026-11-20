@@ -8,4 +8,5 @@ const (
 	AreaGeneral Area = iota + 1
 	AreaActionsPermissions
 	AreaWorkflowPermissions
+	AreaActionsAccess
 )

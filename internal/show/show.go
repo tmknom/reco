@@ -24,7 +24,7 @@ type Config struct {
 func Run(ctx context.Context, cfg Config) error {
 	client := github.New(cfg.Token, cfg.GitHubOptions...)
 	// 失敗の文言は対象名を含むため、ここでは包み直さない
-	observed, err := client.ObserveRepository(ctx, cfg.Target, setting.AreaActionsPermissions, setting.AreaWorkflowPermissions)
+	observed, err := client.ObserveRepository(ctx, cfg.Target, setting.AreaActionsPermissions, setting.AreaWorkflowPermissions, setting.AreaActionsAccess)
 	if err != nil {
 		return err
 	}
@@ -42,6 +42,7 @@ func writeObservationResult(w io.Writer, target repository.Reference, observed g
 	writeActionsPermissions(&b, *observed.ActionsPermissions)
 	fmt.Fprintf(&b, "Workflow permissions:\n  default_workflow_permissions: %s\n  can_approve_pull_request_reviews: %t\n",
 		observed.WorkflowPermissions.DefaultWorkflowPermissions, observed.WorkflowPermissions.CanApprovePullRequestReviews)
+	writeActionsAccess(&b, *observed.ActionsAccess)
 	// 全文を組み立ててから一度だけ書き、書き込みの失敗の経路を一つにする
 	_, err := io.WriteString(w, b.String())
 	return err
@@ -60,4 +61,18 @@ func writeActionsPermissions(b *strings.Builder, p github.ActionsPermissions) {
 	if required, ok := p.SHAPinningRequired.Value(); ok {
 		fmt.Fprintf(b, "  sha_pinning_required: %t\n", required)
 	}
+}
+
+// writeActionsAccess は Actions access の節を書く。
+// 公開以外の理由はこの設定に当たらず、公開の文言で黙って示さないよう不変条件の破れとして panic する。
+func writeActionsAccess(b *strings.Builder, a github.ActionsAccess) {
+	b.WriteString("Actions access:\n")
+	if level, ok := a.AccessLevel.Value(); ok {
+		fmt.Fprintf(b, "  access_level: %s\n", level)
+		return
+	}
+	if reason := a.AccessLevel.UnavailableReason(); reason != github.UnavailablePublicRepository {
+		panic(fmt.Sprintf("show: undefined unavailable reason %d for access_level", int(reason)))
+	}
+	b.WriteString("  access_level: unavailable (the repository is public)\n")
 }

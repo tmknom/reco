@@ -9,6 +9,8 @@ const (
 	UnavailableActionsDisabled UnavailableReason = iota + 1
 	// UnavailableNotSelected は、Actions 許可ポリシーが selected でないことを表す。
 	UnavailableNotSelected
+	// UnavailablePublicRepository は、リポジトリが公開であることを表す。
+	UnavailablePublicRepository
 )
 
 // SettingObservation は、一つの設定の観測結果で、観測値か、理由を伴う観測不能のどちらか一方を持つ。
