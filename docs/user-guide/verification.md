@@ -1,10 +1,10 @@
 # Verification
 
-GitHub CLI（`gh`）の `gh attestation verify` で、配布物が reco のリポジトリのリリース用ワークフローによって、指定したタグから作られたものかを検証できます。
+GitHub CLI（`gh`）の `gh attestation verify` で、アーティファクトが reco のリポジトリのリリース用ワークフローによって、指定したタグから作られたものかを検証できます。
 
-## 配布バイナリを検証する
+## 実行ファイルを検証する
 
-取得した配布バイナリを、実行する前に次のように検証します。
+取得した実行ファイルを、実行する前に次のように検証します。
 
 ```bash
 gh attestation verify reco_0.1.1_linux_amd64 \
@@ -14,7 +14,7 @@ gh attestation verify reco_0.1.1_linux_amd64 \
   --deny-self-hosted-runners
 ```
 
-終了コード `0` で終われば検証に成功しています。`--source-ref` のタグは、取得した配布物のバージョンに合わせます。
+終了コード `0` で終われば検証に成功しています。`--source-ref` のタグは、取得したアーティファクトのバージョンに合わせます。
 
 ## コンテナイメージを検証する
 

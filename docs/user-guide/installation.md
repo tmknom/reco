@@ -1,41 +1,55 @@
 # Installation
 
-reco は、配布バイナリかコンテナイメージでインストールします。どちらで動かす場合も、GitHub にアクセスするためのトークンを環境変数 `GH_TOKEN` で渡します。本ドキュメントの例では、GitHub CLI（`gh`）の `gh auth token` が出力するトークンを使います。
+reco は、実行ファイルかコンテナイメージでインストールします。
 
-## 配布物の種類
+## アーティファクトの種類
 
-| 配布物 | 対象 | 置き場所 |
+| アーティファクト | 対象 | 置き場所 |
 |---|---|---|
-| 配布バイナリ | Linux、macOS、Windows の、それぞれ amd64 と arm64 | [GitHub Releases](https://github.com/tmknom/reco/releases) |
+| 実行ファイル | Linux、macOS、Windows の、それぞれ amd64 と arm64 | [GitHub Releases](https://github.com/tmknom/reco/releases) |
 | コンテナイメージ | `linux/amd64`、`linux/arm64` | `ghcr.io/tmknom/reco` |
 
-## 配布バイナリからインストールする
+## 実行ファイルからインストールする
 
-自分の OS とアーキテクチャに合うコードブロックを、そのまま端末に貼り付けて実行します。どのコードブロックも、配布バイナリをカレントディレクトリにダウンロードし、`reco`（Windows では `reco.exe`）という名前で `PATH` の通ったディレクトリへコピーします。ダウンロードしたファイルには実行権限が付かないため、Linux と macOS では `install -m 0755` で実行権限を付けてコピーします。
-
-コードブロックは `v0.1.1` をインストールします。別のバージョンを入れるときは、URL とファイル名に含まれる `v0.1.1` と `0.1.1` を、入れたいバージョンに置き換えてください。配布バイナリの名前は `reco_<バージョン>_<OS>_<アーキテクチャ>`（Windows 向けだけ末尾に `.exe`）の形で、`<バージョン>` にはタグの先頭の `v` を除いた値が入ります。
+自分の OS と CPU アーキテクチャに合致するコマンドを実行します。本ドキュメントでは `v0.1.1` をインストールする場合の手順を掲載します。
 
 ### macOS
 
-arm64（Apple シリコン）の場合
+#### arm64（Apple シリコン）
 
 ```bash
 curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_darwin_arm64
 sudo install -m 0755 reco_0.1.1_darwin_arm64 /usr/local/bin/reco
 ```
 
-amd64（Intel）の場合
+#### amd64（Intel）
 
 ```bash
 curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_darwin_amd64
 sudo install -m 0755 reco_0.1.1_darwin_amd64 /usr/local/bin/reco
 ```
 
+### Linux
+
+#### amd64
+
+```bash
+curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_linux_amd64
+sudo install -m 0755 reco_0.1.1_linux_amd64 /usr/local/bin/reco
+```
+
+#### arm64
+
+```bash
+curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_linux_arm64
+sudo install -m 0755 reco_0.1.1_linux_arm64 /usr/local/bin/reco
+```
+
 ### Windows
 
 PowerShell で実行します。PowerShell のバージョンによっては `curl` が `Invoke-WebRequest` の別名になっているため、`curl.exe` と書きます。
 
-amd64 の場合
+#### amd64
 
 ```powershell
 curl.exe -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_windows_amd64.exe
@@ -43,7 +57,7 @@ New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\reco" | Out-Null
 Copy-Item -Force reco_0.1.1_windows_amd64.exe "$env:LOCALAPPDATA\Programs\reco\reco.exe"
 ```
 
-arm64 の場合
+#### arm64
 
 ```powershell
 curl.exe -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_windows_arm64.exe
@@ -55,22 +69,6 @@ Copy-Item -Force reco_0.1.1_windows_arm64.exe "$env:LOCALAPPDATA\Programs\reco\r
 
 ```powershell
 [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$env:LOCALAPPDATA\Programs\reco", "User")
-```
-
-### Linux
-
-amd64 の場合
-
-```bash
-curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_linux_amd64
-sudo install -m 0755 reco_0.1.1_linux_amd64 /usr/local/bin/reco
-```
-
-arm64 の場合
-
-```bash
-curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_linux_arm64
-sudo install -m 0755 reco_0.1.1_linux_arm64 /usr/local/bin/reco
 ```
 
 ### インストールした reco が動くことの確認
@@ -108,5 +106,5 @@ GH_TOKEN=$(gh auth token) docker run --rm -it -e GH_TOKEN \
 
 ## References
 
-- [Verification](verification.md)：配布バイナリとコンテナイメージが reco のリリース用ワークフローで作られたものかを、GitHub Attestations で検証する手順
+- [Verification](verification.md)：実行ファイルとコンテナイメージが reco のリリース用ワークフローで作られたものかを、GitHub Attestations で検証する手順
 - [Authentication](authentication.md)：`gh auth token` のトークンを渡す理由と、トークンの持ち主に要るロール

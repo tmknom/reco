@@ -15,7 +15,7 @@ reco は、既定ではカレントディレクトリの `reco.yaml` を読み�
 | `actions` | [GitHub Actions の設定](#github-actions-の設定) |
 | `environments` | [Environment](#environment) |
 
-`general`、`actions`、`environments` は、少なくともどれか一つを書きます。次は、一つのリポジトリでマージ後のブランチの自動削除だけを管理する、最小の例です。
+次は、一つのリポジトリでマージ後のブランチの自動削除だけを管理する、最小の例です。
 
 ```yaml
 repositories:
@@ -109,7 +109,7 @@ repositories:
 - `enabled: false` で Actions を無効にしても、GitHub は `allowed_actions`、`selected_actions`、`sha_pinning_required` の値を残す。あとで `enabled: true` に戻すと、無効にする前の設定で有効になる。再開するときの Actions 許可ポリシーを自分で決めたいときは、`enabled: true` の代わりに `allowed_actions` を書く。`allowed_actions` を書いても、`sha_pinning_required` は無効にする前の値で再開する。変えたいときは `sha_pinning_required` も書く
 - `allowed_actions` を書くと、Actions も有効になる
 - `allowed_actions` を `selected` から `all` や `local_only` に変えると、GitHub は `selected_actions` の値を消す
-- Actions を無効のまま送った `sha_pinning_required` の値は GitHub が保存しないため、Actions が無効のリポジトリで `sha_pinning_required` を書くときは、`enabled: true` か `allowed_actions` も書く。書けば、`apply` は Actions を有効にしたあとで `sha_pinning_required` を変える。どちらも書かないと、`plan` と `apply` はその変更に `Applicability: not applicable` を添え、`Plan cannot be applied.` を示す。`apply` は何も変えずにエラーで終了する
+- Actions が無効のリポジトリで `sha_pinning_required` を書くときは、`enabled: true` か `allowed_actions` も書く。Actions が無効のあいだに送った値を GitHub は保存しないため、どちらも書かないと `apply` できない
 
 ### ワークフローの権限
 
@@ -130,7 +130,7 @@ repositories:
 
 `none` はほかのリポジトリからのアクセスを許可しません。`user` は、同じユーザーが所有するほかのプライベートリポジトリのワークフローからのアクセスを許可します。
 
-- この設定はプライベートリポジトリにだけ適用される。パブリックリポジトリに書くと、`plan` と `apply` はその変更に `Applicability: not applicable` を添え、`Plan cannot be applied.` を示す。`apply` は何も変えずにエラーで終了する。設定ファイルから `access_level` を消せば解消する
+- この設定はプライベートリポジトリにだけ適用される。パブリックリポジトリに書くと `apply` できない
 - `organization` は設定ファイルに書けない。Organization が所有するリポジトリのための値で、reco が扱うユーザー所有のリポジトリでは GitHub が受け付けないため。Organization から移転したリポジトリなどで `show` が `organization` を示したときは、`none` か `user` を書けば、書いた値に変わる
 - Actions が無効のリポジトリでも書ける
 
@@ -167,13 +167,11 @@ repositories:
 - 書かなかった Environment は、変更も削除もしない。設定ファイルから名前を消しても、GitHub 上の Environment は残る
 - 名前は、半角の英数字、空白、記号だけで書く。大文字と小文字だけが違う名前は同じ Environment とみなすため、同じリポジトリに並べられない
 - 保護ルールのあるブランチが一つもなければ、`protected_branches` でもすべてのブランチからデプロイできる（GitHub の仕様）。ブランチの保護ルールは reco では作れない
-- `patterns` は一覧の全体で、書いた一覧が `apply` のあとの一覧になる。GitHub 上にあって書かなかったパターンはなくなる。たとえば GitHub 上が `main` と `feature/*` で、書いたのが `main` と `release/*` なら、`apply` のあとは `main` と `release/*` になる
-- どのブランチとタグからもデプロイさせないときは、`patterns: []` と書く。`mode: selected` で `patterns` を省くことはできず、`all` と `protected_branches` では `patterns` を書けない
-- `type` は省けない。名前が同じでも、`branch` と `tag` は別のパターンになる。大文字と小文字だけが違う名前（`main` と `MAIN`）も別のパターンになる
+- `mode: selected` は、`plan` で GitHub 上との差を確かめられるが、`apply` では変えられない。`selected` を書いた Environment に変更予定があると、`apply` は何も変えずに止まる。`selected` の設定は GitHub の設定画面で変える
+- `patterns` には、デプロイを許可するパターンをすべて、順不同で書く。一つも許可しないときは `patterns: []` と書く。`all` と `protected_branches` では `patterns` を書けない
+- `type` が違えば、名前が同じでも別のパターンになる。大文字と小文字だけが違う名前（`main` と `MAIN`）も別のパターンになる
 - `*` で始まる名前は、引用符で囲まないと設定ファイルを読めない。パターンの名前は引用符で囲んで書くとよい
-- 並べる順番は問わない。順番だけが違っても `plan` は変更なしと判断する
-- `selected` の Environment を `all` などに変えると、GitHub は `patterns` に並んでいたパターンを残さない。`plan` の矢印の左の行に、なくなるパターンが出る
-- `mode: selected` を書いた変更予定は、`plan` で示されるが、`apply` では実行されない。`apply` はその変更予定を見つけると、何も変えずに止まる
+- `selected` の Environment を `all` などに変えると、GitHub は並んでいたパターンを残さない
 
 ## 未記載の設定の扱い
 
