@@ -7,8 +7,6 @@ project_name: reco
 builds:
   - id: cli
     main: .
-    # 既定値もプロジェクト名だが、アーカイブの確認がバイナリ名を APP_NAME と照合するため、project_name から取ることを明示する
-    binary: "{{ .ProjectName }}"
     goos:
       - linux
       - darwin
@@ -46,27 +44,31 @@ builds:
       - -s -w -X main.version={{ .Version }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
+# 利用者がダウンロードしたバイナリを展開せずに実行できるよう、アーカイブにせずそのまま配布する。
+# HTTP でダウンロードしたファイルには実行権限が付かないため、Linux と macOS では利用者が chmod +x を実行する。
+# binary 形式では、バイナリは dist/ 直下にコピーされず、ビルド先のパスのまま name_template の名前（Windows では .exe 付き）を与えられる。
+# そのため release.yml の build ジョブは、dist/artifacts.json から名前とパスの対応を読んでバイナリを集める
 archives:
-  - id: distributions
+  - id: binaries
     formats:
-      - tar.gz
-    format_overrides:
-      - goos: windows
-        formats:
-          - zip
+      - binary
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    files:
-      - LICENSE
 
-# アーカイブごとに <アーカイブ名>.sbom.json を生成する。sbom は checksum より先に動くため、SBOM も SHA256SUMS に列挙される。
-# 既定の引数の --enrich all は、ライセンスなどの情報をネットワークから取得するため外し、アーカイブの中身だけから作る。
-# env を指定すると GoReleaser の既定値 SYFT_FILE_METADATA_CATALOGER_ENABLED が外れるが、Syft 1.x にない設定のため影響しない
+# 配布するバイナリごとに <配布名>.sbom.json を生成する。sbom は checksum より先に動くため、SBOM も SHA256SUMS に列挙される。
+# artifacts: binary は、archives の binary 形式が作る配布名付きのバイナリを、ビルドしたバイナリより優先して対象にする。
+# documents の既定値はファイル名に goamd64 などの変種を加えるため、配布名から作るよう明示する。
+# Syft に渡る $artifact は dist/ からのビルド先の相対パスのため、SBOM が記述する対象の名前は --source-name で配布名にする。
+# 既定の引数の --enrich all は、ライセンスなどの情報をネットワークから取得するため外し、バイナリの中身だけから作る
 sboms:
-  - id: archive
-    artifacts: archive
+  - id: binary
+    artifacts: binary
+    documents:
+      - "{{ .ArtifactName }}.sbom.json"
     cmd: syft
     args:
       - $artifact
+      - --source-name
+      - "{{ .ArtifactName }}"
       - --output
       - spdx-json=$document
     env:

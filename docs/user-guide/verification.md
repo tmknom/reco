@@ -2,12 +2,12 @@
 
 GitHub CLI（`gh`）の `gh attestation verify` で、配布物が reco のリポジトリのリリース用ワークフローによって、指定したタグから作られたものかを検証できます。
 
-## 配布アーカイブを検証する
+## 配布バイナリを検証する
 
-取得した配布アーカイブを、展開する前に次のように検証します。
+取得した配布バイナリを、実行する前に次のように検証します。
 
 ```bash
-gh attestation verify reco_0.1.1_linux_amd64.tar.gz \
+gh attestation verify reco_0.1.1_linux_amd64 \
   --repo tmknom/reco \
   --signer-workflow tmknom/reco/.github/workflows/release.yml \
   --source-ref refs/tags/v0.1.1 \
