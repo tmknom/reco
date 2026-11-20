@@ -76,6 +76,17 @@ func TestBodies(t *testing.T) {
 			}},
 		},
 		{
+			name: "single environment body is the element object itself",
+			body: EnvironmentBody{ID: 3, Name: "stg", DeploymentBranchPolicy: &DeploymentBranchPolicyBody{ProtectedBranches: true}}.JSON(),
+			want: map[string]any{
+				"id":                       float64(3),
+				"name":                     "stg",
+				"can_admins_bypass":        false,
+				"protection_rules":         []any{map[string]any{"type": "branch_policy"}},
+				"deployment_branch_policy": map[string]any{"protected_branches": true, "custom_branch_policies": false},
+			},
+		},
+		{
 			name: "deployment branch policies body has the patterns with their type",
 			body: DeploymentBranchPoliciesBody{TotalCount: 2, Patterns: []DeploymentPatternBody{{ID: 4, Name: "main", Type: "tag"}}}.JSON(),
 			want: map[string]any{"total_count": float64(2), "branch_policies": []any{

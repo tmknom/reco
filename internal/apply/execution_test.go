@@ -11,6 +11,7 @@ import (
 
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
+	"github.com/tmknom/reco/internal/githubtest"
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -77,14 +78,14 @@ func TestObserveBeforeUpdate(t *testing.T) {
 			responses:               repeat(6, localOnly),
 			wantRequests:            repeatRequests(6, readNotSelected),
 			wantReobservationDelays: allDelays,
-			want:                    operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions},
+			want:                    operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.AllowedActions}},
 		},
 		{
 			name:         "policy neither before the first update nor selected is a current value change without reading again",
 			change:       toSelectedChange(),
 			responses:    []response{okRepository(1, false, false), okAllowedActions("all", false)},
 			wantRequests: readNotSelected,
-			want:         operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions},
+			want:         operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.AllowedActions}},
 		},
 		{
 			name:         "failed read is unconfirmed without reading again",
@@ -232,6 +233,12 @@ func TestObservationAreas(t *testing.T) {
 			want:   []setting.Area{setting.AllowedActions.Area()},
 		},
 		{
+			name:    "environment change reads the environments area",
+			change:  creationChange(t, "production", setting.Value{}),
+			want:    []setting.Area{setting.AreaEnvironments},
+			notWant: []setting.Area{setting.AllowedActions.Area()},
+		},
+		{
 			// どの変更予定にも生じない組。基準の設定の領域を読まないと、観測結果にその値がないことを確かめる
 			name:   "relevant setting in another area is also read",
 			change: singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), relevantTo(setting.DefaultWorkflowPermissions, setting.PermissionLevelValue(setting.PermissionRead))),
@@ -360,7 +367,7 @@ func TestExecuteChange(t *testing.T) {
 			wantPrecond: preconditionHolds,
 			wantUpdate:  github.UpdateUnknown,
 			wantDesired: desiredStateMatches,
-			wantOutside: []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			wantOutside: []unexpectedOutsideChange{{Setting: string(setting.DeleteBranchOnMerge), Before: "false", After: "true"}},
 			wantResult:  failed,
 			wantCauses:  []error{github.ErrRedirect},
 		},
@@ -452,7 +459,7 @@ func TestExecuteChange(t *testing.T) {
 			wantPrecond: preconditionHolds,
 			wantUpdate:  github.UpdateSucceeded,
 			wantDesired: desiredStateMatches,
-			wantOutside: []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			wantOutside: []unexpectedOutsideChange{{Setting: string(setting.DeleteBranchOnMerge), Before: "false", After: "true"}},
 			wantResult:  failed,
 		},
 		{
@@ -513,7 +520,7 @@ func TestExecuteChange(t *testing.T) {
 			wantPrecond: preconditionHolds,
 			wantUpdate:  github.UpdateSucceeded,
 			wantDesired: desiredStateMatches,
-			wantOutside: []unexpectedOutsideChange{{Key: setting.CanApprovePullRequestReviews, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			wantOutside: []unexpectedOutsideChange{{Setting: string(setting.CanApprovePullRequestReviews), Before: "false", After: "true"}},
 			wantResult:  failed,
 		},
 		{
@@ -696,7 +703,7 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 			wantPrecond:  preconditionHolds,
 			wantUpdate:   github.UpdateSucceeded,
 			wantDesired:  desiredStateMatches,
-			wantOutside:  []unexpectedOutsideChange{{Key: setting.SHAPinningRequired, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			wantOutside:  []unexpectedOutsideChange{{Setting: string(setting.SHAPinningRequired), Before: "false", After: "true"}},
 			wantResult:   failed,
 		},
 		{
@@ -822,7 +829,7 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 			wantUpdate:   github.UpdateSucceeded,
 			wantDesired:  desiredStateMatches,
 			wantOutside: []unexpectedOutsideChange{{
-				Key: setting.AllowedActions, Before: setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), After: setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly),
+				Setting: string(setting.AllowedActions), Before: "all", After: "local_only",
 			}},
 			wantResult: failed,
 		},
@@ -866,8 +873,8 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 			if got.operation(0).precondition != tc.wantPrecond {
 				t.Errorf("precondition = %v, want %v", got.operation(0).precondition, tc.wantPrecond)
 			}
-			if got.operation(0).changedSetting != tc.wantChanged {
-				t.Errorf("changedSetting = %q, want %q", got.operation(0).changedSetting, tc.wantChanged)
+			if got.operation(0).changedSetting != (setting.Unit{Key: tc.wantChanged}) {
+				t.Errorf("changedSetting = %q, want %q", got.operation(0).changedSetting.Key, tc.wantChanged)
 			}
 			if got.operation(0).update != tc.wantUpdate {
 				t.Errorf("update = %v, want %v", got.operation(0).update, tc.wantUpdate)
@@ -977,8 +984,8 @@ func TestExecuteChange_ActionsAccess(t *testing.T) {
 			if got.operation(0).precondition != tc.wantPrecond {
 				t.Errorf("precondition = %v, want %v", got.operation(0).precondition, tc.wantPrecond)
 			}
-			if got.operation(0).changedSetting != tc.wantChanged {
-				t.Errorf("changedSetting = %q, want %q", got.operation(0).changedSetting, tc.wantChanged)
+			if got.operation(0).changedSetting != (setting.Unit{Key: tc.wantChanged}) {
+				t.Errorf("changedSetting = %q, want %q", got.operation(0).changedSetting.Key, tc.wantChanged)
 			}
 			if got.confirmation != tc.wantDesired {
 				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
@@ -1067,7 +1074,7 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 			responses: join(beforeFirst, []response{noContent, okRepository(1, false, false), okAllowedActions("all", false)},
 				[]response{okRepository(1, false, false), okAllowedActions("all", false)}),
 			wantRequests:   requests(readNotSelected, []string{putActionsPermissions}, readNotSelected, readNotSelected),
-			wantOperations: []operationRecord{holds(github.UpdateSucceeded), {precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions}},
+			wantOperations: []operationRecord{holds(github.UpdateSucceeded), {precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.AllowedActions}}},
 			wantDesired:    desiredStateMismatch,
 			wantResult:     failed,
 		},
@@ -1113,7 +1120,7 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 			wantRequests:   requests(readNotSelected, []string{putActionsPermissions}, readSelected, []string{putSelectedActions}, readSelected),
 			wantOperations: []operationRecord{holds(github.UpdateSucceeded), holds(github.UpdateRejected)},
 			wantDesired:    desiredStateMismatch,
-			wantOutside:    []unexpectedOutsideChange{{Key: setting.SHAPinningRequired, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			wantOutside:    []unexpectedOutsideChange{{Setting: string(setting.SHAPinningRequired), Before: "false", After: "true"}},
 			wantResult:     failed,
 			wantCause:      github.ErrConflict,
 		},
@@ -1138,7 +1145,7 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 			wantRequests:   requests(readNotSelected, []string{putActionsPermissions}, readSelected, []string{putSelectedActions}, readSelected),
 			wantOperations: []operationRecord{holds(github.UpdateSucceeded), holds(github.UpdateSucceeded)},
 			wantDesired:    desiredStateMatches,
-			wantOutside:    []unexpectedOutsideChange{{Key: setting.SHAPinningRequired, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			wantOutside:    []unexpectedOutsideChange{{Setting: string(setting.SHAPinningRequired), Before: "false", After: "true"}},
 			wantResult:     failed,
 		},
 		{
@@ -1651,4 +1658,236 @@ func TestExecuteRepositories(t *testing.T) {
 			t.Errorf("records[1] cause = %v, want it to wrap %v", got[1].changes[0].cause, context.Canceled)
 		}
 	})
+}
+
+// TestSendUpdate は、更新操作ごとに送る更新要求の宛先と本文を確かめる。
+// Environment には、作成は宣言の綴りへ、存在する Environment には更新直前の観測の綴りへ、deployment_branch_policy だけを送る。
+//
+//trace:checks INV-001
+//trace:checks INV-004
+func TestSendUpdate(t *testing.T) {
+	staging := observedEnvironment(7, "Staging", setting.DeploymentBranchPolicyAll)
+	cases := []struct {
+		name      string
+		operation changeplan.UpdateOperation
+		observed  github.ObservationResult
+		response  response
+		want      githubtest.Request
+	}{
+		{
+			name:      "repository setting is sent by its update request",
+			operation: allowAutoMergeChange().Operations[0],
+			response:  okRepository(1, true, false),
+			want:      githubtest.Request{Method: http.MethodPatch, Path: "/repos/owner/repo", Body: map[string]any{"allow_auto_merge": true}},
+		},
+		{
+			name:      "creation without a mode is sent to the declared name without a body",
+			operation: creationChange(t, "production", setting.Value{}).Operations[0],
+			observed:  github.ObservationResult{Environments: environments(staging)},
+			response:  okEnvironment(githubtest.EnvironmentBody{ID: 8, Name: "production"}),
+			want:      githubtest.Request{Method: http.MethodPut, Path: "/repos/owner/repo/environments/production"},
+		},
+		{
+			name:      "creation with a mode is sent with only the mode",
+			operation: creationChange(t, "production", modeValue(setting.DeploymentBranchPolicyProtectedBranches)).Operations[0],
+			observed:  github.ObservationResult{Environments: environments()},
+			response:  okEnvironment(githubtest.EnvironmentBody{ID: 8, Name: "production", DeploymentBranchPolicy: protectedBranchesBody()}),
+			want: githubtest.Request{Method: http.MethodPut, Path: "/repos/owner/repo/environments/production", Body: map[string]any{
+				"deployment_branch_policy": map[string]any{"protected_branches": true, "custom_branch_policies": false},
+			}},
+		},
+		{
+			name:      "mode change is sent to the observed spelling with only the mode",
+			operation: modeChange(t, "staging", staging, setting.DeploymentBranchPolicyAll).Operations[0],
+			observed:  github.ObservationResult{Environments: environments(staging)},
+			response:  okEnvironment(githubtest.EnvironmentBody{ID: 7, Name: "Staging"}),
+			want:      githubtest.Request{Method: http.MethodPut, Path: "/repos/owner/repo/environments/Staging", Body: map[string]any{"deployment_branch_policy": nil}},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, server := newSequenceServer(t, tc.response)
+
+			got, err := sendUpdate(context.Background(), newClient(baseURL), mustReference(t, "owner/repo"), tc.operation, tc.observed)
+
+			if got != github.UpdateSucceeded || err != nil {
+				t.Errorf("sendUpdate() = %v, %v, want succeeded without an error", got, err)
+			}
+			requests := server.Requests()
+			if len(requests) != 1 {
+				t.Fatalf("requests = %v, want one", server.RequestLines())
+			}
+			requests[0].Authorization = ""
+			if !reflect.DeepEqual(requests[0], tc.want) {
+				t.Errorf("request = %+v, want %+v", requests[0], tc.want)
+			}
+		})
+	}
+}
+
+// TestEnvironmentDestination は、Environment の更新要求の宛先の綴りを確かめる。
+//
+//trace:checks INV-001
+//trace:checks INV-004
+func TestEnvironmentDestination(t *testing.T) {
+	cases := []struct {
+		name     string
+		declared string
+		existing []github.Environment
+		want     string
+	}{
+		{name: "existing environment is addressed by the observed spelling", declared: "production", existing: []github.Environment{observedEnvironment(7, "Production", setting.DeploymentBranchPolicyAll)}, want: "Production"},
+		{name: "absent environment is addressed by the declared spelling", declared: "Production", existing: []github.Environment{observedEnvironment(7, "staging", setting.DeploymentBranchPolicyAll)}, want: "Production"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := github.ObservationResult{Environments: environments(tc.existing...)}
+			if got := environmentDestination(mustEnvironmentName(t, tc.declared), observed); got != tc.want {
+				t.Errorf("environmentDestination() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestExecuteChange_Environments は、Environment の作成と方式の変更について、更新直前の観測、更新要求、更新後の確認のつなぎ目を確かめる。
+//
+//trace:checks INV-001
+//trace:checks INV-004
+//trace:checks INV-005
+//trace:checks FR-010
+//trace:checks FR-011
+//trace:checks FR-012
+//trace:checks FR-013
+func TestExecuteChange_Environments(t *testing.T) {
+	const (
+		getRepository    = "GET /repos/owner/repo"
+		getEnvironments  = "GET /repos/owner/repo/environments"
+		putProduction    = "PUT /repos/owner/repo/environments/production"
+		putStagingTarget = "PUT /repos/owner/repo/environments/staging"
+	)
+	waitTimer := 30
+	production := githubtest.EnvironmentBody{ID: 8, Name: "production", DeploymentBranchPolicy: protectedBranchesBody()}
+	stagingAll := githubtest.EnvironmentBody{ID: 7, Name: "staging", WaitTimer: &waitTimer}
+	stagingProtected := githubtest.EnvironmentBody{ID: 7, Name: "staging", DeploymentBranchPolicy: protectedBranchesBody(), WaitTimer: &waitTimer}
+	creation := creationChange(t, "production", modeValue(setting.DeploymentBranchPolicyProtectedBranches))
+	approvedStaging := observedEnvironment(7, "staging", setting.DeploymentBranchPolicyAll)
+	approvedStaging.Protection.WaitTimer = &waitTimer
+	stagingMode := modeChange(t, "staging", approvedStaging, setting.DeploymentBranchPolicyProtectedBranches)
+	cases := []struct {
+		name         string
+		change       changeplan.LogicalChange
+		responses    []response
+		wantRequests []string
+		wantDelays   []time.Duration
+		wantPrecond  preconditionCheck
+		wantChanged  setting.Unit
+		wantUpdate   github.UpdateOutcome
+		wantDesired  desiredStateConfirmation
+		wantOutside  []unexpectedOutsideChange
+		wantResult   changeResult
+	}{
+		{
+			name:   "creation absent before the update is sent once and completes",
+			change: creation,
+			responses: []response{
+				okRepository(1, false, false), okEnvironments(stagingAll), okEnvironment(production),
+				okRepository(1, false, false), okEnvironments(production, stagingAll),
+			},
+			wantRequests: []string{getRepository, getEnvironments, putProduction, getRepository, getEnvironments},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
+		{
+			// 一覧の読み落としで作成と計画しても、更新直前の観測で存在を確かめ、既存の Environment を上書きしない
+			name:         "creation with the same name existing before the update sends no update request",
+			change:       creation,
+			responses:    []response{okRepository(1, false, false), okEnvironments(githubtest.EnvironmentBody{ID: 9, Name: "Production"})},
+			wantRequests: []string{getRepository, getEnvironments},
+			wantPrecond:  preconditionCurrentValueChanged,
+			wantChanged:  setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "production")},
+			wantResult:   notAttempted,
+		},
+		{
+			name:   "creation answered with 502 is not sent again and is read once for diagnosis",
+			change: creation,
+			responses: []response{
+				okRepository(1, false, false), okEnvironments(), {status: http.StatusBadGateway},
+				okRepository(1, false, false), okEnvironments(production),
+			},
+			wantRequests: []string{getRepository, getEnvironments, putProduction, getRepository, getEnvironments},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateUnknown,
+			wantDesired:  desiredStateMatches,
+			wantResult:   failed,
+		},
+		{
+			name:   "creation not yet reflected after the update is read again and completes",
+			change: creation,
+			responses: []response{
+				okRepository(1, false, false), okEnvironments(), okEnvironment(production),
+				okRepository(1, false, false), okEnvironments(), okRepository(1, false, false), okEnvironments(production),
+			},
+			wantRequests: []string{getRepository, getEnvironments, putProduction, getRepository, getEnvironments, getRepository, getEnvironments},
+			wantDelays:   []time.Duration{time.Second},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
+		{
+			name:   "mode change with wait_timer changed after the update fails even if the mode matches",
+			change: stagingMode,
+			responses: []response{
+				okRepository(1, false, false), okEnvironments(stagingAll), okEnvironment(stagingProtected),
+				okRepository(1, false, false), okEnvironments(githubtest.EnvironmentBody{ID: 7, Name: "staging", DeploymentBranchPolicy: protectedBranchesBody()}),
+			},
+			wantRequests: []string{getRepository, getEnvironments, putStagingTarget, getRepository, getEnvironments},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantOutside:  []unexpectedOutsideChange{{Setting: "environments.staging.wait_timer", Before: "30", After: "none"}},
+			wantResult:   failed,
+		},
+		{
+			name:         "mode change of an environment recreated with another ID sends no update request",
+			change:       stagingMode,
+			responses:    []response{okRepository(1, false, false), okEnvironments(githubtest.EnvironmentBody{ID: 9, Name: "staging", WaitTimer: &waitTimer})},
+			wantRequests: []string{getRepository, getEnvironments},
+			wantPrecond:  preconditionCurrentValueChanged,
+			wantChanged:  setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "staging")},
+			wantResult:   notAttempted,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, server := newSequenceServer(t, tc.responses...)
+			delays := &delayRecorder{}
+
+			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, delays.after, &updateInterval{})
+
+			if !slices.Equal(server.RequestLines(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", server.RequestLines(), tc.wantRequests)
+			}
+			if !slices.Equal(delays.delays, tc.wantDelays) {
+				t.Errorf("delays = %v, want %v", delays.delays, tc.wantDelays)
+			}
+			if o := got.operation(0); o.precondition != tc.wantPrecond || o.changedSetting != tc.wantChanged {
+				t.Errorf("precondition = %v, %+v, want %v, %+v", o.precondition, o.changedSetting, tc.wantPrecond, tc.wantChanged)
+			}
+			if tc.wantPrecond == preconditionHolds && got.operation(0).update != tc.wantUpdate {
+				t.Errorf("update = %v, want %v", got.operation(0).update, tc.wantUpdate)
+			}
+			if got.confirmation != tc.wantDesired {
+				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
+			}
+			if !reflect.DeepEqual(got.unexpectedOutsideChanges, tc.wantOutside) {
+				t.Errorf("unexpectedOutsideChanges = %v, want %v", got.unexpectedOutsideChanges, tc.wantOutside)
+			}
+			if got.result() != tc.wantResult {
+				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)
+			}
+		})
+	}
 }

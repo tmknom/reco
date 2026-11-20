@@ -867,7 +867,7 @@ func TestObservationResult_Setting(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(string(tc.key)+" returns its observed value", func(t *testing.T) {
 			for i, observed := range observations {
-				if got := observed.Setting(tc.key); !reflect.DeepEqual(got, tc.want[i]) {
+				if got := observed.Setting(setting.Unit{Key: tc.key}); !reflect.DeepEqual(got, tc.want[i]) {
 					t.Errorf("observations[%d].Setting(%q) = %v, want %v", i, tc.key, got, tc.want[i])
 				}
 			}
@@ -937,7 +937,7 @@ func TestObservationResult_SettingOfActionsPermissions(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := (ObservationResult{ActionsPermissions: &tc.observed}).Setting(tc.key); !reflect.DeepEqual(got, tc.want) {
+			if got := (ObservationResult{ActionsPermissions: &tc.observed}).Setting(setting.Unit{Key: tc.key}); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("Setting(%q) = %+v, want %+v", tc.key, got, tc.want)
 			}
 		})
@@ -957,11 +957,55 @@ func TestObservationResult_SettingOfActionsAccess(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := (ObservationResult{ActionsAccess: &tc.observed}).Setting(setting.ActionsAccessLevel); !reflect.DeepEqual(got, tc.want) {
+			if got := (ObservationResult{ActionsAccess: &tc.observed}).Setting(setting.Unit{Key: setting.ActionsAccessLevel}); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("Setting(%q) = %+v, want %+v", setting.ActionsAccessLevel, got, tc.want)
 			}
 		})
 	}
+}
+
+//trace:checks FR-004
+func TestObservationResult_SettingOfEnvironmentDeploymentBranchPolicy(t *testing.T) {
+	// 別の Environment の方式を返す誤りと、宣言の名前を綴りのまま比べる誤りを検出するため、
+	// 方式の異なる二つを並べ、ASCII の大小が違う宣言の名前で引く。
+	patterns := []setting.DeploymentPattern{{Type: setting.DeploymentPatternBranch, Name: "main"}, {Type: setting.DeploymentPatternTag, Name: "v*"}}
+	selected := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: patterns}
+	observed := ObservationResult{Environments: &Environments{Existing: []Environment{
+		{ID: 1, Name: "staging", DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}},
+		{ID: 2, Name: "Production", DeploymentBranchPolicy: selected},
+	}}}
+	cases := []struct {
+		name string
+		unit setting.Unit
+		want SettingObservation[setting.Value]
+	}{
+		{
+			name: "declared name differing in ASCII case returns that environment's policy with its patterns",
+			unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: mustEnvironmentName(t, "production")},
+			want: Observed(setting.DeploymentBranchPolicyValue(selected)),
+		},
+		{
+			name: "absent environment returns UnavailableEnvironmentAbsent",
+			unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: mustEnvironmentName(t, "qa")},
+			want: Unavailable[setting.Value](UnavailableEnvironmentAbsent),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := observed.Setting(tc.unit); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Setting(%v) = %+v, want %+v", tc.unit.String(), got, tc.want)
+			}
+		})
+	}
+}
+
+func TestObservationResult_SettingOfEnvironmentResourcePanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("Setting() did not panic for the environment itself")
+		}
+	}()
+	_ = ObservationResult{Environments: &Environments{}}.Setting(setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "production")})
 }
 
 func TestObservationResult_SettingOfUnknownSettingPanics(t *testing.T) {
@@ -970,7 +1014,7 @@ func TestObservationResult_SettingOfUnknownSettingPanics(t *testing.T) {
 			t.Error("Setting() did not panic for an unknown setting")
 		}
 	}()
-	_ = ObservationResult{}.Setting("general.unknown")
+	_ = ObservationResult{}.Setting(setting.Unit{Key: "general.unknown"})
 }
 
 //trace:checks FR-004

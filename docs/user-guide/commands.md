@@ -89,7 +89,7 @@ Repositories checked: 1
 |---|---|
 | `Repository:` | 変える予定のあるリポジトリ。変える予定のないリポジトリは出ない |
 | `<設定>: <現在の値> -> <書いた値>` | GitHub の値が設定ファイルの値と違う設定。承認すると右の値に変える |
-| `environments.<名前>: absent -> present` | 設定ファイルに書いた Environment が GitHub 上にない。作成する予定（`apply` はまだ作らない） |
+| `environments.<名前>: absent -> present` | 設定ファイルに書いた Environment が GitHub 上にない。承認すると作成する |
 | `<設定>: (<今の状態>) -> <書いた値>` | 今は使われていない設定。`(not in use)` は `allowed_actions` が `selected` でないこと、`(GitHub Actions disabled)` は Actions が無効なこと、`(public repository)` はリポジトリがパブリックで `access_level` が適用されないこと、`(environment absent)` は Environment がまだないこと、`(existence unknown)` は Environment があるかを確かめられないことを示す。`(public repository)` と `(existence unknown)` の行には必ず `Applicability:` の行が付く。下に `Applicability:` の行がなければ、承認すると右の値に変える |
 | `Applicability: not applicable (<理由>)` | 安全に変えるための条件が成り立たないため、reco はこの設定を変えない。括弧の中は、何が成り立っていないかと、設定ファイルにどう書けばよいか |
 | `Side effect:` | この変更に伴って GitHub が消す値。読み取れた値は括弧の中に出る |
@@ -144,7 +144,7 @@ Repositories updated: 1
 
 変更計画に `Plan cannot be applied.` が出たときは、承認を求めず、どのリポジトリの設定も変えずにエラーで終わります。ほかのリポジトリの変更が問題なく行えても変えません。直し方は [Troubleshooting](troubleshooting.md#plan-cannot-be-applied-と表示された) にあります。
 
-変更計画に Environment の作成か `deployment_branch_policy` の変更があるときも、変更計画を表示せず、承認を求めずにエラーで終わります。`apply` はまだ Environment を変えられないためです。対処は [Troubleshooting](troubleshooting.md#applying-environment-changes-is-not-supported-と表示された) にあります。
+`deployment_branch_policy` も書いた Environment の作成は、結果では一つの変更として数えます。そう数えた変更が二つ以上あり、どれかが完了しなかったリポジトリでは、結果を変更ごとに示し、この作成は `environments.production + environments.production.deployment_branch_policy` のように示します。
 
 どこかの変更が完了しなかったら、reco は残りの変更を始めずに止まります。すでに反映した変更は元に戻りません。`failed` や `not attempted` が出たときにすることは [Troubleshooting](troubleshooting.md#apply-が途中で止まった) にあります。
 

@@ -79,16 +79,6 @@ Plan cannot be applied.
 
 理由は、変更計画の `Applicability:` の行の括弧の中にあります。セミコロンの前が成り立っていないこと、後ろが設定ファイルの直し方です。この例では Actions が無効のため、同じリポジトリに `enabled: true` か `allowed_actions` を書き足してから、`plan` で `Plan cannot be applied.` が消えたことを確かめ、`apply` を実行し直します。パブリックリポジトリに `access_level` を書いて `(the repository is public; remove access_level, ...)` と示されたら、そのリポジトリの `access_level` を設定ファイルから消します。`(an environment on GitHub has a name reco cannot compare, ...)` と示されたら、GitHub 上に半角以外の文字を含む名前の Environment があり、設定ファイルに書いた Environment があるかを reco が確かめられません。`Applicability:` の行の上に名前が出ている Environment を、設定ファイルから消します。
 
-## `applying environment changes is not supported` と表示された
-
-`apply` は、Environment の作成と `deployment_branch_policy` の変更をまだ実行しません。変更計画にそれらがあると、変更計画を表示せず、何も変えずに次のエラーで終わります。
-
-```text
-{"time":"...","level":"ERROR","msg":"command failed","error":"example/project-a: environments.production cannot be applied: applying environment changes is not supported; no changes made"}
-```
-
-ほかの設定だけを変えたいときは、`environments` を設定ファイルから一時的に外して `apply` を実行します。外しても、GitHub 上の Environment は消えません。
-
 ## 承認できない
 
 承認を求められずに `approval not available` で終わるときは、標準入力が端末になっていません。端末から直接 `apply` を実行します。コンテナイメージでは `-it` を付けます。
@@ -126,7 +116,8 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 | `Desired state: does not match` | 読み直した値が設定ファイルのとおりでなかった |
 | `Desired state: not confirmed (read failed)` | 更新のあとで値を読み直せず、設定ファイルのとおりになったか確かめられなかった。読み直せなかった原因は、結果のあとに出るエラーの行に出る |
 | `Desired state: not confirmed (repository ID changed)` | 読み直したリポジトリが、承認したときとは別のリポジトリだった。同じ名前のリポジトリが、削除して作り直すなどして入れ替わっている |
-| `Desired state: not in effect (<理由>)` | 書いた設定が GitHub で効いていなかった。括弧の中は、Actions が無効になっている（`GitHub Actions is disabled`）か、`allowed_actions` が `selected` でない（`allowed_actions is not "selected"`）か、リポジトリがパブリックになっている（`the repository is public`）こと |
+| `Desired state: not in effect (<理由>)` | 書いた設定が GitHub で効いていなかった。括弧の中は、Actions が無効になっている（`GitHub Actions is disabled`）か、`allowed_actions` が `selected` でない（`allowed_actions is not "selected"`）か、リポジトリがパブリックになっている（`the repository is public`）か、`deployment_branch_policy` を変えた Environment がなくなっていた（`the environment does not exist`）こと |
+| `Desired state: not confirmed (environment existence unknown)` | 更新のあとに、半角以外の文字を含む名前の Environment が GitHub 上に現れ、書いた Environment があるかを確かめられなかった |
 
 次の順に進めます。
 
@@ -145,6 +136,16 @@ Applying changes...
 ```
 
 GitHub Free のアカウントが所有するプライベートリポジトリでは、自動マージを使えません。GitHub は更新を受け付けても、値を変えないことがあります。そのようなリポジトリには、`allow_auto_merge: true` を書かないようにします。
+
+### Environment の作成が始まらなかった
+
+```text
+Applying changes...
+  example/project-a: not attempted
+    Precondition: environments.production changed since approval
+```
+
+承認したあと、作成する前に、同じ名前（大文字と小文字だけが違う名前を含む）の Environment が GitHub 上に作られていました。reco は、そこにある Environment を上書きしないよう、作成を始めずに止まります。半角以外の文字を含む名前の Environment が現れ、書いた Environment があるかを確かめられなくなったときも、同じように止まります。`plan` を実行し、GitHub 上の Environment の今の状態を確かめてから、`apply` し直します。
 
 ## そのほかのエラーと行
 

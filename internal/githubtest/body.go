@@ -132,13 +132,13 @@ func (b ActionsAccessBody) JSON() string {
 func (b EnvironmentsBody) JSON() string {
 	environments := make([]string, len(b.Environments))
 	for i, e := range b.Environments {
-		environments[i] = e.json()
+		environments[i] = e.JSON()
 	}
 	return fmt.Sprintf(`{"total_count": %d, "environments": [%s]}`, b.TotalCount, strings.Join(environments, ", "))
 }
 
-// json は一覧の要素を返す。保護ルールは GitHub が返した並び（required_reviewers、wait_timer、branch_policy）で並べる。
-func (b EnvironmentBody) json() string {
+// JSON は Environment の1件の応答本文を返す。一覧の要素と同じ形で、保護ルールは GitHub が返した並び（required_reviewers、wait_timer、branch_policy）で並べる。
+func (b EnvironmentBody) JSON() string {
 	var rules []string
 	if r := b.RequiredReviewers; r != nil {
 		reviewers := make([]string, len(r.Reviewers))

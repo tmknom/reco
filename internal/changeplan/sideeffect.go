@@ -21,5 +21,5 @@ func sideEffects(s SettingPlan, observed github.ObservationResult) []SideEffect 
 	if current, ok := s.Observed.Value(); ok && current.AllowedActionsPolicy() != setting.AllowedActionsSelected {
 		return nil
 	}
-	return []SideEffect{{Key: setting.SelectedActions, Observed: observed.Setting(setting.SelectedActions)}}
+	return []SideEffect{{Key: setting.SelectedActions, Observed: observed.Setting(setting.Unit{Key: setting.SelectedActions})}}
 }

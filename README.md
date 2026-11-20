@@ -13,7 +13,7 @@ Only settings you declare are managed. Omitted settings are left untouched.
 
 - General: allow auto-merge, automatically delete head branches
 - GitHub Actions: enabling or disabling GitHub Actions, allowed actions and reusable workflows, requiring actions to be pinned to a full-length commit SHA, default `GITHUB_TOKEN` permissions, allowing GitHub Actions to create and approve pull requests, access to actions and reusable workflows from other repositories (private repositories only)
-- Environments: existence of declared environments and their deployment branch restriction (`all` or `protected_branches`); `plan` shows creations and changes, and `apply` does not apply them yet
+- Environments: existence of declared environments and their deployment branch restriction (`all` or `protected_branches`); `apply` creates missing environments and changes the restriction, and never touches environments that are not declared
 
 reco targets repositories owned by personal accounts on GitHub.com.
 Organization-owned repositories and GitHub Enterprise Server are not supported.

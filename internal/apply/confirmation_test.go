@@ -105,3 +105,85 @@ func TestConfirmDesiredState(t *testing.T) {
 		})
 	}
 }
+
+// TestConfirmDesiredState_Environments は、Environment の作成と方式の変更の更新後の判定表を確かめる。
+//
+//trace:checks INV-004
+//trace:checks FR-012
+func TestConfirmDesiredState_Environments(t *testing.T) {
+	approvedStaging := observedEnvironment(7, "Staging", setting.DeploymentBranchPolicyAll)
+	undetermined := observedEnvironment(9, "prodüction", setting.DeploymentBranchPolicyAll)
+	cases := []struct {
+		name         string
+		change       changeplan.LogicalChange
+		environments *github.Environments
+		want         desiredStateConfirmation
+		wantReason   github.UnavailableReason
+	}{
+		{
+			name:         "creation without a mode matches when the environment exists under a spelling differing only in case",
+			change:       creationChange(t, "production", setting.Value{}),
+			environments: environments(observedEnvironment(8, "Production", setting.DeploymentBranchPolicyAll)),
+			want:         desiredStateMatches,
+		},
+		{
+			name:         "creation is a mismatch when the environment is absent",
+			change:       creationChange(t, "production", setting.Value{}),
+			environments: environments(approvedStaging),
+			want:         desiredStateMismatch,
+		},
+		{
+			name:         "creation is unavailable when the existence cannot be determined",
+			change:       creationChange(t, "production", setting.Value{}),
+			environments: environments(undetermined),
+			want:         desiredStateUnavailable,
+			wantReason:   github.UnavailableEnvironmentNameUndetermined,
+		},
+		{
+			name:         "creation with a mode matches when the environment has the mode",
+			change:       creationChange(t, "production", modeValue(setting.DeploymentBranchPolicyProtectedBranches)),
+			environments: environments(observedEnvironment(8, "production", setting.DeploymentBranchPolicyProtectedBranches)),
+			want:         desiredStateMatches,
+		},
+		{
+			name:         "creation with a mode is a mismatch when the environment has another mode",
+			change:       creationChange(t, "production", modeValue(setting.DeploymentBranchPolicyProtectedBranches)),
+			environments: environments(observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll)),
+			want:         desiredStateMismatch,
+		},
+		{
+			name:         "mode change matches even if the environment was recreated with another ID",
+			change:       modeChange(t, "staging", approvedStaging, setting.DeploymentBranchPolicyProtectedBranches),
+			environments: environments(observedEnvironment(8, "staging", setting.DeploymentBranchPolicyProtectedBranches)),
+			want:         desiredStateMatches,
+		},
+		{
+			name:         "mode change is a mismatch when the mode differs",
+			change:       modeChange(t, "staging", approvedStaging, setting.DeploymentBranchPolicyProtectedBranches),
+			environments: environments(approvedStaging),
+			want:         desiredStateMismatch,
+		},
+		{
+			name:         "mode change is unavailable when the environment is absent",
+			change:       modeChange(t, "staging", approvedStaging, setting.DeploymentBranchPolicyProtectedBranches),
+			environments: environments(),
+			want:         desiredStateUnavailable,
+			wantReason:   github.UnavailableEnvironmentAbsent,
+		},
+		{
+			name:         "mode change is unavailable when the existence cannot be determined",
+			change:       modeChange(t, "staging", approvedStaging, setting.DeploymentBranchPolicyProtectedBranches),
+			environments: environments(observedEnvironment(9, "stagïng", setting.DeploymentBranchPolicyProtectedBranches)),
+			want:         desiredStateUnavailable,
+			wantReason:   github.UnavailableEnvironmentNameUndetermined,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := github.ObservationResult{RepositoryID: 1, Environments: tc.environments}
+			if got, reason := confirmDesiredState(1, tc.change, observed); got != tc.want || reason != tc.wantReason {
+				t.Errorf("confirmDesiredState() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)
+			}
+		})
+	}
+}

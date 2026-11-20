@@ -110,6 +110,35 @@ func (c *Client) updateSelectedActions(ctx context.Context, reference repository
 	return describeUpdateOutcome("update selected actions", reference, status, err)
 }
 
+// CreateEnvironment は、reference のリポジトリに name の Environment を作る PUT を、本文なしで一度だけ送る。再送はしない。
+// 同じ名前の Environment が存在すれば、この要求は何も変えずに成功を応答する。
+func (c *Client) CreateEnvironment(ctx context.Context, reference repository.Reference, name string) (UpdateOutcome, error) {
+	return c.putEnvironment(ctx, "create environment", reference, name, nil)
+}
+
+// UpdateEnvironmentDeploymentBranchPolicy は、reference のリポジトリの name の Environment のデプロイ元制限の方式を mode にする PUT を一度だけ送る。再送はしない。
+// name の Environment が存在しなければ、この要求は方式が mode の Environment を作る。
+// 本文は deployment_branch_policy だけで、保護設定を併送しない。
+// selected は個別パターンの登録を伴うためこの要求では扱わず、未定義の方式とともに、本文を組めない不変条件の破れとして panic する。
+func (c *Client) UpdateEnvironmentDeploymentBranchPolicy(ctx context.Context, reference repository.Reference, name string, mode setting.DeploymentBranchPolicyMode) (UpdateOutcome, error) {
+	return c.putEnvironment(ctx, "set deployment branch policy of environment", reference, name, encodeDeploymentBranchPolicyMode(mode))
+}
+
+// putEnvironment は name の Environment へ body を本文とする PUT を送る。body が nil なら本文を送らない。
+// 成功応答の本文は、Environment の取得の契約に適合するかを確かめるためだけに解釈する。
+// 呼び出し元は宛先にできる名前だけを渡すため、URL を組めないときは不変条件の破れとして panic する。
+func (c *Client) putEnvironment(ctx context.Context, operation string, reference repository.Reference, name string, body []byte) (UpdateOutcome, error) {
+	u, ok := c.environmentURL(reference, name)
+	if !ok {
+		panic(fmt.Sprintf("github: environment name %q cannot be addressed", name))
+	}
+	status, data, err := c.send(ctx, http.MethodPut, u, body, http.StatusOK)
+	if err == nil {
+		_, err = decodeEnvironment(data)
+	}
+	return describeUpdateOutcome(fmt.Sprintf("%s %q", operation, name), reference, status, err)
+}
+
 // updateRequest は、一つの設定を変える更新要求の、送り先の更新エンドポイントと送り方の組。
 // 送る更新要求と比べる設定の範囲を別々の場所で足し忘れないよう、同じ switch から返す。
 type updateRequest struct {
@@ -151,7 +180,7 @@ func updateRequestOf(key setting.Key) updateRequest {
 			return c.updateAccessLevel(ctx, reference, value.AccessLevel())
 		}}
 	case setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy:
-		// Environment の更新要求は宛先に Environment の名前を含むため、設定の識別だけで引くこの関数では扱えない。
+		// Environment の更新要求は宛先に名前が要るため、設定の識別だけで引くこの関数では扱えない。
 	}
 	panic("github: no update request for " + string(key))
 }
@@ -161,6 +190,19 @@ func boolUpdate(update func(*Client, context.Context, repository.Reference, bool
 	return func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
 		return update(c, ctx, reference, value.Bool())
 	}
+}
+
+// encodeDeploymentBranchPolicyMode は mode を Environment の PUT の本文にする。
+// 定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+func encodeDeploymentBranchPolicyMode(mode setting.DeploymentBranchPolicyMode) []byte {
+	switch mode {
+	case setting.DeploymentBranchPolicyAll:
+		return []byte(`{"deployment_branch_policy":null}`)
+	case setting.DeploymentBranchPolicyProtectedBranches:
+		return []byte(`{"deployment_branch_policy":{"protected_branches":true,"custom_branch_policies":false}}`)
+	case setting.DeploymentBranchPolicySelected:
+	}
+	panic(fmt.Sprintf("github: no request body for deployment branch policy %q", mode))
 }
 
 // encodeSelectedActions は criteria を Selected actions の更新要求の本文にする。

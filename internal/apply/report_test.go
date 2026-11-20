@@ -20,6 +20,7 @@ func TestUnavailableReasonText(t *testing.T) {
 		{reason: github.UnavailableActionsDisabled, want: "GitHub Actions is disabled"},
 		{reason: github.UnavailableNotSelected, want: `allowed_actions is not "selected"`},
 		{reason: github.UnavailablePublicRepository, want: "the repository is public"},
+		{reason: github.UnavailableEnvironmentAbsent, want: "the environment does not exist"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.want, func(t *testing.T) {
@@ -36,6 +37,16 @@ func TestUnavailableReasonText(t *testing.T) {
 			}
 		}()
 		_ = unavailableReasonText(0)
+	})
+
+	// 判定できない名前は、宣言が効いていないのではなく reco が確かめられなかったことを示すため、confirmationText が not in effect と示さない
+	t.Run("undetermined environment name panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("unavailableReasonText() did not panic for an undetermined environment name")
+			}
+		}()
+		_ = unavailableReasonText(github.UnavailableEnvironmentNameUndetermined)
 	})
 
 }
@@ -89,7 +100,7 @@ func TestChangesError(t *testing.T) {
 
 	t.Run("failed change of two updates without a cause names both settings", func(t *testing.T) {
 		records := []changeRecord{toSelectedRecord(desiredStateMismatch,
-			started(github.UpdateSucceeded), operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions})}
+			started(github.UpdateSucceeded), operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.AllowedActions}})}
 		err := changesError(records, target)
 		want := "actions.permissions.allowed_actions + actions.permissions.selected_actions"
 		if err == nil || !strings.Contains(err.Error(), "owner/repo") || !strings.Contains(err.Error(), want) {
@@ -166,7 +177,7 @@ func TestNotAttemptedReason_StartedUpdatePanics(t *testing.T) {
 func TestWriteChangeReport_SingleChange(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 	change := allowAutoMergeChange()
-	outside := []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: setting.BoolValue(false), After: setting.BoolValue(true)}}
+	outside := []unexpectedOutsideChange{{Setting: string(setting.DeleteBranchOnMerge), Before: "false", After: "true"}}
 	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed.\n"
 
 	cases := []struct {
@@ -186,12 +197,12 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 		},
 		{
 			name:   "not attempted because the current value changed",
-			record: changeRecord{change: change, operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowAutoMerge}}},
+			record: changeRecord{change: change, operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.AllowAutoMerge}}}},
 			want:   "  owner/repo: not attempted\n    Precondition: general.allow_auto_merge changed since approval\n",
 		},
 		{
 			name:   "not attempted because the value shown as a side effect changed names that setting rather than allowed_actions",
-			record: changeRecord{change: selectedToAllChange(), operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.SelectedActions}}},
+			record: changeRecord{change: selectedToAllChange(), operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.SelectedActions}}}},
 			want:   "  owner/repo: not attempted\n    Precondition: actions.permissions.selected_actions changed since approval\n",
 		},
 		{
@@ -253,9 +264,9 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 			record: changeRecord{
 				change: canApprovePullRequestReviewsChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateMatches,
 				unexpectedOutsideChanges: []unexpectedOutsideChange{{
-					Key:    setting.DefaultWorkflowPermissions,
-					Before: setting.PermissionLevelValue(setting.PermissionRead),
-					After:  setting.PermissionLevelValue(setting.PermissionWrite),
+					Setting: string(setting.DefaultWorkflowPermissions),
+					Before:  "read",
+					After:   "write",
 				}},
 			},
 			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: matches\n" +
@@ -266,7 +277,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 			// 完了済みの操作と未開始の操作を示す。未実行にしない
 			name: "second update not started because the policy is not the value expected after the first",
 			record: toSelectedRecord(desiredStateMismatch,
-				started(github.UpdateSucceeded), operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions}),
+				started(github.UpdateSucceeded), operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.AllowedActions}}),
 			want: "  owner/repo: failed\n" + updateRequestRows("succeeded", "not started") +
 				"    Precondition: actions.permissions.allowed_actions is not the value expected after the preceding update\n" +
 				"    Desired state: does not match\n\n" + rollbackNote,
@@ -308,7 +319,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 		},
 		{
 			name:   "first precondition of two updates not holding is not attempted without update requests",
-			record: toSelectedRecord(desiredStateNotChecked, operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions}),
+			record: toSelectedRecord(desiredStateNotChecked, operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.AllowedActions}}),
 			want:   "  owner/repo: not attempted\n    Precondition: actions.permissions.allowed_actions changed since approval\n",
 		},
 	}
@@ -368,7 +379,7 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 			records: []changeRecord{
 				{
 					change: deleteBranchOnMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateMatches,
-					unexpectedOutsideChanges: []unexpectedOutsideChange{{Key: setting.AllowAutoMerge, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+					unexpectedOutsideChanges: []unexpectedOutsideChange{{Setting: string(setting.AllowAutoMerge), Before: "false", After: "true"}},
 				},
 				stopped,
 			},
@@ -391,7 +402,7 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 		},
 		{
 			name:    "complete then precondition failure has the rollback note",
-			records: []changeRecord{completedRecord(deleteBranchOnMergeChange()), {change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowAutoMerge}}}},
+			records: []changeRecord{completedRecord(deleteBranchOnMergeChange()), {change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.AllowAutoMerge}}}}},
 			want: "  owner/repo\n" +
 				"    general.delete_branch_on_merge: updated\n" +
 				"    general.allow_auto_merge: not attempted\n      Precondition: general.allow_auto_merge changed since approval\n\n" +
@@ -465,7 +476,7 @@ func TestWriteChangeReport_Repositories(t *testing.T) {
 	const stoppedByRepository = "    Stopped: a preceding repository did not complete\n"
 	mismatched := changeRecord{change: deleteBranchOnMergeChange(), operations: []operationRecord{started(github.UpdateSucceeded)}, confirmation: desiredStateMismatch}
 	rejected := changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{started(github.UpdateRejected)}, cause: github.ErrForbidden}
-	valueChanged := changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowAutoMerge}}}
+	valueChanged := changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.AllowAutoMerge}}}}
 	stoppedAutoMerge := changeRecord{change: allowAutoMergeChange()}
 	stoppedBranch := changeRecord{change: deleteBranchOnMergeChange()}
 
@@ -584,7 +595,7 @@ func TestWriteChangeReport_Repositories(t *testing.T) {
 func TestRepositoriesError(t *testing.T) {
 	first, second, third := mustReference(t, "owner/first"), mustReference(t, "owner/second"), mustReference(t, "owner/third")
 	rejected := changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{started(github.UpdateRejected)}, cause: github.ErrForbidden}
-	valueChanged := changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowAutoMerge}}}
+	valueChanged := changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.AllowAutoMerge}}}}
 
 	t.Run("complete and no change have no error", func(t *testing.T) {
 		records := []repositoryRecord{{target: first, changes: []changeRecord{completedRecord(allowAutoMergeChange())}}, {target: second}}
@@ -632,4 +643,80 @@ func toSelectedRecord(confirmation desiredStateConfirmation, operations ...opera
 func updateRequestRows(first, second string) string {
 	return "    Update request (actions.permissions.allowed_actions): " + first + "\n" +
 		"    Update request (actions.permissions.selected_actions): " + second + "\n"
+}
+
+// TestWriteChangeReport_Environments は、Environment の作成と方式の変更の変更結果の表示を確かめる。期待値は CLI 仕様の apply の表示例から導く。
+//
+//trace:checks FR-013
+//trace:checks QR-002
+func TestWriteChangeReport_Environments(t *testing.T) {
+	target := mustReference(t, "owner/repo")
+	creation := creationChange(t, "production", modeValue(setting.DeploymentBranchPolicyProtectedBranches))
+	staging := modeChange(t, "staging", observedEnvironment(7, "Staging", setting.DeploymentBranchPolicyAll), setting.DeploymentBranchPolicyProtectedBranches)
+	succeeded := []operationRecord{started(github.UpdateSucceeded)}
+	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed.\n"
+
+	cases := []struct {
+		name    string
+		records []changeRecord
+		want    string
+	}{
+		{
+			name: "creation with an environment created since approval names the environment",
+			records: []changeRecord{{change: creation, operations: []operationRecord{{
+				precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "production")},
+			}}}},
+			want: "  owner/repo: not attempted\n    Precondition: environments.production changed since approval\n",
+		},
+		{
+			name: "mode change with only the mode changed names the mode",
+			records: []changeRecord{{change: staging, operations: []operationRecord{{
+				precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: mustEnvironmentName(t, "staging")},
+			}}}},
+			want: "  owner/repo: not attempted\n    Precondition: environments.staging.deployment_branch_policy changed since approval\n",
+		},
+		{
+			name: "creation completed and a mode change with a changed protection are named by the declared spelling",
+			records: []changeRecord{
+				completedRecord(creation),
+				{
+					change: staging, operations: succeeded, confirmation: desiredStateMatches,
+					unexpectedOutsideChanges: []unexpectedOutsideChange{{Setting: "environments.staging.wait_timer", Before: "30", After: "none"}},
+				},
+			},
+			want: "  owner/repo\n" +
+				"    environments.production + environments.production.deployment_branch_policy: updated\n" +
+				"    environments.staging.deployment_branch_policy: failed\n" +
+				"      Update request: succeeded\n" +
+				"      Desired state: matches\n" +
+				"      Other settings: environments.staging.wait_timer changed 30 -> none (cause not determined)\n\n" +
+				rollbackNote,
+		},
+		{
+			name:    "mode change of an environment absent after the update is not in effect",
+			records: []changeRecord{{change: staging, operations: succeeded, confirmation: desiredStateUnavailable, desiredUnavailableReason: github.UnavailableEnvironmentAbsent}},
+			want:    "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not in effect (the environment does not exist)\n\n" + rollbackNote,
+		},
+		{
+			name:    "creation whose existence cannot be determined after the update is not confirmed",
+			records: []changeRecord{{change: creation, operations: succeeded, confirmation: desiredStateUnavailable, desiredUnavailableReason: github.UnavailableEnvironmentNameUndetermined}},
+			want:    "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not confirmed (environment existence unknown)\n\n" + rollbackNote,
+		},
+		{
+			name:    "creation absent after the update does not match",
+			records: []changeRecord{{change: creationChange(t, "production", setting.Value{}), operations: succeeded, confirmation: desiredStateMismatch}},
+			want:    "  owner/repo: failed\n    Update request: succeeded\n    Desired state: does not match\n\n" + rollbackNote,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			if err := writeChangeReport(&out, []repositoryRecord{{target: target, changes: tc.records}}); err != nil {
+				t.Fatalf("writeChangeReport() error = %v", err)
+			}
+			if out.String() != tc.want {
+				t.Errorf("writeChangeReport() wrote %q, want %q", out.String(), tc.want)
+			}
+		})
+	}
 }

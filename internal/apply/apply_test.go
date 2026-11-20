@@ -17,6 +17,7 @@ import (
 	"github.com/tmknom/reco/internal/changeplandisplay"
 	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
+	"github.com/tmknom/reco/internal/githubtest"
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -88,6 +89,24 @@ func TestExecutableChanges(t *testing.T) {
 		got, err := executableChanges(plans(t, []changeplan.SettingPlan{allowAutoMergeMismatch()}, []changeplan.SettingPlan{shaPinningRequiredNotApplicable()}))
 		if err == nil {
 			t.Errorf("executableChanges() = %+v, want an error", got)
+		}
+	})
+
+	// Environment の更新操作は UpdateEndpointOf で引けないため、引くと panic で失敗する
+	t.Run("environment changes are executable without looking up an update endpoint", func(t *testing.T) {
+		production := mustEnvironmentName(t, "production")
+		creation := changeplan.SettingPlan{
+			Key: setting.EnvironmentResource, Environment: production, ObservedEnvironment: github.Environments{}.Lookup(production),
+			Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+		}
+		p := plans(t, []changeplan.SettingPlan{creation})
+		got, err := executableChanges(p)
+		if err != nil {
+			t.Fatalf("executableChanges() error = %v", err)
+		}
+		want := []repositoryChanges{{plan: p.Repositories[0], changes: []changeplan.LogicalChange{creationChange(t, "production", setting.Value{})}}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("executableChanges() = %+v, want %+v", got, want)
 		}
 	})
 
@@ -298,27 +317,6 @@ func TestApplyPlan(t *testing.T) {
 
 		if err == nil || !strings.HasSuffix(err.Error(), "; no changes made") {
 			t.Errorf("applyPlan() error = %v, want an error ending with %q", err, "; no changes made")
-		}
-		if calls != 0 || out.Len() != 0 || len(server.Methods()) != 0 {
-			t.Errorf("approve calls = %d, Out = %q, requests = %v, want none", calls, out.String(), server.Methods())
-		}
-	})
-
-	t.Run("environment change is rejected without output, approval, or requests", func(t *testing.T) {
-		baseURL, server := newSequenceServer(t)
-		var out bytes.Buffer
-		calls := 0
-		production, err := setting.ParseEnvironmentName("production")
-		if err != nil {
-			t.Fatal(err)
-		}
-		creation := changeplan.SettingPlan{Key: setting.EnvironmentResource, Environment: production, Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
-
-		err = applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch(), creation))
-
-		want := "owner/repo: environments.production cannot be applied: applying environment changes is not supported; no changes made"
-		if err == nil || err.Error() != want {
-			t.Errorf("applyPlan() error = %v, want %q", err, want)
 		}
 		if calls != 0 || out.Len() != 0 || len(server.Methods()) != 0 {
 			t.Errorf("approve calls = %d, Out = %q, requests = %v, want none", calls, out.String(), server.Methods())
@@ -576,7 +574,9 @@ const workflowConfigSource = `repositories:
         default_workflow_permissions: read
 `
 
+//trace:checks INV-001
 //trace:checks INV-002
+//trace:checks INV-004
 //trace:checks FR-008
 //trace:checks FR-011
 func TestRun(t *testing.T) {
@@ -942,6 +942,59 @@ func TestRun(t *testing.T) {
 		}
 	})
 
+	// 作成と、別の Environment の方式の変更を、宣言の並びの順に実行し、宣言していない Environment には要求を送らないことを確かめる
+	t.Run("creation and a mode change of another environment are applied in the declared order without a request to an undeclared environment", func(t *testing.T) {
+		production := githubtest.EnvironmentBody{ID: 8, Name: "production", DeploymentBranchPolicy: protectedBranchesBody()}
+		stagingProtected := githubtest.EnvironmentBody{ID: 7, Name: "staging", DeploymentBranchPolicy: protectedBranchesBody()}
+		stagingAll := githubtest.EnvironmentBody{ID: 7, Name: "staging"}
+		qa := githubtest.EnvironmentBody{ID: 9, Name: "qa"}
+		baseURL, server := newSequenceServer(t,
+			okRepository(1, false, false), okEnvironments(stagingProtected, qa),
+			okRepository(1, false, false), okEnvironments(stagingProtected, qa), okEnvironment(production),
+			okRepository(1, false, false), okEnvironments(production, stagingProtected, qa),
+			okRepository(1, false, false), okEnvironments(production, stagingProtected, qa), okEnvironment(stagingAll),
+			okRepository(1, false, false), okEnvironments(production, stagingAll, qa))
+		var out bytes.Buffer
+		calls := 0
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(`repositories:
+  - name: owner/repo
+    environments:
+      - name: production
+        deployment_branch_policy:
+          mode: protected_branches
+      - name: Staging
+        deployment_branch_policy:
+          mode: all
+`)}}
+
+		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		reads := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/environments"}
+		want := slices.Concat(reads,
+			reads, []string{"PUT /repos/owner/repo/environments/production"}, reads,
+			reads, []string{"PUT /repos/owner/repo/environments/staging"}, reads)
+		if !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		var bodies []map[string]any
+		for _, r := range server.Requests() {
+			if r.Method == http.MethodPut {
+				bodies = append(bodies, r.Body)
+			}
+		}
+		wantBodies := []map[string]any{
+			{"deployment_branch_policy": map[string]any{"protected_branches": true, "custom_branch_policies": false}},
+			{"deployment_branch_policy": nil},
+		}
+		if !reflect.DeepEqual(bodies, wantBodies) {
+			t.Errorf("update request bodies = %v, want %v", bodies, wantBodies)
+		}
+		if calls != 1 || !strings.Contains(out.String(), "owner/repo: updated") || !strings.Contains(out.String(), "Apply complete.") {
+			t.Errorf("approve calls = %d, Out = %q, want one approval and the repository updated", calls, out.String())
+		}
+	})
+
 	t.Run("missing configuration file stops before approval and requests", func(t *testing.T) {
 		baseURL, server := newSequenceServer(t)
 		var out bytes.Buffer
@@ -1079,7 +1132,7 @@ func deleteBranchOnMergeMismatch() changeplan.SettingPlan {
 func allowedActionsMismatch() changeplan.SettingPlan {
 	operation := allowedActionsChange().Operations[0]
 	return changeplan.SettingPlan{
-		Key: operation.Key, Observed: operation.RelevantSettings[0].ValueAtApproval, Desired: operation.Desired, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+		Key: operation.Unit.Key, Observed: operation.RelevantSettings[0].ValueAtApproval, Desired: operation.Desired, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 	}
 }
 
@@ -1087,8 +1140,8 @@ func allowedActionsMismatch() changeplan.SettingPlan {
 // 失われる値も変更前提の基準に並ぶ。
 func selectedToAllChange() changeplan.LogicalChange {
 	return singleUpdate(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), []changeplan.RelevantSetting{
-		{Key: setting.AllowedActions, ValueAtApproval: github.Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected))},
-		{Key: setting.SelectedActions, ValueAtApproval: github.Observed(setting.SelectedActionsCriteriaValue(lostCriteria))},
+		{Unit: setting.Unit{Key: setting.AllowedActions}, ValueAtApproval: github.Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected))},
+		{Unit: setting.Unit{Key: setting.SelectedActions}, ValueAtApproval: github.Observed(setting.SelectedActionsCriteriaValue(lostCriteria))},
 	})
 }
 
@@ -1107,7 +1160,7 @@ func enableActionsNotComparable() changeplan.SettingPlan {
 func enableSelectedChange() changeplan.LogicalChange {
 	change := toSelectedChange()
 	change.Operations[0].RelevantSettings = []changeplan.RelevantSetting{
-		{Key: setting.AllowedActions, ValueAtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
+		{Unit: setting.Unit{Key: setting.AllowedActions}, ValueAtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
 	}
 	return change
 }
@@ -1117,11 +1170,11 @@ func enableSelectedChange() changeplan.LogicalChange {
 func toSelectedChange() changeplan.LogicalChange {
 	return changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{
 		{
-			Key: setting.AllowedActions, Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected),
+			Unit: setting.Unit{Key: setting.AllowedActions}, Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected),
 			RelevantSettings: relevantTo(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly)),
 		},
 		{
-			Key: setting.SelectedActions, Desired: setting.SelectedActionsCriteriaValue(declaredCriteria),
+			Unit: setting.Unit{Key: setting.SelectedActions}, Desired: setting.SelectedActionsCriteriaValue(declaredCriteria),
 			RelevantSettings: relevantTo(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected)),
 		},
 	}}

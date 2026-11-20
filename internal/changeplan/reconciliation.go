@@ -25,7 +25,7 @@ func reconcile(desired configuration.DesiredState, observed github.ObservationRe
 	var settings []SettingPlan
 	for _, key := range setting.ManagementUnits() {
 		if d, ok := desired.Value(key); ok {
-			settings = append(settings, newSettingPlan(key, observed.Setting(key), d))
+			settings = append(settings, newSettingPlan(key, observed.Setting(setting.Unit{Key: key}), d))
 		}
 	}
 	for _, e := range desired.Environments {

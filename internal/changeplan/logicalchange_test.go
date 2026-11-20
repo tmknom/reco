@@ -9,10 +9,109 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-func TestLogicalChange_Keys(t *testing.T) {
-	change := LogicalChange{Operations: []UpdateOperation{{Key: setting.AllowedActions}, {Key: setting.SelectedActions}}}
-	if got, want := change.Keys(), []setting.Key{setting.AllowedActions, setting.SelectedActions}; !reflect.DeepEqual(got, want) {
-		t.Errorf("Keys() = %v, want %v", got, want)
+func TestLogicalChange_Units(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	existence := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
+	policy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}
+	protected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches})
+	cases := []struct {
+		name       string
+		operations []UpdateOperation
+		want       []setting.Unit
+	}{
+		{
+			name:       "two updates return their units in the update order",
+			operations: []UpdateOperation{{Unit: setting.Unit{Key: setting.AllowedActions}}, {Unit: setting.Unit{Key: setting.SelectedActions}}},
+			want:       []setting.Unit{{Key: setting.AllowedActions}, {Key: setting.SelectedActions}},
+		},
+		{
+			name:       "creation without a mode changes only the environment",
+			operations: []UpdateOperation{{Unit: existence}},
+			want:       []setting.Unit{existence},
+		},
+		{
+			name:       "creation sending a mode changes the environment and then its mode",
+			operations: []UpdateOperation{{Unit: existence, Desired: protected}},
+			want:       []setting.Unit{existence, policy},
+		},
+		{
+			name:       "mode change of an existing environment changes only the mode",
+			operations: []UpdateOperation{{Unit: policy, Desired: protected}},
+			want:       []setting.Unit{policy},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := (LogicalChange{Operations: tc.operations}).Units(); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Units() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestUpdateOperation_TargetsEnvironment(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	cases := []struct {
+		name string
+		unit setting.Unit
+		want bool
+	}{
+		{name: "creation targets an environment", unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, want: true},
+		{name: "mode change targets an environment", unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, want: true},
+		{name: "repository setting does not target an environment", unit: setting.Unit{Key: setting.AllowAutoMerge}, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := (UpdateOperation{Unit: tc.unit}).TargetsEnvironment(); got != tc.want {
+				t.Errorf("TargetsEnvironment() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestUpdateOperation_EnvironmentRequestShape は、Environment の更新操作が作成か、deployment_branch_policy を送るかの判定を確かめる。
+// 方式を宣言していない作成だけが本文を送らない。
+//
+//trace:checks INV-001
+func TestUpdateOperation_EnvironmentRequestShape(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	protected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches})
+	cases := []struct {
+		name        string
+		operation   UpdateOperation
+		wantCreates bool
+		wantSets    bool
+	}{
+		{
+			name:        "creation without a mode creates and does not set the mode",
+			operation:   UpdateOperation{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}},
+			wantCreates: true, wantSets: false,
+		},
+		{
+			name:        "creation with a mode creates and sets the mode",
+			operation:   UpdateOperation{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Desired: protected},
+			wantCreates: true, wantSets: true,
+		},
+		{
+			name:        "mode change sets the mode without creating",
+			operation:   UpdateOperation{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Desired: protected},
+			wantCreates: false, wantSets: true,
+		},
+		{
+			name:        "repository setting neither creates nor sets the mode",
+			operation:   UpdateOperation{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Desired: setting.BoolValue(true)},
+			wantCreates: false, wantSets: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.operation.CreatesEnvironment(); got != tc.wantCreates {
+				t.Errorf("CreatesEnvironment() = %t, want %t", got, tc.wantCreates)
+			}
+			if got := tc.operation.SetsDeploymentBranchPolicy(); got != tc.wantSets {
+				t.Errorf("SetsDeploymentBranchPolicy() = %t, want %t", got, tc.wantSets)
+			}
+		})
 	}
 }
 
@@ -24,34 +123,34 @@ func TestLogicalChange_SettingsToChange(t *testing.T) {
 	cases := []struct {
 		name string
 		keys []setting.Key
-		want []setting.Key
+		want []setting.Unit
 	}{
 		{
 			name: "policy change also changes the enabled state",
 			keys: []setting.Key{setting.AllowedActions},
-			want: []setting.Key{setting.AllowedActions, setting.ActionsEnabled},
+			want: []setting.Unit{{Key: setting.AllowedActions}, {Key: setting.ActionsEnabled}},
 		},
 		{
 			name: "enabled state change changes only the enabled state",
 			keys: []setting.Key{setting.ActionsEnabled},
-			want: []setting.Key{setting.ActionsEnabled},
+			want: []setting.Unit{{Key: setting.ActionsEnabled}},
 		},
 		{
 			name: "criteria change does not change the enabled state",
 			keys: []setting.Key{setting.SelectedActions},
-			want: []setting.Key{setting.SelectedActions},
+			want: []setting.Unit{{Key: setting.SelectedActions}},
 		},
 		{
 			name: "sha_pinning_required change does not change the enabled state",
 			keys: []setting.Key{setting.SHAPinningRequired},
-			want: []setting.Key{setting.SHAPinningRequired},
+			want: []setting.Unit{{Key: setting.SHAPinningRequired}},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var change LogicalChange
 			for _, key := range tc.keys {
-				change.Operations = append(change.Operations, UpdateOperation{Key: key})
+				change.Operations = append(change.Operations, UpdateOperation{Unit: setting.Unit{Key: key}})
 			}
 			if got := change.SettingsToChange(); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("SettingsToChange() = %v, want %v", got, tc.want)
@@ -72,7 +171,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 		return RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
 	}
 	relevant := func(key setting.Key, atApproval github.SettingObservation[setting.Value]) RelevantSetting {
-		return RelevantSetting{Key: key, ValueAtApproval: atApproval}
+		return RelevantSetting{Unit: setting.Unit{Key: key}, ValueAtApproval: atApproval}
 	}
 
 	t.Run("all matches have no logical change", func(t *testing.T) {
@@ -88,7 +187,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
 		want := []LogicalChange{{Operations: []UpdateOperation{{
-			Key: setting.AllowAutoMerge, Desired: setting.BoolValue(true),
+			Unit: setting.Unit{Key: setting.AllowAutoMerge}, Desired: setting.BoolValue(true),
 			RelevantSettings: []RelevantSetting{relevant(setting.AllowAutoMerge, github.Observed(setting.BoolValue(false)))},
 		}}}}
 		if !reflect.DeepEqual(got, want) {
@@ -104,11 +203,11 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 		}
 		want := []LogicalChange{
 			{Operations: []UpdateOperation{{
-				Key: setting.DeleteBranchOnMerge, Desired: setting.BoolValue(true),
+				Unit: setting.Unit{Key: setting.DeleteBranchOnMerge}, Desired: setting.BoolValue(true),
 				RelevantSettings: []RelevantSetting{relevant(setting.DeleteBranchOnMerge, github.Observed(setting.BoolValue(false)))},
 			}}},
 			{Operations: []UpdateOperation{{
-				Key: setting.AllowAutoMerge, Desired: setting.BoolValue(true),
+				Unit: setting.Unit{Key: setting.AllowAutoMerge}, Desired: setting.BoolValue(true),
 				RelevantSettings: []RelevantSetting{relevant(setting.AllowAutoMerge, github.Observed(setting.BoolValue(false)))},
 			}}},
 		}
@@ -125,7 +224,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
 		want := []LogicalChange{{Operations: []UpdateOperation{{
-			Key: setting.ActionsEnabled, Desired: setting.BoolValue(true),
+			Unit: setting.Unit{Key: setting.ActionsEnabled}, Desired: setting.BoolValue(true),
 			RelevantSettings: []RelevantSetting{relevant(setting.ActionsEnabled, github.Observed(setting.BoolValue(false)))},
 		}}}}
 		if !reflect.DeepEqual(got, want) {
@@ -149,7 +248,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
 		want := []LogicalChange{{Operations: []UpdateOperation{{
-			Key: setting.AllowedActions, Desired: policy(setting.AllowedActionsLocalOnly),
+			Unit: setting.Unit{Key: setting.AllowedActions}, Desired: policy(setting.AllowedActionsLocalOnly),
 			RelevantSettings: []RelevantSetting{relevant(setting.AllowedActions, github.Observed(policy(setting.AllowedActionsAll)))},
 		}}}}
 		if !reflect.DeepEqual(got, want) {
@@ -164,7 +263,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
 		want := []LogicalChange{{Operations: []UpdateOperation{{
-			Key: setting.AllowedActions, Desired: policy(setting.AllowedActionsAll),
+			Unit: setting.Unit{Key: setting.AllowedActions}, Desired: policy(setting.AllowedActionsAll),
 			RelevantSettings: []RelevantSetting{
 				relevant(setting.AllowedActions, github.Observed(policy(setting.AllowedActionsSelected))),
 				relevant(setting.SelectedActions, github.Observed(criteria)),
@@ -185,7 +284,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
 		want := []LogicalChange{{Operations: []UpdateOperation{{
-			Key: setting.AllowedActions, Desired: policy(setting.AllowedActionsLocalOnly),
+			Unit: setting.Unit{Key: setting.AllowedActions}, Desired: policy(setting.AllowedActionsLocalOnly),
 			RelevantSettings: []RelevantSetting{relevant(setting.AllowedActions, disabled), relevant(setting.SelectedActions, disabled)},
 		}}}}
 		if !reflect.DeepEqual(got, want) {
@@ -202,7 +301,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	// toSelected は、ポリシーを selected にする更新操作のあとに続く、選択方式の Actions 許可条件の更新操作。
 	// 基準は1つ目による予定どおりの変化を反映したポリシーだけで、2つ目がすべて上書きする3項目は並ばない。
 	toSelected := UpdateOperation{
-		Key: setting.SelectedActions, Desired: criteria,
+		Unit: setting.Unit{Key: setting.SelectedActions}, Desired: criteria,
 		RelevantSettings: []RelevantSetting{relevant(setting.AllowedActions, github.Observed(policy(setting.AllowedActionsSelected)))},
 	}
 	workflow := SettingPlan{
@@ -216,15 +315,15 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
 		want := []LogicalChange{
-			{Operations: []UpdateOperation{{Key: setting.AllowAutoMerge, Desired: setting.BoolValue(true), RelevantSettings: []RelevantSetting{relevant(setting.AllowAutoMerge, github.Observed(setting.BoolValue(false)))}}}},
+			{Operations: []UpdateOperation{{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Desired: setting.BoolValue(true), RelevantSettings: []RelevantSetting{relevant(setting.AllowAutoMerge, github.Observed(setting.BoolValue(false)))}}}},
 			{Operations: []UpdateOperation{
 				{
-					Key: setting.AllowedActions, Desired: policy(setting.AllowedActionsSelected),
+					Unit: setting.Unit{Key: setting.AllowedActions}, Desired: policy(setting.AllowedActionsSelected),
 					RelevantSettings: []RelevantSetting{relevant(setting.AllowedActions, github.Observed(policy(setting.AllowedActionsAll)))},
 				},
 				toSelected,
 			}},
-			{Operations: []UpdateOperation{{Key: workflow.Key, Desired: workflow.Desired, RelevantSettings: []RelevantSetting{relevant(workflow.Key, workflow.Observed)}}}},
+			{Operations: []UpdateOperation{{Unit: setting.Unit{Key: workflow.Key}, Desired: workflow.Desired, RelevantSettings: []RelevantSetting{relevant(workflow.Key, workflow.Observed)}}}},
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
@@ -238,7 +337,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
 		want := []LogicalChange{{Operations: []UpdateOperation{
-			{Key: setting.AllowedActions, Desired: policy(setting.AllowedActionsSelected), RelevantSettings: []RelevantSetting{relevant(setting.AllowedActions, disabled)}},
+			{Unit: setting.Unit{Key: setting.AllowedActions}, Desired: policy(setting.AllowedActionsSelected), RelevantSettings: []RelevantSetting{relevant(setting.AllowedActions, disabled)}},
 			toSelected,
 		}}}
 		if !reflect.DeepEqual(got, want) {
@@ -326,7 +425,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	}
 	actionsEnabled := relevant(setting.ActionsEnabled, github.Observed(setting.BoolValue(true)))
 	shaPinningOperation := UpdateOperation{
-		Key: setting.SHAPinningRequired, Desired: setting.BoolValue(true),
+		Unit: setting.Unit{Key: setting.SHAPinningRequired}, Desired: setting.BoolValue(true),
 		RelevantSettings: []RelevantSetting{relevant(setting.SHAPinningRequired, github.Observed(setting.BoolValue(false))), actionsEnabled},
 	}
 
@@ -348,10 +447,10 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 		}
 		want := []LogicalChange{
 			{Operations: []UpdateOperation{{
-				Key: setting.ActionsEnabled, Desired: setting.BoolValue(true),
+				Unit: setting.Unit{Key: setting.ActionsEnabled}, Desired: setting.BoolValue(true),
 				RelevantSettings: []RelevantSetting{relevant(setting.ActionsEnabled, github.Observed(setting.BoolValue(false)))},
 			}}},
-			{Operations: []UpdateOperation{{Key: setting.SHAPinningRequired, Desired: setting.BoolValue(true), RelevantSettings: []RelevantSetting{actionsEnabled}}}},
+			{Operations: []UpdateOperation{{Unit: setting.Unit{Key: setting.SHAPinningRequired}, Desired: setting.BoolValue(true), RelevantSettings: []RelevantSetting{actionsEnabled}}}},
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
@@ -363,57 +462,159 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
-		if len(got) != 2 || !slices.Equal(got[0].Keys(), []setting.Key{setting.AllowedActions}) || !reflect.DeepEqual(got[1], LogicalChange{Operations: []UpdateOperation{shaPinningOperation}}) {
+		if len(got) != 2 || !slices.Equal(got[0].Units(), []setting.Unit{{Key: setting.AllowedActions}}) || !reflect.DeepEqual(got[1], LogicalChange{Operations: []UpdateOperation{shaPinningOperation}}) {
 			t.Errorf("LogicalChanges() = %+v, want the policy change and then %+v", got, shaPinningOperation)
 		}
 	})
 }
 
+// TestRepositoryPlan_LogicalChangesOfEnvironments は、Environment の変更予定から導く更新操作の形と、その変更前提の基準を確かめる。
+//
+//trace:checks INV-001
 //trace:checks INV-002
 //trace:checks INV-003
+//trace:checks INV-004
+//trace:checks FR-010
+//trace:checks FR-011
 func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 	production := mustEnvironmentName(t, "production")
+	staging := mustEnvironmentName(t, "staging")
 	mismatch := SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
-	creation := SettingPlan{Key: setting.EnvironmentResource, Environment: production, Result: Mismatch, Applicability: Applicable}
-	existing := SettingPlan{Key: setting.EnvironmentResource, Environment: production, Result: Match}
 	all := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll})
 	protected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches})
-	modeChange := SettingPlan{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Observed(all), Desired: protected, Result: Mismatch, Applicability: Applicable}
+	absent := lookup(t, "production")
+	existingStaging := lookup(t, "staging", github.Environment{ID: 7, Name: "Staging", DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}})
+	creation := SettingPlan{Key: setting.EnvironmentResource, Environment: production, ObservedEnvironment: absent, Result: Mismatch, Applicability: Applicable}
+	creationMode := SettingPlan{
+		Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
+		Desired: protected, Result: NotComparable, Applicability: Applicable,
+	}
+	existing := SettingPlan{Key: setting.EnvironmentResource, Environment: staging, ObservedEnvironment: existingStaging, Result: Match}
+	modeChange := SettingPlan{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging, Observed: github.Observed(all), Desired: protected, Result: Mismatch, Applicability: Applicable}
 	newRepositoryPlan := func(settings ...SettingPlan) RepositoryPlan {
 		return RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
 	}
+	productionUnit := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
+	stagingUnit := setting.Unit{Key: setting.EnvironmentResource, Environment: staging}
+	stagingPolicyUnit := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}
+	allowAutoMerge := LogicalChange{Operations: []UpdateOperation{{
+		Unit: setting.Unit{Key: setting.AllowAutoMerge}, Desired: setting.BoolValue(true),
+		RelevantSettings: []RelevantSetting{{Unit: setting.Unit{Key: setting.AllowAutoMerge}, ValueAtApproval: github.Observed(setting.BoolValue(false))}},
+	}}}
+	// 作成の基準は存在しないことだけで、方式を宣言していても方式の基準は並ばない
+	createProduction := func(desired setting.Value) LogicalChange {
+		return LogicalChange{Operations: []UpdateOperation{{
+			Unit: productionUnit, Desired: desired,
+			RelevantSettings: []RelevantSetting{{Unit: productionUnit, EnvironmentAtApproval: absent}},
+		}}}
+	}
+	// 方式の変更の基準は、Environment が存在し ID が同じこと、方式が計画時の観測値と同じことの順に並ぶ
+	changeStagingMode := LogicalChange{Operations: []UpdateOperation{{
+		Unit: stagingPolicyUnit, Desired: protected,
+		RelevantSettings: []RelevantSetting{
+			{Unit: stagingUnit, EnvironmentAtApproval: existingStaging},
+			{Unit: stagingPolicyUnit, ValueAtApproval: github.Observed(all)},
+		},
+	}}}
 
-	rejected := []struct {
+	cases := []struct {
 		name     string
 		settings []SettingPlan
-		want     string
+		want     []LogicalChange
 	}{
 		{
-			name:     "creation of an environment is rejected naming the environment",
-			settings: []SettingPlan{mismatch, creation},
-			want:     "owner/repo: environments.production cannot be applied: applying environment changes is not supported",
+			name:     "creation without a mode is one update sending no mode and relevant only to the absence",
+			settings: []SettingPlan{creation},
+			want:     []LogicalChange{createProduction(setting.Value{})},
 		},
 		{
-			name:     "change of the mode of an existing environment is rejected naming the setting",
-			settings: []SettingPlan{mismatch, existing, modeChange},
-			want:     "owner/repo: environments.production.deployment_branch_policy cannot be applied: applying environment changes is not supported",
+			name:     "creation with a mode is one logical change of one update sending the mode at the creation position",
+			settings: []SettingPlan{creation, creationMode},
+			want:     []LogicalChange{createProduction(protected)},
+		},
+		{
+			name:     "creation paired with the mode of the name differing only in case sends the mode",
+			settings: []SettingPlan{creation, func() SettingPlan { s := creationMode; s.Environment = mustEnvironmentName(t, "Production"); return s }()},
+			want:     []LogicalChange{createProduction(protected)},
+		},
+		{
+			name:     "mode change of an existing environment is relevant to its identity and then to the observed mode",
+			settings: []SettingPlan{existing, modeChange},
+			want:     []LogicalChange{changeStagingMode},
+		},
+		{
+			name:     "environment changes follow the other changes in the plan order",
+			settings: []SettingPlan{mismatch, creation, creationMode, existing, modeChange},
+			want:     []LogicalChange{allowAutoMerge, createProduction(protected), changeStagingMode},
+		},
+		{
+			name:     "matched environment does not prevent the other logical changes",
+			settings: []SettingPlan{mismatch, existing},
+			want:     []LogicalChange{allowAutoMerge},
 		},
 	}
-	for _, tc := range rejected {
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := newRepositoryPlan(tc.settings...).LogicalChanges()
-			if err == nil || err.Error() != tc.want {
-				t.Errorf("LogicalChanges() = %+v, error = %v, want %q", got, err, tc.want)
+			if err != nil {
+				t.Fatalf("LogicalChanges() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("LogicalChanges() =\n%+v\nwant\n%+v", got, tc.want)
 			}
 		})
 	}
 
-	t.Run("matched environment does not prevent the other logical changes", func(t *testing.T) {
-		got, err := newRepositoryPlan(mismatch, existing).LogicalChanges()
-		if err != nil || len(got) != 1 || !slices.Equal(got[0].Keys(), []setting.Key{setting.AllowAutoMerge}) {
-			t.Errorf("LogicalChanges() = %+v, error = %v, want only the allow_auto_merge change", got, err)
-		}
-	})
+	// environmentPlans と judgeApplicability が作らない組
+	panicCases := []struct {
+		name     string
+		settings []SettingPlan
+	}{
+		{
+			name:     "mode of an absent environment without its creation panics",
+			settings: []SettingPlan{creationMode},
+		},
+		{
+			name:     "mode of an absent environment following a matched existence panics",
+			settings: []SettingPlan{{Key: setting.EnvironmentResource, Environment: production, ObservedEnvironment: lookup(t, "production", github.Environment{ID: 1, Name: "production"}), Result: Match}, creationMode},
+		},
+		{
+			name:     "mode mismatch without the existence panics",
+			settings: []SettingPlan{modeChange},
+		},
+		{
+			name:     "creation followed by a mode mismatch of the same name panics",
+			settings: []SettingPlan{creation, {Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Observed(all), Desired: protected, Result: Mismatch, Applicability: Applicable}},
+		},
+		{
+			name:     "creation followed by a matched mode of the same name panics",
+			settings: []SettingPlan{creation, {Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Observed(protected), Desired: protected, Result: Match}},
+		},
+		{
+			name: "applicable not comparable existence panics",
+			settings: []SettingPlan{{
+				Key: setting.EnvironmentResource, Environment: production, ObservedEnvironment: lookup(t, "production", github.Environment{ID: 1, Name: "prod\u00fcction"}),
+				Result: NotComparable, Applicability: Applicable,
+			}},
+		},
+		{
+			name: "applicable mode not comparable for another reason panics",
+			settings: []SettingPlan{creation, {
+				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined),
+				Desired: protected, Result: NotComparable, Applicability: Applicable,
+			}},
+		},
+	}
+	for _, tc := range panicCases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Error("LogicalChanges() did not panic")
+				}
+			}()
+			_, _ = newRepositoryPlan(tc.settings...).LogicalChanges()
+		})
+	}
 
 	t.Run("not-applicable environment is rejected naming the environment", func(t *testing.T) {
 		undetermined := SettingPlan{Key: setting.EnvironmentResource, Environment: production, Result: NotComparable, Applicability: NotApplicable}

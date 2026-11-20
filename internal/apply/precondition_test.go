@@ -81,8 +81,8 @@ func TestCheckPrecondition(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got, changed := checkPrecondition(1, operation, tc.observed); got != tc.want || changed != tc.wantChanged {
-				t.Errorf("checkPrecondition() = %v, %q, want %v, %q", got, changed, tc.want, tc.wantChanged)
+			if got, changed := checkPrecondition(1, operation, tc.observed); got != tc.want || changed != (setting.Unit{Key: tc.wantChanged}) {
+				t.Errorf("checkPrecondition() = %v, %q, want %v, %q", got, changed.Key, tc.want, tc.wantChanged)
 			}
 		})
 	}
@@ -137,8 +137,8 @@ func TestCheckPrecondition(t *testing.T) {
 	for _, tc := range actionsCases {
 		t.Run(tc.name, func(t *testing.T) {
 			observed := github.ObservationResult{RepositoryID: 1, ActionsPermissions: tc.observed}
-			if got, changed := checkPrecondition(1, tc.change.Operations[tc.index], observed); got != tc.want || changed != tc.wantChanged {
-				t.Errorf("checkPrecondition() = %v, %q, want %v, %q", got, changed, tc.want, tc.wantChanged)
+			if got, changed := checkPrecondition(1, tc.change.Operations[tc.index], observed); got != tc.want || changed != (setting.Unit{Key: tc.wantChanged}) {
+				t.Errorf("checkPrecondition() = %v, %q, want %v, %q", got, changed.Key, tc.want, tc.wantChanged)
 			}
 		})
 	}
@@ -149,7 +149,7 @@ func TestCheckPrecondition(t *testing.T) {
 				t.Error("checkPrecondition() did not panic")
 			}
 		}()
-		empty := changeplan.UpdateOperation{Key: setting.AllowAutoMerge, Desired: setting.BoolValue(true)}
+		empty := changeplan.UpdateOperation{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Desired: setting.BoolValue(true)}
 		checkPrecondition(1, empty, github.ObservationResult{RepositoryID: 1})
 	})
 }
@@ -208,6 +208,196 @@ func TestPrecedingUpdateNotReflected(t *testing.T) {
 			observed := github.ObservationResult{RepositoryID: 1, ActionsPermissions: tc.observed}
 			if got := precedingUpdateNotReflected(1, tc.change.Operations[:tc.index], observed); got != tc.want {
 				t.Errorf("precedingUpdateNotReflected() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestMatchesEnvironmentAtApproval は、承認時に予定した Environment の存在と ID が、更新直前の観測と同じかの規則を確かめる。
+//
+//trace:checks INV-001
+//trace:checks INV-004
+//trace:checks FR-010
+func TestMatchesEnvironmentAtApproval(t *testing.T) {
+	name := mustEnvironmentName(t, "production")
+	lookup := func(existing ...github.Environment) github.EnvironmentObservation {
+		return github.Environments{Existing: existing}.Lookup(name)
+	}
+	absent := lookup(observedEnvironment(9, "staging", setting.DeploymentBranchPolicyAll))
+	undetermined := lookup(observedEnvironment(9, "prodüction", setting.DeploymentBranchPolicyAll))
+	approved := lookup(observedEnvironment(7, "production", setting.DeploymentBranchPolicyAll))
+	cases := []struct {
+		name       string
+		atApproval github.EnvironmentObservation
+		current    github.EnvironmentObservation
+		want       bool
+	}{
+		{name: "absent at approval and still absent is the same", atApproval: absent, current: lookup(), want: true},
+		{name: "absent at approval and existing now differs", atApproval: absent, current: approved, want: false},
+		{name: "absent at approval and existing under a name differing only in case differs", atApproval: absent, current: lookup(observedEnvironment(8, "Production", setting.DeploymentBranchPolicyAll)), want: false},
+		{name: "absent at approval and undetermined now differs", atApproval: absent, current: undetermined, want: false},
+		{
+			name: "existing with the same ID is the same even if the spelling and the mode differ", atApproval: approved,
+			current: lookup(observedEnvironment(7, "PRODUCTION", setting.DeploymentBranchPolicyProtectedBranches)), want: true,
+		},
+		{name: "existing with another ID differs", atApproval: approved, current: lookup(observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll)), want: false},
+		{name: "existing at approval and absent now differs", atApproval: approved, current: absent, want: false},
+		{name: "existing at approval and undetermined now differs", atApproval: approved, current: undetermined, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := matchesEnvironmentAtApproval(tc.atApproval, tc.current); got != tc.want {
+				t.Errorf("matchesEnvironmentAtApproval() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	// 承認の前に適用不能として止めるため、承認時に予定した値にならない観測結果
+	panicCases := []struct {
+		name       string
+		atApproval github.EnvironmentObservation
+	}{
+		{name: "undetermined at approval panics", atApproval: undetermined},
+		{name: "zero value at approval panics", atApproval: github.EnvironmentObservation{}},
+	}
+	for _, tc := range panicCases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Error("matchesEnvironmentAtApproval() did not panic")
+				}
+			}()
+			matchesEnvironmentAtApproval(tc.atApproval, absent)
+		})
+	}
+}
+
+// TestCheckPrecondition_Environments は、Environment の作成と方式の変更の更新直前の判定表を確かめる。
+// 存在の比べ方は TestMatchesEnvironmentAtApproval、方式の値の比べ方は TestMatchesValueAtApproval が確かめる。
+//
+//trace:checks INV-001
+//trace:checks INV-004
+//trace:checks FR-010
+func TestCheckPrecondition_Environments(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	staging := mustEnvironmentName(t, "staging")
+	existence := func(name setting.EnvironmentName) setting.Unit {
+		return setting.Unit{Key: setting.EnvironmentResource, Environment: name}
+	}
+	stagingPolicy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}
+	approvedStaging := observedEnvironment(7, "Staging", setting.DeploymentBranchPolicyAll)
+	selected := func(id github.EnvironmentID, patterns ...string) github.Environment {
+		e := observedEnvironment(id, "Staging", setting.DeploymentBranchPolicySelected)
+		for _, p := range patterns {
+			e.DeploymentBranchPolicy.Patterns = append(e.DeploymentBranchPolicy.Patterns, setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: p})
+		}
+		return e
+	}
+	waitTimer := 30
+	protectedStaging := approvedStaging
+	protectedStaging.Protection = setting.EnvironmentProtection{WaitTimer: &waitTimer, CanAdminsBypass: true}
+
+	cases := []struct {
+		name        string
+		change      changeplan.LogicalChange
+		observed    github.ObservationResult
+		want        preconditionCheck
+		wantChanged setting.Unit
+	}{
+		{
+			name:     "creation holds when no environment of the same name exists",
+			change:   creationChange(t, "production", setting.Value{}),
+			observed: github.ObservationResult{RepositoryID: 1, Environments: environments(approvedStaging)},
+			want:     preconditionHolds,
+		},
+		{
+			name:        "creation with the environment created since approval is a change of the environment",
+			change:      creationChange(t, "production", modeValue(setting.DeploymentBranchPolicyProtectedBranches)),
+			observed:    github.ObservationResult{RepositoryID: 1, Environments: environments(observedEnvironment(8, "production", setting.DeploymentBranchPolicyProtectedBranches))},
+			want:        preconditionCurrentValueChanged,
+			wantChanged: existence(production),
+		},
+		{
+			name:        "creation with an environment of a name differing only in case is a change of the environment",
+			change:      creationChange(t, "production", setting.Value{}),
+			observed:    github.ObservationResult{RepositoryID: 1, Environments: environments(observedEnvironment(8, "Production", setting.DeploymentBranchPolicyAll))},
+			want:        preconditionCurrentValueChanged,
+			wantChanged: existence(production),
+		},
+		{
+			name:        "creation with an undetermined name is a change of the environment",
+			change:      creationChange(t, "production", setting.Value{}),
+			observed:    github.ObservationResult{RepositoryID: 1, Environments: environments(observedEnvironment(8, "prodüction", setting.DeploymentBranchPolicyAll))},
+			want:        preconditionCurrentValueChanged,
+			wantChanged: existence(production),
+		},
+		{
+			name:     "creation in another repository is an identity mismatch",
+			change:   creationChange(t, "production", setting.Value{}),
+			observed: github.ObservationResult{RepositoryID: 2, Environments: environments()},
+			want:     preconditionIdentityMismatch,
+		},
+		{
+			name:     "mode change holds with the same ID and mode",
+			change:   modeChange(t, "staging", approvedStaging, setting.DeploymentBranchPolicyProtectedBranches),
+			observed: github.ObservationResult{RepositoryID: 1, Environments: environments(approvedStaging)},
+			want:     preconditionHolds,
+		},
+		{
+			name:   "mode change holds when only the protection changed and an undetermined name appeared",
+			change: modeChange(t, "staging", approvedStaging, setting.DeploymentBranchPolicyProtectedBranches),
+			observed: github.ObservationResult{RepositoryID: 1, Environments: environments(
+				observedEnvironment(8, "prodüction", setting.DeploymentBranchPolicyAll), protectedStaging,
+			)},
+			want: preconditionHolds,
+		},
+		{
+			name:     "mode change holds when the patterns differ only in order",
+			change:   modeChange(t, "staging", selected(7, "main", "release"), setting.DeploymentBranchPolicyProtectedBranches),
+			observed: github.ObservationResult{RepositoryID: 1, Environments: environments(selected(7, "release", "main"))},
+			want:     preconditionHolds,
+		},
+		{
+			name:        "mode change with another set of patterns is a change of the mode",
+			change:      modeChange(t, "staging", selected(7, "main"), setting.DeploymentBranchPolicyProtectedBranches),
+			observed:    github.ObservationResult{RepositoryID: 1, Environments: environments(selected(7, "main", "release"))},
+			want:        preconditionCurrentValueChanged,
+			wantChanged: stagingPolicy,
+		},
+		{
+			name:        "mode change with another mode is a change of the mode",
+			change:      modeChange(t, "staging", approvedStaging, setting.DeploymentBranchPolicyProtectedBranches),
+			observed:    github.ObservationResult{RepositoryID: 1, Environments: environments(observedEnvironment(7, "Staging", setting.DeploymentBranchPolicyProtectedBranches))},
+			want:        preconditionCurrentValueChanged,
+			wantChanged: stagingPolicy,
+		},
+		{
+			name:        "mode change of an environment recreated with another ID is a change of the environment",
+			change:      modeChange(t, "staging", approvedStaging, setting.DeploymentBranchPolicyProtectedBranches),
+			observed:    github.ObservationResult{RepositoryID: 1, Environments: environments(observedEnvironment(8, "Staging", setting.DeploymentBranchPolicyAll))},
+			want:        preconditionCurrentValueChanged,
+			wantChanged: existence(staging),
+		},
+		{
+			name:        "mode change of an environment recreated with another mode is reported as a change of the environment first",
+			change:      modeChange(t, "staging", approvedStaging, setting.DeploymentBranchPolicyProtectedBranches),
+			observed:    github.ObservationResult{RepositoryID: 1, Environments: environments(observedEnvironment(8, "Staging", setting.DeploymentBranchPolicyProtectedBranches))},
+			want:        preconditionCurrentValueChanged,
+			wantChanged: existence(staging),
+		},
+		{
+			name:        "mode change of an environment that no longer exists is a change of the environment",
+			change:      modeChange(t, "staging", approvedStaging, setting.DeploymentBranchPolicyProtectedBranches),
+			observed:    github.ObservationResult{RepositoryID: 1, Environments: environments()},
+			want:        preconditionCurrentValueChanged,
+			wantChanged: existence(staging),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, changed := checkPrecondition(1, tc.change.Operations[0], tc.observed)
+			if got != tc.want || changed != tc.wantChanged {
+				t.Errorf("checkPrecondition() = %v, %+v, want %v, %+v", got, changed, tc.want, tc.wantChanged)
 			}
 		})
 	}

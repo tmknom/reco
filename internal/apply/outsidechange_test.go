@@ -36,7 +36,7 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			change: toSelectedChange(),
 			before: []github.ObservationResult{localOnly(false), selectedWith(true, setBack)},
 			after:  selectedWith(true, declaredCriteria),
-			want:   []unexpectedOutsideChange{{Key: setting.SHAPinningRequired, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			want:   []unexpectedOutsideChange{{Setting: string(setting.SHAPinningRequired), Before: "false", After: "true"}},
 		},
 		{
 			name:   "sha_pinning_required unavailable before the first update is not compared even if read before the second",
@@ -50,7 +50,7 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			change: toSelectedChange(),
 			before: []github.ObservationResult{localOnly(false)},
 			after:  selectedWith(true, setBack),
-			want:   []unexpectedOutsideChange{{Key: setting.SHAPinningRequired, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			want:   []unexpectedOutsideChange{{Setting: string(setting.SHAPinningRequired), Before: "false", After: "true"}},
 		},
 		{
 			// 計画が作らない並び。同じ更新エンドポイントの更新操作が並んでも、後の直前の観測を基準にしないことを確かめる
@@ -61,6 +61,18 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			before: []github.ObservationResult{localOnly(false), localOnly(true)},
 			after:  localOnly(false),
 			want:   nil,
+		},
+		{
+			// Environment の更新操作は UpdateEndpointOf で引けないため、引くと panic で失敗する
+			name:   "mode change of an environment compares only the protection of the environment",
+			change: modeChange(t, "staging", observedEnvironment(7, "staging", setting.DeploymentBranchPolicyAll), setting.DeploymentBranchPolicyProtectedBranches),
+			before: []github.ObservationResult{{Environments: environments(observedEnvironment(7, "staging", setting.DeploymentBranchPolicyAll))}},
+			after: github.ObservationResult{Environments: environments(func() github.Environment {
+				e := observedEnvironment(7, "staging", setting.DeploymentBranchPolicyProtectedBranches)
+				e.Protection.CanAdminsBypass = true
+				return e
+			}())},
+			want: []unexpectedOutsideChange{{Setting: "environments.staging.can_admins_bypass", Before: "false", After: "true"}},
 		},
 		{
 			name:   "policy and criteria changed by the logical change are not compared",
@@ -105,7 +117,7 @@ func TestOutsideChangesAt(t *testing.T) {
 			endpoint: github.RepositoryEndpoint,
 			before:   github.ObservationResult{General: github.General{DeleteBranchOnMerge: false}},
 			after:    github.ObservationResult{General: github.General{DeleteBranchOnMerge: true}},
-			want:     []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			want:     []unexpectedOutsideChange{{Setting: string(setting.DeleteBranchOnMerge), Before: "false", After: "true"}},
 		},
 		{
 			name:     "allow_auto_merge change does not report its own setting",
@@ -121,7 +133,7 @@ func TestOutsideChangesAt(t *testing.T) {
 			endpoint: github.RepositoryEndpoint,
 			before:   github.ObservationResult{General: github.General{AllowAutoMerge: false}},
 			after:    github.ObservationResult{General: github.General{AllowAutoMerge: true}},
-			want:     []unexpectedOutsideChange{{Key: setting.AllowAutoMerge, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			want:     []unexpectedOutsideChange{{Setting: string(setting.AllowAutoMerge), Before: "false", After: "true"}},
 		},
 		{
 			name:     "delete_branch_on_merge change does not report its own setting",
@@ -137,7 +149,7 @@ func TestOutsideChangesAt(t *testing.T) {
 			endpoint: github.WorkflowPermissionsEndpoint,
 			before:   github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: false}},
 			after:    github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: true}},
-			want:     []unexpectedOutsideChange{{Key: setting.CanApprovePullRequestReviews, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			want:     []unexpectedOutsideChange{{Setting: string(setting.CanApprovePullRequestReviews), Before: "false", After: "true"}},
 		},
 		{
 			name:     "can_approve_pull_request_reviews change reports different default_workflow_permissions with both values",
@@ -146,9 +158,9 @@ func TestOutsideChangesAt(t *testing.T) {
 			before:   github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: true}},
 			after:    github.ObservationResult{WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: false}},
 			want: []unexpectedOutsideChange{{
-				Key:    setting.DefaultWorkflowPermissions,
-				Before: setting.PermissionLevelValue(setting.PermissionRead),
-				After:  setting.PermissionLevelValue(setting.PermissionWrite),
+				Setting: string(setting.DefaultWorkflowPermissions),
+				Before:  "read",
+				After:   "write",
 			}},
 		},
 		{
@@ -185,7 +197,7 @@ func TestOutsideChangesAt(t *testing.T) {
 			endpoint: github.ActionsPermissionsEndpoint,
 			before:   github.ObservationResult{ActionsPermissions: actionsEnabled(setting.AllowedActionsAll, false)},
 			after:    github.ObservationResult{ActionsPermissions: actionsEnabled(setting.AllowedActionsLocalOnly, true)},
-			want:     []unexpectedOutsideChange{{Key: setting.SHAPinningRequired, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			want:     []unexpectedOutsideChange{{Setting: string(setting.SHAPinningRequired), Before: "false", After: "true"}},
 		},
 		{
 			// 比べられない値を変化なしと推測しない。完了にしないことは、期待状態の確認が観測不能になることで保たれる
@@ -235,7 +247,7 @@ func TestOutsideChangesAt(t *testing.T) {
 			endpoint: github.ActionsPermissionsEndpoint,
 			before:   github.ObservationResult{ActionsPermissions: actionsEnabled(setting.AllowedActionsAll, false)},
 			after:    github.ObservationResult{ActionsPermissions: actionsEnabled(setting.AllowedActionsAll, true)},
-			want:     []unexpectedOutsideChange{{Key: setting.SHAPinningRequired, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+			want:     []unexpectedOutsideChange{{Setting: string(setting.SHAPinningRequired), Before: "false", After: "true"}},
 		},
 		{
 			// apply の実行からは到達しない組。選択方式の Actions 許可条件を変更対象外の設定にする更新エンドポイントがないため、
@@ -252,6 +264,106 @@ func TestOutsideChangesAt(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := outsideChangesAt(tc.endpoint, tc.change.SettingsToChange(), tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("outsideChangesAt() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestEnvironmentProtectionChanges は、Environment の更新操作の変更対象外の設定を、その名前の Environment の保護設定に限って比べる規則を確かめる。
+//
+//trace:checks INV-001
+//trace:checks FR-012
+func TestEnvironmentProtectionChanges(t *testing.T) {
+	staging := mustEnvironmentName(t, "staging")
+	wait := func(minutes int) *int { return &minutes }
+	reviewers := func(preventSelfReview bool, ids ...int64) *setting.RequiredReviewers {
+		r := &setting.RequiredReviewers{PreventSelfReview: preventSelfReview}
+		for _, id := range ids {
+			r.Reviewers = append(r.Reviewers, setting.Reviewer{Type: setting.ReviewerUser, ID: id})
+		}
+		return r
+	}
+	observed := func(protection setting.EnvironmentProtection, others ...github.Environment) github.ObservationResult {
+		e := observedEnvironment(7, "Staging", setting.DeploymentBranchPolicyAll)
+		e.Protection = protection
+		return github.ObservationResult{Environments: environments(append(others, e)...)}
+	}
+	base := setting.EnvironmentProtection{WaitTimer: wait(30), RequiredReviewers: reviewers(true, 1, 2), CanAdminsBypass: true}
+	cases := []struct {
+		name          string
+		before, after github.ObservationResult
+		want          []unexpectedOutsideChange
+	}{
+		{
+			name:   "absent before the update is not compared",
+			before: github.ObservationResult{Environments: environments()},
+			after:  observed(base),
+			want:   nil,
+		},
+		{
+			name:   "absent after the update is not compared",
+			before: observed(base),
+			after:  github.ObservationResult{Environments: environments()},
+			want:   nil,
+		},
+		{
+			name:   "undetermined after the update is not compared",
+			before: observed(base),
+			after:  github.ObservationResult{Environments: environments(observedEnvironment(9, "stagïng", setting.DeploymentBranchPolicyAll))},
+			want:   nil,
+		},
+		{
+			name:   "same protection with reviewers only reordered has no change",
+			before: observed(base),
+			after:  observed(setting.EnvironmentProtection{WaitTimer: wait(30), RequiredReviewers: reviewers(true, 2, 1), CanAdminsBypass: true}),
+			want:   nil,
+		},
+		{
+			name:   "changed protection of another environment is not compared",
+			before: observed(base, observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll)),
+			after: observed(base, func() github.Environment {
+				e := observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll)
+				e.Protection.CanAdminsBypass = true
+				return e
+			}()),
+			want: nil,
+		},
+		{
+			name:   "changed wait_timer is one change",
+			before: observed(base),
+			after:  observed(setting.EnvironmentProtection{RequiredReviewers: reviewers(true, 1, 2), CanAdminsBypass: true}),
+			want:   []unexpectedOutsideChange{{Setting: "environments.staging.wait_timer", Before: "30", After: "none"}},
+		},
+		{
+			name:   "changed required_reviewers is one change",
+			before: observed(base),
+			after:  observed(setting.EnvironmentProtection{WaitTimer: wait(30), RequiredReviewers: reviewers(false, 1, 2), CanAdminsBypass: true}),
+			want: []unexpectedOutsideChange{{
+				Setting: "environments.staging.required_reviewers",
+				Before:  "reviewers: [User 1, User 2], prevent_self_review: true", After: "reviewers: [User 1, User 2], prevent_self_review: false",
+			}},
+		},
+		{
+			name:   "changed can_admins_bypass is one change",
+			before: observed(base),
+			after:  observed(setting.EnvironmentProtection{WaitTimer: wait(30), RequiredReviewers: reviewers(true, 1, 2)}),
+			want:   []unexpectedOutsideChange{{Setting: "environments.staging.can_admins_bypass", Before: "true", After: "false"}},
+		},
+		{
+			name:   "all three changed are three changes in the show order",
+			before: observed(base),
+			after:  observed(setting.EnvironmentProtection{WaitTimer: wait(5)}),
+			want: []unexpectedOutsideChange{
+				{Setting: "environments.staging.wait_timer", Before: "30", After: "5"},
+				{Setting: "environments.staging.required_reviewers", Before: "reviewers: [User 1, User 2], prevent_self_review: true", After: "none"},
+				{Setting: "environments.staging.can_admins_bypass", Before: "true", After: "false"},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := environmentProtectionChanges(staging, tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("environmentProtectionChanges() = %v, want %v", got, tc.want)
 			}
 		})
 	}

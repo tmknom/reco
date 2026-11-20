@@ -46,7 +46,7 @@ type operationRecord struct {
 	precondition preconditionCheck
 	// changedSetting は precondition が preconditionCurrentValueChanged のときだけ意味を持つ、変わっていた関係する現在値の設定。
 	// 副作用として提示した設定や、先行する更新操作が変えた設定が変わっていた場合は、この更新操作が変える設定と異なる。
-	changedSetting setting.Key
+	changedSetting setting.Unit
 	// update は started が真のときだけ意味を持つ。偽のときのゼロ値は、開始しなかった更新操作の結果ではない。
 	update github.UpdateOutcome
 }

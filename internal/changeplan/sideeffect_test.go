@@ -27,7 +27,7 @@ func TestSideEffects(t *testing.T) {
 	}}
 	// policyPlan は、observed を計画時に観測して期待値を desired とした Actions 許可ポリシーの計画を作る。
 	policyPlan := func(observed github.ObservationResult, desired setting.AllowedActionsPolicy) SettingPlan {
-		return newSettingPlan(setting.AllowedActions, observed.Setting(setting.AllowedActions), policyValue(desired))
+		return newSettingPlan(setting.AllowedActions, observed.Setting(setting.Unit{Key: setting.AllowedActions}), policyValue(desired))
 	}
 	cases := []struct {
 		name     string
@@ -67,13 +67,13 @@ func TestSideEffects(t *testing.T) {
 		},
 		{
 			name:     "disabling actions with selected policy has no side effect because GitHub keeps the criteria",
-			plan:     newSettingPlan(setting.ActionsEnabled, selected.Setting(setting.ActionsEnabled), setting.BoolValue(false)),
+			plan:     newSettingPlan(setting.ActionsEnabled, selected.Setting(setting.Unit{Key: setting.ActionsEnabled}), setting.BoolValue(false)),
 			observed: selected,
 			want:     nil,
 		},
 		{
 			name:     "criteria change has no side effect",
-			plan:     newSettingPlan(setting.SelectedActions, selected.Setting(setting.SelectedActions), setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{})),
+			plan:     newSettingPlan(setting.SelectedActions, selected.Setting(setting.Unit{Key: setting.SelectedActions}), setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{})),
 			observed: selected,
 			want:     nil,
 		},
