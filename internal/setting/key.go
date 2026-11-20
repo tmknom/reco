@@ -3,7 +3,8 @@ package setting
 
 import "fmt"
 
-// Key は設定の識別。値は表示にそのまま使う。管理の単位 (ManagementUnits) では、YAML 設定仕様のキーのパスと一致する。
+// Key は設定の識別。リポジトリ設定では、値を表示にそのまま使い、管理の単位 (ManagementUnits) では YAML 設定仕様のキーのパスと一致する。
+// Environment に関わる管理の単位では、Key は形だけを表し、名前との組 (Unit) で一つに定まる。
 type Key string
 
 const (
@@ -16,10 +17,14 @@ const (
 	DefaultWorkflowPermissions   Key = "actions.workflow.default_workflow_permissions"
 	CanApprovePullRequestReviews Key = "actions.workflow.can_approve_pull_request_reviews"
 	ActionsAccessLevel           Key = "actions.access.access_level"
+	// EnvironmentResource は、Environment そのもの (期待値は存在すること) の形。
+	EnvironmentResource Key = "environments"
+	// EnvironmentDeploymentBranchPolicy は、Environment の中のデプロイ元制限の形。
+	EnvironmentDeploymentBranchPolicy Key = "environments.deployment_branch_policy"
 )
 
-// ManagementUnits は、管理の単位 (reco が期待値の宣言を受け付ける設定) を YAML 設定仕様の章と表の並びで返す。
-// 設定グループは一つの Key で表す。
+// ManagementUnits は、リポジトリ設定の管理の単位 (reco が期待値の宣言を受け付ける設定) を YAML 設定仕様の章と表の並びで返す。
+// 設定グループは一つの Key で表す。Environment に関わる管理の単位は、宣言の名前ごとに決まるため含めない。
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
 func ManagementUnits() []Key {
 	return []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel}
@@ -37,6 +42,8 @@ func (k Key) Area() Area {
 		return AreaWorkflowPermissions
 	case ActionsAccessLevel:
 		return AreaActionsAccess
+	case EnvironmentResource, EnvironmentDeploymentBranchPolicy:
+		return AreaEnvironments
 	}
 	panic(fmt.Sprintf("unknown setting %q", k))
 }

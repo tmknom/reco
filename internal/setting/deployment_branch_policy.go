@@ -1,6 +1,8 @@
 package setting
 
 import (
+	"cmp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -20,6 +22,16 @@ const (
 	DeploymentBranchPolicyProtectedBranches DeploymentBranchPolicyMode = "protected_branches"
 	DeploymentBranchPolicySelected          DeploymentBranchPolicyMode = "selected"
 )
+
+// ParseDeploymentBranchPolicyMode は s が定義された方式に完全一致するときだけ、その方式と真を返す。
+func ParseDeploymentBranchPolicyMode(s string) (DeploymentBranchPolicyMode, bool) {
+	switch m := DeploymentBranchPolicyMode(s); m {
+	case DeploymentBranchPolicyAll, DeploymentBranchPolicyProtectedBranches, DeploymentBranchPolicySelected:
+		return m, true
+	default:
+		return "", false
+	}
+}
 
 // DeploymentPattern は、デプロイ元制限の個別パターン。同じかどうかは種類と名前の組で決まり、名前は大文字と小文字を区別する。
 type DeploymentPattern struct {
@@ -53,4 +65,16 @@ func (p DeploymentBranchPolicy) PatternsString() string {
 		formatted[i] = string(pattern.Type) + " " + strconv.Quote(pattern.Name)
 	}
 	return "[" + strings.Join(formatted, ", ") + "]"
+}
+
+// equal は、方式が同じで、個別パターンが種類と名前の組の集合として同じかを返す。
+func (p DeploymentBranchPolicy) equal(other DeploymentBranchPolicy) bool {
+	return p.Mode == other.Mode && slices.Equal(deploymentPatternSet(p.Patterns), deploymentPatternSet(other.Patterns))
+}
+
+// deploymentPatternSet は、保持する並びを表示と送信に使うため、引数を書き換えずに写しを整列する。
+func deploymentPatternSet(patterns []DeploymentPattern) []DeploymentPattern {
+	return slices.Compact(slices.SortedFunc(slices.Values(patterns), func(a, b DeploymentPattern) int {
+		return cmp.Or(cmp.Compare(a.Type, b.Type), cmp.Compare(a.Name, b.Name))
+	}))
 }

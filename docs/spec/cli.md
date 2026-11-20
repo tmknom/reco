@@ -42,7 +42,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 ### 2.3 リポジトリ指定と対象選択
 
-`--repo` の値は、[YAML 設定仕様](configuration.md) の第7.2節で定めるリポジトリ指定です。
+`--repo` の値は、[YAML 設定仕様](configuration.md) の第8.2節で定めるリポジトリ指定です。
 
 `plan` / `apply` の `--repo` には、設定ファイルで宣言したリポジトリだけを指定できます。設定宣言全体は対象選択の有無にかかわらず検証します。
 
@@ -103,7 +103,21 @@ $ GH_TOKEN=$(gh auth token) reco plan
 
 関連リソースの変更予定は、YAML 設定仕様の章の並びのあと、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。
 
-関連リソースの作成と削除は、確認済みの差分として示し、集計の変更予定数に数えます。存在しないと確認できたことは、比較できる事実だからです。作成と削除は、設定の値の変更と見分けられる形で示し、削除では失われる値を示します。宣言に名前のない関連リソースは、変更計画に示しません。表示の形は、関連リソースを足す箇所で定めます。
+関連リソースの作成と削除は、確認済みの差分として示し、集計の変更予定数に数えます。存在しないと確認できたことは、比較できる事実だからです。作成と削除は、設定の値の変更と見分けられる形で示し、削除では失われる値を示します。宣言に名前のない関連リソースは、変更計画に示しません。
+
+関連リソースの作成は、現在値の位置に `absent`、期待値の位置に `present` を置いて示します。`absent` は確かめた事実であり、比較不能の印である括弧には入れません。関連リソースとその中の設定は、`<種類のキー>.<名前>` と `<種類のキー>.<名前>.<設定>` の形で示し、名前は設定宣言に書いた綴りのまま示します。GitHub が大文字小文字の違う綴りで返しても、設定ファイルの行と対応づけられるようにするためです。
+
+Environment では、存在しない Environment の作成と、その Environment の `deployment_branch_policy` を、別の変更予定として示し、集計でもそれぞれ数えます。作成する Environment の `deployment_branch_policy` は、属する先が存在しないため比較不能な設定予定であり、現在値の位置に `(environment absent)` を示します。存在する Environment の `deployment_branch_policy` は、現在値が `selected` なら個別パターンを含めて `selected [<種類> "<名前>", ...]` の形で示します。`selected` から変えると GitHub は個別パターンを残しませんが、個別パターンは同じ管理設定の値の一部であり、現在値に示しているため、`Side effect:` は添えません。
+
+```text
+Repository: example/project-a
+  environments.production: absent -> present
+  environments.production.deployment_branch_policy: (environment absent) -> protected_branches
+  environments.staging.deployment_branch_policy: selected [branch "main", tag "v*"] -> all
+
+Plan: 1 repository to update, 3 changes
+Repositories checked: 1
+```
 
 ```text
 $ reco plan
@@ -178,6 +192,8 @@ Repositories checked: 1
 | Actions が無効 | `(GitHub Actions disabled)` | Actions が動いておらず、この設定は効いていない |
 | Actions 許可ポリシーが `selected` でない（選択方式の Actions 許可条件だけに当たる） | `(not in use)` | 選択方式の Actions 許可条件が使われていない |
 | リポジトリが公開（`access_level` だけに当たる） | `(public repository)` | この設定は公開リポジトリに適用されない |
+| 属する先の Environment が存在しない（Environment の中の設定に当たる） | `(environment absent)` | Environment がないため、この設定もない |
+| 宣言した名前と同じかどうかを判定できない名前の Environment がある（Environment とその中の設定に当たる） | `(existence unknown)` | その名前の Environment が存在するかを確かめられない |
 
 括弧の状態は、観測したリポジトリの状態から決まり、推測した値ではありません。GitHub が保存している値を示すものでもありません。利用者が知りたいのは承認すると何が起きるかであり、その判断には、いま効いている状態と宣言した値があれば足ります。確認済みの差分とは、現在値が括弧で示されることで区別します。
 
@@ -206,7 +222,7 @@ Plan: 1 repository to update, 2 changes
 Repositories checked: 1
 ```
 
-安全な変更に必要な条件を確認できない変更予定には、変更予定の行のすぐ下に `Applicability: not applicable (<理由>)` を添えます。理由は、セミコロンの前に何が成り立っていないかを、後ろに設定ファイルの直し方を示します。適用不能な変更予定が一つでもあれば、`Repositories checked:` の後に空行を挟んで `Plan cannot be applied.` を一度だけ表示します。集計は、適用不能な変更予定と、適用不能な変更予定だけを持つリポジトリも数えます。現在は、Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言した場合と、公開リポジトリで `access_level` を宣言した場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。
+安全な変更に必要な条件を確認できない変更予定には、変更予定の行のすぐ下に `Applicability: not applicable (<理由>)` を添えます。理由は、セミコロンの前に何が成り立っていないかを、後ろに設定ファイルの直し方を示します。適用不能な変更予定が一つでもあれば、`Repositories checked:` の後に空行を挟んで `Plan cannot be applied.` を一度だけ表示します。集計は、適用不能な変更予定と、適用不能な変更予定だけを持つリポジトリも数えます。現在は、Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言した場合と、公開リポジトリで `access_level` を宣言した場合と、宣言した名前と同じかどうかを判定できない名前の Environment があり、宣言した名前の Environment が存在するかを確かめられない場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。
 
 ```text
 Repository: example/project-a
@@ -237,6 +253,19 @@ Repositories checked: 1
 Repository: example/project-a
   actions.access.access_level: (public repository) -> none
     Applicability: not applicable (the repository is public; remove access_level, which applies only to private repositories)
+
+Plan: 1 repository to update, 1 change
+Repositories checked: 1
+
+Plan cannot be applied.
+```
+
+宣言した Environment が存在するかを確かめられない場合（[アーキテクチャ設計](../design/architecture.md) 5.4）、作成すると既存の Environment を変え得るため、その Environment とその中の設定の変更予定は適用不能です。直し方は、その Environment の宣言を設定ファイルから消すことです。
+
+```text
+Repository: example/project-a
+  environments.cafe: (existence unknown) -> present
+    Applicability: not applicable (an environment on GitHub has a name reco cannot compare, such as one with non-ASCII characters; remove this environment from the configuration)
 
 Plan: 1 repository to update, 1 change
 Repositories checked: 1
@@ -290,6 +319,12 @@ Plan cannot be applied.
 
 ```text
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-b: actions.permissions.sha_pinning_required is not applicable; example/project-c: actions.permissions.sha_pinning_required is not applicable; no changes made"}
+```
+
+`apply` は Environment の変更予定（作成と `deployment_branch_policy` の変更）を実行しません。適用不能な変更予定がなく、Environment の変更予定が一つでもあれば、変更計画を表示せず、承認を求めず、どのリポジトリも更新せずにエラー終了します。stderr のエラーは、変更計画の並びで最初の Environment の変更予定の対象と設定を挙げます。
+
+```text
+{"time":"...","level":"ERROR","msg":"command failed","error":"example/project-a: environments.production cannot be applied: applying environment changes is not supported; no changes made"}
 ```
 
 すべて変更不要の場合の表示例は次のとおりです。

@@ -21,20 +21,28 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 	case changeplan.Match:
 		return ""
 	case changeplan.Mismatch:
+		if s.IsCreation() {
+			// 存在しないことは確かめた事実のため、比較不能の印の括弧に入れない
+			current = "absent"
+			break
+		}
 		observed, _ := s.Observed.Value()
 		current = observed.String()
 	case changeplan.NotComparable:
-		current = repositoryStateText(s.Observed.UnavailableReason())
+		current = repositoryStateText(s.UnavailableReason())
 	}
-	desired := s.Desired.String()
+	desired := "present"
+	if s.Key != setting.EnvironmentResource {
+		desired = s.Desired.String()
+	}
 	if s.EnablesActionsByPolicy() {
 		desired += " (enables GitHub Actions)"
 	}
 	if s.Key == setting.SelectedActions {
 		// 3項目を並べた値は長く、1行では -> を見つけにくいため、現在と期待値を別の行に書く
-		fmt.Fprintf(&b, "  %s:\n    %s\n    -> %s\n", s.Key, current, desired)
+		fmt.Fprintf(&b, "  %s:\n    %s\n    -> %s\n", s.Unit().String(), current, desired)
 	} else {
-		fmt.Fprintf(&b, "  %s: %s -> %s\n", s.Key, current, desired)
+		fmt.Fprintf(&b, "  %s: %s -> %s\n", s.Unit().String(), current, desired)
 	}
 	if s.Applicability == changeplan.NotApplicable {
 		fmt.Fprintf(&b, "    Applicability: not applicable (%s)\n", notApplicableReasonText(s.NotApplicableReason))
@@ -58,6 +66,10 @@ func repositoryStateText(reason github.UnavailableReason) string {
 		return "(not in use)"
 	case github.UnavailablePublicRepository:
 		return "(public repository)"
+	case github.UnavailableEnvironmentAbsent:
+		return "(environment absent)"
+	case github.UnavailableEnvironmentNameUndetermined:
+		return "(existence unknown)"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined unavailable reason %d", int(reason)))
 }
@@ -70,6 +82,8 @@ func notApplicableReasonText(reason changeplan.NotApplicableReason) string {
 		return "GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it"
 	case changeplan.NotApplicablePublicRepository:
 		return "the repository is public; remove access_level, which applies only to private repositories"
+	case changeplan.NotApplicableEnvironmentNameUndetermined:
+		return "an environment on GitHub has a name reco cannot compare, such as one with non-ASCII characters; remove this environment from the configuration"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(reason)))
 }

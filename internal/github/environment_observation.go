@@ -1,0 +1,56 @@
+package github
+
+import "github.com/tmknom/reco/internal/setting"
+
+// EnvironmentObservation は、宣言の名前で引いた一つの Environment の関連リソースの観測結果。存在する、存在しない、理由を伴う観測不能のいずれか一つを持つ。
+// 状態を取り違えた値を作れないよう、フィールドを公開せず Environments.Lookup でだけ作る。
+// どの状態でもないゼロ値は作れるが、理由を読もうとすると panic で検出する。
+type EnvironmentObservation struct {
+	state       environmentState
+	environment Environment
+	reason      UnavailableReason
+}
+
+type environmentState int
+
+// ゼロ値をいずれかの状態と取り違えないよう 1 から始める。
+const (
+	environmentExisting environmentState = iota + 1
+	environmentAbsent
+	environmentUnavailable
+)
+
+// Existing は、存在するときだけ、観測した Environment を GitHub の綴りと ID のまま返し、真を返す。
+func (o EnvironmentObservation) Existing() (Environment, bool) {
+	if o.state != environmentExisting {
+		return Environment{}, false
+	}
+	return o.environment, true
+}
+
+// Absent は、存在しないと確かめたときだけ真を返す。観測不能は存在しないことを意味しない。
+func (o EnvironmentObservation) Absent() bool {
+	return o.state == environmentAbsent
+}
+
+// UnavailableReason は観測不能の理由を返す。観測不能でないとき、およびゼロ値では、不変条件の破れとして panic する。
+func (o EnvironmentObservation) UnavailableReason() UnavailableReason {
+	if o.state != environmentUnavailable {
+		panic("github: environment observation is not unavailable")
+	}
+	return o.reason
+}
+
+// DeploymentBranchPolicy は、その Environment の中のデプロイ元制限の設定の観測結果を返す。
+// 存在しない Environment の中の設定は値として読めないため、存在しないことを理由にした観測不能にする。
+func (o EnvironmentObservation) DeploymentBranchPolicy() SettingObservation[setting.Value] {
+	switch o.state {
+	case environmentExisting:
+		return Observed(setting.DeploymentBranchPolicyValue(o.environment.DeploymentBranchPolicy))
+	case environmentAbsent:
+		return Unavailable[setting.Value](UnavailableEnvironmentAbsent)
+	default:
+		// 観測不能のときは同じ理由にし、ゼロ値は UnavailableReason の panic で検出する
+		return Unavailable[setting.Value](o.UnavailableReason())
+	}
+}

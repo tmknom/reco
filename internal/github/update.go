@@ -150,6 +150,8 @@ func updateRequestOf(key setting.Key) updateRequest {
 		return updateRequest{ActionsAccessEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
 			return c.updateAccessLevel(ctx, reference, value.AccessLevel())
 		}}
+	case setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy:
+		// Environment の更新要求は宛先に Environment の名前を含むため、設定の識別だけで引くこの関数では扱えない。
 	}
 	panic("github: no update request for " + string(key))
 }

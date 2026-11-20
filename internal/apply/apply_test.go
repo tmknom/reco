@@ -304,6 +304,27 @@ func TestApplyPlan(t *testing.T) {
 		}
 	})
 
+	t.Run("environment change is rejected without output, approval, or requests", func(t *testing.T) {
+		baseURL, server := newSequenceServer(t)
+		var out bytes.Buffer
+		calls := 0
+		production, err := setting.ParseEnvironmentName("production")
+		if err != nil {
+			t.Fatal(err)
+		}
+		creation := changeplan.SettingPlan{Key: setting.EnvironmentResource, Environment: production, Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
+
+		err = applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch(), creation))
+
+		want := "owner/repo: environments.production cannot be applied: applying environment changes is not supported; no changes made"
+		if err == nil || err.Error() != want {
+			t.Errorf("applyPlan() error = %v, want %q", err, want)
+		}
+		if calls != 0 || out.Len() != 0 || len(server.Methods()) != 0 {
+			t.Errorf("approve calls = %d, Out = %q, requests = %v, want none", calls, out.String(), server.Methods())
+		}
+	})
+
 	t.Run("not-applicable change plan write failure is returned without approval", func(t *testing.T) {
 		calls := 0
 		err := applyPlan(context.Background(), Config{Out: failingWriter{}, Approve: approve(&calls)}, nil, newPlan(t, shaPinningRequiredNotApplicable()))

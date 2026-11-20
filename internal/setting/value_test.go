@@ -201,3 +201,66 @@ func TestValue_SelectedActionsCriteriaIsolatesPatterns(t *testing.T) {
 		}
 	})
 }
+
+//trace:checks FR-005
+func TestDeploymentBranchPolicyValue_Equal(t *testing.T) {
+	selected := func(patterns ...DeploymentPattern) Value {
+		return DeploymentBranchPolicyValue(DeploymentBranchPolicy{Mode: DeploymentBranchPolicySelected, Patterns: patterns})
+	}
+	mode := func(m DeploymentBranchPolicyMode) Value {
+		return DeploymentBranchPolicyValue(DeploymentBranchPolicy{Mode: m})
+	}
+	main := DeploymentPattern{Type: DeploymentPatternBranch, Name: "main"}
+	tagMain := DeploymentPattern{Type: DeploymentPatternTag, Name: "main"}
+	release := DeploymentPattern{Type: DeploymentPatternTag, Name: "v*"}
+	cases := []struct {
+		name  string
+		a, b  Value
+		equal bool
+	}{
+		{name: "same mode is equal", a: mode(DeploymentBranchPolicyProtectedBranches), b: mode(DeploymentBranchPolicyProtectedBranches), equal: true},
+		{name: "different modes differ", a: mode(DeploymentBranchPolicyAll), b: mode(DeploymentBranchPolicyProtectedBranches), equal: false},
+		{name: "patterns differing only in order are equal", a: selected(main, release), b: selected(release, main), equal: true},
+		{name: "different patterns differ", a: selected(main), b: selected(release), equal: false},
+		{name: "same name of a different type differs", a: selected(main), b: selected(tagMain), equal: false},
+		{name: "different kind of value differs", a: mode(DeploymentBranchPolicyAll), b: AllowedActionsPolicyValue(AllowedActionsAll), equal: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.a.Equal(tc.b); got != tc.equal {
+				t.Errorf("Equal() = %t, want %t", got, tc.equal)
+			}
+		})
+	}
+}
+
+//trace:checks FR-007
+func TestDeploymentBranchPolicyValue_String(t *testing.T) {
+	cases := []struct {
+		policy DeploymentBranchPolicy
+		want   string
+	}{
+		{policy: DeploymentBranchPolicy{Mode: DeploymentBranchPolicyAll}, want: "all"},
+		{policy: DeploymentBranchPolicy{Mode: DeploymentBranchPolicyProtectedBranches}, want: "protected_branches"},
+		{
+			policy: DeploymentBranchPolicy{Mode: DeploymentBranchPolicySelected, Patterns: []DeploymentPattern{{Type: DeploymentPatternBranch, Name: "main"}, {Type: DeploymentPatternTag, Name: "v*"}}},
+			want:   `selected [branch "main", tag "v*"]`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.want, func(t *testing.T) {
+			if got := DeploymentBranchPolicyValue(tc.policy).String(); got != tc.want {
+				t.Errorf("String() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDeploymentBranchPolicyValue_KeepsPatternsFromLaterChanges(t *testing.T) {
+	patterns := []DeploymentPattern{{Type: DeploymentPatternBranch, Name: "main"}}
+	v := DeploymentBranchPolicyValue(DeploymentBranchPolicy{Mode: DeploymentBranchPolicySelected, Patterns: patterns})
+	patterns[0].Name = "changed"
+	if got := v.String(); got != `selected [branch "main"]` {
+		t.Errorf("String() = %q, want the patterns at construction", got)
+	}
+}

@@ -198,3 +198,74 @@ func TestRepositoryStateText_UndefinedReasonPanics(t *testing.T) {
 	}()
 	_ = repositoryStateText(0)
 }
+
+// 期待値は CLI 仕様 4章の Environment の表示例から導く。
+//
+//trace:checks FR-005
+//trace:checks FR-006
+//trace:checks FR-007
+func TestPlannedChangeText_Environments(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	protected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches})
+	all := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll})
+	selected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{
+		{Type: setting.DeploymentPatternBranch, Name: "main"}, {Type: setting.DeploymentPatternTag, Name: "v*"},
+	}})
+	undetermined := github.Environments{Existing: []github.Environment{{Name: "café"}}}.Lookup(production)
+	const notApplicable = "    Applicability: not applicable (an environment on GitHub has a name reco cannot compare, such as one with non-ASCII characters; remove this environment from the configuration)\n"
+	cases := []struct {
+		name string
+		s    changeplan.SettingPlan
+		want string
+	}{
+		{
+			name: "matched environment is not shown",
+			s:    changeplan.SettingPlan{Key: setting.EnvironmentResource, Environment: production, Result: changeplan.Match},
+			want: "",
+		},
+		{
+			name: "creation shows absent -> present",
+			s:    changeplan.SettingPlan{Key: setting.EnvironmentResource, Environment: production, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+			want: "  environments.production: absent -> present\n",
+		},
+		{
+			name: "mode of an environment to create shows environment absent as the state",
+			s: changeplan.SettingPlan{
+				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
+				Desired: protected, Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
+			},
+			want: "  environments.production.deployment_branch_policy: (environment absent) -> protected_branches\n",
+		},
+		{
+			name: "mode changed from selected shows the patterns in the current value without a side effect",
+			s: changeplan.SettingPlan{
+				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Observed(selected),
+				Desired: all, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+			},
+			want: "  environments.production.deployment_branch_policy: selected [branch \"main\", tag \"v*\"] -> all\n",
+		},
+		{
+			name: "environment whose existence is unknown shows the state and why it is not applicable",
+			s: changeplan.SettingPlan{
+				Key: setting.EnvironmentResource, Environment: production, ObservedEnvironment: undetermined, Result: changeplan.NotComparable,
+				Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableEnvironmentNameUndetermined,
+			},
+			want: "  environments.production: (existence unknown) -> present\n" + notApplicable,
+		},
+		{
+			name: "mode of an environment whose existence is unknown shows the same state",
+			s: changeplan.SettingPlan{
+				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined),
+				Desired: protected, Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableEnvironmentNameUndetermined,
+			},
+			want: "  environments.production.deployment_branch_policy: (existence unknown) -> protected_branches\n" + notApplicable,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := PlannedChangeText(tc.s); got != tc.want {
+				t.Errorf("PlannedChangeText() =\n%q\nwant\n%q", got, tc.want)
+			}
+		})
+	}
+}

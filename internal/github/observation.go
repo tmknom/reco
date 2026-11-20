@@ -76,6 +76,8 @@ func (o ObservationResult) Setting(key setting.Key) SettingObservation[setting.V
 		return Observed(setting.BoolValue(o.WorkflowPermissions.CanApprovePullRequestReviews))
 	case setting.ActionsAccessLevel:
 		return valueObservation(o.ActionsAccess.AccessLevel, setting.AccessLevelValue)
+	case setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy:
+		// Environment の管理の単位は名前との組で識別し、観測は Environments.Lookup で引くため、この関数では引けない。
 	}
 	panic(fmt.Sprintf("unknown setting %q", key))
 }

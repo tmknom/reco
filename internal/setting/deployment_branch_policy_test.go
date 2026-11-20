@@ -26,6 +26,30 @@ func TestParseDeploymentPatternType(t *testing.T) {
 	}
 }
 
+//trace:checks FR-001
+func TestParseDeploymentBranchPolicyMode(t *testing.T) {
+	cases := []struct {
+		name   string
+		input  string
+		want   DeploymentBranchPolicyMode
+		wantOK bool
+	}{
+		{name: "all is accepted", input: "all", want: DeploymentBranchPolicyAll, wantOK: true},
+		{name: "protected_branches is accepted", input: "protected_branches", want: DeploymentBranchPolicyProtectedBranches, wantOK: true},
+		{name: "selected is accepted", input: "selected", want: DeploymentBranchPolicySelected, wantOK: true},
+		{name: "different case is rejected", input: "All"},
+		{name: "empty string is rejected", input: ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := ParseDeploymentBranchPolicyMode(tc.input)
+			if got != tc.want || ok != tc.wantOK {
+				t.Errorf("ParseDeploymentBranchPolicyMode(%q) = (%q, %t), want (%q, %t)", tc.input, got, ok, tc.want, tc.wantOK)
+			}
+		})
+	}
+}
+
 //trace:checks FR-004
 func TestDeploymentBranchPolicy_PatternsString(t *testing.T) {
 	cases := []struct {

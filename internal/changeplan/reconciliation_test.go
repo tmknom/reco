@@ -255,6 +255,19 @@ func TestManagedAreas(t *testing.T) {
 			},
 			want: []setting.Area{setting.AreaGeneral, setting.AreaActionsPermissions, setting.AreaWorkflowPermissions},
 		},
+		{
+			name:    "environments alone include environments",
+			desired: configuration.DesiredState{Environments: []configuration.EnvironmentDeclaration{{Name: mustEnvironmentName(t, "production")}}},
+			want:    []setting.Area{setting.AreaEnvironments},
+		},
+		{
+			name: "environments follow the repository settings areas",
+			desired: configuration.DesiredState{
+				General:      configuration.General{AllowAutoMerge: new(true)},
+				Environments: []configuration.EnvironmentDeclaration{{Name: mustEnvironmentName(t, "production")}},
+			},
+			want: []setting.Area{setting.AreaGeneral, setting.AreaEnvironments},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -262,5 +275,29 @@ func TestManagedAreas(t *testing.T) {
 				t.Errorf("managedAreas() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+//trace:checks FR-001
+//trace:checks INV-001
+func TestReconcile_Environments(t *testing.T) {
+	zeta, alpha := mustEnvironmentName(t, "zeta"), mustEnvironmentName(t, "alpha")
+	desired := configuration.DesiredState{
+		General:      configuration.General{AllowAutoMerge: new(true)},
+		Environments: []configuration.EnvironmentDeclaration{{Name: zeta}, {Name: alpha}},
+	}
+	observed := github.ObservationResult{
+		General:      github.General{AllowAutoMerge: true},
+		Environments: &github.Environments{Existing: []github.Environment{{Name: "alpha"}, {Name: "undeclared"}, {Name: "zeta"}}},
+	}
+	got := reconcile(desired, observed)
+	var units []string
+	for _, s := range got {
+		units = append(units, s.Unit().String())
+	}
+	// リポジトリ設定のあとに宣言の並びで続き、宣言していない Environment は現れない
+	want := []string{"general.allow_auto_merge", "environments.zeta", "environments.alpha"}
+	if !reflect.DeepEqual(units, want) {
+		t.Errorf("reconcile() units = %v, want %v", units, want)
 	}
 }

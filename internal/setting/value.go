@@ -11,12 +11,13 @@ import (
 // 種別ごとに使わないフィールドをゼロ値に保つため、フィールドを公開せず、コンストラクタでだけ作る。
 // 二つの値が同じかどうかは Equal で判定する。許可パターンのスライスを持つため、== はコンパイルエラーになる。
 type Value struct {
-	kind        valueKind
-	boolean     bool
-	level       PermissionLevel
-	policy      AllowedActionsPolicy
-	criteria    SelectedActionsCriteria
-	accessLevel AccessLevel
+	kind         valueKind
+	boolean      bool
+	level        PermissionLevel
+	policy       AllowedActionsPolicy
+	criteria     SelectedActionsCriteria
+	accessLevel  AccessLevel
+	branchPolicy DeploymentBranchPolicy
 }
 
 type valueKind int
@@ -28,6 +29,7 @@ const (
 	kindAllowedActionsPolicy
 	kindSelectedActionsCriteria
 	kindAccessLevel
+	kindDeploymentBranchPolicy
 )
 
 // BoolValue は、真偽値の設定の値を作る。
@@ -57,6 +59,13 @@ func AccessLevelValue(level AccessLevel) Value {
 	return Value{kind: kindAccessLevel, accessLevel: level}
 }
 
+// DeploymentBranchPolicyValue は、Environment のデプロイ元制限の値を作る。
+// 呼び出し側があとで書き換えても値が変わらないように、個別パターンを複製して持つ。
+func DeploymentBranchPolicyValue(policy DeploymentBranchPolicy) Value {
+	policy.Patterns = slices.Clone(policy.Patterns)
+	return Value{kind: kindDeploymentBranchPolicy, branchPolicy: policy}
+}
+
 // Equal は、二つの値が設定の意味で同じ値かどうかを返す。
 // 値のないゼロ値は設定の値ではなく、比べようとするのは不変条件の破れのため panic する。
 // 同じ値として扱うと、確かめていない値が一致や変更前提の成立として黙って通るため。
@@ -70,7 +79,8 @@ func (v Value) Equal(other Value) bool {
 		v.level == other.level &&
 		v.policy == other.policy &&
 		v.criteria.equal(other.criteria) &&
-		v.accessLevel == other.accessLevel
+		v.accessLevel == other.accessLevel &&
+		v.branchPolicy.equal(other.branchPolicy)
 }
 
 // String は、表示に使う表記で値を返す。値のないゼロ値を表示しようとするのは不変条件の破れのため panic する。
@@ -89,6 +99,11 @@ func (v Value) String() string {
 			", patterns_allowed: " + v.criteria.PatternsAllowedString()
 	case kindAccessLevel:
 		return string(v.accessLevel)
+	case kindDeploymentBranchPolicy:
+		if v.branchPolicy.Mode == DeploymentBranchPolicySelected {
+			return string(v.branchPolicy.Mode) + " " + v.branchPolicy.PatternsString()
+		}
+		return string(v.branchPolicy.Mode)
 	case kindNone:
 	}
 	panic("setting: no value to format")
