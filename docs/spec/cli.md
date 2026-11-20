@@ -66,7 +66,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 環境変数の優先順位は [GitHub CLI の環境変数仕様](https://cli.github.com/manual/gh_help_environment) と同じですが、reco が GitHub CLI の認証機構を利用することは意味しません。
 
-reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。
+reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章、[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。`show` が読み取る Environment と個別パターンの一覧には、GitHub App の権限の分類で Actions の read に当たる権限が要ります。ほかのトークンがこの権限を持たず、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。
 
 ```text
 $ GH_TOKEN=$(gh auth token) reco plan
@@ -81,6 +81,8 @@ $ GH_TOKEN=$(gh auth token) reco plan
 | `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
 | `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
 | `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Internal Document |
+| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Internal Document |
 
 ## 4. `plan`：変更計画の確認
 
@@ -557,7 +559,7 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 
 ## 6. `show`：現在状態の表示
 
-`show` は設定宣言を使用せず、指定リポジトリについて GitHub から確認できたサポート対象の設定を表示します。認証・権限・通信による観測操作の失敗は、正常な観測結果ではなくエラーとします。GitHub の設定は変更しません。
+`show` は設定宣言を使用せず、指定リポジトリについて GitHub から確認できた設定と関連リソースを表示します。認証・権限・通信による観測操作の失敗は、正常な観測結果ではなくエラーとします。GitHub の設定は変更しません。
 
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
@@ -580,6 +582,7 @@ Workflow permissions:
   can_approve_pull_request_reviews: false
 Actions access:
   access_level: none
+Environments: none
 ```
 
 `allowed_actions` が `selected` のときは、`selected_actions` の3項目を字下げして、`sha_pinning_required` の前に示します。`patterns_allowed` は、パターンを二重引用符で囲んで並べます。空の集合は `[]` と示します。
@@ -609,6 +612,36 @@ Actions access:
   access_level: unavailable (the repository is public)
 ```
 
+関連リソースは、種類ごとの節に、存在するものをすべて示します。並びは GitHub が一覧で返した順で、reco は並べ替えません。名前は二重引用符で囲み、制御文字をエスケープして示します。一つもないときは、節を省かず、節の見出しに `none` と示します。節を省くと、存在しないと確かめたことと、reco がその種類を表示しないことを区別できないためです。
+
+Environment は `Environments:` の節に示します。Environment ごとに示す項目は次のとおりです。
+
+- **`deployment_branch_policy`**：`mode` に、デプロイ元制限の方式（`all`、`protected_branches`、`selected`）を示す。`selected` のときに限り、`patterns` に個別パターンを `<種類> "<名前>"` の形で、GitHub が返した順に並べる。種類は `branch` か `tag` で、空の集合は `[]` と示す
+- **`wait_timer`**：デプロイを待たせる分数。この保護ルールがなければ `none` と示す
+- **`required_reviewers`**：この保護ルールがなければ `none` と示す。あれば、`reviewers` にレビュアーを `User <ID>` か `Team <ID>` の形で並べ、`prevent_self_review` を示す
+- **`can_admins_bypass`**：管理者が保護ルールを迂回できるか
+
+`wait_timer`、`required_reviewers`、`can_admins_bypass` は reco が宣言を受け付けない設定ですが、確認できた値を示します。
+
+```text
+Environments:
+  - name: "production"
+    deployment_branch_policy:
+      mode: selected
+      patterns: [branch "main", branch "release/*", tag "v*"]
+    wait_timer: 30
+    required_reviewers:
+      reviewers: [User 583231, Team 42]
+      prevent_self_review: true
+    can_admins_bypass: false
+  - name: "staging"
+    deployment_branch_policy:
+      mode: protected_branches
+    wait_timer: none
+    required_reviewers: none
+    can_admins_bypass: true
+```
+
 権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。行を省かず、欠けた項目を示してエラーとします。
 
 `show` の表示は人が読むためのものであり、設定宣言として再利用できる形式ではありません。
@@ -619,6 +652,8 @@ Actions access:
 | `alignment` | `QR-002` | Quality Requirement |
 | `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
 | `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Internal Document |
+| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Internal Document |
 
 ## 7. 出力と終了コード
 
@@ -678,3 +713,5 @@ GitHub は、名前変更前の名前で指定したリポジトリへの要求�
 - [GitHub REST API 共通仕様](../research/rest-api.md)
 - [GitHub リポジトリ API 仕様](../research/repositories.md)
 - [GitHub Actions 権限 API 仕様](../research/actions-permissions.md)
+- [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md)
+- [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md)

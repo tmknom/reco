@@ -96,6 +96,7 @@ Go の package は、2.1節の領域を次の考え方で分けます。
 - Change Execution は Apply と同じ package に置く。承認済み計画を実行する経路を Apply に限定し、ほかの操作から更新機能へ進む依存を作らないため
 - 四つの文脈が共有する語（[ドメインモデル](domain.md) 4.9節）は、どの文脈の package にも依存しない package に置き、文脈ごとの判断を持ち込まない。宣言と観測が同じ定義を使い、片方だけが変わることを防ぐため
 - 関連リソースの種類と名前による識別は、設定の識別と同じ package に置く。どの管理の単位を指すかは四つの文脈が共有する語であり、リポジトリ設定と関連リソースで識別の置き場を分けると、管理の単位を並べる順や設定の領域との対応を二か所で持つことになるため。存在することと存在しないことの表現も、期待値と観測結果を同じ判定で比べるため、設定の値と同じ package に置く。関連リソースの観測結果（存在する、存在しない、観測不能）と GitHub が付ける ID は、観測の文脈の package に置く
+- reco が観測するが宣言を受け付けない設定の値（Environment の保護設定）も、設定の値と同じ package に置く。宣言を受け付けるようになったときに、観測と宣言が同じ定義を使うため
 - 複数の操作が同じ形で示す表示のうち、変更計画の概念で決まるもの（変更計画の表示。リポジトリごとの節、変更予定の行、`Side effect:`、集計）は、操作の package の外の一つの package に置く。Plan と Apply が同じ変更予定を別々の形で示すことを防ぐため。この package は変更計画に依存するため、Show からは使わない
 - 観測不能をどう示すかは、操作ごとの表示が決め、観測不能という概念と表示の文言を一つに結び付けない。同じ観測不能でも、利用者がその場面で知りたいことが操作ごとに違うため（示し方は [CLI 仕様](../spec/cli.md)）
 
@@ -124,13 +125,29 @@ API の成功応答を受け取ったことだけでは、必要な設定値を�
 
 リポジトリ ID を返す `GET /repos/{owner}/{repo}` は General の値も返すため、どの観測も General を含みます。Workflow permissions の応答はリポジトリ ID を含まないため（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 5.1）、Workflow permissions は別の読み取り要求で読み、その要求は `GET /repos/{owner}/{repo}` が成功したときだけ送ります。いずれかの要求が失敗すれば観測操作の失敗であり、取得できた値だけの観測結果は作りません。
 
-Actions の実行許可は、二つの読み取り要求で読みます。`GET /repos/{owner}/{repo}/actions/permissions` は `GET /repos/{owner}/{repo}` が成功したときだけ送ります。`GET /repos/{owner}/{repo}/actions/permissions/selected-actions` は、Actions 許可ポリシーを `selected` と観測したときだけ送ります。それ以外のときは GitHub が取得を拒否するためです（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 4章）。一回の観測で複数の設定の領域を読むときは、General、Actions の実行許可、Workflow permissions、リポジトリ外のワークフローからのアクセスの順に読み取り要求を送ります。
+Actions の実行許可は、二つの読み取り要求で読みます。`GET /repos/{owner}/{repo}/actions/permissions` は `GET /repos/{owner}/{repo}` が成功したときだけ送ります。`GET /repos/{owner}/{repo}/actions/permissions/selected-actions` は、Actions 許可ポリシーを `selected` と観測したときだけ送ります。それ以外のときは GitHub が取得を拒否するためです（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 4章）。一回の観測で複数の設定の領域を読むときは、General、Actions の実行許可、Workflow permissions、リポジトリ外のワークフローからのアクセス、Environments の順に読み取り要求を送ります。
 
 リポジトリ外のワークフローからのアクセスは、`GET /repos/{owner}/{repo}/actions/permissions/access` で読みます。この要求は、`GET /repos/{owner}/{repo}` の応答の `private` が真のときだけ送ります。公開リポジトリには設定が適用されず、GitHub が取得を拒否するためです（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 6章）。送るかどうかは `private` の観測値で決め、取得の `422` から公開であることを推測しません。権限のない公開リポジトリには `403` が返り、`422` が公開範囲だけを理由に返るとは確かめられていないためです。個人アカウント所有のリポジトリは internal の公開範囲を持たないため、`private` の真偽で足ります（[GitHub リポジトリ API 仕様](../research/repositories.md) 3章）。`private` は、どの設定の領域を読む観測でも取得契約に含め、欠けた応答は取得契約に適合しない応答とします。欠けた `private` を公開とみなすと、取得条件による観測不能を根拠なく作るためです。
 
-関連リソースが存在しないことは、その種類の一覧の成功応答に名前がないことで確かめます。名前を指定した取得に対する `404` は、権限の不足でも返り得るため、存在しないことの確認に使いません。一覧は全ページを読みます。途中のページの読み取りが失敗した場合は観測操作の失敗であり、読めたページだけの観測結果は作りません。読めた範囲に名前がないことから、存在しないとは判断しません。次のページの求め方と、すべてのページを読めたことの確かめ方は、最初に一覧を読む機能で、実際の動作を確かめてから定めます。どの求め方でも、次のページへの要求は 5.2節の送信先の限定に従い、GitHub.com の REST API 以外へは送りません。一覧の成功応答が、その種類の関連リソースをすべて含むことも、種類ごとに実際の動作で確かめます。一覧に名前があるかどうかは、GitHub がその種類で名前を同じとみなす規則（大文字と小文字を区別するかなど）で判定します。この規則を実際の動作で確かめていない種類では、一覧に名前がないことから存在しないとは判断しません。規則を誤ると、存在する関連リソースを存在しないと判断し、作成の要求で上書きし得るためです。
+関連リソースが存在しないことは、その種類の一覧の成功応答に名前がないことで確かめます。名前を指定した取得に対する `404` は、権限の不足でも返り得るため、存在しないことの確認に使いません。一覧は全ページを読みます。途中のページの読み取りが失敗した場合は観測操作の失敗であり、読めたページだけの観測結果は作りません。読めた範囲に名前がないことから、存在しないとは判断しません。一覧の成功応答が、その種類の関連リソースをすべて含むことも、種類ごとに実際の動作で確かめます。一覧に名前があるかどうかは、GitHub がその種類で名前を同じとみなす規則（大文字と小文字を区別するかなど）で判定します。この規則を実際の動作で確かめていない種類では、一覧に名前がないことから存在しないとは判断しません。規則を誤ると、存在する関連リソースを存在しないと判断し、作成の要求で上書きし得るためです。
 
-Environment では、一覧について次を実際の動作で確かめています（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md)）。一覧の成功応答は、確かめた件数の範囲で、作成と削除の直後も含めて、存在する Environment をすべて含みました。GitHub は Environment の名前を、ASCII の英字の大文字と小文字を区別せずに同じ名前とみなし、応答の名前には作成したときの綴りを返します。ASCII 以外の文字の大文字と小文字の扱いは確かめていないため、その違いだけで一覧の名前と異なる名前は、存在しないと判断しません。ページを分けたときの応答（`total_count` と、`Link` ヘッダーが示す URL の形）も確かめており、次のページの求め方は、この結果をもとに、最初に一覧を読む機能で定めます。
+Environment では、一覧について次を実際の動作で確かめています（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md)）。一覧の成功応答は、確かめた件数の範囲で、作成と削除の直後も含めて、存在する Environment をすべて含みました。GitHub は Environment の名前を、ASCII の英字の大文字と小文字を区別せずに同じ名前とみなし、応答の名前には作成したときの綴りを返します。ASCII 以外の文字の大文字と小文字の扱いは確かめていないため、その違いだけで一覧の名前と異なる名前は、存在しないと判断しません。ページを分けたときの応答（`total_count` と、`Link` ヘッダーが示す URL の形）も確かめています。
+
+一覧は、`per_page` に上限の `100` を、`page` に `1` から順の番号を付けて読みます。応答の `total_count` を全件数とし、読んだ要素の数が `total_count` に達したら読み終えたとします。達するまでは次のページを読み、次の場合は観測操作の失敗とします。
+
+- 要素が一つもないページを、全件に達する前に受けた
+- 読んだ要素の数が `total_count` を超えた
+- `total_count` が、同じ一覧の1ページ目と異なった
+- 100ページを読んでも全件に達しない
+- `total_count` か要素の配列が欠けた
+
+件数が食い違う一覧は、読んでいるあいだに関連リソースが増減した可能性があり、ページの境目で要素を読み落とし得るためです。件数が変わらない入れ替わり（1件が消え、1件が増えた）は検出できません。次のページへの要求は、reco が組み立てた `/repos/{owner}/{repo}/...` の URL にだけ送り、応答の `Link` ヘッダーは読みません。`Link` の URL は `/repositories/{repository_id}/...` の形で reco が組み立てる URL と異なり（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 3.1）、たどると送信先を応答の内容に委ねることになるためです（5.2節）。ページ数の上限は、異常な応答で要求を送り続けないためのものです。
+
+Environments は、`GET /repos/{owner}/{repo}/environments` の全ページで読みます。一覧の要素は個別取得の本文と全フィールドが一致するため（GitHub デプロイ環境 API 仕様 3.1）、Environment ごとの個別取得は送りません。デプロイ元制限の方式は `deployment_branch_policy` から決めます。`null` は `all`、`protected_branches` だけが真なら `protected_branches`、`custom_branch_policies` だけが真なら `selected` です。両方が同じ値の組は GitHub が更新で受け付けないため（同 1章）、取得で受けたら取得契約に適合しない応答とします。
+
+個別パターンは、`GET /repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies` の全ページで読みます。この要求は、方式を `selected` と観測した Environment にだけ、一覧の並びで送ります。`selected` でないときは GitHub が `404` を返すためです（[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章）。`selected` と観測したあとの失敗は、`404` を含めて観測操作の失敗とします。Environment の名前は、パスの1要素としてエスケープして送ります。`.` と `..` はエスケープしても別の経路を指すため、その名前の Environment の個別パターンは読まず、観測操作の失敗とします。
+
+Environments に、取得条件による観測不能はありません。非公開リポジトリでも一覧と個別パターンを取得できたためです（GitHub デプロイ環境 API 仕様 1.1）。Environment の取得契約は、`id`、`name`、`deployment_branch_policy`、`protection_rules`、`can_admins_bypass` がそろうことです。`can_admins_bypass` は公式のスキーマにありませんが、常に返ることを確かめています（同 3.2）。保護ルールは `type` で読み分け、`wait_timer` と `required_reviewers` の値を読みます。それ以外の `type` の要素は読みません。個別パターンの取得契約は、`id`、`name`、`type` がそろい、`type` が `branch` か `tag` であることです。
 
 関連リソースの一覧は、その種類が属する設定の領域を読み取る観測でだけ読みます。`show` は reco が観測するすべての種類の一覧を読み、`plan` と `apply` は宣言された設定の領域の一覧だけを読みます。別の関連リソースに属する関連リソースは、属する先が存在すると確かめたときだけ読み、存在しないときは、属する先が存在しないことを理由とする観測不能とします。
 
@@ -161,6 +178,7 @@ Change Planning は照合とは別に適用可能性（Applicability）を判断
 | `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
 | `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
 | `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Internal Document |
+| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Internal Document |
 
 ### 3.3 変更計画と実行単位
 
@@ -495,3 +513,4 @@ GitHub は、セカンダリのレート制限を避けるため、更新系の�
 - [GitHub リポジトリ API 仕様](../research/repositories.md)
 - [GitHub Actions 権限 API 仕様](../research/actions-permissions.md)
 - [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md)
+- [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md)

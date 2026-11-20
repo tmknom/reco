@@ -33,6 +33,7 @@ func TestWriteObservationResult(t *testing.T) {
 	}
 	readOnly := &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: false}
 	notShared := &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessNone)}
+	noEnvironments := &github.Environments{}
 	cases := []struct {
 		name     string
 		observed github.ObservationResult
@@ -46,11 +47,13 @@ func TestWriteObservationResult(t *testing.T) {
 				ActionsPermissions:  allPolicy,
 				WorkflowPermissions: readOnly,
 				ActionsAccess:       notShared,
+				Environments:        noEnvironments,
 			},
 			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: true\n  allow_auto_merge: false\n" +
 				"Actions permissions:\n  enabled: true\n  allowed_actions: all\n  sha_pinning_required: true\n" +
 				"Workflow permissions:\n  default_workflow_permissions: read\n  can_approve_pull_request_reviews: false\n" +
-				"Actions access:\n  access_level: none\n",
+				"Actions access:\n  access_level: none\n" +
+				"Environments: none\n",
 		},
 		{
 			name: "opposite values are shown as observed",
@@ -60,11 +63,13 @@ func TestWriteObservationResult(t *testing.T) {
 				ActionsPermissions:  allPolicy,
 				WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: true},
 				ActionsAccess:       &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessUser)},
+				Environments:        noEnvironments,
 			},
 			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: false\n  allow_auto_merge: true\n" +
 				"Actions permissions:\n  enabled: true\n  allowed_actions: all\n  sha_pinning_required: true\n" +
 				"Workflow permissions:\n  default_workflow_permissions: write\n  can_approve_pull_request_reviews: true\n" +
-				"Actions access:\n  access_level: user\n",
+				"Actions access:\n  access_level: user\n" +
+				"Environments: none\n",
 		},
 		{
 			name: "selected policy shows the three criteria indented",
@@ -82,12 +87,14 @@ func TestWriteObservationResult(t *testing.T) {
 				},
 				WorkflowPermissions: readOnly,
 				ActionsAccess:       notShared,
+				Environments:        noEnvironments,
 			},
 			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: false\n  allow_auto_merge: false\n" +
 				"Actions permissions:\n  enabled: true\n  allowed_actions: selected\n  selected_actions:\n" +
 				"    github_owned_allowed: true\n    verified_allowed: false\n    patterns_allowed: [\"actions/checkout@v4\", \"example/*\"]\n  sha_pinning_required: false\n" +
 				"Workflow permissions:\n  default_workflow_permissions: read\n  can_approve_pull_request_reviews: false\n" +
-				"Actions access:\n  access_level: none\n",
+				"Actions access:\n  access_level: none\n" +
+				"Environments: none\n",
 		},
 		{
 			name: "disabled actions shows only enabled without the policy, the criteria, and sha_pinning_required",
@@ -100,11 +107,13 @@ func TestWriteObservationResult(t *testing.T) {
 				},
 				WorkflowPermissions: readOnly,
 				ActionsAccess:       notShared,
+				Environments:        noEnvironments,
 			},
 			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: false\n  allow_auto_merge: false\n" +
 				"Actions permissions:\n  enabled: false\n" +
 				"Workflow permissions:\n  default_workflow_permissions: read\n  can_approve_pull_request_reviews: false\n" +
-				"Actions access:\n  access_level: none\n",
+				"Actions access:\n  access_level: none\n" +
+				"Environments: none\n",
 		},
 		{
 			name: "public repository shows the access level as unavailable with the reason",
@@ -113,11 +122,13 @@ func TestWriteObservationResult(t *testing.T) {
 				ActionsPermissions:  allPolicy,
 				WorkflowPermissions: readOnly,
 				ActionsAccess:       &github.ActionsAccess{AccessLevel: github.Unavailable[setting.AccessLevel](github.UnavailablePublicRepository)},
+				Environments:        noEnvironments,
 			},
 			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: false\n  allow_auto_merge: false\n" +
 				"Actions permissions:\n  enabled: true\n  allowed_actions: all\n  sha_pinning_required: true\n" +
 				"Workflow permissions:\n  default_workflow_permissions: read\n  can_approve_pull_request_reviews: false\n" +
-				"Actions access:\n  access_level: unavailable (the repository is public)\n",
+				"Actions access:\n  access_level: unavailable (the repository is public)\n" +
+				"Environments: none\n",
 		},
 	}
 	for _, tc := range cases {
@@ -133,7 +144,7 @@ func TestWriteObservationResult(t *testing.T) {
 	}
 
 	t.Run("write failure is returned", func(t *testing.T) {
-		observed := github.ObservationResult{ActionsPermissions: allPolicy, WorkflowPermissions: readOnly, ActionsAccess: notShared}
+		observed := github.ObservationResult{ActionsPermissions: allPolicy, WorkflowPermissions: readOnly, ActionsAccess: notShared, Environments: noEnvironments}
 		err := writeObservationResult(failingWriter{}, target, observed)
 		if !errors.Is(err, errWrite) {
 			t.Errorf("writeObservationResult() error = %v, want %v", err, errWrite)
@@ -160,6 +171,7 @@ const (
 	actionsPermissionsPath  = "/repos/owner/repo/actions/permissions"
 	workflowPermissionsPath = "/repos/owner/repo/actions/permissions/workflow"
 	actionsAccessPath       = "/repos/owner/repo/actions/permissions/access"
+	environmentsPath        = "/repos/owner/repo/environments"
 )
 
 //trace:checks FR-004
@@ -172,6 +184,9 @@ func TestRun(t *testing.T) {
 			"GET " + actionsPermissionsPath:  githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "local_only"}.JSON()),
 			"GET " + workflowPermissionsPath: githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "write", CanApprovePullRequestReviews: true}.JSON()),
 			"GET " + actionsAccessPath:       githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "user"}.JSON()),
+			"GET " + environmentsPath: githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 1, Environments: []githubtest.EnvironmentBody{
+				{ID: 2, Name: "staging"},
+			}}.JSON()),
 		}))
 		var out bytes.Buffer
 		cfg := Config{Token: "test-token", Target: target, Out: &out, GitHubOptions: []github.Option{github.WithBaseURL(server.URL())}}
@@ -179,7 +194,7 @@ func TestRun(t *testing.T) {
 		if err := Run(context.Background(), cfg); err != nil {
 			t.Fatalf("Run() error = %v", err)
 		}
-		want := []string{"GET " + repositoryPath, "GET " + actionsPermissionsPath, "GET " + workflowPermissionsPath, "GET " + actionsAccessPath}
+		want := []string{"GET " + repositoryPath, "GET " + actionsPermissionsPath, "GET " + workflowPermissionsPath, "GET " + actionsAccessPath, "GET " + environmentsPath}
 		if got := server.RequestLines(); !slices.Equal(got, want) {
 			t.Errorf("got requests %v, want %v", got, want)
 		}
@@ -188,8 +203,10 @@ func TestRun(t *testing.T) {
 				t.Errorf("got Authorization %q, want it to contain the token", r.Authorization)
 			}
 		}
-		if !strings.Contains(out.String(), "default_workflow_permissions: write") {
-			t.Errorf("got Out %q, want it to contain the observed default_workflow_permissions", out.String())
+		for _, observed := range []string{"default_workflow_permissions: write", `- name: "staging"`} {
+			if !strings.Contains(out.String(), observed) {
+				t.Errorf("got Out %q, want it to contain %q", out.String(), observed)
+			}
 		}
 	})
 

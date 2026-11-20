@@ -43,6 +43,45 @@ func TestBodies(t *testing.T) {
 			body: ActionsAccessBody{AccessLevel: "user"}.JSON(),
 			want: map[string]any{"access_level": "user"},
 		},
+		{
+			name: "environments body without protection rules has a null policy and an empty rule array",
+			body: EnvironmentsBody{TotalCount: 3, Environments: []EnvironmentBody{{ID: 1, Name: "dev", CanAdminsBypass: true}}}.JSON(),
+			want: map[string]any{"total_count": float64(3), "environments": []any{
+				map[string]any{"id": float64(1), "name": "dev", "can_admins_bypass": true, "protection_rules": []any{}, "deployment_branch_policy": nil},
+			}},
+		},
+		{
+			name: "environments body with every protection rule has them in the GitHub order",
+			body: EnvironmentsBody{TotalCount: 1, Environments: []EnvironmentBody{{
+				ID:                     2,
+				Name:                   "prod",
+				DeploymentBranchPolicy: &DeploymentBranchPolicyBody{CustomBranchPolicies: true},
+				WaitTimer:              new(5),
+				RequiredReviewers:      &RequiredReviewersBody{PreventSelfReview: true, Reviewers: []ReviewerBody{{Type: "Team", ID: 9}}},
+			}}}.JSON(),
+			want: map[string]any{"total_count": float64(1), "environments": []any{
+				map[string]any{
+					"id":                float64(2),
+					"name":              "prod",
+					"can_admins_bypass": false,
+					"protection_rules": []any{
+						map[string]any{"type": "required_reviewers", "prevent_self_review": true, "reviewers": []any{
+							map[string]any{"type": "Team", "reviewer": map[string]any{"id": float64(9)}},
+						}},
+						map[string]any{"type": "wait_timer", "wait_timer": float64(5)},
+						map[string]any{"type": "branch_policy"},
+					},
+					"deployment_branch_policy": map[string]any{"protected_branches": false, "custom_branch_policies": true},
+				},
+			}},
+		},
+		{
+			name: "deployment branch policies body has the patterns with their type",
+			body: DeploymentBranchPoliciesBody{TotalCount: 2, Patterns: []DeploymentPatternBody{{ID: 4, Name: "main", Type: "tag"}}}.JSON(),
+			want: map[string]any{"total_count": float64(2), "branch_policies": []any{
+				map[string]any{"id": float64(4), "name": "main", "type": "tag"},
+			}},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

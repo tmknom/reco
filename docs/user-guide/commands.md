@@ -46,9 +46,27 @@ Workflow permissions:
   can_approve_pull_request_reviews: false
 Actions access:
   access_level: none
+Environments: none
 ```
 
 パブリックリポジトリでは、`access_level` を `unavailable (the repository is public)` と表示します。この設定はプライベートリポジトリにだけ適用されるためです。
+
+`Environments:` には、リポジトリの Environment をすべて、GitHub が返した順に表示します。Environment ごとに、デプロイできるブランチとタグの制限（`deployment_branch_policy`）、保護ルール（`wait_timer`、`required_reviewers`）、管理者が保護ルールを迂回できるか（`can_admins_bypass`）を示します。
+
+```text
+Environments:
+  - name: "production"
+    deployment_branch_policy:
+      mode: selected
+      patterns: [branch "main", tag "v*"]
+    wait_timer: 30
+    required_reviewers:
+      reviewers: [User 583231]
+      prevent_self_review: true
+    can_admins_bypass: false
+```
+
+`mode` は、`all` が制限なし、`protected_branches` が保護されたブランチだけ、`selected` が `patterns` に並べたパターンに一致するブランチ（`branch`）とタグ（`tag`）だけからデプロイできることを示します。`wait_timer` と `required_reviewers` は、その保護ルールがなければ `none` と表示します。レビュアーは、GitHub のユーザー（`User`）かチーム（`Team`）の ID で示します。Environment の項目は表示だけで、設定ファイルには書けません。
 
 ## `plan`
 

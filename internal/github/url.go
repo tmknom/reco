@@ -32,6 +32,25 @@ func (c *Client) selectedActionsURL(reference repository.Reference) *url.URL {
 	return u
 }
 
+func (c *Client) environmentsURL(reference repository.Reference) *url.URL {
+	u := c.repositoryURL(reference)
+	u.Path += "/environments"
+	return u
+}
+
+// deploymentBranchPoliciesURL は、name の Environment の個別パターンの一覧の URL を返す。
+// name は1つのパス要素として送るため、Path と RawPath の両方を設定し、`/` を `%2F` のまま送る。Path だけでは `/` が区切りとして送られる。
+// `.` と `..` は、url.PathEscape がそのまま残し、パスの要素としては URL の解決で dot-segment として取り除かれ得る (RFC 3986 5.2.4) ため、偽を返す。
+func (c *Client) deploymentBranchPoliciesURL(reference repository.Reference, name string) (*url.URL, bool) {
+	if name == "." || name == ".." {
+		return nil, false
+	}
+	u := c.environmentsURL(reference)
+	u.RawPath = u.Path + "/" + url.PathEscape(name) + "/deployment-branch-policies"
+	u.Path += "/" + name + "/deployment-branch-policies"
+	return u, true
+}
+
 func (c *Client) actionsAccessURL(reference repository.Reference) *url.URL {
 	u := c.actionsPermissionsURL(reference)
 	u.Path += "/access"

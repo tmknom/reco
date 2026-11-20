@@ -13,6 +13,7 @@ import (
 )
 
 // ObservationResult は、一回の観測で確認できた、リポジトリ指定が指す実体の ID と、読み取った設定の領域の設定ごとの、設定の観測結果である。
+// 関連リソースを読み取った設定の領域については、関連リソースの観測結果も含む。
 type ObservationResult struct {
 	RepositoryID repository.ID
 	General      General
@@ -21,6 +22,8 @@ type ObservationResult struct {
 	ActionsPermissions  *ActionsPermissions
 	WorkflowPermissions *WorkflowPermissions
 	ActionsAccess       *ActionsAccess
+	// Environments は、その設定の領域を選ばなかった観測では nil になる。Environment が一つもないことと取り違えさせないため、値型にしない。
+	Environments *Environments
 }
 
 // ActionsPermissions は Actions の実行許可のうち、reco が観測する設定である。
@@ -109,6 +112,13 @@ func (c *Client) ObserveRepository(ctx context.Context, reference repository.Ref
 			return ObservationResult{}, fmt.Errorf("fetch actions access %s: %w", reference, err)
 		}
 		o.ActionsAccess = &aa
+	}
+	if slices.Contains(areas, setting.AreaEnvironments) {
+		environments, err := c.observeEnvironments(ctx, reference)
+		if err != nil {
+			return ObservationResult{}, fmt.Errorf("fetch environments %s: %w", reference, err)
+		}
+		o.Environments = &environments
 	}
 	return o, nil
 }
