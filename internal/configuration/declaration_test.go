@@ -644,7 +644,7 @@ func TestDocumentEnvironment(t *testing.T) {
 		{name: "non-string name is rejected", src: strings.Replace(base, "staging", "42", 1), wantPath: "E.name", wantReason: "must be a string"},
 		{name: "non-ASCII name is rejected at the name", src: strings.Replace(base, "staging", "café", 1), wantPath: "E.name", wantReason: `must consist of printable ASCII characters; got "café"`},
 		{name: "unknown key is rejected", src: base + "variables: {}\n", wantPath: "E", wantReason: `unknown key "variables"; expected name, deployment_branch_policy`},
-		{name: "invalid deployment_branch_policy is rejected at deployment_branch_policy", src: strings.Replace(base, "mode: all", "mode: selected", 1), wantPath: "E.deployment_branch_policy.mode", wantReason: "must be all or protected_branches"},
+		{name: "invalid deployment_branch_policy is rejected at deployment_branch_policy", src: strings.Replace(base, "mode: all", "mode: custom", 1), wantPath: "E.deployment_branch_policy.mode", wantReason: "must be all, protected_branches, or selected"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -672,10 +672,12 @@ func TestDocumentEnvironment(t *testing.T) {
 	}
 }
 
-// TestDocumentDeploymentBranchPolicy は、デプロイ元制限の宣言が受け付ける方式 (all と protected_branches) と、個別パターンを受け付けないことを確かめる。
+// TestDocumentDeploymentBranchPolicy は、デプロイ元制限の宣言の方式と patterns の組み合わせを確かめる。
 //
 //trace:checks FR-001
 func TestDocumentDeploymentBranchPolicy(t *testing.T) {
+	const base = "mode: selected\npatterns:\n  - type: branch\n    name: main\n"
+	main := setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"}
 	cases := []struct {
 		name       string
 		src        string
@@ -684,11 +686,19 @@ func TestDocumentDeploymentBranchPolicy(t *testing.T) {
 	}{
 		{name: "all is read without patterns", src: "mode: all\n", want: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}},
 		{name: "protected_branches is read without patterns", src: "mode: protected_branches\n", want: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}},
-		{name: "selected is rejected", src: "mode: selected\n", wantReason: `P.mode (line 1, column 7): must be all or protected_branches; got "selected"`},
+		{name: "selected with patterns is read into mode and patterns", src: base, want: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{main}}},
+		{name: "selected with empty patterns is read as an empty set", src: "mode: selected\npatterns: []\n", want: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{}}},
+		{name: "selected without patterns is rejected at the policy", src: "mode: selected\n", wantReason: `P (line 1, column 1): mode "selected" requires patterns`},
+		{name: "selected with null patterns is rejected", src: "mode: selected\npatterns:\n", wantReason: "P.patterns (line 2, column 10): must not be null or empty"},
+		{name: "all with patterns is rejected at patterns", src: "mode: all\npatterns:\n  - type: branch\n    name: main\n", wantReason: `P.patterns (line 3, column 3): patterns is allowed only when mode is "selected"; got mode "all"`},
+		{name: "protected_branches with empty patterns is rejected at patterns", src: "mode: protected_branches\npatterns: []\n", wantReason: `P.patterns (line 2, column 11): patterns is allowed only when mode is "selected"; got mode "protected_branches"`},
+		{name: "all with invalid patterns is rejected by the combination", src: "mode: all\npatterns:\n  - main\n", wantReason: `patterns is allowed only when mode is "selected"`},
+		{name: "unknown mode with patterns is rejected at the mode", src: "mode: custom\npatterns: []\n", wantReason: `P.mode (line 1, column 7): must be all, protected_branches, or selected; got "custom"`},
 		{name: "non-string mode is rejected", src: "mode: 1\n", wantReason: "P.mode (line 1, column 7): must be a string"},
-		{name: "only patterns is rejected as an unknown key", src: "patterns: []\n", wantReason: `unknown key "patterns"; expected mode`},
-		{name: "patterns with mode are rejected as an unknown key", src: "mode: all\npatterns: []\n", wantReason: `unknown key "patterns"; expected mode`},
+		{name: "only patterns is rejected for the missing mode", src: "patterns: []\n", wantReason: `missing key "mode"`},
+		{name: "unknown key is rejected", src: base + "id: 1\n", wantReason: `unknown key "id"; expected mode, patterns`},
 		{name: "empty mapping is rejected", src: "{}\n", wantReason: "must not be empty"},
+		{name: "invalid pattern is reported at its path", src: "mode: selected\npatterns:\n  - type: Branch\n    name: main\n", wantReason: "P.patterns[0].type (line 3, column 11): must be branch or tag"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -705,6 +715,97 @@ func TestDocumentDeploymentBranchPolicy(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("deploymentBranchPolicy() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDocumentDeploymentPatterns は、個別パターンの一覧の並び、空集合、重複の判定を確かめる。
+//
+//trace:checks FR-001
+func TestDocumentDeploymentPatterns(t *testing.T) {
+	branch := func(name string) setting.DeploymentPattern {
+		return setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: name}
+	}
+	tag := func(name string) setting.DeploymentPattern {
+		return setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: name}
+	}
+	cases := []struct {
+		name       string
+		src        string
+		want       []setting.DeploymentPattern
+		wantReason string
+	}{
+		{name: "two patterns are read in declaration order", src: "- {type: branch, name: release/*}\n- {type: tag, name: main}\n", want: []setting.DeploymentPattern{branch("release/*"), tag("main")}},
+		{name: "empty sequence is read as no patterns", src: "[]\n", want: []setting.DeploymentPattern{}},
+		{name: "non-sequence is rejected", src: "type: branch\n", wantReason: "S (line 1, column 1): must be a sequence"},
+		{name: "duplicate pair is rejected at the later element", src: "- {type: branch, name: main}\n- {type: branch, name: main}\n", wantReason: `S[1] (line 2, column 3): duplicate pattern branch "main"; same as S[0]`},
+		{name: "same name with different type is accepted", src: "- {type: branch, name: main}\n- {type: tag, name: main}\n", want: []setting.DeploymentPattern{branch("main"), tag("main")}},
+		{name: "names differing only in letter case are accepted", src: "- {type: branch, name: main}\n- {type: branch, name: MAIN}\n", want: []setting.DeploymentPattern{branch("main"), branch("MAIN")}},
+		{name: "escaped spelling of the same name is a duplicate", src: "- {type: branch, name: main}\n- {type: branch, name: \"\\x6dain\"}\n", wantReason: `S[1] (line 2, column 3): duplicate pattern branch "main"; same as S[0]`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.deploymentPatterns(doc.root, "S")
+			if tc.wantReason != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("deploymentPatterns() error = %v, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("deploymentPatterns() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("deploymentPatterns() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDocumentDeploymentPattern は、個別パターン 1 件の type と name の規則を確かめる。
+// 拒否のケースは、受理される入力 (base) の条件を 1 つだけ変えて作る。
+//
+//trace:checks FR-001
+func TestDocumentDeploymentPattern(t *testing.T) {
+	const base = "type: branch\nname: main\n"
+	cases := []struct {
+		name       string
+		src        string
+		want       setting.DeploymentPattern
+		wantReason string
+	}{
+		{name: "branch is read", src: base, want: setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"}},
+		{name: "tag is read", src: "type: tag\nname: main\n", want: setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: "main"}},
+		{name: "missing type is rejected without defaulting to branch", src: "name: main\n", wantReason: `missing key "type"`},
+		{name: "missing name is rejected", src: "type: branch\n", wantReason: `missing key "name"`},
+		{name: "type with different letter case is rejected", src: "type: Branch\nname: main\n", wantReason: `P.type (line 1, column 7): must be branch or tag; got "Branch"`},
+		{name: "non-string type is rejected", src: "type: 1\nname: main\n", wantReason: "P.type (line 1, column 7): must be a string"},
+		{name: "empty name is rejected", src: "type: branch\nname: \"\"\n", wantReason: `P.name (line 2, column 7): must not be empty or have leading or trailing whitespace; got ""`},
+		{name: "name with leading space is rejected", src: "type: branch\nname: \" main\"\n", wantReason: `must not be empty or have leading or trailing whitespace; got " main"`},
+		{name: "name with trailing space is rejected", src: "type: branch\nname: \"main \"\n", wantReason: `must not be empty or have leading or trailing whitespace; got "main "`},
+		{name: "name surrounded by no-break spaces is rejected", src: "type: branch\nname: \"\\u00a0main\\u00a0\"\n", wantReason: "must not be empty or have leading or trailing whitespace"},
+		{name: "non-string name is rejected", src: "type: branch\nname: 1.0\n", wantReason: "P.name (line 2, column 7): must be a string"},
+		{name: "unknown key is rejected", src: base + "id: 1\n", wantReason: `unknown key "id"; expected type, name`},
+		{name: "non-mapping element is rejected", src: "main\n", wantReason: "P (line 1, column 1): must be a mapping"},
+		{name: "name is read as written", src: "type: branch\nname: Release/v*.*\n", want: setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "Release/v*.*"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.deploymentPattern(doc.root, "P")
+			if tc.wantReason != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("deploymentPattern() error = %v, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("deploymentPattern() error = %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("deploymentPattern() = %+v, want %+v", got, tc.want)
 			}
 		})
 	}

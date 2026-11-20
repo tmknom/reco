@@ -56,6 +56,7 @@ reco が管理可能な設定は、次のとおりです。具体的な設定方
 | GitHub Actions に Pull Request の作成と承認を許すか | 「Actions」の「General」ページの「Workflow permissions」の欄の「Allow GitHub Actions to create and approve pull requests」 |
 | ほかのリポジトリのワークフローに、このリポジトリの Actions と再利用可能なワークフローを使わせるか（プライベートリポジトリだけ） | 「Actions」の「General」ページの「Access」の欄 |
 | デプロイ先の Environment があるか（なければ作成する） | 「Environments」ページの Environment の一覧 |
-| Environment へデプロイできるブランチとタグを、制限しないか、保護ルールのあるブランチに限るか | 「Environments」ページの Environment の「Deployment branches and tags」の欄の「No restriction」と「Protected branches only」 |
+| Environment へデプロイできるブランチとタグを、制限しないか、保護ルールのあるブランチに限るか、選んだパターンに限るか | 「Environments」ページの Environment の「Deployment branches and tags」の欄の「No restriction」、「Protected branches only」、「Selected branches and tags」 |
+| 選んだパターンに限るときに、デプロイを許可するブランチとタグのパターン | 「Selected branches and tags」で追加するパターンの一覧 |
 
-reco が作成し、デプロイできるブランチとタグの制限を変えるのは、設定ファイルに名前を書いた Environment だけです。Environment を削除することはありません。Environment の待機時間やレビュアーなどの保護ルールも変えません。
+reco が作成し、デプロイできるブランチとタグの制限を変えるのは、設定ファイルに名前を書いた Environment だけです。選んだパターンに限る設定は、`plan` で差を確かめられますが、`apply` では変えません。Environment を削除することはありません。Environment の待機時間やレビュアーなどの保護ルールも変えません。

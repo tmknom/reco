@@ -28,7 +28,7 @@ func environmentPlans(e configuration.EnvironmentDeclaration, observed github.En
 }
 
 // environmentOperationOf は、Environment の変更予定 s を実現する更新操作を返す。
-// 存在しない Environment の方式の変更予定は、同じ名前の作成の更新操作にまとめ、単独の更新操作にしないため偽を返す。
+// 存在しない Environment のデプロイ元制限の変更予定は、同じ名前の作成の更新操作にまとめ、単独の更新操作にしないため偽を返す。
 // 基準はアーキテクチャ設計の非原子的な更新と中間状態に従う。
 // 存在しない Environment の方式を基準に載せないのは、存在しないことの基準が成立すれば同じ理由の観測不能に必ずなり、確かめる条件が重なるため。
 // 対にならない形（作成のない存在しないことを理由にした方式、存在が一致でない方式の不一致、作成と方式の不一致の組）と適用可能な比較不能の存在は、

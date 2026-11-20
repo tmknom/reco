@@ -1,6 +1,9 @@
 package setting
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 //trace:checks FR-004
 func TestParseDeploymentPatternType(t *testing.T) {
@@ -74,6 +77,61 @@ func TestDeploymentBranchPolicy_PatternsString(t *testing.T) {
 			p := DeploymentBranchPolicy{Mode: DeploymentBranchPolicySelected, Patterns: tc.patterns}
 			if got := p.PatternsString(); got != tc.want {
 				t.Errorf("PatternsString() = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+//trace:checks FR-005
+func TestDeploymentBranchPolicy_PatternsNotIn(t *testing.T) {
+	branch := func(name string) DeploymentPattern {
+		return DeploymentPattern{Type: DeploymentPatternBranch, Name: name}
+	}
+	tag := func(name string) DeploymentPattern { return DeploymentPattern{Type: DeploymentPatternTag, Name: name} }
+	selected := func(patterns ...DeploymentPattern) DeploymentBranchPolicy {
+		return DeploymentBranchPolicy{Mode: DeploymentBranchPolicySelected, Patterns: patterns}
+	}
+	cases := []struct {
+		name  string
+		p     DeploymentBranchPolicy
+		other DeploymentBranchPolicy
+		want  []DeploymentPattern
+	}{
+		{
+			name:  "patterns in other are left out and the rest keep the order of p",
+			p:     selected(branch("main"), branch("release/*"), branch("feature/*")),
+			other: selected(branch("main")),
+			want:  []DeploymentPattern{branch("release/*"), branch("feature/*")},
+		},
+		{
+			name:  "pattern with the same name and another type is kept",
+			p:     selected(tag("main")),
+			other: selected(branch("main")),
+			want:  []DeploymentPattern{tag("main")},
+		},
+		{
+			name:  "pattern whose name differs only in letter case is kept",
+			p:     selected(branch("MAIN")),
+			other: selected(branch("main")),
+			want:  []DeploymentPattern{branch("MAIN")},
+		},
+		{
+			name:  "other without selected has no patterns, so all patterns of p are returned",
+			p:     selected(branch("main")),
+			other: DeploymentBranchPolicy{Mode: DeploymentBranchPolicyAll},
+			want:  []DeploymentPattern{branch("main")},
+		},
+		{
+			name:  "same set in another order returns nothing",
+			p:     selected(branch("main"), tag("v*")),
+			other: selected(tag("v*"), branch("main")),
+			want:  nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.p.PatternsNotIn(tc.other); !slices.Equal(got, tc.want) {
+				t.Errorf("PatternsNotIn() = %v, want %v", got, tc.want)
 			}
 		})
 	}

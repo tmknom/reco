@@ -16,6 +16,10 @@ func TestEnvironmentPlans(t *testing.T) {
 	protected := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}
 	all := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}
 	selected := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{{Type: setting.DeploymentPatternBranch, Name: "main"}}}
+	patternMain := setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"}
+	patternTag := setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: "v*"}
+	selectedTwo := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{patternMain, patternTag}}
+	selectedTwoReversed := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{patternTag, patternMain}}
 	existing := func(name string, policy setting.DeploymentBranchPolicy) github.Environment {
 		return github.Environment{ID: 7, Name: name, DeploymentBranchPolicy: policy}
 	}
@@ -48,6 +52,15 @@ func TestEnvironmentPlans(t *testing.T) {
 			want: []SettingPlan{
 				{Key: setting.EnvironmentResource, Environment: production, Result: Match},
 				{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Observed(setting.DeploymentBranchPolicyValue(selected)), Desired: setting.DeploymentBranchPolicyValue(protected), Result: Mismatch},
+			},
+		},
+		{
+			name:     "patterns differing only in order match and the desired value keeps the declared patterns",
+			declared: configuration.EnvironmentDeclaration{Name: production, DeploymentBranchPolicy: &selectedTwo},
+			observed: lookup(t, "production", existing("production", selectedTwoReversed)),
+			want: []SettingPlan{
+				{Key: setting.EnvironmentResource, Environment: production, Result: Match},
+				{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Observed(setting.DeploymentBranchPolicyValue(selectedTwoReversed)), Desired: setting.DeploymentBranchPolicyValue(selectedTwo), Result: Match},
 			},
 		},
 		{

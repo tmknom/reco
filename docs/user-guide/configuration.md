@@ -146,18 +146,34 @@ repositories:
         deployment_branch_policy:
           mode: protected_branches
       - name: staging
+        deployment_branch_policy:
+          mode: selected
+          patterns:
+            - type: branch
+              name: "main"
+            - type: tag
+              name: "v*"
 ```
 
 | キー | 値 | 意味 |
 |---|---|---|
 | `name` | 文字列（必須） | Environment の名前 |
-| `deployment_branch_policy.mode` | `all` / `protected_branches` | Environment へデプロイできるブランチとタグの制限。`all` は制限なし、`protected_branches` は保護ルールのあるブランチだけ |
+| `deployment_branch_policy.mode` | `all` / `protected_branches` / `selected` | Environment へデプロイできるブランチとタグの制限。`all` は制限なし、`protected_branches` は保護ルールのあるブランチだけ、`selected` は `patterns` に書いたパターンに一致するブランチとタグだけ |
+| `deployment_branch_policy.patterns` | 下の2つのキーを持つ要素の一覧（`mode: selected` のときだけ必須） | デプロイを許可するブランチとタグのパターンの一覧の全体 |
+| `patterns[].type` | `branch` / `tag`（必須） | パターンがブランチとタグのどちらに一致するか |
+| `patterns[].name` | 文字列（必須） | ブランチ名またはタグ名のパターン（`release/*` など） |
 
 - 書いた名前の Environment がなければ、reco は作成する。`deployment_branch_policy` を省いた Environment は、あるかどうかだけを管理する
 - 書かなかった Environment は、変更も削除もしない。設定ファイルから名前を消しても、GitHub 上の Environment は残る
 - 名前は、半角の英数字、空白、記号だけで書く。大文字と小文字だけが違う名前は同じ Environment とみなすため、同じリポジトリに並べられない
 - 保護ルールのあるブランチが一つもなければ、`protected_branches` でもすべてのブランチからデプロイできる（GitHub の仕様）。ブランチの保護ルールは reco では作れない
-- `show` が `mode: selected` と示した Environment でも、設定ファイルには `all` か `protected_branches` しか書けない。`selected` の Environment を `all` などに変えると、GitHub は `patterns` に並んでいたパターンを残さない。`plan` の行の矢印の左に、なくなるパターンが出る
+- `patterns` は一覧の全体で、書いた一覧が `apply` のあとの一覧になる。GitHub 上にあって書かなかったパターンはなくなる。たとえば GitHub 上が `main` と `feature/*` で、書いたのが `main` と `release/*` なら、`apply` のあとは `main` と `release/*` になる
+- どのブランチとタグからもデプロイさせないときは、`patterns: []` と書く。`mode: selected` で `patterns` を省くことはできず、`all` と `protected_branches` では `patterns` を書けない
+- `type` は省けない。名前が同じでも、`branch` と `tag` は別のパターンになる。大文字と小文字だけが違う名前（`main` と `MAIN`）も別のパターンになる
+- `*` で始まる名前は、引用符で囲まないと設定ファイルを読めない。パターンの名前は引用符で囲んで書くとよい
+- 並べる順番は問わない。順番だけが違っても `plan` は変更なしと判断する
+- `selected` の Environment を `all` などに変えると、GitHub は `patterns` に並んでいたパターンを残さない。`plan` の矢印の左の行に、なくなるパターンが出る
+- `mode: selected` を書いた変更予定は、`plan` で示されるが、`apply` では実行されない。`apply` はその変更予定を見つけると、何も変えずに止まる
 
 ## 未記載の設定の扱い
 

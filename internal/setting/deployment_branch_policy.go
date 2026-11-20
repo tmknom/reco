@@ -67,6 +67,17 @@ func (p DeploymentBranchPolicy) PatternsString() string {
 	return "[" + strings.Join(formatted, ", ") + "]"
 }
 
+// PatternsNotIn は、p の個別パターンのうち other にないものを、p の並びで返す。equal と同じく種類と名前の組で比べる。
+func (p DeploymentBranchPolicy) PatternsNotIn(other DeploymentBranchPolicy) []DeploymentPattern {
+	var patterns []DeploymentPattern
+	for _, pattern := range p.Patterns {
+		if !slices.Contains(other.Patterns, pattern) {
+			patterns = append(patterns, pattern)
+		}
+	}
+	return patterns
+}
+
 // equal は、方式が同じで、個別パターンが種類と名前の組の集合として同じかを返す。
 func (p DeploymentBranchPolicy) equal(other DeploymentBranchPolicy) bool {
 	return p.Mode == other.Mode && slices.Equal(deploymentPatternSet(p.Patterns), deploymentPatternSet(other.Patterns))

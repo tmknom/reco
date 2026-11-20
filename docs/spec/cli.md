@@ -107,15 +107,24 @@ $ GH_TOKEN=$(gh auth token) reco plan
 
 関連リソースの作成は、現在値の位置に `absent`、期待値の位置に `present` を置いて示します。`absent` は確かめた事実であり、比較不能の印である括弧には入れません。関連リソースとその中の設定は、`<種類のキー>.<名前>` と `<種類のキー>.<名前>.<設定>` の形で示し、名前は設定宣言に書いた綴りのまま示します。GitHub が大文字小文字の違う綴りで返しても、設定ファイルの行と対応づけられるようにするためです。
 
-Environment では、存在しない Environment の作成と、その Environment の `deployment_branch_policy` を、別の変更予定として示し、集計でもそれぞれ数えます。作成する Environment の `deployment_branch_policy` は、属する先が存在しないため比較不能な設定予定であり、現在値の位置に `(environment absent)` を示します。存在する Environment の `deployment_branch_policy` は、現在値が `selected` なら個別パターンを含めて `selected [<種類> "<名前>", ...]` の形で示します。`selected` から変えると GitHub は個別パターンを残しませんが、個別パターンは同じ管理設定の値の一部であり、現在値に示しているため、`Side effect:` は添えません。
+Environment では、存在しない Environment の作成と、その Environment の `deployment_branch_policy` を、別の変更予定として示し、集計でもそれぞれ数えます。作成する Environment の `deployment_branch_policy` は、属する先が存在しないため比較不能な設定予定であり、現在値の位置に `(environment absent)` を示します。`deployment_branch_policy` の値は、方式が `selected` なら個別パターンを含めて `selected [<種類> "<名前>", ...]` の形で示します。現在値は GitHub が返した順、期待値は設定宣言の順に並べ、個別パターンのない `selected` は `selected []` と示します。現在値か期待値のどちらかが `selected` の変更予定は、個別パターンを並べた値が長くなるため、設定の行の下に現在値（比較不能なら現在の状態）と、`->` に続けて期待値を1行ずつ示します。どちらも `selected` でない変更予定は1行で示します。`selected` から変えると GitHub は個別パターンを残しませんが、個別パターンは同じ管理設定の値の一部であり、現在値に示しているため、`Side effect:` は添えません。
+
+現在値と期待値がどちらも `selected` の確認済みの差分には、`->` の行の下に、なくなるパターンを `Patterns to remove:`、加わるパターンを `Patterns to add:` の行で、この順に添えます。どちらも `[<種類> "<名前>", ...]` の形で、なくなるパターンは現在値の順、加わるパターンは期待値の順に並べ、該当するパターンがない行は示しません。二つの一覧の並びが違い、利用者が差を目で突き合わせなくて済むようにするためです。方式が変わる変更予定には添えません。現在値か期待値の一覧の全体が、そのままなくなるか加わるためです。
 
 ```text
 Repository: example/project-a
   environments.production: absent -> present
   environments.production.deployment_branch_policy: (environment absent) -> protected_branches
-  environments.staging.deployment_branch_policy: selected [branch "main", tag "v*"] -> all
+  environments.staging.deployment_branch_policy:
+    selected [branch "main", tag "v*"]
+    -> all
+  environments.preview.deployment_branch_policy:
+    selected [branch "feature/*", branch "main"]
+    -> selected [branch "main", branch "release/*"]
+    Patterns to remove: [branch "feature/*"]
+    Patterns to add: [branch "release/*"]
 
-Plan: 1 repository to update, 3 changes
+Plan: 1 repository to update, 4 changes
 Repositories checked: 1
 ```
 
@@ -130,7 +139,7 @@ Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
-設定グループの確認済みの差分は、3項目を並べた値が長いため、設定の行の下に現在値と、`->` に続けて期待値を1行ずつ示します。
+選択方式の Actions 許可条件の確認済みの差分は、3項目を並べた値が長いため、設定の行の下に現在値と、`->` に続けて期待値を1行ずつ示します。
 
 ```text
 Repository: example/project-a
@@ -209,7 +218,7 @@ Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
-`(enables GitHub Actions)` は、Actions が無効のリポジトリの `allowed_actions` にだけ添えます。選択方式の Actions 許可条件は、`allowed_actions` が `selected` でないリポジトリでは現在値を取得できないため、`allowed_actions` を `selected` へ変える変更予定と並べて、比較不能な設定予定として示します。設定グループの比較不能な設定予定も、確認済みの差分と同じく、設定の行の下に現在の状態と、`->` に続けて期待値を1行ずつ示します。
+`(enables GitHub Actions)` は、Actions が無効のリポジトリの `allowed_actions` にだけ添えます。選択方式の Actions 許可条件は、`allowed_actions` が `selected` でないリポジトリでは現在値を取得できないため、`allowed_actions` を `selected` へ変える変更予定と並べて、比較不能な設定予定として示します。選択方式の Actions 許可条件の比較不能な設定予定も、確認済みの差分と同じく、設定の行の下に現在の状態と、`->` に続けて期待値を1行ずつ示します。
 
 ```text
 Repository: example/project-a
@@ -319,6 +328,12 @@ Plan cannot be applied.
 
 ```text
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-b: actions.permissions.sha_pinning_required is not applicable; example/project-c: actions.permissions.sha_pinning_required is not applicable; no changes made"}
+```
+
+`apply` は、期待値の方式が `selected` の `deployment_branch_policy` の変更予定を実行しません。個別パターンを加える更新操作と取り除く更新操作を持たないためです。適用不能な変更予定がなく、この変更予定が一つでもあれば、変更計画を表示せず、承認を求めず、どのリポジトリも更新せずにエラー終了します。stderr のエラーは、変更計画の並びで最初に当たった対象と設定を挙げ、`no changes made` を添えます。現在値が `selected` で期待値が `all` / `protected_branches` の変更予定は、これに当たらず実行します。
+
+```text
+{"time":"...","level":"ERROR","msg":"command failed","error":"example/project-a: environments.production.deployment_branch_policy: applying mode selected is not supported; no changes made"}
 ```
 
 すべて変更不要の場合の表示例は次のとおりです。
