@@ -18,6 +18,16 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
+const twoRepositoriesSource = `repositories:
+  - name: owner/first
+    general:
+      allow_auto_merge: true
+  - name: owner/second
+    general:
+      allow_auto_merge: true
+      delete_branch_on_merge: true
+`
+
 //trace:checks FR-006
 //trace:checks FR-007
 //trace:checks FR-008
@@ -173,16 +183,6 @@ func TestSettingPlan_EnablesActionsByPolicy(t *testing.T) {
 		})
 	}
 }
-
-const twoRepositoriesSource = `repositories:
-  - name: owner/first
-    general:
-      allow_auto_merge: true
-  - name: owner/second
-    general:
-      allow_auto_merge: true
-      delete_branch_on_merge: true
-`
 
 //trace:checks FR-001
 //trace:checks FR-002
@@ -544,7 +544,7 @@ func TestGenerate_ActionsPermissions(t *testing.T) {
 		want := []SettingPlan{
 			{
 				Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable,
-				PreviousSettings: []setting.Key{setting.AllowedActions, setting.SelectedActions},
+				ResumedSettings: []setting.Key{setting.AllowedActions, setting.SelectedActions},
 			},
 			{Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true), Result: NotComparable, Applicability: Applicable},
 		}

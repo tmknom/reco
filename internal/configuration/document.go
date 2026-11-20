@@ -17,63 +17,6 @@ type document struct {
 	lines [][]rune
 }
 
-// splitLines は、ライブラリが Node.Line と Node.Column を数えるのと同じ規則でソースを行に分ける。
-// 改行は CR LF、CR、LF、NEL、LS、PS で、列は文字単位で数え、先頭の BOM は数えない。
-func splitLines(data []byte) [][]rune {
-	src := []rune(strings.TrimPrefix(string(data), "\uFEFF"))
-	var lines [][]rune
-	start := 0
-	for i := 0; i < len(src); i++ {
-		switch src[i] {
-		case '\r', '\n', '\u0085', '\u2028', '\u2029':
-			lines = append(lines, src[start:i])
-			if src[i] == '\r' && i+1 < len(src) && src[i+1] == '\n' {
-				i++
-			}
-			start = i + 1
-		}
-	}
-	return append(lines, src[start:])
-}
-
-// ライブラリは非特定タグ ! を Node に残さないため、Tag と Style ではなく、ノードの開始位置の文字がタグの ! かで判定する。
-// タグのないノードの開始位置は、! で始められないプレーンスカラー、引用符、ブロックスカラーやコレクションの指示子を指す。
-// 値なしの null の開始位置は、行末より後ろや、末尾に改行のない入力では最終行の次の行
-// (ライブラリはストリームの終端で改行を補う) を指すことがあり、そこにはソースの文字がないためタグなしとする。
-// それ以外のソースの外の位置は行や列の数え方の食い違いであり、タグなしとして通さずエラーにする。
-// 位置はライブラリが入力から数えた値のため、食い違いを不変条件の破れとして panic にせず、入力のエラーとして返す。
-func (d document) hasTag(n *yaml.Node) (bool, error) {
-	if n.Line < 1 || n.Line > len(d.lines)+1 || n.Column < 1 {
-		return false, errors.New("node position is outside the source")
-	}
-	if n.Line == len(d.lines)+1 {
-		return false, nil
-	}
-	line := d.lines[n.Line-1]
-	column := n.Column - 1
-	return column < len(line) && line[column] == '!', nil
-}
-
-// checkNode は、どの位置のノードにも共通する YAML の形式規則を確かめる。
-func (d document) checkNode(n *yaml.Node, path string) error {
-	tagged, err := d.hasTag(n)
-	if err != nil {
-		return invalid(n, path, "%v", err)
-	}
-	switch {
-	case n.Kind == yaml.AliasNode:
-		return invalid(n, path, "aliases are not allowed")
-	case n.Anchor != "":
-		return invalid(n, path, "anchors are not allowed")
-	case tagged:
-		return invalid(n, path, "explicit tags are not allowed")
-	case n.Tag == "!!null":
-		return invalid(n, path, "must not be null or empty")
-	default:
-		return nil
-	}
-}
-
 // mappingEntries は、n が required のキーをすべて持ち、required と optional 以外のキーを持たず、
 // どのキーも一度だけ持つマッピングであることを確かめ、キーごとの値を返す。
 // optional のキーは、宣言されたときだけ返す値に含まれる。
@@ -116,15 +59,42 @@ func (d document) mappingEntries(n *yaml.Node, path string, required, optional [
 	return entries, nil
 }
 
-// sequenceContent は、n がシーケンスであることを確かめ、空のシーケンスも受理して要素を返す。
-func (d document) sequenceContent(n *yaml.Node, path string) ([]*yaml.Node, error) {
-	if err := d.checkNode(n, path); err != nil {
-		return nil, err
+// checkNode は、どの位置のノードにも共通する YAML の形式規則を確かめる。
+func (d document) checkNode(n *yaml.Node, path string) error {
+	tagged, err := d.hasTag(n)
+	if err != nil {
+		return invalid(n, path, "%v", err)
 	}
-	if n.Kind != yaml.SequenceNode {
-		return nil, invalid(n, path, "must be a sequence")
+	switch {
+	case n.Kind == yaml.AliasNode:
+		return invalid(n, path, "aliases are not allowed")
+	case n.Anchor != "":
+		return invalid(n, path, "anchors are not allowed")
+	case tagged:
+		return invalid(n, path, "explicit tags are not allowed")
+	case n.Tag == "!!null":
+		return invalid(n, path, "must not be null or empty")
+	default:
+		return nil
 	}
-	return n.Content, nil
+}
+
+// ライブラリは非特定タグ ! を Node に残さないため、Tag と Style ではなく、ノードの開始位置の文字がタグの ! かで判定する。
+// タグのないノードの開始位置は、! で始められないプレーンスカラー、引用符、ブロックスカラーやコレクションの指示子を指す。
+// 値なしの null の開始位置は、行末より後ろや、末尾に改行のない入力では最終行の次の行
+// (ライブラリはストリームの終端で改行を補う) を指すことがあり、そこにはソースの文字がないためタグなしとする。
+// それ以外のソースの外の位置は行や列の数え方の食い違いであり、タグなしとして通さずエラーにする。
+// 位置はライブラリが入力から数えた値のため、食い違いを不変条件の破れとして panic にせず、入力のエラーとして返す。
+func (d document) hasTag(n *yaml.Node) (bool, error) {
+	if n.Line < 1 || n.Line > len(d.lines)+1 || n.Column < 1 {
+		return false, errors.New("node position is outside the source")
+	}
+	if n.Line == len(d.lines)+1 {
+		return false, nil
+	}
+	line := d.lines[n.Line-1]
+	column := n.Column - 1
+	return column < len(line) && line[column] == '!', nil
 }
 
 func (d document) sequenceItems(n *yaml.Node, path string) ([]*yaml.Node, error) {
@@ -136,6 +106,17 @@ func (d document) sequenceItems(n *yaml.Node, path string) ([]*yaml.Node, error)
 		return nil, invalid(n, path, "must not be empty")
 	}
 	return items, nil
+}
+
+// sequenceContent は、n がシーケンスであることを確かめ、空のシーケンスも受理して要素を返す。
+func (d document) sequenceContent(n *yaml.Node, path string) ([]*yaml.Node, error) {
+	if err := d.checkNode(n, path); err != nil {
+		return nil, err
+	}
+	if n.Kind != yaml.SequenceNode {
+		return nil, invalid(n, path, "must be a sequence")
+	}
+	return n.Content, nil
 }
 
 // patternsAllowedValue は、許可パターンの並びを宣言の順のまま返す。
@@ -177,20 +158,6 @@ func (d document) boolValue(n *yaml.Node, path string) (bool, error) {
 		return false, invalidBool(n, path)
 	}
 	return n.Value == "true", nil
-}
-
-// invalidBool は、真偽値を書くつもりだったと読める表記に限り、拒否の理由に直し方を添える。
-func invalidBool(n *yaml.Node, path string) error {
-	lower := strings.ToLower(n.Value)
-	quoted := n.Style&(yaml.DoubleQuotedStyle|yaml.SingleQuotedStyle) != 0
-	switch {
-	case quoted && (lower == "true" || lower == "false"):
-		return invalid(n, path, "must be true or false; got the quoted string %q; write %s without quotes", n.Value, lower)
-	case n.Tag == "!!bool":
-		return invalid(n, path, "must be true or false; got %s; write %s in lowercase", n.Value, lower)
-	default:
-		return invalid(n, path, "must be true or false (unquoted, lowercase); got %q", n.Value)
-	}
 }
 
 // permissionLevelValue は、文字列のうち定義された権限の値に完全一致するものだけを受理する。
@@ -243,6 +210,20 @@ func (d document) stringValue(n *yaml.Node, path string) (string, error) {
 		return "", invalid(n, path, "must be a string")
 	}
 	return n.Value, nil
+}
+
+// invalidBool は、真偽値を書くつもりだったと読める表記に限り、拒否の理由に直し方を添える。
+func invalidBool(n *yaml.Node, path string) error {
+	lower := strings.ToLower(n.Value)
+	quoted := n.Style&(yaml.DoubleQuotedStyle|yaml.SingleQuotedStyle) != 0
+	switch {
+	case quoted && (lower == "true" || lower == "false"):
+		return invalid(n, path, "must be true or false; got the quoted string %q; write %s without quotes", n.Value, lower)
+	case n.Tag == "!!bool":
+		return invalid(n, path, "must be true or false; got %s; write %s in lowercase", n.Value, lower)
+	default:
+		return invalid(n, path, "must be true or false (unquoted, lowercase); got %q", n.Value)
+	}
 }
 
 // invalid は、問題の箇所 (キーのパスと位置) と理由を示す入力検証のエラーを作る。

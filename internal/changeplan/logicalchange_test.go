@@ -72,7 +72,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 		return RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
 	}
 	relevant := func(key setting.Key, atApproval github.SettingObservation[setting.Value]) RelevantSetting {
-		return RelevantSetting{Key: key, AtApproval: atApproval}
+		return RelevantSetting{Key: key, ValueAtApproval: atApproval}
 	}
 
 	t.Run("all matches have no logical change", func(t *testing.T) {

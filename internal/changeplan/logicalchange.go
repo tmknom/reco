@@ -28,8 +28,8 @@ type UpdateOperation struct {
 
 // RelevantSetting は、変更前提で比べる関係する現在値の設定と、その承認時に予定した値。
 type RelevantSetting struct {
-	Key        setting.Key
-	AtApproval github.SettingObservation[setting.Value]
+	Key             setting.Key
+	ValueAtApproval github.SettingObservation[setting.Value]
 }
 
 // Keys は、c が変える管理設定を更新操作の順に返す。
@@ -94,7 +94,7 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 			// 2つ目の承認時に予定した値は、1つ目による予定どおりの変化を反映したポリシーである
 			operations = append(operations, UpdateOperation{
 				Key: criteria.Key, Desired: criteria.Desired,
-				RelevantSettings: []RelevantSetting{{Key: s.Key, AtApproval: github.Observed(s.Desired)}},
+				RelevantSettings: []RelevantSetting{{Key: s.Key, ValueAtApproval: github.Observed(s.Desired)}},
 			})
 		}
 		changes = append(changes, LogicalChange{Operations: operations})
@@ -126,9 +126,9 @@ func (r RepositoryPlan) settingPlanOf(key setting.Key) (SettingPlan, bool) {
 // operationOf は、変更予定 s の設定を変える更新操作を返す。
 // 基準は、s の計画時の観測結果と、副作用として提示した設定の計画時の観測結果である。
 func operationOf(s SettingPlan) UpdateOperation {
-	relevant := []RelevantSetting{{Key: s.Key, AtApproval: s.Observed}}
+	relevant := []RelevantSetting{{Key: s.Key, ValueAtApproval: s.Observed}}
 	for _, effect := range s.SideEffects {
-		relevant = append(relevant, RelevantSetting{Key: effect.Key, AtApproval: effect.Observed})
+		relevant = append(relevant, RelevantSetting{Key: effect.Key, ValueAtApproval: effect.Observed})
 	}
 	return UpdateOperation{Key: s.Key, Desired: s.Desired, RelevantSettings: relevant}
 }
@@ -139,9 +139,9 @@ func operationOf(s SettingPlan) UpdateOperation {
 func shaPinningRequiredOperationOf(s SettingPlan) UpdateOperation {
 	var relevant []RelevantSetting
 	if s.Result == Mismatch {
-		relevant = append(relevant, RelevantSetting{Key: s.Key, AtApproval: s.Observed})
+		relevant = append(relevant, RelevantSetting{Key: s.Key, ValueAtApproval: s.Observed})
 	}
-	relevant = append(relevant, RelevantSetting{Key: setting.ActionsEnabled, AtApproval: github.Observed(setting.BoolValue(true))})
+	relevant = append(relevant, RelevantSetting{Key: setting.ActionsEnabled, ValueAtApproval: github.Observed(setting.BoolValue(true))})
 	return UpdateOperation{Key: s.Key, Desired: s.Desired, RelevantSettings: relevant}
 }
 

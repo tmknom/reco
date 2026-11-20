@@ -18,21 +18,10 @@ type RepositoryBody struct {
 	Private             bool
 }
 
-// JSON は応答本文を返す。
-func (b RepositoryBody) JSON() string {
-	return fmt.Sprintf(`{"id": %d, "allow_auto_merge": %t, "delete_branch_on_merge": %t, "private": %t}`,
-		b.ID, b.AllowAutoMerge, b.DeleteBranchOnMerge, b.Private)
-}
-
 // ActionsPermissionsBody は、Actions が有効なリポジトリの Actions permissions の取得の応答本文である。
 type ActionsPermissionsBody struct {
 	AllowedActions     string
 	SHAPinningRequired bool
-}
-
-// JSON は応答本文を返す。
-func (b ActionsPermissionsBody) JSON() string {
-	return fmt.Sprintf(`{"enabled": true, "allowed_actions": %q, "sha_pinning_required": %t}`, b.AllowedActions, b.SHAPinningRequired)
 }
 
 // ActionsDisabledBody は、Actions が無効なリポジトリの Actions permissions の取得の応答本文である。
@@ -46,6 +35,28 @@ type SelectedActionsBody struct {
 	PatternsAllowed    []string
 }
 
+// WorkflowPermissionsBody は、Workflow permissions の取得の応答本文である。
+type WorkflowPermissionsBody struct {
+	DefaultWorkflowPermissions   string
+	CanApprovePullRequestReviews bool
+}
+
+// ActionsAccessBody は、リポジトリ外のワークフローからのアクセスの取得の応答本文である。
+type ActionsAccessBody struct {
+	AccessLevel string
+}
+
+// JSON は応答本文を返す。
+func (b RepositoryBody) JSON() string {
+	return fmt.Sprintf(`{"id": %d, "allow_auto_merge": %t, "delete_branch_on_merge": %t, "private": %t}`,
+		b.ID, b.AllowAutoMerge, b.DeleteBranchOnMerge, b.Private)
+}
+
+// JSON は応答本文を返す。
+func (b ActionsPermissionsBody) JSON() string {
+	return fmt.Sprintf(`{"enabled": true, "allowed_actions": %q, "sha_pinning_required": %t}`, b.AllowedActions, b.SHAPinningRequired)
+}
+
 // JSON は応答本文を返す。
 func (b SelectedActionsBody) JSON() string {
 	patterns := make([]string, len(b.PatternsAllowed))
@@ -56,20 +67,9 @@ func (b SelectedActionsBody) JSON() string {
 		b.GitHubOwnedAllowed, b.VerifiedAllowed, strings.Join(patterns, ", "))
 }
 
-// WorkflowPermissionsBody は、Workflow permissions の取得の応答本文である。
-type WorkflowPermissionsBody struct {
-	DefaultWorkflowPermissions   string
-	CanApprovePullRequestReviews bool
-}
-
 // JSON は応答本文を返す。
 func (b WorkflowPermissionsBody) JSON() string {
 	return fmt.Sprintf(`{"default_workflow_permissions": %q, "can_approve_pull_request_reviews": %t}`, b.DefaultWorkflowPermissions, b.CanApprovePullRequestReviews)
-}
-
-// ActionsAccessBody は、リポジトリ外のワークフローからのアクセスの取得の応答本文である。
-type ActionsAccessBody struct {
-	AccessLevel string
 }
 
 // JSON は応答本文を返す。

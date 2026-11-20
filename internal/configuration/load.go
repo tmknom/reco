@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"strings"
 	"unicode/utf8"
 
 	"go.yaml.in/yaml/v3"
@@ -69,4 +70,23 @@ func decodeDocument(data []byte) (document, error) {
 		return document{}, errors.New("multiple YAML documents are not allowed")
 	}
 	return document{root: doc.Content[0], lines: splitLines(data)}, nil
+}
+
+// splitLines は、ライブラリが Node.Line と Node.Column を数えるのと同じ規則でソースを行に分ける。
+// 改行は CR LF、CR、LF、NEL、LS、PS で、列は文字単位で数え、先頭の BOM は数えない。
+func splitLines(data []byte) [][]rune {
+	src := []rune(strings.TrimPrefix(string(data), "\uFEFF"))
+	var lines [][]rune
+	start := 0
+	for i := 0; i < len(src); i++ {
+		switch src[i] {
+		case '\r', '\n', '\u0085', '\u2028', '\u2029':
+			lines = append(lines, src[start:i])
+			if src[i] == '\r' && i+1 < len(src) && src[i+1] == '\n' {
+				i++
+			}
+			start = i + 1
+		}
+	}
+	return append(lines, src[start:])
 }

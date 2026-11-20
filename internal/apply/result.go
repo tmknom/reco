@@ -26,31 +26,6 @@ const (
 	repositoryStopped
 )
 
-// result は、対象リポジトリの区別を導く。
-// 実行を始めた対象リポジトリは、最初の論理的な設定変更の最初の更新操作の変更前提を必ず確かめる (確認不能を含む) ため、
-// 停止は最初の記録が変更前提を確かめていないことで分かる。停止の理由を別のフィールドに持つと、要求を送ったのに停止、のような矛盾した値を作れる。
-func (r repositoryRecord) result() repositoryResult {
-	switch {
-	case len(r.changes) == 0:
-		return repositoryNoChange
-	case allCompleted(r.changes):
-		return repositoryCompleted
-	case len(r.changes[0].operations) == 0:
-		return repositoryStopped
-	default:
-		return repositoryNotCompleted
-	}
-}
-
-func allCompleted(records []changeRecord) bool {
-	for _, record := range records {
-		if record.result() != completed {
-			return false
-		}
-	}
-	return true
-}
-
 // changeRecord は、承認した論理的な設定変更を実行して得た、変更結果を導く事実。
 // change だけを持つ値は、先行する異常によって何も確かめずに止めた論理的な設定変更を表す。
 type changeRecord struct {
@@ -76,12 +51,6 @@ type operationRecord struct {
 	update github.UpdateOutcome
 }
 
-// started は、この更新操作を開始したかを返す。
-// 変更前提が成立したときに限り、必ず更新操作を一度開始するため、前提の成立と同値になる。
-func (o operationRecord) started() bool {
-	return o.precondition == preconditionHolds
-}
-
 // changeResult は、論理的な設定変更の変更結果。
 type changeResult int
 
@@ -90,6 +59,28 @@ const (
 	failed
 	completed
 )
+
+// result は、対象リポジトリの区別を導く。
+// 実行を始めた対象リポジトリは、最初の論理的な設定変更の最初の更新操作の変更前提を必ず確かめる (確認不能を含む) ため、
+// 停止は最初の記録が変更前提を確かめていないことで分かる。停止の理由を別のフィールドに持つと、要求を送ったのに停止、のような矛盾した値を作れる。
+func (r repositoryRecord) result() repositoryResult {
+	switch {
+	case len(r.changes) == 0:
+		return repositoryNoChange
+	case allCompleted(r.changes):
+		return repositoryCompleted
+	case len(r.changes[0].operations) == 0:
+		return repositoryStopped
+	default:
+		return repositoryNotCompleted
+	}
+}
+
+// started は、この更新操作を開始したかを返す。
+// 変更前提が成立したときに限り、必ず更新操作を一度開始するため、前提の成立と同値になる。
+func (o operationRecord) started() bool {
+	return o.precondition == preconditionHolds
+}
 
 // operation は、i 番目の更新操作の記録を返す。変更前提を確かめなかった更新操作は、ゼロ値 (preconditionNotChecked) を返す。
 func (r changeRecord) operation(i int) operationRecord {
@@ -149,4 +140,13 @@ func (r changeRecord) result() changeResult {
 	default:
 		return failed
 	}
+}
+
+func allCompleted(records []changeRecord) bool {
+	for _, record := range records {
+		if record.result() != completed {
+			return false
+		}
+	}
+	return true
 }

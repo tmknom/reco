@@ -10,15 +10,6 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-func mustReference(t *testing.T, name string) repository.Reference {
-	t.Helper()
-	reference, err := repository.ParseReference(name)
-	if err != nil {
-		t.Fatalf("ParseReference(%q) error = %v", name, err)
-	}
-	return reference
-}
-
 func TestPluralize(t *testing.T) {
 	cases := []struct {
 		name             string
@@ -251,4 +242,13 @@ func TestText_Repositories(t *testing.T) {
 		}()
 		_ = Text("./reco.yaml", changeplan.Plan{})
 	})
+}
+
+func mustReference(t *testing.T, name string) repository.Reference {
+	t.Helper()
+	reference, err := repository.ParseReference(name)
+	if err != nil {
+		t.Fatalf("ParseReference(%q) error = %v", name, err)
+	}
+	return reference
 }

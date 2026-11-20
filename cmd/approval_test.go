@@ -33,14 +33,6 @@ func TestIsApproval(t *testing.T) {
 	}
 }
 
-// unreadableReader は、読まれたらテストを失敗させる標準入力。
-type unreadableReader struct{ t *testing.T }
-
-func (r unreadableReader) Read([]byte) (int, error) {
-	r.t.Error("standard input was read")
-	return 0, io.EOF
-}
-
 //trace:checks FR-009
 //trace:checks INV-003
 func TestRequestApproval_NotTerminal(t *testing.T) {
@@ -142,18 +134,6 @@ func TestRequestApproval_LineWithoutNewlineIsBounded(t *testing.T) {
 	if in.read > 1<<20 {
 		t.Errorf("read %d bytes, want at most 1 MiB", in.read)
 	}
-}
-
-// blockingReader は、読まれたら cancel を呼び、テストの終了まで止まる標準入力。
-type blockingReader struct {
-	cancel context.CancelFunc
-	done   <-chan struct{}
-}
-
-func (r blockingReader) Read([]byte) (int, error) {
-	r.cancel()
-	<-r.done
-	return 0, io.EOF
 }
 
 //trace:checks INV-003

@@ -8,22 +8,6 @@ import (
 	"testing"
 )
 
-func records(t *testing.T, out string) []map[string]any {
-	t.Helper()
-	var got []map[string]any
-	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
-		if line == "" {
-			continue
-		}
-		var m map[string]any
-		if err := json.Unmarshal([]byte(line), &m); err != nil {
-			t.Fatalf("got non-JSON line %q: %v", line, err)
-		}
-		got = append(got, m)
-	}
-	return got
-}
-
 func TestNew(t *testing.T) {
 	t.Run("records at the level are written as JSON with slog default keys", func(t *testing.T) {
 		var out bytes.Buffer
@@ -55,4 +39,20 @@ func TestNew(t *testing.T) {
 			t.Errorf("got records %v, want one debug record", got)
 		}
 	})
+}
+
+func records(t *testing.T, out string) []map[string]any {
+	t.Helper()
+	var got []map[string]any
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		if line == "" {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			t.Fatalf("got non-JSON line %q: %v", line, err)
+		}
+		got = append(got, m)
+	}
+	return got
 }

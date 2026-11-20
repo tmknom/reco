@@ -10,7 +10,9 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// PlannedChangeText は、変更予定を CLI 仕様の現在 -> 期待値の形で返し、適用不能の理由と副作用をその下に添える。
+const unreadWhileDisabled = "reco cannot read them while GitHub Actions is disabled"
+
+// PlannedChangeText は、変更予定を CLI 仕様の現在 -> 期待値の形で返し、適用不能の理由、再開する設定、副作用をその下に添える。
 // 末尾に改行を含む複数行になりうる。一致は空文字列を返す。
 func PlannedChangeText(s changeplan.SettingPlan) string {
 	var b strings.Builder
@@ -37,16 +39,14 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 	if s.Applicability == changeplan.NotApplicable {
 		fmt.Fprintf(&b, "    Applicability: not applicable (%s)\n", notApplicableReasonText(s.NotApplicableReason))
 	}
-	if len(s.PreviousSettings) > 0 {
-		fmt.Fprintf(&b, "    Previous settings: %s\n", previousSettingsText(s.PreviousSettings))
+	if len(s.ResumedSettings) > 0 {
+		fmt.Fprintf(&b, "    Previous settings: %s\n", resumedSettingsText(s.ResumedSettings))
 	}
 	for _, effect := range s.SideEffects {
 		fmt.Fprintf(&b, "    Side effect: %s\n", sideEffectText(effect))
 	}
 	return b.String()
 }
-
-const unreadWhileDisabled = "reco cannot read them while GitHub Actions is disabled"
 
 // repositoryStateText は、比較不能な設定予定の現在に示す、値を返さない理由から分かるリポジトリの状態を返す。
 // 未定義の理由は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
@@ -74,9 +74,9 @@ func notApplicableReasonText(reason changeplan.NotApplicableReason) string {
 	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(reason)))
 }
 
-// previousSettingsText は、無効にする前の値のまま再開する設定を、CLI 仕様の Previous settings: の文言で返す。
+// resumedSettingsText は、再開する設定を、CLI 仕様の Previous settings: の文言で返す。
 // 設定の名前は英語の列挙にし、値を示せない理由の代名詞を挙げる設定の数に合わせる。
-func previousSettingsText(keys []setting.Key) string {
+func resumedSettingsText(keys []setting.Key) string {
 	names := make([]string, len(keys))
 	for i, key := range keys {
 		names[i] = strings.TrimPrefix(string(key), "actions.permissions.")

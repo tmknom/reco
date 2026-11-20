@@ -31,6 +31,34 @@ type DesiredState struct {
 	ActionsAccess       ActionsAccess
 }
 
+// General はリポジトリ一般設定の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
+type General struct {
+	DeleteBranchOnMerge *bool
+	AllowAutoMerge      *bool
+}
+
+// ActionsPermissions は Actions の実行許可の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
+type ActionsPermissions struct {
+	// Enabled は、AllowedActions を宣言したときは nil。有効であることの期待値は AllowedActions が担う (YAML 設定仕様 4章)。
+	Enabled        *bool
+	AllowedActions *setting.AllowedActionsPolicy
+	// SelectedActions は設定グループの期待値で、3項目を一体として持つ。
+	SelectedActions    *setting.SelectedActionsCriteria
+	SHAPinningRequired *bool
+}
+
+// WorkflowPermissions はワークフロー権限の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
+type WorkflowPermissions struct {
+	DefaultWorkflowPermissions   *setting.PermissionLevel
+	CanApprovePullRequestReviews *bool
+}
+
+// ActionsAccess は、リポジトリ外のワークフローからのアクセスの期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
+type ActionsAccess struct {
+	// AccessLevel は none か user。organization は宣言で受け付けない (YAML 設定仕様の Actions access)。
+	AccessLevel *setting.AccessLevel
+}
+
 // Value は、key の設定の期待値を返す。期待値が省略されていれば ok は偽になる。
 // 未知の設定は不変条件の破れとして panic する。
 // 設定を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
@@ -75,32 +103,4 @@ func optionalBoolValue(b *bool) (setting.Value, bool) {
 		return setting.Value{}, false
 	}
 	return setting.BoolValue(*b), true
-}
-
-// General はリポジトリ一般設定の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
-type General struct {
-	DeleteBranchOnMerge *bool
-	AllowAutoMerge      *bool
-}
-
-// ActionsPermissions は Actions の実行許可の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
-type ActionsPermissions struct {
-	// Enabled は、AllowedActions を宣言したときは nil。有効であることの期待値は AllowedActions が担う (YAML 設定仕様 4章)。
-	Enabled        *bool
-	AllowedActions *setting.AllowedActionsPolicy
-	// SelectedActions は設定グループの期待値で、3項目を一体として持つ。
-	SelectedActions    *setting.SelectedActionsCriteria
-	SHAPinningRequired *bool
-}
-
-// WorkflowPermissions はワークフロー権限の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
-type WorkflowPermissions struct {
-	DefaultWorkflowPermissions   *setting.PermissionLevel
-	CanApprovePullRequestReviews *bool
-}
-
-// ActionsAccess は、リポジトリ外のワークフローからのアクセスの期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
-type ActionsAccess struct {
-	// AccessLevel は none か user。organization は宣言で受け付けない (YAML 設定仕様の Actions access)。
-	AccessLevel *setting.AccessLevel
 }

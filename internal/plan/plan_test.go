@@ -16,15 +16,6 @@ import (
 	"github.com/tmknom/reco/internal/repository"
 )
 
-func mustReference(t *testing.T, name string) repository.Reference {
-	t.Helper()
-	reference, err := repository.ParseReference(name)
-	if err != nil {
-		t.Fatalf("ParseReference(%q) error = %v", name, err)
-	}
-	return reference
-}
-
 var errWrite = errors.New("write failed")
 
 type failingWriter struct{}
@@ -136,4 +127,13 @@ func TestRun(t *testing.T) {
 			t.Errorf("got Out %q, want empty", out.String())
 		}
 	})
+}
+
+func mustReference(t *testing.T, name string) repository.Reference {
+	t.Helper()
+	reference, err := repository.ParseReference(name)
+	if err != nil {
+		t.Fatalf("ParseReference(%q) error = %v", name, err)
+	}
+	return reference
 }

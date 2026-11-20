@@ -44,8 +44,8 @@ type SettingPlan struct {
 	NotApplicableReason NotApplicableReason
 	// SideEffects は変更予定に伴う副作用。副作用がなければ nil。
 	SideEffects []SideEffect
-	// PreviousSettings は、Actions を有効にする変更予定で、無効にする前の値のまま再開する設定。当たらなければ nil。
-	PreviousSettings []setting.Key
+	// ResumedSettings は、Actions を有効にする変更予定に添える再開する設定。当たらなければ nil。
+	ResumedSettings []setting.Key
 }
 
 // Generate は、selection で選んだ対象の変更計画を生成する。selection が nil なら宣言された全リポジトリを選ぶ。
@@ -136,7 +136,7 @@ func generateRepositoryPlan(ctx context.Context, client *github.Client, target c
 	for i := range settings {
 		settings[i].Applicability, settings[i].NotApplicableReason = judgeApplicability(settings[i], settings)
 		settings[i].SideEffects = sideEffects(settings[i], observed)
-		settings[i].PreviousSettings = previousSettings(settings[i], settings)
+		settings[i].ResumedSettings = resumedSettings(settings[i], settings)
 	}
 	return RepositoryPlan{Target: target.Reference, RepositoryID: observed.RepositoryID, Settings: settings}, nil
 }

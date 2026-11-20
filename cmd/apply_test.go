@@ -16,6 +16,11 @@ import (
 // appliedRepositoryBody は、宣言の期待値 true に更新されたあとの観測結果。
 var appliedRepositoryBody = githubtest.RepositoryBody{ID: 1, AllowAutoMerge: true}.JSON()
 
+// streamWrite は、taggedWriter が記録した一回の書き込み。
+type streamWrite struct {
+	stream, text string
+}
+
 //trace:checks FR-008
 //trace:checks FR-002
 func TestApply_NoChanges(t *testing.T) {
@@ -293,11 +298,6 @@ func TestApply_NotApproved(t *testing.T) {
 			}
 		})
 	}
-}
-
-// streamWrite は、taggedWriter が記録した一回の書き込み。
-type streamWrite struct {
-	stream, text string
 }
 
 // taggedWriter は、stdout と stderr に渡し、ストリームをまたいだ書き込みの順を一つの並びに残す。

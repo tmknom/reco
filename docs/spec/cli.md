@@ -154,7 +154,7 @@ Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
-Actions を無効から有効にする変更予定には、`Previous settings:` の行を添えます。GitHub は無効にする前の `allowed_actions`、`sha_pinning_required`、Selected actions の値を残しており、有効に戻すとそれらの値で Actions を実行できるようになるためです（GitHub Actions 権限 API 仕様 3.2・4章）。`enabled` を `false` から `true` に変える変更予定では、この3つを挙げます。Actions が無効のリポジトリで `allowed_actions` を宣言した変更予定（`(enables GitHub Actions)`）では、`sha_pinning_required` だけを挙げます。ポリシーは宣言した値になり、Selected actions は宣言した値になるか、失われ得ることを `Side effect:` で示すためです。同じリポジトリで宣言している設定は挙げず、挙げる設定が残らなければ行を添えません。再開のあとで、同じ変更計画が宣言した値に変えるためです。無効のあいだは値を取得できないため、値は示さず、残っていた値で再開することと、値を示せない理由を示します。値が失われるわけではないため、`Side effect:` とは別の行で示します。再開するときのポリシーを利用者が決めるには、`allowed_actions` を宣言します（[YAML 設定仕様](configuration.md) 4章）。`Previous settings:` は `Side effect:` の前に示し、`apply` では承認プロンプトの前に表示します。
+Actions を無効から有効にする変更予定には、再開する設定（[ドメインモデル](../design/domain.md) の照合結果と適用可能性）を `Previous settings:` の行で添えます。GitHub は無効にする前の `allowed_actions`、`sha_pinning_required`、Selected actions の値を残しており、有効に戻すとそれらの値で Actions を実行できるようになるためです（GitHub Actions 権限 API 仕様 3.2・4章）。`enabled` を `false` から `true` に変える変更予定では、この3つを挙げます。Actions が無効のリポジトリで `allowed_actions` を宣言した変更予定（`(enables GitHub Actions)`）では、`sha_pinning_required` だけを挙げます。ポリシーは宣言した値になり、Selected actions は宣言した値になるか、失われ得ることを `Side effect:` で示すためです。同じリポジトリで宣言している設定は挙げず、挙げる設定が残らなければ行を添えません。再開のあとで、同じ変更計画が宣言した値に変えるためです。無効のあいだは値を取得できないため、値は示さず、残っていた値で再開することと、値を示せない理由を示します。値が失われるわけではないため、`Side effect:` とは別の行で示します。再開するときのポリシーを利用者が決めるには、`allowed_actions` を宣言します（[YAML 設定仕様](configuration.md) 4章）。`Previous settings:` は `Side effect:` の前に示し、`apply` では承認プロンプトの前に表示します。
 
 ```text
 Repository: example/project-a

@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,34 +9,8 @@ import (
 	"github.com/tmknom/reco/internal/githubtest"
 )
 
-const declaredRepository = `repositories:
-  - name: owner/repo
-    general:
-      allow_auto_merge: true
-`
-
-const declaredTwoRepositories = `repositories:
-  - name: owner/repo
-    general:
-      allow_auto_merge: true
-  - name: owner/second
-    general:
-      allow_auto_merge: true
-`
-
 // mismatchedRepositoryBody は、宣言の期待値 true と異なる現在値 false を返す観測結果。
 var mismatchedRepositoryBody = githubtest.RepositoryBody{ID: 1}.JSON()
-
-func writeConfig(t *testing.T, dir, name, src string) {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("create directory: %v", err)
-	}
-	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-}
 
 //trace:checks FR-002
 //trace:checks FR-003

@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -18,339 +17,24 @@ import (
 	"github.com/tmknom/reco/internal/changeplandisplay"
 	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
-	"github.com/tmknom/reco/internal/githubtest"
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
 )
-
-func mustReference(t *testing.T, name string) repository.Reference {
-	t.Helper()
-	reference, err := repository.ParseReference(name)
-	if err != nil {
-		t.Fatalf("ParseReference(%q) error = %v", name, err)
-	}
-	return reference
-}
 
 var errWrite = errors.New("write failed")
 
 type failingWriter struct{}
 
-func (failingWriter) Write([]byte) (int, error) { return 0, errWrite }
-
-// failAfterWriter は、n 回の書き込みに成功したあとの書き込みを失敗させる。
-type failAfterWriter struct {
-	n   int
-	buf bytes.Buffer
-}
-
-func (w *failAfterWriter) Write(p []byte) (int, error) {
-	if w.n == 0 {
-		return 0, errWrite
-	}
-	w.n--
-	return w.buf.Write(p)
-}
-
-// response は stub が順に返す応答。disconnect が真なら本文を返さずに接続を切る。
-type response struct {
-	status     int
-	body       string
-	location   string
-	disconnect bool
-}
-
-// newSequenceServer は、要求ごとに responses を順に返す。足りなければ 500 を返す。
-func newSequenceServer(t *testing.T, responses ...response) (*url.URL, *githubtest.Server) {
-	t.Helper()
-	var mu sync.Mutex
-	next := 0
-	server := githubtest.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		mu.Lock()
-		resp := response{status: http.StatusInternalServerError}
-		if next < len(responses) {
-			resp = responses[next]
-			next++
-		}
-		mu.Unlock()
-
-		if resp.disconnect {
-			conn, _, err := http.NewResponseController(w).Hijack()
-			if err != nil {
-				t.Errorf("hijack: %v", err)
-				return
-			}
-			_ = conn.Close()
-			return
-		}
-		if resp.location != "" {
-			w.Header().Set("Location", resp.location)
-		}
-		w.WriteHeader(resp.status)
-		_, _ = w.Write([]byte(resp.body))
-	}))
-	return server.URL(), server
-}
-
-func okRepository(id int64, allowAutoMerge, deleteBranchOnMerge bool) response {
-	return response{status: http.StatusOK, body: githubtest.RepositoryBody{ID: id, AllowAutoMerge: allowAutoMerge, DeleteBranchOnMerge: deleteBranchOnMerge}.JSON()}
-}
-
-// okPrivateRepository は、非公開のリポジトリの取得の正常応答。okRepository は公開のリポジトリを返す。
-func okPrivateRepository(id int64) response {
-	return response{status: http.StatusOK, body: githubtest.RepositoryBody{ID: id, Private: true}.JSON()}
-}
-
-// okActionsAccess は、リポジトリ外のワークフローからのアクセスの取得の正常応答。
-func okActionsAccess(level string) response {
-	return response{status: http.StatusOK, body: githubtest.ActionsAccessBody{AccessLevel: level}.JSON()}
-}
-
-func okWorkflowPermissions(defaultWorkflowPermissions string, canApprovePullRequestReviews bool) response {
-	return response{status: http.StatusOK, body: githubtest.WorkflowPermissionsBody{
-		DefaultWorkflowPermissions: defaultWorkflowPermissions, CanApprovePullRequestReviews: canApprovePullRequestReviews}.JSON()}
-}
-
-// okAllowedActions は、Actions が有効で、Actions 許可ポリシーが policy の Actions permissions の取得の正常応答。
-func okAllowedActions(policy string, shaPinningRequired bool) response {
-	return response{status: http.StatusOK, body: githubtest.ActionsPermissionsBody{AllowedActions: policy, SHAPinningRequired: shaPinningRequired}.JSON()}
-}
-
-// okActionsDisabled は、Actions が無効のリポジトリの Actions permissions の取得の正常応答。
-// GitHub は無効のときも sha_pinning_required を返すが、保存された値を示さない。
-func okActionsDisabled() response {
-	return response{status: http.StatusOK, body: githubtest.ActionsDisabledBody}
-}
-
-// okSelectedActions は、Selected actions の取得の正常応答。
-func okSelectedActions(githubOwnedAllowed, verifiedAllowed bool, patternsAllowed ...string) response {
-	return response{status: http.StatusOK, body: githubtest.SelectedActionsBody{
-		GitHubOwnedAllowed: githubOwnedAllowed, VerifiedAllowed: verifiedAllowed, PatternsAllowed: patternsAllowed}.JSON()}
-}
-
-// actionsPermissionsConfigSource は、allowed_actions だけを policy で宣言する。
-func actionsPermissionsConfigSource(policy string) string {
-	return "repositories:\n  - name: owner/repo\n    actions:\n      permissions:\n        allowed_actions: " + policy + "\n"
-}
-
-func newClient(baseURL *url.URL) *github.Client {
-	return github.New("test-token", github.WithBaseURL(baseURL))
-}
-
-// delayRecorder は、待つよう求められた時間を記録し、実時間を待たずに経過を知らせる。
-type delayRecorder struct {
-	delays []time.Duration
-}
-
-func (r *delayRecorder) after(d time.Duration) <-chan time.Time {
-	r.delays = append(r.delays, d)
-	elapsed := make(chan time.Time, 1)
-	elapsed <- time.Time{}
-	return elapsed
-}
-
-// elapsedAtOnce は、待つ時間を確かめないテストで、実時間を待たずに経過を知らせる。
-func elapsedAtOnce(d time.Duration) <-chan time.Time {
-	return (&delayRecorder{}).after(d)
-}
-
-// relevantTo は、key の設定だけを関係する現在値の設定とし、承認時に予定した値を観測値 observed とする変更前提の基準。
-func relevantTo(key setting.Key, observed setting.Value) []changeplan.RelevantSetting {
-	return []changeplan.RelevantSetting{{Key: key, AtApproval: github.Observed(observed)}}
-}
-
-// singleUpdate は、key を desired にする更新操作一つからなる論理的な設定変更。
-func singleUpdate(key setting.Key, desired setting.Value, relevant []changeplan.RelevantSetting) changeplan.LogicalChange {
-	return changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{{Key: key, Desired: desired, RelevantSettings: relevant}}}
-}
-
-// accessLevelChange は、access_level を none から user にする論理的な設定変更。
-func accessLevelChange() changeplan.LogicalChange {
-	return singleUpdate(setting.ActionsAccessLevel, setting.AccessLevelValue(setting.AccessUser), relevantTo(setting.ActionsAccessLevel, setting.AccessLevelValue(setting.AccessNone)))
-}
-
-// allowAutoMergeChange は、allow_auto_merge を false から true にする論理的な設定変更。
-func allowAutoMergeChange() changeplan.LogicalChange {
-	return singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), relevantTo(setting.AllowAutoMerge, setting.BoolValue(false)))
-}
-
-// allowAutoMergeMismatch は、allowAutoMergeChange を導く適用可能な変更予定。
-func allowAutoMergeMismatch() changeplan.SettingPlan {
-	return changeplan.SettingPlan{
-		Key:           setting.AllowAutoMerge,
-		Observed:      github.Observed(setting.BoolValue(false)),
-		Desired:       setting.BoolValue(true),
-		Result:        changeplan.Mismatch,
-		Applicability: changeplan.Applicable,
-	}
-}
-
-// deleteBranchOnMergeChange は、delete_branch_on_merge を false から true にする論理的な設定変更。
-func deleteBranchOnMergeChange() changeplan.LogicalChange {
-	return singleUpdate(setting.DeleteBranchOnMerge, setting.BoolValue(true), relevantTo(setting.DeleteBranchOnMerge, setting.BoolValue(false)))
-}
-
-// deleteBranchOnMergeMismatch は、deleteBranchOnMergeChange を導く適用可能な変更予定。
-func deleteBranchOnMergeMismatch() changeplan.SettingPlan {
-	return changeplan.SettingPlan{
-		Key:           setting.DeleteBranchOnMerge,
-		Observed:      github.Observed(setting.BoolValue(false)),
-		Desired:       setting.BoolValue(true),
-		Result:        changeplan.Mismatch,
-		Applicability: changeplan.Applicable,
-	}
-}
-
-// defaultWorkflowPermissionsChange は、default_workflow_permissions を write から read にする論理的な設定変更。
-func defaultWorkflowPermissionsChange() changeplan.LogicalChange {
-	return singleUpdate(
-		setting.DefaultWorkflowPermissions,
-		setting.PermissionLevelValue(setting.PermissionRead),
-		relevantTo(setting.DefaultWorkflowPermissions, setting.PermissionLevelValue(setting.PermissionWrite)),
-	)
-}
-
-// canApprovePullRequestReviewsChange は、can_approve_pull_request_reviews を true から false にする論理的な設定変更。
-func canApprovePullRequestReviewsChange() changeplan.LogicalChange {
-	return singleUpdate(setting.CanApprovePullRequestReviews, setting.BoolValue(false), relevantTo(setting.CanApprovePullRequestReviews, setting.BoolValue(true)))
-}
-
-// allowedActionsChange は、Actions 許可ポリシーを all から local_only にする、副作用のない論理的な設定変更。
-func allowedActionsChange() changeplan.LogicalChange {
-	return singleUpdate(
-		setting.AllowedActions,
-		setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly),
-		relevantTo(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsAll)),
-	)
-}
-
-// allowedActionsMismatch は、allowedActionsChange を導く適用可能な変更予定。
-func allowedActionsMismatch() changeplan.SettingPlan {
-	operation := allowedActionsChange().Operations[0]
-	return changeplan.SettingPlan{
-		Key: operation.Key, Observed: operation.RelevantSettings[0].AtApproval, Desired: operation.Desired, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
-	}
-}
-
-// selectedActionsChange は、Actions 許可ポリシーが selected のまま、選択方式の Actions 許可条件の verified_allowed だけを
-// false から true にする論理的な設定変更。許可パターンは2つ持ち、順序だけの違いを作れるようにする。
-func selectedActionsChange() changeplan.LogicalChange {
-	return singleUpdate(
-		setting.SelectedActions,
-		setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{"a/*", "b/*"}}),
-		relevantTo(setting.SelectedActions, setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{PatternsAllowed: []string{"a/*", "b/*"}})),
-	)
-}
-
 // lostCriteria は、selectedToAllChange が失わせる選択方式の Actions 許可条件。
 var lostCriteria = setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{"a/*", "b/*"}}
-
-// selectedToAllChange は、Actions 許可ポリシーを selected から all にし、lostCriteria を失わせる副作用を伴う論理的な設定変更。
-// 失われる値も変更前提の基準に並ぶ。
-func selectedToAllChange() changeplan.LogicalChange {
-	return singleUpdate(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), []changeplan.RelevantSetting{
-		{Key: setting.AllowedActions, AtApproval: github.Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected))},
-		{Key: setting.SelectedActions, AtApproval: github.Observed(setting.SelectedActionsCriteriaValue(lostCriteria))},
-	})
-}
-
-// enableActionsNotComparable は、Actions が無効のリポジトリで Actions 許可ポリシーを local_only と宣言した、
-// 比較不能で適用可能な変更予定。選択方式の Actions 許可条件が失われる可能性を副作用として伴う。
-func enableActionsNotComparable() changeplan.SettingPlan {
-	return changeplan.SettingPlan{
-		Key: setting.AllowedActions, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled),
-		Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
-		SideEffects: []changeplan.SideEffect{{Key: setting.SelectedActions, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)}},
-	}
-}
-
-// enableActionsChange は、enableActionsNotComparable から導く論理的な設定変更。基準はどちらも Actions が無効による観測不能。
-func enableActionsChange() changeplan.LogicalChange {
-	return singleUpdate(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly), []changeplan.RelevantSetting{
-		{Key: setting.AllowedActions, AtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
-		{Key: setting.SelectedActions, AtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
-	})
-}
 
 // declaredCriteria は、toSelectedChange と enableSelectedChange が宣言する選択方式の Actions 許可条件。
 // github_owned_allowed を false にし、GitHub がポリシーの更新で戻す値 (github_owned_allowed: true、verified_allowed: false、patterns_allowed: []) と
 // 3項目とも異ならせる。許可パターンは2つ持ち、順序だけの違いを作れるようにする。
 var declaredCriteria = setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{"a/*", "b/*"}}
 
-// toSelectedChange は、Actions 許可ポリシーを local_only から selected にし、選択方式の Actions 許可条件を declaredCriteria にする、
-// 二つの更新操作からなる論理的な設定変更。2つ目の基準は、1つ目による予定どおりの変化を反映したポリシーだけである。
-func toSelectedChange() changeplan.LogicalChange {
-	return changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{
-		{
-			Key: setting.AllowedActions, Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected),
-			RelevantSettings: relevantTo(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly)),
-		},
-		{
-			Key: setting.SelectedActions, Desired: setting.SelectedActionsCriteriaValue(declaredCriteria),
-			RelevantSettings: relevantTo(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected)),
-		},
-	}}
-}
-
-// enableSelectedChange は、Actions が無効のリポジトリで Actions を有効にして Actions 許可ポリシーを selected にし、
-// 選択方式の Actions 許可条件を declaredCriteria にする、二つの更新操作からなる論理的な設定変更。
-func enableSelectedChange() changeplan.LogicalChange {
-	change := toSelectedChange()
-	change.Operations[0].RelevantSettings = []changeplan.RelevantSetting{
-		{Key: setting.AllowedActions, AtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
-	}
-	return change
-}
-
-// enabledStateChange は、Actions の有効状態を to にする論理的な設定変更。基準は有効状態の反対の観測値だけである。
-func enabledStateChange(to bool) changeplan.LogicalChange {
-	return singleUpdate(setting.ActionsEnabled, setting.BoolValue(to), relevantTo(setting.ActionsEnabled, setting.BoolValue(!to)))
-}
-
-// shaPinningRequiredChange は、Actions が有効のリポジトリで sha_pinning_required を false から true にする論理的な設定変更。
-func shaPinningRequiredChange() changeplan.LogicalChange {
-	return singleUpdate(setting.SHAPinningRequired, setting.BoolValue(true), []changeplan.RelevantSetting{
-		{Key: setting.SHAPinningRequired, AtApproval: github.Observed(setting.BoolValue(false))},
-		{Key: setting.ActionsEnabled, AtApproval: github.Observed(setting.BoolValue(true))},
-	})
-}
-
-// shaPinningRequiredAfterEnablingChange は、Actions が無効のリポジトリで、Actions を有効にする変更のあとに sha_pinning_required を true にする論理的な設定変更。
-func shaPinningRequiredAfterEnablingChange() changeplan.LogicalChange {
-	return singleUpdate(setting.SHAPinningRequired, setting.BoolValue(true), relevantTo(setting.ActionsEnabled, setting.BoolValue(true)))
-}
-
-// shaPinningRequiredNotApplicable は、Actions が無効で観測不能だった sha_pinning_required の、理由つきの適用不能な変更予定。
-func shaPinningRequiredNotApplicable() changeplan.SettingPlan {
-	return changeplan.SettingPlan{
-		Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
-		Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableActionsRemainDisabled,
-	}
-}
-
-func newRepositoryPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.RepositoryPlan {
-	t.Helper()
-	return newRepositoryPlanOf(t, "owner/repo", 1, settings...)
-}
-
-// newRepositoryPlanOf は、name の対象リポジトリを ID id と観測した、リポジトリの計画。
-func newRepositoryPlanOf(t *testing.T, name string, id repository.ID, settings ...changeplan.SettingPlan) changeplan.RepositoryPlan {
-	t.Helper()
-	return changeplan.RepositoryPlan{Target: mustReference(t, name), RepositoryID: id, Settings: settings}
-}
-
-func newPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.Plan {
-	t.Helper()
-	return changeplan.Plan{Repositories: []changeplan.RepositoryPlan{newRepositoryPlan(t, settings...)}}
-}
-
 // unknownKey は、更新要求を持たない設定。
 const unknownKey setting.Key = "general.unknown"
-
-// unknownMismatch は、更新要求を持たない設定の適用可能な変更予定。
-func unknownMismatch() changeplan.SettingPlan {
-	return changeplan.SettingPlan{Key: unknownKey, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
-}
 
 // TestExecutableChanges は、承認を求める前に、論理的な設定変更とその更新操作を確定する規則を確かめる。
 //
@@ -424,6 +108,20 @@ func TestExecutableChanges(t *testing.T) {
 		}()
 		_, _ = executableChanges(plans(t, []changeplan.SettingPlan{allowAutoMergeMismatch()}, []changeplan.SettingPlan{unknownMismatch()}))
 	})
+}
+
+// failAfterWriter は、n 回の書き込みに成功したあとの書き込みを失敗させる。
+type failAfterWriter struct {
+	n   int
+	buf bytes.Buffer
+}
+
+func (w *failAfterWriter) Write(p []byte) (int, error) {
+	if w.n == 0 {
+		return 0, errWrite
+	}
+	w.n--
+	return w.buf.Write(p)
 }
 
 //trace:checks INV-002
@@ -1325,4 +1023,103 @@ func TestRun(t *testing.T) {
 			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}
 	})
+}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errWrite }
+
+// actionsPermissionsConfigSource は、allowed_actions だけを policy で宣言する。
+func actionsPermissionsConfigSource(policy string) string {
+	return "repositories:\n  - name: owner/repo\n    actions:\n      permissions:\n        allowed_actions: " + policy + "\n"
+}
+
+// allowAutoMergeMismatch は、allowAutoMergeChange を導く適用可能な変更予定。
+func allowAutoMergeMismatch() changeplan.SettingPlan {
+	return changeplan.SettingPlan{
+		Key:           setting.AllowAutoMerge,
+		Observed:      github.Observed(setting.BoolValue(false)),
+		Desired:       setting.BoolValue(true),
+		Result:        changeplan.Mismatch,
+		Applicability: changeplan.Applicable,
+	}
+}
+
+// deleteBranchOnMergeMismatch は、deleteBranchOnMergeChange を導く適用可能な変更予定。
+func deleteBranchOnMergeMismatch() changeplan.SettingPlan {
+	return changeplan.SettingPlan{
+		Key:           setting.DeleteBranchOnMerge,
+		Observed:      github.Observed(setting.BoolValue(false)),
+		Desired:       setting.BoolValue(true),
+		Result:        changeplan.Mismatch,
+		Applicability: changeplan.Applicable,
+	}
+}
+
+// allowedActionsMismatch は、allowedActionsChange を導く適用可能な変更予定。
+func allowedActionsMismatch() changeplan.SettingPlan {
+	operation := allowedActionsChange().Operations[0]
+	return changeplan.SettingPlan{
+		Key: operation.Key, Observed: operation.RelevantSettings[0].ValueAtApproval, Desired: operation.Desired, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+	}
+}
+
+// selectedToAllChange は、Actions 許可ポリシーを selected から all にし、lostCriteria を失わせる副作用を伴う論理的な設定変更。
+// 失われる値も変更前提の基準に並ぶ。
+func selectedToAllChange() changeplan.LogicalChange {
+	return singleUpdate(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), []changeplan.RelevantSetting{
+		{Key: setting.AllowedActions, ValueAtApproval: github.Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected))},
+		{Key: setting.SelectedActions, ValueAtApproval: github.Observed(setting.SelectedActionsCriteriaValue(lostCriteria))},
+	})
+}
+
+// enableActionsNotComparable は、Actions が無効のリポジトリで Actions 許可ポリシーを local_only と宣言した、
+// 比較不能で適用可能な変更予定。選択方式の Actions 許可条件が失われる可能性を副作用として伴う。
+func enableActionsNotComparable() changeplan.SettingPlan {
+	return changeplan.SettingPlan{
+		Key: setting.AllowedActions, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled),
+		Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
+		SideEffects: []changeplan.SideEffect{{Key: setting.SelectedActions, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)}},
+	}
+}
+
+// enableSelectedChange は、Actions が無効のリポジトリで Actions を有効にして Actions 許可ポリシーを selected にし、
+// 選択方式の Actions 許可条件を declaredCriteria にする、二つの更新操作からなる論理的な設定変更。
+func enableSelectedChange() changeplan.LogicalChange {
+	change := toSelectedChange()
+	change.Operations[0].RelevantSettings = []changeplan.RelevantSetting{
+		{Key: setting.AllowedActions, ValueAtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
+	}
+	return change
+}
+
+// toSelectedChange は、Actions 許可ポリシーを local_only から selected にし、選択方式の Actions 許可条件を declaredCriteria にする、
+// 二つの更新操作からなる論理的な設定変更。2つ目の基準は、1つ目による予定どおりの変化を反映したポリシーだけである。
+func toSelectedChange() changeplan.LogicalChange {
+	return changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{
+		{
+			Key: setting.AllowedActions, Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected),
+			RelevantSettings: relevantTo(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly)),
+		},
+		{
+			Key: setting.SelectedActions, Desired: setting.SelectedActionsCriteriaValue(declaredCriteria),
+			RelevantSettings: relevantTo(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected)),
+		},
+	}}
+}
+
+// shaPinningRequiredNotApplicable は、Actions が無効で観測不能だった sha_pinning_required の、理由つきの適用不能な変更予定。
+func shaPinningRequiredNotApplicable() changeplan.SettingPlan {
+	return changeplan.SettingPlan{
+		Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
+		Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableActionsRemainDisabled,
+	}
+}
+
+func newPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.Plan {
+	t.Helper()
+	return changeplan.Plan{Repositories: []changeplan.RepositoryPlan{newRepositoryPlan(t, settings...)}}
+}
+
+// unknownMismatch は、更新要求を持たない設定の適用可能な変更予定。
+func unknownMismatch() changeplan.SettingPlan {
+	return changeplan.SettingPlan{Key: unknownKey, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
 }
