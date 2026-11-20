@@ -14,7 +14,11 @@ OPERATIONS='{
   "/repos/{owner}/{repo}/actions/permissions": ["get", "put"],
   "/repos/{owner}/{repo}/actions/permissions/access": ["get", "put"],
   "/repos/{owner}/{repo}/actions/permissions/selected-actions": ["get", "put"],
-  "/repos/{owner}/{repo}/actions/permissions/workflow": ["get", "put"]
+  "/repos/{owner}/{repo}/actions/permissions/workflow": ["get", "put"],
+  "/repos/{owner}/{repo}/environments": ["get"],
+  "/repos/{owner}/{repo}/environments/{environment_name}": ["get", "put"],
+  "/repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies": ["get", "post"],
+  "/repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies/{branch_policy_id}": ["get", "delete"]
 }'
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
