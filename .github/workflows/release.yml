@@ -205,95 +205,108 @@ jobs:
           goreleaser check
           goreleaser release --clean --skip=publish,announce
 
+      # archives の binary 形式では、配布するバイナリは dist/ 直下になく、ビルド先のパスに配布名が付くだけである。
+      # SHA256SUMS に列挙された名前ごとに、dist/artifacts.json からパスを1つだけ引き、配布名でアップロード用のディレクトリへ集める。
+      # 名前に対応するパスが0件や複数件なら止める。集めたファイルは Verify assets が SHA256SUMS と照合する
+      - name: Collect assets
+        run: |
+          set -euo pipefail
+          assets="${RUNNER_TEMP}/release-assets"
+          mkdir "${assets}"
+          cp dist/SHA256SUMS "${assets}/"
+          for name in $(awk '{print $2}' dist/SHA256SUMS); do
+            path="$(jq -r --arg name "${name}" \
+              '[.[] | select(.name == $name) | .path] | unique |
+                if length == 1 then .[0] else error("\(length) paths found for \($name)") end' \
+              dist/artifacts.json)"
+            cp "${path}" "${assets}/${name}"
+          done
+          ls -l "${assets}"
+
       # 照合したファイルをそのままアップロードするよう、バイナリの実行は最後の sha256sum -c より前に済ませる
-      - name: Verify archives
-        working-directory: dist
+      - name: Verify assets
+        working-directory: ${{ runner.temp }}/release-assets
+        env:
+          GOTOOLCHAIN: local
         run: |
           set -euo pipefail
           version_number="${VERSION#v}"
-          expected="$(printf "${APP_NAME}_${version_number}_%s\n" \
-            darwin_amd64.tar.gz darwin_arm64.tar.gz \
-            linux_amd64.tar.gz linux_arm64.tar.gz \
-            windows_amd64.zip windows_arm64.zip | sort)"
-          expected_sboms="$(sed 's/$/.sbom.json/' <<< "${expected}")"
-          expected_listed="$(printf '%s\n' ${expected} ${expected_sboms} | sort)"
-          archives="$(find . -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' \) -printf '%f\n' | sort)"
-          sboms="$(find . -maxdepth 1 -type f -name '*.sbom.json' -printf '%f\n' | sort)"
+          prefix="${APP_NAME}_${version_number}_"
+          binaries="$(printf "${prefix}%s\n" \
+            darwin_amd64 darwin_arm64 \
+            linux_amd64 linux_arm64 \
+            windows_amd64.exe windows_arm64.exe | sort)"
+          sboms="$(sed 's/$/.sbom.json/' <<< "${binaries}")"
+          expected_listed="$(printf '%s\n' ${binaries} ${sboms} | sort)"
           listed="$(awk '{print $2}' SHA256SUMS | sort)"
-          if [[ "${archives}" != "${expected}" ]]; then
-            echo "::error::Archives in dist/ do not match the expected six archives"
-            diff <(echo "${expected}") <(echo "${archives}") || true
-            exit 1
-          fi
-          if [[ "${sboms}" != "${expected_sboms}" ]]; then
-            echo "::error::SBOMs in dist/ do not match the expected six SBOMs"
-            diff <(echo "${expected_sboms}") <(echo "${sboms}") || true
-            exit 1
-          fi
           if [[ "${listed}" != "${expected_listed}" ]]; then
-            echo "::error::SHA256SUMS does not list exactly the six archives and six SBOMs"
+            echo "::error::SHA256SUMS does not list exactly the six binaries and six SBOMs"
             diff <(echo "${expected_listed}") <(echo "${listed}") || true
             exit 1
           fi
 
-          # 実行権限はバイナリの存在を確かめてから調べる。バイナリがないと tar が失敗し、原因がわかりにくくなるため
-          for archive in ${expected}; do
-            if [[ "${archive}" == *.zip ]]; then
-              entries="$(unzip -Z1 "${archive}" | sort)"
-              want="$(printf '%s\n' LICENSE "${APP_NAME}.exe")"
-            else
-              entries="$(tar -tzf "${archive}" | sort)"
-              want="$(printf '%s\n' LICENSE "${APP_NAME}")"
-            fi
-            if [[ "${entries}" != "${want}" ]]; then
-              echo "::error::Unexpected entries in ${archive}"
-              echo "${entries}"
-              exit 1
-            fi
-            if [[ "${archive}" == *.tar.gz ]]; then
-              mode="$(tar -tvzf "${archive}" "${APP_NAME}" | awk '{print $1}')"
-              if [[ "${mode}" != -rwx* ]]; then
-                echo "::error::${APP_NAME} in ${archive} is not executable: ${mode}"
+          # 配布名と中身の取り違えを検出するよう、Go がバイナリに記録したビルド設定の GOOS と GOARCH がファイル名と一致することを確かめる。
+          # あわせて、cgo を使わず、.goreleaser.yaml で固定した CPU の下限（GOAMD64、GOARM64）でビルドされたことも確かめる。
+          # go version -m はバイナリを実行せずに読む
+          for file in ${binaries}; do
+            target="${file#"${prefix}"}"
+            target="${target%.exe}"
+            arch="${target#*_}"
+            case "${arch}" in
+              amd64) level=GOAMD64=v1 ;;
+              arm64) level=GOARM64=v8.0 ;;
+              *)
+                echo "::error::No CPU level is defined for ${arch} of ${file}"
+                exit 1
+                ;;
+            esac
+            settings="$(go version -m "${file}" | awk '$1 == "build" {print $2}')"
+            for want in "GOOS=${target%_*}" "GOARCH=${arch}" CGO_ENABLED=0 "${level}"; do
+              if ! grep -qxF "${want}" <<< "${settings}"; then
+                echo "::error::${file} was not built with ${want}"
+                echo "${settings}"
                 exit 1
               fi
-            fi
+            done
           done
 
-          # SBOM が対象のアーカイブを記述していることだけを確かめ、記載内容の正確さは確かめない
-          for archive in ${expected}; do
-            digest="$(sha256sum "${archive}" | awk '{print $1}')"
-            if ! jq -e --arg name "${archive}" --arg digest "${digest}" \
+          # SBOM が対象のバイナリを記述していることだけを確かめ、記載内容の正確さは確かめない
+          for file in ${binaries}; do
+            digest="$(sha256sum "${file}" | awk '{print $1}')"
+            if ! jq -e --arg name "${file}" --arg digest "${digest}" \
               '(.spdxVersion | startswith("SPDX-")) and .name == $name and
                 any(.packages[]; .name == $name and any(.checksums[]?; .algorithm == "SHA256" and .checksumValue == $digest))' \
-              "${archive}.sbom.json" > /dev/null; then
-              echo "::error::${archive}.sbom.json does not describe ${archive}"
+              "${file}.sbom.json" > /dev/null; then
+              echo "::error::${file}.sbom.json does not describe ${file}"
               exit 1
             fi
           done
 
-          # ldflags は全ターゲットで共通の設定のため、runner と同じ linux_amd64 の1件で埋め込みを確かめる。
-          # dist/ を汚さないよう、展開先は dist/ の外にする
-          extract="${RUNNER_TEMP}/linux_amd64"
-          mkdir -p "${extract}"
-          tar -xzf "${APP_NAME}_${version_number}_linux_amd64.tar.gz" -C "${extract}"
-          actual="$("${extract}/${APP_NAME}" --version)"
+          # ldflags は全ターゲットで共通の設定のため、runner と同じ linux_amd64 の1件で埋め込みを確かめる
+          actual="$("./${APP_NAME}_${version_number}_linux_amd64" --version)"
           if [[ "${actual}" != "${version_number}" ]]; then
             echo "::error::--version printed ${actual}, but ${version_number} is expected"
             exit 1
           fi
           echo "linux_amd64 --version: ${actual}"
 
+          # Upload はディレクトリごとアップロードするため、バイナリの実行で生じたファイルも含めて、
+          # 配布するファイルと SHA256SUMS 以外がないことを、実行の後に確かめる
+          expected="$(printf '%s\n' ${expected_listed} SHA256SUMS | sort)"
+          files="$(find . -type f -printf '%P\n' | sort)"
+          if [[ "${files}" != "${expected}" ]]; then
+            echo "::error::The collected files do not match the six binaries, six SBOMs, and SHA256SUMS"
+            diff <(echo "${expected}") <(echo "${files}") || true
+            exit 1
+          fi
           sha256sum -c SHA256SUMS
 
+      # Actions Artifact はファイルの実行権限を保持しない。後続のジョブはバイナリを実行せず、イメージには権限を指定してコピーする
       - name: Upload
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-assets
-          path: |
-            dist/*.tar.gz
-            dist/*.zip
-            dist/*.sbom.json
-            dist/SHA256SUMS
+          path: ${{ runner.temp }}/release-assets
           if-no-files-found: error
           retention-days: 1
 
@@ -314,12 +327,12 @@ jobs:
           name: release-assets
           path: ${{ runner.temp }}/release-assets
 
-      # 署名する digest が、後続のジョブが公開する Artifact のアーカイブと SBOM に一致することを確かめる
+      # 署名する digest が、後続のジョブが公開する Artifact のバイナリと SBOM に一致することを確かめる
       - name: Verify checksums
         working-directory: ${{ runner.temp }}/release-assets
         run: sha256sum -c SHA256SUMS
 
-      # subject は SHA256SUMS に列挙されたアーカイブと SBOM で、SHA256SUMS 自体は含まれない。
+      # subject は SHA256SUMS に列挙されたバイナリと SBOM で、SHA256SUMS 自体は含まれない。
       # actions/attest には Build Provenance を指定する入力がなく、predicate の入力を省いたときに Build Provenance を作る。
       # predicate-type を渡すと独自の predicate として扱われ、predicate の本体も自分で書く必要がある。
       # 既定の挙動が変わっても公開しないよう、検証する側で --predicate-type に SLSA Provenance v1 を明示する
@@ -335,7 +348,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     # レジストリへ Attestation を保存するには packages: write が要るため、イメージの署名は別ジョブにせずここで行う。
-    # attestations: write は読み取りも含むため、Linux 向けアーカイブの Attestation の検証にも使う。
+    # attestations: write は読み取りも含むため、Linux 向けバイナリの Attestation の検証にも使う。
     # artifact-metadata: write は storage record にだけ要るため与えない
     permissions:
       contents: read
@@ -355,7 +368,7 @@ jobs:
 
       # ビルドに使う Dockerfile は、リポジトリのファイルを使わずにここで書き出す。
       # Dockerfile に RUN や syntax ディレクティブなどが加わると、ビルド中に実行したコマンドの結果や外部から取得したファイルが、
-      # 配布アーカイブのような検証を経ずに署名付きのイメージに入るため、内容をワークフロー定義に固定する。
+      # 配布するバイナリのような検証を経ずに署名付きのイメージに入るため、内容をワークフロー定義に固定する。
       # ベースイメージも署名付きのイメージの中身を決めるため、名前は BASE_IMAGE としてワークフロー定義に固定し、固定用のファイルからは digest だけを取り出す。
       # 別のベースイメージへ移るときは、BASE_IMAGE と固定用のファイルを同時に変える。固定用のファイル自体は BuildKit に渡さない
       - name: Prepare Dockerfile
@@ -392,9 +405,9 @@ jobs:
           name: release-assets
           path: ${{ runner.temp }}/release-assets
 
-      # GHCR への公開も取り消しにくいため、イメージに入れるバイナリを取り出す Linux 向けアーカイブの来歴を、release と同じ条件で確かめる。
+      # GHCR への公開も取り消しにくいため、イメージに入れる Linux 向けバイナリの来歴を、release と同じ条件で確かめる。
       # gh attestation verify はファイルの digest だけで Attestation を照合するため、署名された subject の名前も確かめる
-      - name: Verify Linux archives
+      - name: Verify Linux binaries
         working-directory: ${{ runner.temp }}/release-assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -402,7 +415,7 @@ jobs:
           set -euo pipefail
           sha256sum -c SHA256SUMS
           for arch in amd64 arm64; do
-            file="${APP_NAME}_${VERSION#v}_linux_${arch}.tar.gz"
+            file="${APP_NAME}_${VERSION#v}_linux_${arch}"
             digest="$(sha256sum "${file}" | awk '{print $1}')"
             gh attestation verify "${file}" \
               --repo "${GITHUB_REPOSITORY}" \
@@ -418,15 +431,15 @@ jobs:
             echo "Attestation verified: ${file}"
           done
 
-      # ビルドコンテキストには、配布アーカイブから取り出した Linux バイナリだけを置く
+      # ビルドコンテキストには、検証した Linux 向けバイナリだけを、Dockerfile の COPY が参照する名前で置く。
+      # Actions Artifact で実行権限が失われているため、権限は Dockerfile の COPY --chmod で与える
       - name: Prepare build context
         working-directory: ${{ runner.temp }}/release-assets
         run: |
           set -euo pipefail
           for arch in amd64 arm64; do
             mkdir -p "${RUNNER_TEMP}/context/${arch}"
-            tar -xzf "${APP_NAME}_${VERSION#v}_linux_${arch}.tar.gz" \
-              -C "${RUNNER_TEMP}/context/${arch}" "${APP_NAME}"
+            cp "${APP_NAME}_${VERSION#v}_linux_${arch}" "${RUNNER_TEMP}/context/${arch}/${APP_NAME}"
           done
 
       - name: Log in to GHCR
@@ -565,17 +578,14 @@ jobs:
             --deny-self-hosted-runners
           echo "Attestation verified: ${IMAGE_REF}"
 
-          # イメージ内のバイナリが、配布アーカイブ内のバイナリとバイト単位で一致することを確かめる。
+          # イメージ内のバイナリが、配布するバイナリとバイト単位で一致することを確かめる。
           # 実行ユーザーは、プラットフォームを指定して作ったコンテナの設定から読む
           cid="$(docker create --platform "linux/${ARCH}" "${IMAGE_REF}")"
           docker cp "${cid}:/usr/local/bin/${APP_NAME}" "${RUNNER_TEMP}/from-image"
           user="$(docker container inspect --format '{{.Config.User}}' "${cid}")"
           docker rm "${cid}"
-          mkdir "${RUNNER_TEMP}/from-archive"
-          tar -xzf "${APP_NAME}_${version_number}_linux_${ARCH}.tar.gz" \
-            -C "${RUNNER_TEMP}/from-archive" "${APP_NAME}"
-          cmp "${RUNNER_TEMP}/from-image" "${RUNNER_TEMP}/from-archive/${APP_NAME}"
-          echo "linux_${ARCH} binary matches the archive"
+          cmp "${RUNNER_TEMP}/from-image" "${APP_NAME}_${version_number}_linux_${ARCH}"
+          echo "linux_${ARCH} binary in the image matches the released binary"
           if [[ "${user}" != "nonroot:nonroot" ]]; then
             echo "::error::The image runs as ${user}, but nonroot:nonroot is expected"
             exit 1
@@ -606,8 +616,8 @@ jobs:
           name: release-assets
           path: ${{ runner.temp }}/release-assets
 
-      # SHA256SUMS との照合だけでは、アーカイブと SHA256SUMS が一緒に差し替えられた場合を検出できないため、
-      # 公開するアーカイブと SBOM が、このワークフローによって同じコミットとタグで署名されたものであることを確かめる。
+      # SHA256SUMS との照合だけでは、バイナリと SHA256SUMS が一緒に差し替えられた場合を検出できないため、
+      # 公開するバイナリと SBOM が、このワークフローによって同じコミットとタグで署名されたものであることを確かめる。
       # 対象は Publish release が登録するのと同じ、SHA256SUMS に列挙されたファイルである
       - name: Verify assets
         working-directory: ${{ runner.temp }}/release-assets
@@ -616,16 +626,16 @@ jobs:
         run: |
           set -euo pipefail
           # 列挙が空だと検証が1回も走らずに成功し、重複があると別のファイルが欠けるため、
-          # 期待するアーカイブ 6 件と SBOM 6 件に一致することを確かめる
-          archives="$(printf "${APP_NAME}_${VERSION#v}_%s\n" \
-            darwin_amd64.tar.gz darwin_arm64.tar.gz \
-            linux_amd64.tar.gz linux_arm64.tar.gz \
-            windows_amd64.zip windows_arm64.zip)"
-          sboms="$(sed 's/$/.sbom.json/' <<< "${archives}")"
-          expected="$(printf '%s\n' ${archives} ${sboms} | sort)"
+          # 期待するバイナリ 6 件と SBOM 6 件に一致することを確かめる
+          binaries="$(printf "${APP_NAME}_${VERSION#v}_%s\n" \
+            darwin_amd64 darwin_arm64 \
+            linux_amd64 linux_arm64 \
+            windows_amd64.exe windows_arm64.exe)"
+          sboms="$(sed 's/$/.sbom.json/' <<< "${binaries}")"
+          expected="$(printf '%s\n' ${binaries} ${sboms} | sort)"
           listed="$(awk '{print $2}' SHA256SUMS | sort)"
           if [[ "${listed}" != "${expected}" ]]; then
-            echo "::error::SHA256SUMS does not list exactly the six archives and six SBOMs"
+            echo "::error::SHA256SUMS does not list exactly the six binaries and six SBOMs"
             diff <(echo "${expected}") <(echo "${listed}") || true
             exit 1
           fi
@@ -771,15 +781,16 @@ jobs:
           # 利用者の手順に合わせ、--predicate-type は gh の既定値に任せ、--signer-digest と --source-digest も付けない。
           # コミットとの対応は、diff -r とタグの参照先の確認で確かめている。
           # アセットの名前は diff -r で照合済みのため、subject の名前は確かめない。
+          # 対象は SHA256SUMS に列挙されたバイナリと SBOM で、diff -r により正規の成果物と同じ 12 件である。
           # gh attestation verify は TTY がないと成功しても何も出力しないため、結果を出力する
           cd "${published}"
-          for file in ./*.tar.gz ./*.zip ./*.sbom.json; do
+          for file in $(awk '{print $2}' SHA256SUMS); do
             gh attestation verify "${file}" \
               --repo "${GITHUB_REPOSITORY}" \
               --signer-workflow "${SIGNER_WORKFLOW}" \
               --source-ref "${GITHUB_REF}" \
               --deny-self-hosted-runners
-            echo "Attestation verified: ${file#./}"
+            echo "Attestation verified: ${file}"
           done
           gh attestation verify "oci://$(cat container-image.txt)" \
             --repo "${GITHUB_REPOSITORY}" \

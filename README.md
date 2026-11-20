@@ -19,7 +19,7 @@ Organization-owned repositories and GitHub Enterprise Server are not supported.
 
 ## Installation
 
-Download an archive from [GitHub Releases][releases], or use the container image `ghcr.io/tmknom/reco` (no `latest` tag).
+Download a binary from [GitHub Releases][releases], or use the container image `ghcr.io/tmknom/reco` (no `latest` tag).
 See [Installation](docs/user-guide/installation.md), [Authentication](docs/user-guide/authentication.md), and [Verification](docs/user-guide/verification.md) (in Japanese) for installing, preparing a token, and verifying the downloads.
 
 ## Usage

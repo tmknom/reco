@@ -1,36 +1,34 @@
 # Installation
 
-reco は、配布アーカイブかコンテナイメージでインストールします。どちらで動かす場合も、GitHub にアクセスするためのトークンを環境変数 `GH_TOKEN` で渡します。本ドキュメントの例では、GitHub CLI（`gh`）の `gh auth token` が出力するトークンを使います。
+reco は、配布バイナリかコンテナイメージでインストールします。どちらで動かす場合も、GitHub にアクセスするためのトークンを環境変数 `GH_TOKEN` で渡します。本ドキュメントの例では、GitHub CLI（`gh`）の `gh auth token` が出力するトークンを使います。
 
 ## 配布物の種類
 
 | 配布物 | 対象 | 置き場所 |
 |---|---|---|
-| 配布アーカイブ | Linux、macOS、Windows の、それぞれ amd64 と arm64 | [GitHub Releases](https://github.com/tmknom/reco/releases) |
+| 配布バイナリ | Linux、macOS、Windows の、それぞれ amd64 と arm64 | [GitHub Releases](https://github.com/tmknom/reco/releases) |
 | コンテナイメージ | `linux/amd64`、`linux/arm64` | `ghcr.io/tmknom/reco` |
 
-## 配布アーカイブからインストールする
+## 配布バイナリからインストールする
 
-自分の OS とアーキテクチャに合うコードブロックを、そのまま端末に貼り付けて実行します。どのコードブロックも、配布アーカイブをカレントディレクトリにダウンロードし、実行ファイルだけを取り出して、`PATH` の通ったディレクトリへ置きます。ダウンロードした配布アーカイブは、[Verification](verification.md) の手順で検証できるように、名前を変えずに残します。
+自分の OS とアーキテクチャに合うコードブロックを、そのまま端末に貼り付けて実行します。どのコードブロックも、配布バイナリをカレントディレクトリにダウンロードし、`reco`（Windows では `reco.exe`）という名前で `PATH` の通ったディレクトリへコピーします。ダウンロードしたファイルには実行権限が付かないため、Linux と macOS では `install -m 0755` で実行権限を付けてコピーします。
 
-コードブロックは `v0.1.1` をインストールします。別のバージョンを入れるときは、URL とファイル名に含まれる `v0.1.1` と `0.1.1` を、入れたいバージョンに置き換えてください。配布アーカイブの名前は `reco_<バージョン>_<OS>_<アーキテクチャ>.tar.gz`（Windows 向けだけ `.zip`）の形で、`<バージョン>` にはタグの先頭の `v` を除いた値が入ります。
+コードブロックは `v0.1.1` をインストールします。別のバージョンを入れるときは、URL とファイル名に含まれる `v0.1.1` と `0.1.1` を、入れたいバージョンに置き換えてください。配布バイナリの名前は `reco_<バージョン>_<OS>_<アーキテクチャ>`（Windows 向けだけ末尾に `.exe`）の形で、`<バージョン>` にはタグの先頭の `v` を除いた値が入ります。
 
 ### macOS
 
 arm64（Apple シリコン）の場合
 
 ```bash
-curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_darwin_arm64.tar.gz
-tar -xzf reco_0.1.1_darwin_arm64.tar.gz reco
-sudo mv reco /usr/local/bin/reco
+curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_darwin_arm64
+sudo install -m 0755 reco_0.1.1_darwin_arm64 /usr/local/bin/reco
 ```
 
 amd64（Intel）の場合
 
 ```bash
-curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_darwin_amd64.tar.gz
-tar -xzf reco_0.1.1_darwin_amd64.tar.gz reco
-sudo mv reco /usr/local/bin/reco
+curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_darwin_amd64
+sudo install -m 0755 reco_0.1.1_darwin_amd64 /usr/local/bin/reco
 ```
 
 ### Windows
@@ -40,19 +38,17 @@ PowerShell で実行します。PowerShell のバージョンによっては `cu
 amd64 の場合
 
 ```powershell
-curl.exe -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_windows_amd64.zip
-tar -xf reco_0.1.1_windows_amd64.zip reco.exe
+curl.exe -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_windows_amd64.exe
 New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\reco" | Out-Null
-Move-Item -Force reco.exe "$env:LOCALAPPDATA\Programs\reco\reco.exe"
+Copy-Item -Force reco_0.1.1_windows_amd64.exe "$env:LOCALAPPDATA\Programs\reco\reco.exe"
 ```
 
 arm64 の場合
 
 ```powershell
-curl.exe -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_windows_arm64.zip
-tar -xf reco_0.1.1_windows_arm64.zip reco.exe
+curl.exe -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_windows_arm64.exe
 New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\reco" | Out-Null
-Move-Item -Force reco.exe "$env:LOCALAPPDATA\Programs\reco\reco.exe"
+Copy-Item -Force reco_0.1.1_windows_arm64.exe "$env:LOCALAPPDATA\Programs\reco\reco.exe"
 ```
 
 初めてインストールするときだけ、置いたディレクトリを利用者の `PATH` に加えます。変更した `PATH` は、新しく開いた PowerShell から有効になります。
@@ -66,17 +62,15 @@ Move-Item -Force reco.exe "$env:LOCALAPPDATA\Programs\reco\reco.exe"
 amd64 の場合
 
 ```bash
-curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_linux_amd64.tar.gz
-tar -xzf reco_0.1.1_linux_amd64.tar.gz reco
-sudo mv reco /usr/local/bin/reco
+curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_linux_amd64
+sudo install -m 0755 reco_0.1.1_linux_amd64 /usr/local/bin/reco
 ```
 
 arm64 の場合
 
 ```bash
-curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_linux_arm64.tar.gz
-tar -xzf reco_0.1.1_linux_arm64.tar.gz reco
-sudo mv reco /usr/local/bin/reco
+curl -fsSLO https://github.com/tmknom/reco/releases/download/v0.1.1/reco_0.1.1_linux_arm64
+sudo install -m 0755 reco_0.1.1_linux_arm64 /usr/local/bin/reco
 ```
 
 ### インストールした reco が動くことの確認
@@ -114,5 +108,5 @@ GH_TOKEN=$(gh auth token) docker run --rm -it -e GH_TOKEN \
 
 ## References
 
-- [Verification](verification.md)：配布アーカイブとコンテナイメージが reco のリリース用ワークフローで作られたものかを、GitHub Attestations で検証する手順
+- [Verification](verification.md)：配布バイナリとコンテナイメージが reco のリリース用ワークフローで作られたものかを、GitHub Attestations で検証する手順
 - [Authentication](authentication.md)：`gh auth token` のトークンを渡す理由と、トークンの持ち主に要るロール
