@@ -90,3 +90,23 @@ func TestEnvironmentPlans(t *testing.T) {
 		})
 	}
 }
+
+// TestRepositoryPlan_EnvironmentOperationOfModeMismatchPanicsWithoutMatchedExistence は、存在する Environment の方式の不一致を、
+// 同じ名前の存在の計画が一致でなければ更新操作にせず panic することを確かめる。
+// 作成の計画と組むと、存在しない Environment の ID を基準にした方式の変更になるため。
+//
+//trace:checks INV-004
+func TestRepositoryPlan_EnvironmentOperationOfModeMismatchPanicsWithoutMatchedExistence(t *testing.T) {
+	staging := mustEnvironmentName(t, "staging")
+	creation := SettingPlan{Key: setting.EnvironmentResource, Environment: staging, ObservedEnvironment: lookup(t, "staging"), Result: Mismatch, Applicability: Applicable}
+	all := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll})
+	protected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches})
+	modeChange := SettingPlan{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging, Observed: github.Observed(all), Desired: protected, Result: Mismatch, Applicability: Applicable}
+	r := RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: []SettingPlan{creation, modeChange}}
+	defer func() {
+		if recover() == nil {
+			t.Error("environmentOperationOf() did not panic")
+		}
+	}()
+	_, _ = r.environmentOperationOf(modeChange)
+}

@@ -60,8 +60,8 @@ func selectedActionsChange() changeplan.LogicalChange {
 // enableActionsChange は、enableActionsNotComparable から導く論理的な設定変更。基準はどちらも Actions が無効による観測不能。
 func enableActionsChange() changeplan.LogicalChange {
 	return singleUpdate(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly), []changeplan.RelevantSetting{
-		{Key: setting.AllowedActions, ValueAtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
-		{Key: setting.SelectedActions, ValueAtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
+		{Unit: setting.Unit{Key: setting.AllowedActions}, ValueAtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
+		{Unit: setting.Unit{Key: setting.SelectedActions}, ValueAtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
 	})
 }
 
@@ -73,14 +73,40 @@ func enabledStateChange(to bool) changeplan.LogicalChange {
 // shaPinningRequiredChange は、Actions が有効のリポジトリで sha_pinning_required を false から true にする論理的な設定変更。
 func shaPinningRequiredChange() changeplan.LogicalChange {
 	return singleUpdate(setting.SHAPinningRequired, setting.BoolValue(true), []changeplan.RelevantSetting{
-		{Key: setting.SHAPinningRequired, ValueAtApproval: github.Observed(setting.BoolValue(false))},
-		{Key: setting.ActionsEnabled, ValueAtApproval: github.Observed(setting.BoolValue(true))},
+		{Unit: setting.Unit{Key: setting.SHAPinningRequired}, ValueAtApproval: github.Observed(setting.BoolValue(false))},
+		{Unit: setting.Unit{Key: setting.ActionsEnabled}, ValueAtApproval: github.Observed(setting.BoolValue(true))},
 	})
 }
 
 // shaPinningRequiredAfterEnablingChange は、Actions が無効のリポジトリで、Actions を有効にする変更のあとに sha_pinning_required を true にする論理的な設定変更。
 func shaPinningRequiredAfterEnablingChange() changeplan.LogicalChange {
 	return singleUpdate(setting.SHAPinningRequired, setting.BoolValue(true), relevantTo(setting.ActionsEnabled, setting.BoolValue(true)))
+}
+
+// creationChange は、計画時に存在しなかった name の Environment を作成する論理的な設定変更。
+// desired がゼロ値でなければ、同じ更新要求で方式も設定する。
+func creationChange(t *testing.T, name string, desired setting.Value) changeplan.LogicalChange {
+	t.Helper()
+	environment := mustEnvironmentName(t, name)
+	unit := setting.Unit{Key: setting.EnvironmentResource, Environment: environment}
+	return changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{{
+		Unit: unit, Desired: desired,
+		RelevantSettings: []changeplan.RelevantSetting{{Unit: unit, EnvironmentAtApproval: github.Environments{}.Lookup(environment)}},
+	}}}
+}
+
+// modeChange は、計画時に approved と観測した、宣言の名前 name の Environment の方式を desired にする論理的な設定変更。
+func modeChange(t *testing.T, name string, approved github.Environment, desired setting.DeploymentBranchPolicyMode) changeplan.LogicalChange {
+	t.Helper()
+	environment := mustEnvironmentName(t, name)
+	policy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}
+	return changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{{
+		Unit: policy, Desired: modeValue(desired),
+		RelevantSettings: []changeplan.RelevantSetting{
+			{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, EnvironmentAtApproval: github.Environments{Existing: []github.Environment{approved}}.Lookup(environment)},
+			{Unit: policy, ValueAtApproval: github.Observed(setting.DeploymentBranchPolicyValue(approved.DeploymentBranchPolicy))},
+		},
+	}}}
 }
 
 func newRepositoryPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.RepositoryPlan {
@@ -96,10 +122,10 @@ func newRepositoryPlanOf(t *testing.T, name string, id repository.ID, settings .
 
 // relevantTo は、key の設定だけを関係する現在値の設定とし、承認時に予定した値を観測値 observed とする変更前提の基準。
 func relevantTo(key setting.Key, observed setting.Value) []changeplan.RelevantSetting {
-	return []changeplan.RelevantSetting{{Key: key, ValueAtApproval: github.Observed(observed)}}
+	return []changeplan.RelevantSetting{{Unit: setting.Unit{Key: key}, ValueAtApproval: github.Observed(observed)}}
 }
 
 // singleUpdate は、key を desired にする更新操作一つからなる論理的な設定変更。
 func singleUpdate(key setting.Key, desired setting.Value, relevant []changeplan.RelevantSetting) changeplan.LogicalChange {
-	return changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{{Key: key, Desired: desired, RelevantSettings: relevant}}}
+	return changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{{Unit: setting.Unit{Key: key}, Desired: desired, RelevantSettings: relevant}}}
 }

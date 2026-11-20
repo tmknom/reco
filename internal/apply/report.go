@@ -94,10 +94,10 @@ func changesError(records []changeRecord, target repository.Reference) error {
 
 // changeLabel は、変更結果で論理的な設定変更を示す名前を返す。変える管理設定の名前を、更新操作の順に " + " でつなぐ。
 func changeLabel(change changeplan.LogicalChange) string {
-	keys := change.Keys()
-	names := make([]string, len(keys))
-	for i, key := range keys {
-		names[i] = string(key)
+	units := change.Units()
+	names := make([]string, len(units))
+	for i, unit := range units {
+		names[i] = unit.String()
 	}
 	return strings.Join(names, " + ")
 }
@@ -126,7 +126,7 @@ func details(record changeRecord) []string {
 		lines = append(lines, "Possible cause: "+cause)
 	}
 	for _, c := range record.unexpectedOutsideChanges {
-		lines = append(lines, fmt.Sprintf("Other settings: %s changed %s -> %s (cause not determined)", c.Key, c.Before.String(), c.After.String()))
+		lines = append(lines, fmt.Sprintf("Other settings: %s changed %s -> %s (cause not determined)", c.Setting, c.Before, c.After))
 	}
 	return lines
 }
@@ -142,10 +142,10 @@ func updateRequestLines(record changeRecord) []string {
 	for i, operation := range record.change.Operations {
 		o := record.operation(i)
 		if o.started() {
-			lines = append(lines, fmt.Sprintf("Update request (%s): %s", operation.Key, updateOutcomeText(o.update)))
+			lines = append(lines, fmt.Sprintf("Update request (%s): %s", operation.Unit.String(), updateOutcomeText(o.update)))
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("Update request (%s): not started", operation.Key))
+		lines = append(lines, fmt.Sprintf("Update request (%s): not started", operation.Unit.String()))
 		if o.precondition != preconditionNotChecked {
 			lines = append(lines, preconditionText(record.change, i, o))
 		}
@@ -155,7 +155,7 @@ func updateRequestLines(record changeRecord) []string {
 
 // possibleCause は、設定に既知の原因の候補を返す。候補がなければ空文字列を返す。
 func possibleCause(record changeRecord) string {
-	if !record.updatesSucceeded() || record.confirmation != desiredStateMismatch || !slices.Equal(record.change.Keys(), []setting.Key{setting.AllowAutoMerge}) {
+	if !record.updatesSucceeded() || record.confirmation != desiredStateMismatch || !slices.Equal(record.change.Units(), []setting.Unit{{Key: setting.AllowAutoMerge}}) {
 		return ""
 	}
 	return "auto-merge is not available for private repositories on GitHub Free, where GitHub may accept the update without applying it"
@@ -183,11 +183,11 @@ func preconditionText(change changeplan.LogicalChange, index int, o operationRec
 		return "Precondition: repository ID differs from the approved repository"
 	case preconditionCurrentValueChanged:
 		if index == 0 {
-			return "Precondition: " + string(o.changedSetting) + " changed since approval"
+			return "Precondition: " + o.changedSetting.String() + " changed since approval"
 		}
-		return "Precondition: " + string(o.changedSetting) + " is not the value expected after the preceding update"
+		return "Precondition: " + o.changedSetting.String() + " is not the value expected after the preceding update"
 	default:
-		panic(fmt.Sprintf("apply: %s has no reason for not starting the update", change.Operations[index].Key))
+		panic(fmt.Sprintf("apply: %s has no reason for not starting the update", change.Operations[index].Unit.String()))
 	}
 }
 
@@ -219,6 +219,10 @@ func confirmationText(record changeRecord) string {
 	case desiredStateIdentityMismatch:
 		return "not confirmed (repository ID changed)"
 	case desiredStateUnavailable:
+		// 判定できない名前は、宣言した設定が効いていないのではなく reco が存在を確かめられなかったことを表すため、not in effect と示さない
+		if record.desiredUnavailableReason == github.UnavailableEnvironmentNameUndetermined {
+			return "not confirmed (environment existence unknown)"
+		}
 		return "not in effect (" + unavailableReasonText(record.desiredUnavailableReason) + ")"
 	default:
 		return "not checked"
@@ -235,8 +239,10 @@ func unavailableReasonText(reason github.UnavailableReason) string {
 		return `allowed_actions is not "selected"`
 	case github.UnavailablePublicRepository:
 		return "the repository is public"
-	case github.UnavailableEnvironmentAbsent, github.UnavailableEnvironmentNameUndetermined:
-		// Environment の変更予定は承認の前に止めるため、期待状態の確認には現れない
+	case github.UnavailableEnvironmentAbsent:
+		return "the environment does not exist"
+	case github.UnavailableEnvironmentNameUndetermined:
+		// confirmationText が not in effect と示さないため、理由の文言を持たない
 	}
 	panic(fmt.Sprintf("apply: undefined unavailable reason %d", int(reason)))
 }

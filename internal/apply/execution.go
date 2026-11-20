@@ -9,6 +9,7 @@ import (
 
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
+	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
 )
 
@@ -88,7 +89,7 @@ func executeChange(ctx context.Context, client *github.Client, r changeplan.Repo
 		// 更新要求の結果によらず、送ったあとの次の更新操作は間隔を待つ。
 		interval.updateStarted = true
 		var updateErr error
-		record.operations[i].update, updateErr = client.Update(ctx, r.Target, operation.Key, operation.Desired)
+		record.operations[i].update, updateErr = sendUpdate(ctx, client, r.Target, operation, observed)
 		record.cause = errors.Join(record.cause, updateErr)
 		if record.operations[i].update != github.UpdateSucceeded {
 			break
@@ -146,6 +147,26 @@ func observeBeforeUpdate(ctx context.Context, client *github.Client, r changepla
 	}
 }
 
+// sendUpdate は、変更前提を確かめた更新操作の更新要求を一度だけ送る。observed は、その変更前提を確かめた更新直前の観測である。
+func sendUpdate(ctx context.Context, client *github.Client, target repository.Reference, operation changeplan.UpdateOperation, observed github.ObservationResult) (github.UpdateOutcome, error) {
+	if !operation.TargetsEnvironment() {
+		return client.Update(ctx, target, operation.Unit.Key, operation.Desired)
+	}
+	destination := environmentDestination(operation.Unit.Environment, observed)
+	if !operation.SetsDeploymentBranchPolicy() {
+		return client.CreateEnvironment(ctx, target, destination)
+	}
+	return client.UpdateEnvironmentDeploymentBranchPolicy(ctx, target, destination, operation.Desired.DeploymentBranchPolicy().Mode)
+}
+
+// environmentDestination は、宣言の名前 name の Environment の更新要求の宛先の綴りを返す（アーキテクチャ設計の未管理設定を保全する更新方式）。
+func environmentDestination(name setting.EnvironmentName, observed github.ObservationResult) string {
+	if existing, ok := observed.Environments.Lookup(name).Existing(); ok {
+		return existing.Name
+	}
+	return name.String()
+}
+
 // reobservationDelays は、GitHub の反映の遅れを待って観測し直す前に待つ時間を、観測し直す順に並べたもの。
 var reobservationDelays = [...]time.Duration{1 * time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second}
 
@@ -154,9 +175,9 @@ var reobservationDelays = [...]time.Duration{1 * time.Second, 2 * time.Second, 4
 func observationAreas(change changeplan.LogicalChange) []setting.Area {
 	var areas []setting.Area
 	for _, operation := range change.Operations {
-		areas = appendArea(areas, operation.Key.Area())
+		areas = appendArea(areas, operation.Unit.Key.Area())
 		for _, relevant := range operation.RelevantSettings {
-			areas = appendArea(areas, relevant.Key.Area())
+			areas = appendArea(areas, relevant.Unit.Key.Area())
 		}
 	}
 	return areas

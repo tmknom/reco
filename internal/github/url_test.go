@@ -5,46 +5,73 @@ import (
 	"testing"
 )
 
-// TestDeploymentBranchPoliciesURL は、名前を1つのパス要素として送ることを確かめる。
+// TestEnvironmentURL は、名前を1つのパス要素として送ることを確かめる。
 //
 //trace:checks FR-004
+//trace:checks FR-011
 //trace:checks QR-002
-func TestDeploymentBranchPoliciesURL(t *testing.T) {
+func TestEnvironmentURL(t *testing.T) {
 	cases := []struct {
 		name            string
 		environmentName string
 		wantEscaped     string
 		wantPath        string
 	}{
-		{name: "plain name is one path element", environmentName: "production", wantEscaped: "/repos/owner/repo/environments/production/deployment-branch-policies", wantPath: "/repos/owner/repo/environments/production/deployment-branch-policies"},
-		{name: "slash is escaped as %2F", environmentName: "a/b", wantEscaped: "/repos/owner/repo/environments/a%2Fb/deployment-branch-policies", wantPath: "/repos/owner/repo/environments/a/b/deployment-branch-policies"},
-		{name: "dots inside a name are kept", environmentName: "a..b", wantEscaped: "/repos/owner/repo/environments/a..b/deployment-branch-policies", wantPath: "/repos/owner/repo/environments/a..b/deployment-branch-policies"},
+		{name: "plain name is one path element", environmentName: "production", wantEscaped: "/repos/owner/repo/environments/production", wantPath: "/repos/owner/repo/environments/production"},
+		{name: "slash is escaped as %2F", environmentName: "a/b", wantEscaped: "/repos/owner/repo/environments/a%2Fb", wantPath: "/repos/owner/repo/environments/a/b"},
+		{name: "space is escaped as %20", environmentName: "a b", wantEscaped: "/repos/owner/repo/environments/a%20b", wantPath: "/repos/owner/repo/environments/a b"},
+		{name: "percent is escaped as %25", environmentName: "100%", wantEscaped: "/repos/owner/repo/environments/100%25", wantPath: "/repos/owner/repo/environments/100%"},
+		{name: "literal %2F is not decoded", environmentName: "a%2Fb", wantEscaped: "/repos/owner/repo/environments/a%252Fb", wantPath: "/repos/owner/repo/environments/a%2Fb"},
+		{name: "question mark is escaped as %3F", environmentName: "a?b", wantEscaped: "/repos/owner/repo/environments/a%3Fb", wantPath: "/repos/owner/repo/environments/a?b"},
+		{name: "hash is escaped as %23", environmentName: "a#b", wantEscaped: "/repos/owner/repo/environments/a%23b", wantPath: "/repos/owner/repo/environments/a#b"},
+		{name: "dots inside a name are kept", environmentName: "a..b", wantEscaped: "/repos/owner/repo/environments/a..b", wantPath: "/repos/owner/repo/environments/a..b"},
 	}
 	c := New(testToken)
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			u, ok := c.deploymentBranchPoliciesURL(mustReference(t, "owner/repo"), tc.environmentName)
+			u, ok := c.environmentURL(mustReference(t, "owner/repo"), tc.environmentName)
 			if !ok {
-				t.Fatalf("deploymentBranchPoliciesURL(%q) ok = false, want true", tc.environmentName)
+				t.Fatalf("environmentURL(%q) ok = false, want true", tc.environmentName)
 			}
 			if got := u.EscapedPath(); got != tc.wantEscaped {
-				t.Errorf("deploymentBranchPoliciesURL(%q) escaped path = %q, want %q", tc.environmentName, got, tc.wantEscaped)
+				t.Errorf("environmentURL(%q) escaped path = %q, want %q", tc.environmentName, got, tc.wantEscaped)
 			}
 			if u.Path != tc.wantPath {
-				t.Errorf("deploymentBranchPoliciesURL(%q) path = %q, want %q", tc.environmentName, u.Path, tc.wantPath)
+				t.Errorf("environmentURL(%q) path = %q, want %q", tc.environmentName, u.Path, tc.wantPath)
 			}
 			if u.Host != "api.github.com" || u.Scheme != "https" {
-				t.Errorf("deploymentBranchPoliciesURL(%q) = %q, want the client origin", tc.environmentName, u)
+				t.Errorf("environmentURL(%q) = %q, want the client origin", tc.environmentName, u)
 			}
 		})
 	}
 
 	for _, name := range []string{".", ".."} {
 		t.Run("dot segment "+name+" is not addressable", func(t *testing.T) {
-			if u, ok := c.deploymentBranchPoliciesURL(mustReference(t, "owner/repo"), name); ok {
-				t.Errorf("deploymentBranchPoliciesURL(%q) = %q, true, want false", name, u)
+			if u, ok := c.environmentURL(mustReference(t, "owner/repo"), name); ok {
+				t.Errorf("environmentURL(%q) = %q, true, want false", name, u)
 			}
 		})
+	}
+}
+
+// TestDeploymentBranchPoliciesURL は、Environment の URL に接尾を足し、組めない名前を伝えることだけを確かめる。名前のエスケープは TestEnvironmentURL が確かめる。
+//
+//trace:checks FR-004
+func TestDeploymentBranchPoliciesURL(t *testing.T) {
+	c := New(testToken)
+	u, ok := c.deploymentBranchPoliciesURL(mustReference(t, "owner/repo"), "a/b")
+	if !ok {
+		t.Fatal("deploymentBranchPoliciesURL(\"a/b\") ok = false, want true")
+	}
+	if got, want := u.EscapedPath(), "/repos/owner/repo/environments/a%2Fb/deployment-branch-policies"; got != want {
+		t.Errorf("escaped path = %q, want %q", got, want)
+	}
+	if got, want := u.Path, "/repos/owner/repo/environments/a/b/deployment-branch-policies"; got != want {
+		t.Errorf("path = %q, want %q", got, want)
+	}
+
+	if u, ok := c.deploymentBranchPoliciesURL(mustReference(t, "owner/repo"), ".."); ok {
+		t.Errorf("deploymentBranchPoliciesURL(\"..\") = %q, true, want false", u)
 	}
 }
 

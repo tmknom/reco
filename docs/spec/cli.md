@@ -321,12 +321,6 @@ Plan cannot be applied.
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-b: actions.permissions.sha_pinning_required is not applicable; example/project-c: actions.permissions.sha_pinning_required is not applicable; no changes made"}
 ```
 
-`apply` は Environment の変更予定（作成と `deployment_branch_policy` の変更）を実行しません。適用不能な変更予定がなく、Environment の変更予定が一つでもあれば、変更計画を表示せず、承認を求めず、どのリポジトリも更新せずにエラー終了します。stderr のエラーは、変更計画の並びで最初の Environment の変更予定の対象と設定を挙げます。
-
-```text
-{"time":"...","level":"ERROR","msg":"command failed","error":"example/project-a: environments.production cannot be applied: applying environment changes is not supported; no changes made"}
-```
-
 すべて変更不要の場合の表示例は次のとおりです。
 
 ```text
@@ -351,6 +345,7 @@ Repositories checked: 2
 | `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
 | `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
 | `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Internal Document |
 
 ### 5.1 承認
 
@@ -422,6 +417,8 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 論理的な設定変更ごとに結果を表示するときは、論理的な設定変更を、それが変える管理設定の名前で示します。二つの管理設定を変える論理的な設定変更は、更新操作の順に ` + ` でつないで示します（`actions.permissions.allowed_actions + actions.permissions.selected_actions`）。
 
+Environment の作成も、完了すれば `updated` と示します。何を作成したかは、承認の前に提示した `absent -> present` が示します。`deployment_branch_policy` を宣言した Environment の作成は、一つの更新要求で Environment と方式を設定する一つの論理的な設定変更で、`environments.<名前> + environments.<名前>.deployment_branch_policy` と示します。方式を宣言していない作成は `environments.<名前>`、存在する Environment の方式の変更は `environments.<名前>.deployment_branch_policy` と示します。名前は設定宣言の綴りです。どれも更新操作は一つのため、`Update request` は1行です。
+
 二つの更新操作からなる論理的な設定変更が、更新操作を開始したあとで完了しなかった場合は、`Update request` の行を更新操作ごとに1行ずつ、実行順に示します。行は `Update request (<その更新操作が変える管理設定>): <結果>` の形で、結果は `succeeded`、`rejected`、`unknown`、開始しなかった更新操作を表す `not started` のいずれかです。先行する更新操作が成功し、後続の更新操作を開始できなかった場合は、完了済みの更新操作を `succeeded`、未開始の更新操作を `not started` と示し、変更全体を `failed` とします。`not started` は更新操作についての表示で、論理的な設定変更の `not attempted` とは区別します。
 
 後続の更新操作を変更前提の不成立で開始できなかった場合は、`not started` の行の次に `Precondition:` の行で理由を示します。先行する更新操作が変えた設定が予定どおりの値でなかった場合は、`Precondition: <設定> is not the value expected after the preceding update` と示します。GitHub の反映が遅れている場合も、外部主体が値を変えた場合もこの表示になり、原因は断定しません。先行する更新操作が成功しなかったために開始しなかった場合は、理由の行を足しません。先行する更新操作が成功していれば、後続を開始できなかった場合も後続が失敗した場合も、更新後の確認を一度だけ行い、その結果と変更対象外の設定の予期しない変化を示します。この確認で期待状態との一致を確認しても、必要な更新操作の成功を確認していないため、`updated` に変更しません。最初の更新操作が拒否され、更新後の確認を行わなかった場合は `Desired state: not checked` と示します。
@@ -430,13 +427,17 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を示します（`Precondition: <設定> changed since approval`）。`Side effect:` で示した設定の値が承認の前に示した値から変わっていた場合は、その設定を示します。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。複数の設定が変わっていた場合は、論理的な設定変更が変える設定を優先して一つだけ示します。ただし、Actions が無効のリポジトリで、承認した変更が Actions を有効にしたあとに `sha_pinning_required` を確認できるようになったことは、予定どおりの変化で、示しません。`sha_pinning_required` の更新は `enabled: true` を送るため、その直前に Actions が無効だった場合は `Precondition: actions.permissions.enabled changed since approval` と示します。計画時に Actions が有効だった場合は、`sha_pinning_required` を確認できなくなったことを優先し、`actions.permissions.sha_pinning_required` を示します。`access_level` の更新の直前にリポジトリが公開になっていた場合も、`access_level` を確認できなくなったため、`Precondition: actions.access.access_level changed since approval` と示します。
 
+Environment では、Environment そのものの変化を `Precondition: environments.<名前> changed since approval` と示します。作成の承認のあとに同じ名前（ASCII の英字の大文字小文字だけが違う名前を含む）の Environment が作られた場合、宣言した名前と同じかどうかを判定できない名前の Environment が現れて存在を確かめられなくなった場合、方式の変更の承認のあとに Environment がなくなった場合、同じ名前で作り直されて ID が変わった場合が当たります。どれも更新直前の確認で見つかるため、更新要求を送らずに `not attempted` になります。Environment が変わらず方式（`selected` の個別パターンを含む）だけが変わっていた場合は、`Precondition: environments.<名前>.deployment_branch_policy changed since approval` と示します。両方が変わっていた場合は Environment そのものを優先します。作り直された Environment の方式を承認時の値と比べても、承認した変更が当てはまるかは分からないためです。
+
 `failed` には、更新操作の失敗、更新操作の成否不明、成功応答後の期待状態の確認失敗、成功応答後の期待状態との不一致、成功応答後の変更対象外の設定の予期しない変化のいずれに当たるかを添えて示します。先行操作の成功後に後続操作を開始できなかった場合は、その旨を示します。変更対象外の設定の予期しない変化では、観測した変化を示しますが、reco に起因するとは断定しません。変更対象外の設定には、同じリポジトリのほかの管理設定も含みます。更新要求の応答を確認できない場合は成否不明とし、その後の再観測で期待状態が一致しても、更新操作の成否が判明したことにはならず、`updated` に変更しません。この再観測で変更対象外の設定の変化を観測した場合も、更新操作の結果と分けて示します。成否不明になった原因は、理由の行では区別せず、エラーとして示します。
 
 再観測の失敗とリポジトリ ID の変化による期待状態の確認失敗は、`not confirmed` に確認できなかった理由を括弧で添えて示します（`not confirmed (read failed)`、`not confirmed (repository ID changed)`）。
 
 期待値と比べる設定が GitHub の取得条件により観測不能だったことによる確認失敗は、`not in effect` に、宣言した設定が効いていない理由を括弧で添えて示します。理由は、Actions が無効なら `GitHub Actions is disabled`、Actions 許可ポリシーが `selected` でなければ `allowed_actions is not "selected"`、リポジトリが公開なら `the repository is public` です。`allowed_actions` を宣言できるのは Actions を有効にする場合に限られ、`sha_pinning_required` は Actions を無効にする宣言と同時には宣言できず、`selected_actions` を宣言できるのは Actions 許可ポリシーを `selected` と宣言した場合に限られます（[YAML 設定仕様](configuration.md) 4章）。`access_level` は公開リポジトリには適用されません（[YAML 設定仕様](configuration.md) 6章）。このため、この観測不能は、宣言した設定が効いていないことを意味します。値そのものは確認できていないため、`does not match` とは示しません。`not confirmed` とも示さないのは、reco が確認に失敗したと読ませず、利用者が確かめるべきリポジトリの状態を示すためです。
 
-変更対象外の設定は、管理設定と同じ形の名前で示します。
+Environment の方式の変更のあとに Environment が存在しなかった場合は、`not in effect (the environment does not exist)` と示します。宣言した方式を持つ Environment がないためです。作成のあとに Environment が存在しなかった場合は、存在しないことを確認できているため、`does not match` と示します。作成と方式の変更のどちらでも、宣言した名前と同じかどうかを判定できない名前の Environment が現れ、存在を確かめられなかった場合は、reco が確認できなかったことを示す `not confirmed (environment existence unknown)` と示します。
+
+変更対象外の設定は、管理設定と同じ形の名前で示します。Environment の保護設定は、`show` の項目名に Environment の名前を前置して `environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.can_admins_bypass` と示し、値も `show` と同じ表記にします（`required_reviewers` は `none`、または `reviewers: [User 583231, Team 42], prevent_self_review: true` の1行）。名前は設定宣言の綴りです。複数が変わっていれば、`show` の並びで1行ずつ示します。
 
 更新操作が成功したのに期待状態と一致しない場合、reco は原因を断定しません。設定に既知の原因の候補があれば、`Possible cause:` として可能性の形で添えます。`general.allow_auto_merge` では、GitHub Free の非公開リポジトリで自動マージを利用できず、GitHub が更新を反映しないまま成功を応答する場合があることを示します（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）。更新操作の成否が不明な場合は添えません。
 
@@ -586,6 +587,28 @@ Applying changes...
     Precondition: general.allow_auto_merge changed since approval
   example/project-c: not attempted
     Stopped: a preceding repository did not complete
+
+Note: Some changes may already have been applied. No automatic rollback was performed.
+```
+
+Environment の作成の承認のあとに、同じ名前の Environment が作られていた場合は次のとおりです。
+
+```text
+Applying changes...
+  example/project-a: not attempted
+    Precondition: environments.production changed since approval
+```
+
+Environment の作成と、別の Environment の方式の変更が並び、方式の変更のあとに保護設定の変化を観測した場合は次のとおりです。
+
+```text
+Applying changes...
+  example/project-a
+    environments.production + environments.production.deployment_branch_policy: updated
+    environments.staging.deployment_branch_policy: failed
+      Update request: succeeded
+      Desired state: matches
+      Other settings: environments.staging.wait_timer changed 30 -> none (cause not determined)
 
 Note: Some changes may already have been applied. No automatic rollback was performed.
 ```

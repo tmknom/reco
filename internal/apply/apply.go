@@ -89,6 +89,7 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 // 論理的な設定変更にできない変更予定の拒否は、論理的な設定変更を導く changeplan が持つ。
 // INV-002 のため、すべての対象リポジトリの更新操作の更新エンドポイントを承認の前に引き、更新要求を持たない設定の更新操作があれば、
 // 先の対象リポジトリを更新したあとではなく、更新要求を一つも送る前に止める。戻り値を使わないのは、この呼び出しが引けることの検査だけを目的とするため。
+// Environment の更新操作は、更新エンドポイントが Environment の名前ごとに別で、設定の識別だけでは引けないため、検査から除く。
 func executableChanges(p changeplan.Plan) ([]repositoryChanges, error) {
 	repositories := make([]repositoryChanges, len(p.Repositories))
 	for i, r := range p.Repositories {
@@ -98,7 +99,9 @@ func executableChanges(p changeplan.Plan) ([]repositoryChanges, error) {
 		}
 		for _, change := range changes {
 			for _, operation := range change.Operations {
-				github.UpdateEndpointOf(operation.Key)
+				if !operation.TargetsEnvironment() {
+					github.UpdateEndpointOf(operation.Unit.Key)
+				}
 			}
 		}
 		repositories[i] = repositoryChanges{plan: r, changes: changes}

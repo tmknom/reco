@@ -22,7 +22,7 @@ func TestChangeRecord_MayHaveChangedState(t *testing.T) {
 		{
 			// 開始しなかった記録の update はゼロ値の UpdateUnknown で、成否不明ではない
 			name:       "first precondition not holding has not changed the state",
-			operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions}},
+			operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.AllowedActions}}},
 			want:       false,
 		},
 		{name: "only a rejected update has not changed the state", operations: []operationRecord{rejected}, want: false},
@@ -60,7 +60,7 @@ func TestChangeRecord_Result(t *testing.T) {
 			name: "two updates whose first precondition does not hold is not attempted",
 			record: changeRecord{
 				change:     toSelectedChange(),
-				operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions}},
+				operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.AllowedActions}}},
 			},
 			want: notAttempted,
 		},
@@ -72,7 +72,7 @@ func TestChangeRecord_Result(t *testing.T) {
 				change: toSelectedChange(),
 				operations: []operationRecord{
 					{precondition: preconditionHolds, update: github.UpdateSucceeded},
-					{precondition: preconditionCurrentValueChanged, changedSetting: setting.AllowedActions},
+					{precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.AllowedActions}},
 				},
 				confirmation: desiredStateMatches,
 			},
@@ -121,7 +121,7 @@ func TestChangeRecord_Result(t *testing.T) {
 			name: "success, match and other setting change is failed",
 			record: changeRecord{
 				operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateMatches,
-				unexpectedOutsideChanges: []unexpectedOutsideChange{{Key: setting.DeleteBranchOnMerge, Before: setting.BoolValue(false), After: setting.BoolValue(true)}},
+				unexpectedOutsideChanges: []unexpectedOutsideChange{{Setting: string(setting.DeleteBranchOnMerge), Before: "false", After: "true"}},
 			},
 			want: failed,
 		},

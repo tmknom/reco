@@ -153,12 +153,11 @@ repositories:
 | `name` | 文字列（必須） | Environment の名前 |
 | `deployment_branch_policy.mode` | `all` / `protected_branches` | Environment へデプロイできるブランチとタグの制限。`all` は制限なし、`protected_branches` は保護ルールのあるブランチだけ |
 
-- 書いた名前の Environment がなければ、reco は作成を計画する。`deployment_branch_policy` を省いた Environment は、あるかどうかだけを管理する
+- 書いた名前の Environment がなければ、reco は作成する。`deployment_branch_policy` を省いた Environment は、あるかどうかだけを管理する
 - 書かなかった Environment は、変更も削除もしない。設定ファイルから名前を消しても、GitHub 上の Environment は残る
 - 名前は、半角の英数字、空白、記号だけで書く。大文字と小文字だけが違う名前は同じ Environment とみなすため、同じリポジトリに並べられない
 - 保護ルールのあるブランチが一つもなければ、`protected_branches` でもすべてのブランチからデプロイできる（GitHub の仕様）。ブランチの保護ルールは reco では作れない
 - `show` が `mode: selected` と示した Environment でも、設定ファイルには `all` か `protected_branches` しか書けない。`selected` の Environment を `all` などに変えると、GitHub は `patterns` に並んでいたパターンを残さない。`plan` の行の矢印の左に、なくなるパターンが出る
-- `apply` は、Environment の作成と `deployment_branch_policy` の変更をまだ実行しない。`plan` で差を確かめることはできる
 
 ## 未記載の設定の扱い
 

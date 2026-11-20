@@ -89,3 +89,18 @@ func okSelectedActions(githubOwnedAllowed, verifiedAllowed bool, patternsAllowed
 func newClient(baseURL *url.URL) *github.Client {
 	return github.New("test-token", github.WithBaseURL(baseURL))
 }
+
+// okEnvironments は、environments を一覧の全体とする Environment の一覧の取得の正常応答。
+func okEnvironments(environments ...githubtest.EnvironmentBody) response {
+	return response{status: http.StatusOK, body: githubtest.EnvironmentsBody{TotalCount: len(environments), Environments: environments}.JSON()}
+}
+
+// okEnvironment は、Environment の作成と更新の正常応答。本文は個別取得と同じ形である。
+func okEnvironment(environment githubtest.EnvironmentBody) response {
+	return response{status: http.StatusOK, body: environment.JSON()}
+}
+
+// protectedBranchesBody は、方式が protected_branches の deployment_branch_policy。
+func protectedBranchesBody() *githubtest.DeploymentBranchPolicyBody {
+	return &githubtest.DeploymentBranchPolicyBody{ProtectedBranches: true}
+}

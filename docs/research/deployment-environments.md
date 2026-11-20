@@ -150,13 +150,14 @@ Environment の名前は、パスパラメータ `environment_name` に URL エ�
 > 次は、reco の開発者が実際の動作で確認した事項です（公開リポジトリで確認）。
 >
 > - 本文のない作成：存在しない名前への本文のない `PUT` は `200` を返して Environment を作った。作られた Environment は、`protection_rules` が空の配列、`deployment_branch_policy` が `null`、`can_admins_bypass` が `true` だった
-> - 本文つきの作成：存在しない名前に `wait_timer: 3` だけを送ると `200` を返し、作られた Environment は `wait_timer` の保護ルールを持った。`deployment_branch_policy` を送る作成は確かめていない
+> - 本文つきの作成：存在しない名前に `wait_timer: 3` だけを送ると `200` を返し、作られた Environment は `wait_timer` の保護ルールを持った。存在しない名前に `deployment_branch_policy` の `protected_branches: true`、`custom_branch_policies: false` だけを送ると `200` を返し、作られた Environment はその方式を持った。公開と非公開のリポジトリで確かめた
 > - 既存の Environment への本文のない `PUT` と `{}` の `PUT`：`200` を返し、値は何も変わらなかった。`wait_timer`、`reviewers`、`prevent_self_review: true`、`can_admins_bypass: false`、`protected_branches: true` を持つ Environment で確かめた
 > - `can_admins_bypass`：本文に `can_admins_bypass: false` を送ると受け付けられ、取得が `false` を返した
 > - 省略したフィールドの保持：`wait_timer: 7`、`reviewers`（ユーザー1人）、`prevent_self_review: true`、`can_admins_bypass: false` を持つ Environment に `deployment_branch_policy` だけを送ると、4つの値と、待機時間とレビュアーの保護ルールの `id` は変わらなかった。`custom_branch_policies: true` で4件のパターンを持つ Environment に `wait_timer` だけを送ると、`deployment_branch_policy` と、4件のパターン（同じ `id`）は変わらなかった
 > - デプロイ元の制限を変える更新：`custom_branch_policies: true` から `protected_branches: true` または `null` に変えると、パターンはすべて失われ、`custom_branch_policies: true` に戻してもパターンの一覧は空だった。`custom_branch_policies: true` のまま同じ値を送り直したときは、パターンは同じ `id` で残った。パターンのエンドポイントの応答は [GitHub デプロイ元パターン API 仕様](deployment-branch-policies.md) の注釈にある
 > - 同じ値の `protected_branches` と `custom_branch_policies`：両方 `true`、両方 `false` のどちらも `422` を返し、本文の `message` は `"custom_branch_policies" and "protected_branches" cannot have the same value` だった。値は変わらなかった
 > - 更新直後の取得：作成と更新（約20回）の約1秒以内の取得は、どれも更新後の値を返した
+> - 別の名前の Environment：確認の前から存在した Environment は、別の名前の Environment を作成、更新、削除した確認の前後で、`updated_at` を含む全フィールドと、デプロイ元パターン（同じ `id`）が一致した
 
 | Relationship | Target | Target Type |
 |---|---|---|

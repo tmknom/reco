@@ -52,12 +52,12 @@ type General struct {
 	DeleteBranchOnMerge bool
 }
 
-// Setting は、key の設定の観測結果を返す。取得条件を持たない設定は、常に観測値になる。
-// o は key の設定の領域を読み取った観測の結果に限り、読み取らなかった領域の値は補わずに nil 参照で止まる。
+// Setting は、管理の単位 unit の設定の観測結果を返す。取得条件を持たない設定は、常に観測値になる。
+// o は unit の設定の領域を読み取った観測の結果に限り、読み取らなかった領域の値は補わずに nil 参照で止まる。
 // 未知の設定は不変条件の破れとして panic する。
 // 設定を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
-func (o ObservationResult) Setting(key setting.Key) SettingObservation[setting.Value] {
-	switch key {
+func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting.Value] {
+	switch unit.Key {
 	case setting.DeleteBranchOnMerge:
 		return Observed(setting.BoolValue(o.General.DeleteBranchOnMerge))
 	case setting.AllowAutoMerge:
@@ -76,10 +76,12 @@ func (o ObservationResult) Setting(key setting.Key) SettingObservation[setting.V
 		return Observed(setting.BoolValue(o.WorkflowPermissions.CanApprovePullRequestReviews))
 	case setting.ActionsAccessLevel:
 		return valueObservation(o.ActionsAccess.AccessLevel, setting.AccessLevelValue)
-	case setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy:
-		// Environment の管理の単位は名前との組で識別し、観測は Environments.Lookup で引くため、この関数では引けない。
+	case setting.EnvironmentDeploymentBranchPolicy:
+		return o.Environments.Lookup(unit.Environment).DeploymentBranchPolicy()
+	case setting.EnvironmentResource:
+		// Environment そのものは値を持たないため、この関数では引けない。存在は Environments.Lookup で引く。
 	}
-	panic(fmt.Sprintf("unknown setting %q", key))
+	panic(fmt.Sprintf("unknown setting %q", unit.Key))
 }
 
 // ObserveRepository は reference のリポジトリを観測する。areas で、General に加えて読み取る設定の領域を選ぶ。

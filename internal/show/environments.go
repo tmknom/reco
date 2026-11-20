@@ -29,20 +29,12 @@ func writeEnvironments(b *strings.Builder, e github.Environments) {
 
 // writeEnvironmentProtection は Environment の保護設定を書く。保護ルールがなければ none と示す。
 func writeEnvironmentProtection(b *strings.Builder, p setting.EnvironmentProtection) {
-	if p.WaitTimer == nil {
-		b.WriteString("    wait_timer: none\n")
-	} else {
-		fmt.Fprintf(b, "    wait_timer: %d\n", *p.WaitTimer)
-	}
+	fmt.Fprintf(b, "    wait_timer: %s\n", p.WaitTimerString())
 	if p.RequiredReviewers == nil {
 		b.WriteString("    required_reviewers: none\n")
 	} else {
-		reviewers := make([]string, len(p.RequiredReviewers.Reviewers))
-		for i, reviewer := range p.RequiredReviewers.Reviewers {
-			reviewers[i] = fmt.Sprintf("%s %d", reviewer.Type, reviewer.ID)
-		}
-		fmt.Fprintf(b, "    required_reviewers:\n      reviewers: [%s]\n      prevent_self_review: %t\n",
-			strings.Join(reviewers, ", "), p.RequiredReviewers.PreventSelfReview)
+		fmt.Fprintf(b, "    required_reviewers:\n      reviewers: %s\n      prevent_self_review: %t\n",
+			p.RequiredReviewers.ReviewersString(), p.RequiredReviewers.PreventSelfReview)
 	}
 	fmt.Fprintf(b, "    can_admins_bypass: %t\n", p.CanAdminsBypass)
 }
