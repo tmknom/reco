@@ -325,7 +325,7 @@ func TestDocumentDeclaration(t *testing.T) {
 			name:       "name alone is rejected for lacking both general and actions",
 			src:        strings.Replace(second, "    general:\n      allow_auto_merge: false\n", "", 1),
 			wantPath:   "repositories[1]",
-			wantReason: "must have at least one of general, actions",
+			wantReason: "must have at least one of general, actions, environments",
 		},
 		{
 			name:       "missing name is rejected",
@@ -441,6 +441,27 @@ func TestDocumentDeclaration(t *testing.T) {
 			wantPath:   "repositories[1].actions",
 			wantReason: `unknown key "secrets"; expected permissions, workflow, access`,
 		},
+		// Environments
+		{
+			name: "repository with only environments is accepted",
+			src:  minimal + "  - name: owner/second\n    environments:\n      - name: staging\n        deployment_branch_policy:\n          mode: protected_branches\n",
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				{
+					Reference: mustReference(t, "owner/second"),
+					Desired: DesiredState{Environments: []EnvironmentDeclaration{{
+						Name:                   mustEnvironmentName(t, "staging"),
+						DeploymentBranchPolicy: &setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches},
+					}}},
+				},
+			}},
+		},
+		{
+			name:       "invalid environment name is rejected at the path of the repository and the item",
+			src:        second + "    environments:\n      - name: staging\n      - name: café\n",
+			wantPath:   "repositories[1].environments[1].name",
+			wantReason: "must consist of printable ASCII characters",
+		},
 		// Actions access
 		{
 			name:       "unknown key in access is rejected",
@@ -542,6 +563,148 @@ func TestDocumentDeclaration(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("declaration() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDocumentEnvironments は、environments の並びが持つ規則 (空の拒否、同一とみなす名前の重複、宣言の並びの保持) を確かめる。
+// 拒否のケースは、受理される入力 (base) の条件を 1 つだけ変えて作る。
+//
+//trace:checks FR-001
+func TestDocumentEnvironments(t *testing.T) {
+	const base = "- name: staging\n- name: production\n"
+	declaration := func(name string) EnvironmentDeclaration {
+		return EnvironmentDeclaration{Name: mustEnvironmentName(t, name)}
+	}
+	cases := []struct {
+		name       string
+		src        string
+		want       []EnvironmentDeclaration
+		wantPath   string
+		wantReason string
+	}{
+		{name: "declarations are read in the declared order, not sorted by name", src: base, want: []EnvironmentDeclaration{declaration("staging"), declaration("production")}},
+		{name: "names differing in more than letter case are both accepted", src: "- name: staging\n- name: staging2\n", want: []EnvironmentDeclaration{declaration("staging"), declaration("staging2")}},
+		{name: "empty sequence is rejected", src: "[]\n", wantPath: "E", wantReason: "must not be empty"},
+		{name: "same name as an earlier declaration is rejected at the later declaration", src: base + "- name: staging\n", wantPath: "E[2]", wantReason: `duplicate name "staging"; same as E[0] (compared ignoring letter case)`},
+		{name: "name differing only in letter case is rejected as a duplicate naming the earlier index", src: base + "- name: PRODUCTION\n", wantPath: "E[2]", wantReason: `duplicate name "PRODUCTION"; same as E[1] (compared ignoring letter case)`},
+		{name: "invalid item is rejected at the item", src: "- name: staging\n- deployment_branch_policy:\n    mode: all\n", wantPath: "E[1]", wantReason: `missing key "name"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.environments(doc.root, "E")
+			if tc.wantPath != "" {
+				if err == nil {
+					t.Fatalf("environments() = %+v, want error", got)
+				}
+				if !strings.HasPrefix(err.Error(), tc.wantPath+" (") {
+					t.Errorf("environments() error = %q, want it to start with %q", err, tc.wantPath+" (")
+				}
+				if !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("environments() error = %q, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("environments() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("environments() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDocumentEnvironment は、一つの Environment の宣言が持つ規則 (name の形式、キーの集合、デプロイ元制限の省略) を確かめる。
+// 拒否のケースは、受理される入力 (base) の条件を 1 つだけ変えて作る。
+//
+//trace:checks FR-001
+func TestDocumentEnvironment(t *testing.T) {
+	const base = "name: staging\ndeployment_branch_policy:\n  mode: all\n"
+	cases := []struct {
+		name       string
+		src        string
+		want       EnvironmentDeclaration
+		wantPath   string
+		wantReason string
+	}{
+		{
+			name: "name with deployment_branch_policy is read into both fields",
+			src:  base,
+			want: EnvironmentDeclaration{Name: mustEnvironmentName(t, "staging"), DeploymentBranchPolicy: &setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}},
+		},
+		{
+			name: "name alone is read, leaving deployment_branch_policy omitted",
+			src:  "name: staging\n",
+			want: EnvironmentDeclaration{Name: mustEnvironmentName(t, "staging")},
+		},
+		{name: "missing name is rejected", src: "deployment_branch_policy:\n  mode: all\n", wantPath: "E", wantReason: `missing key "name"`},
+		{name: "non-string name is rejected", src: strings.Replace(base, "staging", "42", 1), wantPath: "E.name", wantReason: "must be a string"},
+		{name: "non-ASCII name is rejected at the name", src: strings.Replace(base, "staging", "café", 1), wantPath: "E.name", wantReason: `must consist of printable ASCII characters; got "café"`},
+		{name: "unknown key is rejected", src: base + "variables: {}\n", wantPath: "E", wantReason: `unknown key "variables"; expected name, deployment_branch_policy`},
+		{name: "invalid deployment_branch_policy is rejected at deployment_branch_policy", src: strings.Replace(base, "mode: all", "mode: selected", 1), wantPath: "E.deployment_branch_policy.mode", wantReason: "must be all or protected_branches"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.environment(doc.root, "E")
+			if tc.wantPath != "" {
+				if err == nil {
+					t.Fatalf("environment() = %+v, want error", got)
+				}
+				if !strings.HasPrefix(err.Error(), tc.wantPath+" (") {
+					t.Errorf("environment() error = %q, want it to start with %q", err, tc.wantPath+" (")
+				}
+				if !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("environment() error = %q, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("environment() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("environment() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDocumentDeploymentBranchPolicy は、デプロイ元制限の宣言が受け付ける方式 (all と protected_branches) と、個別パターンを受け付けないことを確かめる。
+//
+//trace:checks FR-001
+func TestDocumentDeploymentBranchPolicy(t *testing.T) {
+	cases := []struct {
+		name       string
+		src        string
+		want       setting.DeploymentBranchPolicy
+		wantReason string
+	}{
+		{name: "all is read without patterns", src: "mode: all\n", want: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}},
+		{name: "protected_branches is read without patterns", src: "mode: protected_branches\n", want: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}},
+		{name: "selected is rejected", src: "mode: selected\n", wantReason: `P.mode (line 1, column 7): must be all or protected_branches; got "selected"`},
+		{name: "non-string mode is rejected", src: "mode: 1\n", wantReason: "P.mode (line 1, column 7): must be a string"},
+		{name: "only patterns is rejected as an unknown key", src: "patterns: []\n", wantReason: `unknown key "patterns"; expected mode`},
+		{name: "patterns with mode are rejected as an unknown key", src: "mode: all\npatterns: []\n", wantReason: `unknown key "patterns"; expected mode`},
+		{name: "empty mapping is rejected", src: "{}\n", wantReason: "must not be empty"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.deploymentBranchPolicy(doc.root, "P")
+			if tc.wantReason != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("deploymentBranchPolicy() error = %v, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("deploymentBranchPolicy() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("deploymentBranchPolicy() = %+v, want %+v", got, tc.want)
 			}
 		})
 	}

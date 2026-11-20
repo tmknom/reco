@@ -29,6 +29,15 @@ type DesiredState struct {
 	ActionsPermissions  ActionsPermissions
 	WorkflowPermissions WorkflowPermissions
 	ActionsAccess       ActionsAccess
+	// Environments は宣言の並びのまま持ち、environments を省略したリポジトリでは nil。
+	Environments []EnvironmentDeclaration
+}
+
+// EnvironmentDeclaration は、一つの Environment の宣言。その名前の Environment が存在することの期待値を兼ねる。
+type EnvironmentDeclaration struct {
+	Name setting.EnvironmentName
+	// DeploymentBranchPolicy は nil なら期待値の省略で、デプロイ元制限は管理範囲に含まれない。宣言したときは Patterns を持たない。
+	DeploymentBranchPolicy *setting.DeploymentBranchPolicy
 }
 
 // General はリポジトリ一般設定の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
@@ -94,6 +103,8 @@ func (d DesiredState) Value(key setting.Key) (value setting.Value, ok bool) {
 			return setting.AccessLevelValue(*level), true
 		}
 		return setting.Value{}, false
+	case setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy:
+		// Environment の管理の単位は名前との組で識別するため、この関数では引けない。
 	}
 	panic(fmt.Sprintf("unknown setting %q", key))
 }

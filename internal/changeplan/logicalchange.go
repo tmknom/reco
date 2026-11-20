@@ -63,7 +63,13 @@ func (c LogicalChange) SettingsToChange() []setting.Key {
 func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 	for _, s := range r.Settings {
 		if s.IsPlannedChange() && s.Applicability != Applicable {
-			return nil, fmt.Errorf("%s: %s cannot be applied", r.Target, s.Key)
+			return nil, fmt.Errorf("%s: %s cannot be applied", r.Target, s.Unit().String())
+		}
+	}
+	// Environment の変更予定を実現する更新操作がないため、承認を求める前に止める。一致した Environment はほかの変更を妨げない
+	for _, s := range r.Settings {
+		if s.IsPlannedChange() && s.Key.Area() == setting.AreaEnvironments {
+			return nil, fmt.Errorf("%s: %s cannot be applied: applying environment changes is not supported", r.Target, s.Unit().String())
 		}
 	}
 	_, hasEnabled := r.settingPlanOf(setting.ActionsEnabled)

@@ -240,6 +240,13 @@ func TestObserveRepositoryEnvironmentsFailure(t *testing.T) {
 			wantRequests: []string{repositoryPath + "?", environmentsPath + firstPage, policiesPath("a") + firstPage},
 		},
 		{
+			name:         "two environments whose names differ only in letter case are unexpected response before any policies request",
+			routes:       map[string]githubtest.Response{environmentsPath: list("Prod", "prod"), policiesPath("Prod"): onePattern, policiesPath("prod"): onePattern},
+			want:         ErrUnexpectedResponse,
+			wantContains: `duplicate environment name "prod"`,
+			wantRequests: []string{repositoryPath + "?", environmentsPath + firstPage},
+		},
+		{
 			name:         "selected environment named dot sends no policies request",
 			routes:       map[string]githubtest.Response{environmentsPath: list("."), environmentsPath + "/./deployment-branch-policies": onePattern},
 			want:         ErrUnexpectedResponse,
@@ -273,6 +280,89 @@ func TestObserveRepositoryEnvironmentsFailure(t *testing.T) {
 			}
 			if got := routes.Requests(); !reflect.DeepEqual(got, tc.wantRequests) {
 				t.Errorf("requests = %q, want %q", got, tc.wantRequests)
+			}
+		})
+	}
+}
+
+//trace:checks FR-004
+func TestEnvironments_Lookup(t *testing.T) {
+	declared := mustEnvironmentName(t, "Production")
+	undetermined := "café"
+
+	tests := []struct {
+		name       string
+		existing   []Environment
+		wantID     EnvironmentID
+		wantName   string
+		wantAbsent bool
+		wantReason UnavailableReason
+	}{
+		{
+			name:     "same name with different case exists with observed spelling and ID",
+			existing: []Environment{{ID: 1, Name: "other"}, {ID: 2, Name: "PRODUCTION"}},
+			wantID:   2,
+			wantName: "PRODUCTION",
+		},
+		{
+			name:       "empty list is absent",
+			existing:   nil,
+			wantAbsent: true,
+		},
+		{
+			name:       "only comparable different names is absent",
+			existing:   []Environment{{ID: 1, Name: "staging"}, {ID: 2, Name: "prod"}},
+			wantAbsent: true,
+		},
+		{
+			name:       "only undetermined name is unavailable",
+			existing:   []Environment{{ID: 1, Name: undetermined}},
+			wantReason: UnavailableEnvironmentNameUndetermined,
+		},
+		{
+			name:     "undetermined name before the same name still exists",
+			existing: []Environment{{ID: 1, Name: undetermined}, {ID: 2, Name: "production"}},
+			wantID:   2,
+			wantName: "production",
+		},
+		{
+			name:       "comparable different name after an undetermined name is still unavailable",
+			existing:   []Environment{{ID: 1, Name: undetermined}, {ID: 2, Name: "staging"}},
+			wantReason: UnavailableEnvironmentNameUndetermined,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Environments{Existing: tt.existing}.Lookup(declared)
+			switch {
+			case tt.wantAbsent:
+				if !got.Absent() {
+					t.Errorf("Absent() = false, want true")
+				}
+				if _, ok := got.Existing(); ok {
+					t.Errorf("Existing() ok = true, want false")
+				}
+			case tt.wantReason != 0:
+				if got.Absent() {
+					t.Errorf("Absent() = true, want false")
+				}
+				if _, ok := got.Existing(); ok {
+					t.Errorf("Existing() ok = true, want false")
+				}
+				if reason := got.UnavailableReason(); reason != tt.wantReason {
+					t.Errorf("UnavailableReason() = %v, want %v", reason, tt.wantReason)
+				}
+			default:
+				env, ok := got.Existing()
+				if !ok {
+					t.Fatalf("Existing() ok = false, want true")
+				}
+				if env.ID != tt.wantID || env.Name != tt.wantName {
+					t.Errorf("Existing() = (%d, %q), want (%d, %q)", env.ID, env.Name, tt.wantID, tt.wantName)
+				}
+				if got.Absent() {
+					t.Errorf("Absent() = true, want false")
+				}
 			}
 		})
 	}

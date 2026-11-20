@@ -27,6 +27,8 @@ const (
 	NotApplicableActionsRemainDisabled NotApplicableReason = iota + 1
 	// NotApplicablePublicRepository は、リポジトリが公開で、その設定が公開リポジトリに適用されないこと。
 	NotApplicablePublicRepository
+	// NotApplicableEnvironmentNameUndetermined は、宣言の名前と同じかどうかを判定できない名前の Environment があり、存在するかを確かめられないこと。
+	NotApplicableEnvironmentNameUndetermined
 )
 
 // judgeApplicability は、管理設定の計画 s の観測結果と、同じリポジトリの管理設定の計画 settings の期待値から、
@@ -42,8 +44,17 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan) (Applicability, N
 		return Applicable, 0
 	case NotComparable:
 	}
-	reason := s.Observed.UnavailableReason()
+	reason := s.UnavailableReason()
 	switch {
+	case s.Key.Area() == setting.AreaEnvironments && reason == github.UnavailableEnvironmentNameUndetermined:
+		// 作成すれば、GitHub が同じとみなす既存の Environment を変え得る。同じリポジトリのほかの宣言では解消しない
+		return NotApplicable, NotApplicableEnvironmentNameUndetermined
+	case s.Key == setting.EnvironmentDeploymentBranchPolicy && reason == github.UnavailableEnvironmentAbsent:
+		// Environment の宣言は存在の宣言を兼ねるため、同じ変更計画が先にその Environment を作成する
+		if !createsEnvironment(settings, s.Environment) {
+			panic(fmt.Sprintf("changeplan: %s is not comparable without the creation of its environment", s.Unit().String()))
+		}
+		return Applicable, 0
 	case s.Key == setting.AllowedActions && reason == github.UnavailableActionsDisabled:
 		return Applicable, 0
 	case s.Key == setting.SelectedActions && (reason == github.UnavailableNotSelected || reason == github.UnavailableActionsDisabled):
@@ -57,7 +68,7 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan) (Applicability, N
 		// 公開範囲は reco が変える設定ではないため、同じリポジトリのほかの宣言では解消しない
 		return NotApplicable, NotApplicablePublicRepository
 	}
-	panic(fmt.Sprintf("changeplan: %s is not comparable for an unexpected reason %d", s.Key, int(reason)))
+	panic(fmt.Sprintf("changeplan: %s is not comparable for an unexpected reason %d", s.Unit().String(), int(reason)))
 }
 
 // expectsActionsEnabled は、管理設定の計画 settings の期待状態が、Actions が有効であることを含むかを返す。
@@ -65,5 +76,12 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan) (Applicability, N
 func expectsActionsEnabled(settings []SettingPlan) bool {
 	return slices.ContainsFunc(settings, func(s SettingPlan) bool {
 		return s.Key == setting.AllowedActions || (s.Key == setting.ActionsEnabled && s.Desired.Bool())
+	})
+}
+
+// createsEnvironment は、管理設定の計画 settings が、name の Environment の作成を含むかを返す。
+func createsEnvironment(settings []SettingPlan, name setting.EnvironmentName) bool {
+	return slices.ContainsFunc(settings, func(s SettingPlan) bool {
+		return s.IsCreation() && s.Environment.EqualFold(name)
 	})
 }

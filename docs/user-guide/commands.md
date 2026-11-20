@@ -66,7 +66,7 @@ Environments:
     can_admins_bypass: false
 ```
 
-`mode` は、`all` が制限なし、`protected_branches` が保護されたブランチだけ、`selected` が `patterns` に並べたパターンに一致するブランチ（`branch`）とタグ（`tag`）だけからデプロイできることを示します。`wait_timer` と `required_reviewers` は、その保護ルールがなければ `none` と表示します。レビュアーは、GitHub のユーザー（`User`）かチーム（`Team`）の ID で示します。Environment の項目は表示だけで、設定ファイルには書けません。
+`mode` は、`all` が制限なし、`protected_branches` が保護されたブランチだけ、`selected` が `patterns` に並べたパターンに一致するブランチ（`branch`）とタグ（`tag`）だけからデプロイできることを示します。`wait_timer` と `required_reviewers` は、その保護ルールがなければ `none` と表示します。レビュアーは、GitHub のユーザー（`User`）かチーム（`Team`）の ID で示します。設定ファイルに書けるのは、Environment の名前と `mode` の `all` / `protected_branches` だけです。
 
 ## `plan`
 
@@ -89,7 +89,8 @@ Repositories checked: 1
 |---|---|
 | `Repository:` | 変える予定のあるリポジトリ。変える予定のないリポジトリは出ない |
 | `<設定>: <現在の値> -> <書いた値>` | GitHub の値が設定ファイルの値と違う設定。承認すると右の値に変える |
-| `<設定>: (<今の状態>) -> <書いた値>` | 今は使われていない設定。`(not in use)` は `allowed_actions` が `selected` でないこと、`(GitHub Actions disabled)` は Actions が無効なこと、`(public repository)` はリポジトリがパブリックで `access_level` が適用されないことを示す。`(public repository)` の行には必ず `Applicability:` の行が付く。下に `Applicability:` の行がなければ、承認すると右の値に変える |
+| `environments.<名前>: absent -> present` | 設定ファイルに書いた Environment が GitHub 上にない。作成する予定（`apply` はまだ作らない） |
+| `<設定>: (<今の状態>) -> <書いた値>` | 今は使われていない設定。`(not in use)` は `allowed_actions` が `selected` でないこと、`(GitHub Actions disabled)` は Actions が無効なこと、`(public repository)` はリポジトリがパブリックで `access_level` が適用されないこと、`(environment absent)` は Environment がまだないこと、`(existence unknown)` は Environment があるかを確かめられないことを示す。`(public repository)` と `(existence unknown)` の行には必ず `Applicability:` の行が付く。下に `Applicability:` の行がなければ、承認すると右の値に変える |
 | `Applicability: not applicable (<理由>)` | 安全に変えるための条件が成り立たないため、reco はこの設定を変えない。括弧の中は、何が成り立っていないかと、設定ファイルにどう書けばよいか |
 | `Side effect:` | この変更に伴って GitHub が消す値。読み取れた値は括弧の中に出る |
 | `Previous settings:` | Actions を `enabled: true` か `allowed_actions` で有効に戻すと、無効にする前の `sha_pinning_required` などの設定で再開すること。設定ファイルに書いた設定は挙げない。無効のあいだは値を読み取れないため、値は出ない |
@@ -99,6 +100,8 @@ Repositories checked: 1
 | `Plan cannot be applied.` | `Applicability: not applicable` の変更が一つ以上ある。このままでは `apply` で変えられない |
 
 `Side effect:` は、`allowed_actions` を `selected` から `all` や `local_only` に変えるときに出ます。
+
+Environment の行は、設定ファイルに書いた綴りの名前で出ます。作成する Environment に `deployment_branch_policy` も書いたときは、作成の行と `deployment_branch_policy` の行の二つが出て、`Plan:` でも二つと数えます。
 
 ## `apply`
 
@@ -140,6 +143,8 @@ Repositories updated: 1
 | `Apply complete.` | すべてのリポジトリが `updated` か `no change` だった |
 
 変更計画に `Plan cannot be applied.` が出たときは、承認を求めず、どのリポジトリの設定も変えずにエラーで終わります。ほかのリポジトリの変更が問題なく行えても変えません。直し方は [Troubleshooting](troubleshooting.md#plan-cannot-be-applied-と表示された) にあります。
+
+変更計画に Environment の作成か `deployment_branch_policy` の変更があるときも、変更計画を表示せず、承認を求めずにエラーで終わります。`apply` はまだ Environment を変えられないためです。対処は [Troubleshooting](troubleshooting.md#applying-environment-changes-is-not-supported-と表示された) にあります。
 
 どこかの変更が完了しなかったら、reco は残りの変更を始めずに止まります。すでに反映した変更は元に戻りません。`failed` や `not attempted` が出たときにすることは [Troubleshooting](troubleshooting.md#apply-が途中で止まった) にあります。
 

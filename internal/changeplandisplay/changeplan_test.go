@@ -74,6 +74,32 @@ func TestText(t *testing.T) {
 			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n  general.allow_auto_merge: true -> false\n\n" +
 				"Plan: 1 repository to update, 1 change\nRepositories checked: 1\n",
 		},
+		{
+			name: "creation and mode changes of environments are shown in the plan order and each counted",
+			settings: []changeplan.SettingPlan{
+				{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "production"), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{
+					Key: setting.EnvironmentDeploymentBranchPolicy, Environment: mustEnvironmentName(t, "production"),
+					Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
+					Desired:  setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}),
+					Result:   changeplan.NotComparable, Applicability: changeplan.Applicable,
+				},
+				{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "staging"), Result: changeplan.Match},
+				{
+					Key: setting.EnvironmentDeploymentBranchPolicy, Environment: mustEnvironmentName(t, "staging"),
+					Observed: github.Observed(setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{
+						{Type: setting.DeploymentPatternBranch, Name: "main"}, {Type: setting.DeploymentPatternTag, Name: "v*"},
+					}})),
+					Desired: setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}),
+					Result:  changeplan.Mismatch, Applicability: changeplan.Applicable,
+				},
+			},
+			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n" +
+				"  environments.production: absent -> present\n" +
+				"  environments.production.deployment_branch_policy: (environment absent) -> protected_branches\n" +
+				"  environments.staging.deployment_branch_policy: selected [branch \"main\", tag \"v*\"] -> all\n\n" +
+				"Plan: 1 repository to update, 3 changes\nRepositories checked: 1\n",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

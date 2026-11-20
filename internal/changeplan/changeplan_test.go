@@ -56,6 +56,14 @@ func TestPlan_NotApplicableError(t *testing.T) {
 			},
 			want: "plan cannot be applied: owner/zeta: actions.permissions.sha_pinning_required is not applicable; owner/alpha: actions.permissions.sha_pinning_required is not applicable",
 		},
+		{
+			name: "not-applicable environment is named with its environment name",
+			repositories: []RepositoryPlan{{Target: zeta, Settings: []SettingPlan{{
+				Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "cafe"), Result: NotComparable,
+				Applicability: NotApplicable, NotApplicableReason: NotApplicableEnvironmentNameUndetermined,
+			}}}},
+			want: "plan cannot be applied: owner/zeta: environments.cafe is not applicable",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -71,6 +79,43 @@ func TestPlan_NotApplicableError(t *testing.T) {
 			}
 		})
 	}
+}
+
+//trace:checks FR-007
+func TestSettingPlan_IsCreation(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	cases := []struct {
+		name string
+		plan SettingPlan
+		want bool
+	}{
+		{name: "mismatch of an environment is a creation", plan: SettingPlan{Key: setting.EnvironmentResource, Environment: production, Result: Mismatch}, want: true},
+		{name: "matched environment is not a creation", plan: SettingPlan{Key: setting.EnvironmentResource, Environment: production, Result: Match}},
+		{name: "environment whose existence cannot be determined is not a creation", plan: SettingPlan{Key: setting.EnvironmentResource, Environment: production, Result: NotComparable}},
+		{name: "mismatch of a setting in an environment is not a creation", plan: SettingPlan{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Result: Mismatch}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.plan.IsCreation(); got != tc.want {
+				t.Errorf("IsCreation() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSettingPlan_UnavailableReason(t *testing.T) {
+	t.Run("environment existence reads the reason of the environment observation", func(t *testing.T) {
+		s := SettingPlan{Key: setting.EnvironmentResource, ObservedEnvironment: lookup(t, "production", github.Environment{Name: "prodüction"}), Result: NotComparable}
+		if got := s.UnavailableReason(); got != github.UnavailableEnvironmentNameUndetermined {
+			t.Errorf("UnavailableReason() = %v, want %v", got, github.UnavailableEnvironmentNameUndetermined)
+		}
+	})
+	t.Run("other settings read the reason of the setting observation", func(t *testing.T) {
+		s := SettingPlan{Key: setting.EnvironmentDeploymentBranchPolicy, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Result: NotComparable}
+		if got := s.UnavailableReason(); got != github.UnavailableEnvironmentAbsent {
+			t.Errorf("UnavailableReason() = %v, want %v", got, github.UnavailableEnvironmentAbsent)
+		}
+	})
 }
 
 func TestRepositoryPlan_Count(t *testing.T) {
@@ -397,6 +442,59 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 		want := []string{"GET /repos/owner/first", "GET /repos/owner/second", "GET /repos/owner/second/actions/permissions/workflow", "GET /repos/owner/third"}
 		if got := server.RequestLines(); !slices.Equal(got, want) {
 			t.Errorf("requests = %v, want %v", got, want)
+		}
+	})
+
+	const environmentsSource = "repositories:\n  - name: owner/repo\n    environments:\n      - name: production\n        deployment_branch_policy:\n          mode: protected_branches\n      - name: staging\n"
+
+	t.Run("declared environments are observed and planned with their applicability", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo": githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/environments": githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 1, Environments: []githubtest.EnvironmentBody{
+				{ID: 2, Name: "Staging"},
+			}}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+		got, err := Generate(context.Background(), client, file(environmentsSource), nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		if want := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/environments"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		type planned struct {
+			unit          string
+			result        ReconciliationResult
+			applicability Applicability
+		}
+		var plans []planned
+		for _, s := range got.Repositories[0].Settings {
+			plans = append(plans, planned{s.Unit().String(), s.Result, s.Applicability})
+		}
+		want := []planned{
+			{"environments.production", Mismatch, Applicable},
+			{"environments.production.deployment_branch_policy", NotComparable, Applicable},
+			{"environments.staging", Match, ApplicabilityNotJudged},
+		}
+		if !reflect.DeepEqual(plans, want) {
+			t.Errorf("plans = %+v, want %+v", plans, want)
+		}
+	})
+
+	t.Run("environments observation failure is returned without planning a creation", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo":              githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/environments": {Status: http.StatusForbidden},
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+		got, err := Generate(context.Background(), client, file(environmentsSource), nil)
+		if !errors.Is(err, github.ErrForbidden) {
+			t.Errorf("Generate() error = %v, want %v", err, github.ErrForbidden)
+		}
+		if !reflect.DeepEqual(got, Plan{}) {
+			t.Errorf("Generate() = %+v, want the zero plan", got)
 		}
 	})
 

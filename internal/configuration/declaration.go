@@ -36,14 +36,15 @@ func (d document) declaration() (Declaration, error) {
 }
 
 func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDeclaration, error) {
-	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"general", "actions"})
+	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"general", "actions", "environments"})
 	if err != nil {
 		return RepositoryDeclaration{}, err
 	}
 	generalNode, hasGeneral := entries["general"]
 	actionsNode, hasActions := entries["actions"]
-	if !hasGeneral && !hasActions {
-		return RepositoryDeclaration{}, invalid(n, path, "must have at least one of general, actions")
+	environmentsNode, hasEnvironments := entries["environments"]
+	if !hasGeneral && !hasActions && !hasEnvironments {
+		return RepositoryDeclaration{}, invalid(n, path, "must have at least one of general, actions, environments")
 	}
 	namePath := path + ".name"
 	name, err := d.stringValue(entries["name"], namePath)
@@ -65,7 +66,77 @@ func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDe
 			return RepositoryDeclaration{}, err
 		}
 	}
+	if hasEnvironments {
+		if desired.Environments, err = d.environments(environmentsNode, path+".environments"); err != nil {
+			return RepositoryDeclaration{}, err
+		}
+	}
 	return RepositoryDeclaration{Reference: reference, Desired: desired}, nil
+}
+
+// environments は、Environment の宣言の並びを宣言の順のまま読む。
+// 同じ Environment とみなす名前の宣言は一つに限る。GitHub は名前の英字の大小を区別しないため、大小だけが違う名前も重複にする。
+func (d document) environments(n *yaml.Node, path string) ([]EnvironmentDeclaration, error) {
+	items, err := d.sequenceItems(n, path)
+	if err != nil {
+		return nil, err
+	}
+	declarations := make([]EnvironmentDeclaration, 0, len(items))
+	for i, item := range items {
+		itemPath := fmt.Sprintf("%s[%d]", path, i)
+		declaration, err := d.environment(item, itemPath)
+		if err != nil {
+			return nil, err
+		}
+		if j := slices.IndexFunc(declarations, func(seen EnvironmentDeclaration) bool { return seen.Name.EqualFold(declaration.Name) }); j >= 0 {
+			return nil, invalid(item, itemPath, "duplicate name %q; same as %s[%d] (compared ignoring letter case)", declaration.Name.String(), path, j)
+		}
+		declarations = append(declarations, declaration)
+	}
+	return declarations, nil
+}
+
+func (d document) environment(n *yaml.Node, path string) (EnvironmentDeclaration, error) {
+	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"deployment_branch_policy"})
+	if err != nil {
+		return EnvironmentDeclaration{}, err
+	}
+	namePath := path + ".name"
+	name, err := d.stringValue(entries["name"], namePath)
+	if err != nil {
+		return EnvironmentDeclaration{}, err
+	}
+	environmentName, err := setting.ParseEnvironmentName(name)
+	if err != nil {
+		return EnvironmentDeclaration{}, invalid(entries["name"], namePath, "%v; got %q", err, name)
+	}
+	declaration := EnvironmentDeclaration{Name: environmentName}
+	if value, ok := entries["deployment_branch_policy"]; ok {
+		policy, err := d.deploymentBranchPolicy(value, path+".deployment_branch_policy")
+		if err != nil {
+			return EnvironmentDeclaration{}, err
+		}
+		declaration.DeploymentBranchPolicy = &policy
+	}
+	return declaration, nil
+}
+
+// deploymentBranchPolicy は、デプロイ元制限の方式を読む。個別パターンは受け付けないため、patterns は未知のキーとして拒否する。
+// selected は show が表示し得る値だが、宣言では受け付けない。
+func (d document) deploymentBranchPolicy(n *yaml.Node, path string) (setting.DeploymentBranchPolicy, error) {
+	entries, err := d.mappingEntries(n, path, []string{"mode"}, nil)
+	if err != nil {
+		return setting.DeploymentBranchPolicy{}, err
+	}
+	modePath := path + ".mode"
+	s, err := d.stringValue(entries["mode"], modePath)
+	if err != nil {
+		return setting.DeploymentBranchPolicy{}, err
+	}
+	if mode, ok := setting.ParseDeploymentBranchPolicyMode(s); ok && mode != setting.DeploymentBranchPolicySelected {
+		return setting.DeploymentBranchPolicy{Mode: mode}, nil
+	}
+	return setting.DeploymentBranchPolicy{}, invalid(entries["mode"], modePath, "must be all or protected_branches; got %q", s)
 }
 
 // actions は、Actions の階層のうち reco が受け付ける permissions、workflow、access だけを読む。

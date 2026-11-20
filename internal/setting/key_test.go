@@ -26,6 +26,8 @@ func TestKeyArea(t *testing.T) {
 		{key: DefaultWorkflowPermissions, want: AreaWorkflowPermissions},
 		{key: CanApprovePullRequestReviews, want: AreaWorkflowPermissions},
 		{key: ActionsAccessLevel, want: AreaActionsAccess},
+		{key: EnvironmentResource, want: AreaEnvironments},
+		{key: EnvironmentDeploymentBranchPolicy, want: AreaEnvironments},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.key), func(t *testing.T) {

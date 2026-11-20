@@ -77,7 +77,17 @@ Plan cannot be applied.
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-a: actions.permissions.sha_pinning_required is not applicable; no changes made"}
 ```
 
-理由は、変更計画の `Applicability:` の行の括弧の中にあります。セミコロンの前が成り立っていないこと、後ろが設定ファイルの直し方です。この例では Actions が無効のため、同じリポジトリに `enabled: true` か `allowed_actions` を書き足してから、`plan` で `Plan cannot be applied.` が消えたことを確かめ、`apply` を実行し直します。パブリックリポジトリに `access_level` を書いて `(the repository is public; remove access_level, ...)` と示されたら、そのリポジトリの `access_level` を設定ファイルから消します。
+理由は、変更計画の `Applicability:` の行の括弧の中にあります。セミコロンの前が成り立っていないこと、後ろが設定ファイルの直し方です。この例では Actions が無効のため、同じリポジトリに `enabled: true` か `allowed_actions` を書き足してから、`plan` で `Plan cannot be applied.` が消えたことを確かめ、`apply` を実行し直します。パブリックリポジトリに `access_level` を書いて `(the repository is public; remove access_level, ...)` と示されたら、そのリポジトリの `access_level` を設定ファイルから消します。`(an environment on GitHub has a name reco cannot compare, ...)` と示されたら、GitHub 上に半角以外の文字を含む名前の Environment があり、設定ファイルに書いた Environment があるかを reco が確かめられません。`Applicability:` の行の上に名前が出ている Environment を、設定ファイルから消します。
+
+## `applying environment changes is not supported` と表示された
+
+`apply` は、Environment の作成と `deployment_branch_policy` の変更をまだ実行しません。変更計画にそれらがあると、変更計画を表示せず、何も変えずに次のエラーで終わります。
+
+```text
+{"time":"...","level":"ERROR","msg":"command failed","error":"example/project-a: environments.production cannot be applied: applying environment changes is not supported; no changes made"}
+```
+
+ほかの設定だけを変えたいときは、`environments` を設定ファイルから一時的に外して `apply` を実行します。外しても、GitHub 上の Environment は消えません。
 
 ## 承認できない
 

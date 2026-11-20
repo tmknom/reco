@@ -13,8 +13,9 @@ reco は、既定ではカレントディレクトリの `reco.yaml` を読み�
 | `name` | 対象のリポジトリの名前。`OWNER/REPO` の形で書く（必須） |
 | `general` | [リポジトリの一般設定](#リポジトリの一般設定) |
 | `actions` | [GitHub Actions の設定](#github-actions-の設定) |
+| `environments` | [Environment](#environment) |
 
-`general` と `actions` は、少なくともどちらか一方を書きます。次は、一つのリポジトリでマージ後のブランチの自動削除だけを管理する、最小の例です。
+`general`、`actions`、`environments` は、少なくともどれか一つを書きます。次は、一つのリポジトリでマージ後のブランチの自動削除だけを管理する、最小の例です。
 
 ```yaml
 repositories:
@@ -44,6 +45,10 @@ repositories:
         can_approve_pull_request_reviews: false
       access:
         access_level: none
+    environments:
+      - name: production
+        deployment_branch_policy:
+          mode: protected_branches
 ```
 
 ## リポジトリの一般設定
@@ -128,6 +133,32 @@ repositories:
 - この設定はプライベートリポジトリにだけ適用される。パブリックリポジトリに書くと、`plan` と `apply` はその変更に `Applicability: not applicable` を添え、`Plan cannot be applied.` を示す。`apply` は何も変えずにエラーで終了する。設定ファイルから `access_level` を消せば解消する
 - `organization` は設定ファイルに書けない。Organization が所有するリポジトリのための値で、reco が扱うユーザー所有のリポジトリでは GitHub が受け付けないため。Organization から移転したリポジトリなどで `show` が `organization` を示したときは、`none` か `user` を書けば、書いた値に変わる
 - Actions が無効のリポジトリでも書ける
+
+## Environment
+
+`environments` には、デプロイ先として使う Environment を、名前ごとに並べます。
+
+```yaml
+repositories:
+  - name: example/project-a
+    environments:
+      - name: production
+        deployment_branch_policy:
+          mode: protected_branches
+      - name: staging
+```
+
+| キー | 値 | 意味 |
+|---|---|---|
+| `name` | 文字列（必須） | Environment の名前 |
+| `deployment_branch_policy.mode` | `all` / `protected_branches` | Environment へデプロイできるブランチとタグの制限。`all` は制限なし、`protected_branches` は保護ルールのあるブランチだけ |
+
+- 書いた名前の Environment がなければ、reco は作成を計画する。`deployment_branch_policy` を省いた Environment は、あるかどうかだけを管理する
+- 書かなかった Environment は、変更も削除もしない。設定ファイルから名前を消しても、GitHub 上の Environment は残る
+- 名前は、半角の英数字、空白、記号だけで書く。大文字と小文字だけが違う名前は同じ Environment とみなすため、同じリポジトリに並べられない
+- 保護ルールのあるブランチが一つもなければ、`protected_branches` でもすべてのブランチからデプロイできる（GitHub の仕様）。ブランチの保護ルールは reco では作れない
+- `show` が `mode: selected` と示した Environment でも、設定ファイルには `all` か `protected_branches` しか書けない。`selected` の Environment を `all` などに変えると、GitHub は `patterns` に並んでいたパターンを残さない。`plan` の行の矢印の左に、なくなるパターンが出る
+- `apply` は、Environment の作成と `deployment_branch_policy` の変更をまだ実行しない。`plan` で差を確かめることはできる
 
 ## 未記載の設定の扱い
 

@@ -235,6 +235,8 @@ func unavailableReasonText(reason github.UnavailableReason) string {
 		return `allowed_actions is not "selected"`
 	case github.UnavailablePublicRepository:
 		return "the repository is public"
+	case github.UnavailableEnvironmentAbsent, github.UnavailableEnvironmentNameUndetermined:
+		// Environment の変更予定は承認の前に止めるため、期待状態の確認には現れない
 	}
 	panic(fmt.Sprintf("apply: undefined unavailable reason %d", int(reason)))
 }

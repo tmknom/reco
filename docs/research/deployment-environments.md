@@ -58,6 +58,8 @@ Environment の名前は、パスパラメータ `environment_name` に URL エ�
 > - 大文字と小文字：`reco-check-case` を作成したあと、大文字に変えた名前への取得は同じ `id` の Environment を返し、`name` は作成したときの綴りのままだった。大文字に変えた名前への `PUT` も、本文の有無によらず同じ Environment を更新し、新しい Environment は作られなかった
 > - 空白と `/`：`%20` と `%2F` にエンコードした名前で、作成と取得ができ、`name` は空白と `/` を含む元の名前で返った。`/` をエンコードせずに送った取得は `404` を返し、`documentation_url` は Environment の取得の節ではなく `https://docs.github.com/rest` だった
 > - `..`：パスの要素を `%2E%2E` にした `PUT` は `404` を返し、Environment は作られなかった。同じ本文で名前を `a..` にした `PUT` は `200` を返した
+> - 大文字と小文字のほかに同じ Environment とみなす違い：`reco-check-café` を作成したあと、`reco-check-cafe`（アクセントなし）への取得と本文なしの `PUT` は、どちらも同じ `id` の Environment に当たり、新しい Environment は作られなかった。`reco-check-cafÉ`（ASCII 以外の大文字）と、`é` を `e` と結合文字 U+0301 に分けた名前への取得も同じ `id` を返した。既存の `staging` に対しては、`stàging`、全角の `ｓ` で始まる名前、`ſ`（U+017F）で始まる名前、末尾に空白を付けた名前、末尾に U+0001 を付けた名前への取得が、どれも `staging` を返した
+> - 別の Environment とみなした違い：`staging` に対し、先頭に空白かタブを付けた名前、内部に空白を挟んだ名前、`sta-ging`、`sta.ging`、末尾に `_`、`.`、`'`、`~` を付けた名前への取得は、どれも `404` を返した
 
 | Relationship | Target | Target Type |
 |---|---|---|

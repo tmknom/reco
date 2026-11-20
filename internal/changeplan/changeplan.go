@@ -33,8 +33,13 @@ type RepositoryPlan struct {
 
 // SettingPlan は、一つの管理設定についての計画。
 // Result は Observed と Desired から決まる。判定は Result で行い、Observed は値と理由の取り出しに使う。
+// Environment そのものの計画は値を持たないため、Observed と Desired をゼロ値にし、ObservedEnvironment から Result を決める。
 type SettingPlan struct {
 	Key setting.Key
+	// Environment は、Key が Environment の形のときだけ持つ宣言の名前。綴りは宣言のまま。
+	Environment setting.EnvironmentName
+	// ObservedEnvironment は、Environment そのものの計画だけが持つ、計画時の関連リソースの観測結果。
+	ObservedEnvironment github.EnvironmentObservation
 	// Observed は計画時の設定の観測結果。観測不能のときだけ比較不能になり、その理由が比較できない理由になる。
 	Observed      github.SettingObservation[setting.Value]
 	Desired       setting.Value
@@ -77,7 +82,7 @@ func (p Plan) NotApplicableError() error {
 	var found []string
 	for _, r := range p.Repositories {
 		for _, s := range r.NotApplicableChanges() {
-			found = append(found, fmt.Sprintf("%s: %s is not applicable", r.Target, s.Key))
+			found = append(found, fmt.Sprintf("%s: %s is not applicable", r.Target, s.Unit().String()))
 		}
 	}
 	if len(found) == 0 {
@@ -118,6 +123,25 @@ func (r RepositoryPlan) NotApplicableChanges() []SettingPlan {
 // Actions 許可ポリシーの期待値は Actions が有効であることを含むため、Actions が無効で観測不能だったポリシーの変更予定が当たる。
 func (s SettingPlan) EnablesActionsByPolicy() bool {
 	return s.Key == setting.AllowedActions && s.Result == NotComparable && s.Observed.UnavailableReason() == github.UnavailableActionsDisabled
+}
+
+// Unit は、この計画の管理の単位の識別を返す。
+func (s SettingPlan) Unit() setting.Unit {
+	return setting.Unit{Key: s.Key, Environment: s.Environment}
+}
+
+// IsCreation は、この変更予定が Environment の作成かを返す。
+func (s SettingPlan) IsCreation() bool {
+	return s.Key == setting.EnvironmentResource && s.Result == Mismatch
+}
+
+// UnavailableReason は、比較不能な変更予定の観測不能の理由を返す。
+// Environment そのものの計画は関連リソースの観測結果から、ほかは設定の観測結果から読む。どちらも観測不能でなければ panic する。
+func (s SettingPlan) UnavailableReason() github.UnavailableReason {
+	if s.Key == setting.EnvironmentResource {
+		return s.ObservedEnvironment.UnavailableReason()
+	}
+	return s.Observed.UnavailableReason()
 }
 
 // IsPlannedChange は、この管理設定が変更予定 (不一致か比較不能の管理設定) かを返す。

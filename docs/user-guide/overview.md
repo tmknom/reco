@@ -55,3 +55,7 @@ reco が管理可能な設定は、次のとおりです。具体的な設定方
 | `GITHUB_TOKEN` のデフォルト権限を、読み書きにするか、読み取りに限るか | 「Actions」の「General」ページの「Workflow permissions」の欄 |
 | GitHub Actions に Pull Request の作成と承認を許すか | 「Actions」の「General」ページの「Workflow permissions」の欄の「Allow GitHub Actions to create and approve pull requests」 |
 | ほかのリポジトリのワークフローに、このリポジトリの Actions と再利用可能なワークフローを使わせるか（プライベートリポジトリだけ） | 「Actions」の「General」ページの「Access」の欄 |
+| デプロイ先の Environment があるか（なければ作成を計画する） | 「Environments」ページの Environment の一覧 |
+| Environment へデプロイできるブランチとタグを、制限しないか、保護ルールのあるブランチに限るか | 「Environments」ページの Environment の「Deployment branches and tags」の欄の「No restriction」と「Protected branches only」 |
+
+Environment は、`plan` で差を確かめられますが、`apply` はその作成と変更をまだ実行しません。

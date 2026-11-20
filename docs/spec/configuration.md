@@ -22,6 +22,11 @@ repositories:
         can_approve_pull_request_reviews: false
       access:
         access_level: none
+    environments:
+      - name: production
+        deployment_branch_policy:
+          mode: protected_branches
+      - name: staging
 
   - name: example/project-b
     general:
@@ -32,9 +37,10 @@ repositories:
 |---|---|---|
 | ルート | マッピング | `repositories` だけを持つ |
 | `repositories` | シーケンス | 1件以上のリポジトリごとの宣言を含む |
-| `repositories[]` | マッピング | `name` と、少なくとも一つの管理設定を含む `general` または `actions` を持つ |
+| `repositories[]` | マッピング | `name` と、少なくとも一つの管理設定を含む `general`、`actions`、`environments` のいずれかを持つ |
 | `repositories[].name` | 文字列 | 必須。空でない `OWNER/REPO` 形式 |
 | `general`、`actions`、`permissions`、`selected_actions`、`workflow`、`access` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions`、`workflow`、`access` のうち一つ以上を含めばよい |
+| `environments` | シーケンス | 使用する場合は、1件以上の Environment の宣言を含む（7章） |
 
 定義していないフィールドは、どの階層でも受け付けません。どの位置でも、`null` を指定して省略を表現することはできません。
 
@@ -190,7 +196,46 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
 
-## 7. 入力検証と対象名
+## 7. Environments
+
+`environments` は、リポジトリの Environment を名前ごとに宣言するシーケンスです。Environment は関連リソースであり、2.1節の規則に従います。
+
+| YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
+|---|---|---|---|---|
+| `environments[].name` | 文字列 | 7.1節の名前 | その名前の Environment が存在すること | Environment（関連リソースそのもの） |
+| `environments[].deployment_branch_policy.mode` | 文字列 | `all` / `protected_branches` | Environment へデプロイできるブランチとタグの制限の方式 | デプロイ元制限（設定グループ） |
+
+- **`name` は必須である**：`name` のない要素は、ほかのキーを書いていても入力不正として拒否する。どの Environment の宣言かを補わない
+- **要素は存在の宣言を兼ねる**：`environments[]` に書いた名前の Environment が存在しなければ、作成を計画する。`deployment_branch_policy` を省略した Environment は、存在だけを管理する
+- **存在しないことの宣言は受け付けない**：reco は Environment を削除しない
+- **`deployment_branch_policy` は `mode` を必須とする**：`all` はすべてのブランチとタグからのデプロイを許可する。`protected_branches` は、保護ルールのあるブランチからのデプロイだけを許可する。`protected_branches` の宣言は、Branch protection を管理することを意味しない
+
+同じ Environment の変更予定は、存在、`deployment_branch_policy` の順に表示し、実行します。存在しない Environment の中の設定は、Environment を作成してからでないと変えられないためです。
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `alignment` | `FR-001` | Functional Requirement |
+| `alignment` | `FR-005` | Functional Requirement |
+| `alignment` | `INV-001` | Invariant |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Internal Document |
+
+### 7.1 Environment の名前
+
+`name` は、空でなく、255 文字以下で、印字可能な ASCII 文字（U+0020 から U+007E）だけからなる文字列です。前後に空白を持たず、`.` と `..` ではありません。`/` は位置を問わず含められ、空白は前後でなければ含められます。
+
+二つの名前が同じかどうかは、ASCII の英字の大文字小文字を区別せずに比べます。同じリポジトリの宣言に同じとみなされる名前が複数あれば、入力不正として拒否します。たとえば `Production` と `production` を同じリポジトリに並べることはできません。
+
+ASCII 以外の文字と制御文字を受け付けないのは、GitHub が大文字小文字のほかに、アクセントの有無、全角と半角、末尾の空白、制御文字の違いも同じ名前とみなすためです（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 2章）。reco はこの判定を再現できません。受け付けると、GitHub 上で綴りの違う同じ Environment を存在しないと判断し、作成の要求で既存の Environment を変え得ます。
+
+GitHub 上の Environment の名前に ASCII 以外の文字などが含まれ、宣言した名前と同じかどうかを reco が判定できない場合の扱いは、入力検証ではなく、観測のあとに行う適用可能性の判断です（2章、[アーキテクチャ設計](../design/architecture.md) 5.4）。
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `alignment` | `FR-001` | Functional Requirement |
+| `alignment` | `INV-001` | Invariant |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Internal Document |
+
+## 8. 入力検証と対象名
 
 入力検証では、YAML の構造・値の形式と、宣言されたリポジトリ名・重複の条件を確認します。不正な入力は、問題の箇所と理由を示して拒否します。
 
@@ -199,7 +244,7 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `FR-002` | Functional Requirement |
 
-### 7.1 YAML の形式と値
+### 8.1 YAML の形式と値
 
 | 条件 | 判定 |
 |---|---|
@@ -209,7 +254,7 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 | 文字列 | 型が文字列と定められた場所では文字列を要求。数値・真偽値・`null` から暗黙に変換しない |
 | `null` と値なし | どの位置でも拒否 |
 | 同一マッピング内の重複キー | 拒否。`name` と `"name"` のように表記が違っても同じキーとみなし、後勝ちで上書きしない |
-| 空のシーケンス・マッピング | `repositories: []`、空のリポジトリごとの宣言、空の `general` などを拒否。`patterns_allowed: []` は例外として有効 |
+| 空のシーケンス・マッピング | `repositories: []`、`environments: []`、空のリポジトリごとの宣言、空の `general` などを拒否。`patterns_allowed: []` は例外として有効 |
 | 関連する設定の欠落・矛盾 | 拒否。必要な設定の組み合わせを示す |
 | YAML 文書数 | 1ファイルに1文書だけを許可。文書がない場合（空のファイル、コメントだけのファイル）と複数文書を拒否 |
 | YAML のアンカー（anchor）、エイリアス（alias）、マージキー（merge key） | 拒否。宣言の共有・継承を認めない |
@@ -231,7 +276,7 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 | `allowed_actions: "selected"` | 値の形式は有効。ただし `selected_actions` の3項目も必要 |
 | `access_level: organization` | エラー（宣言で受け付ける値ではない） |
 
-### 7.2 リポジトリ名と重複
+### 8.2 リポジトリ名と重複
 
 `name` は、`OWNER` と `REPO` を一つの `/` で区切った `OWNER/REPO` 形式の文字列です。`OWNER` と `REPO` はともに空ではなく、ASCII の英数字と `-`、`_`、`.` だけからなり、`.` と `..` ではありません。このため、空白、制御文字、ASCII 以外の文字を含む名前は受け付けません。URL や、末尾に `.git` を付けたクローン用の表記（`.GIT` のように大文字小文字が異なるものを含む）は受け付けません。この値は名前による **リポジトリ指定** であり、GitHub のリポジトリ ID や、実体の存在確認を表すものではありません。
 
@@ -245,11 +290,12 @@ GitHub は所有者名・リポジトリ名を大文字小文字非依存で扱�
 | `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
 | `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
 
-## 8. References
+## 9. References
 
 - [要求定義](requirements.md)
 - [CLI 仕様](cli.md)
 - [GitHub REST API 共通仕様](../research/rest-api.md)
 - [GitHub リポジトリ API 仕様](../research/repositories.md)
 - [GitHub Actions 権限 API 仕様](../research/actions-permissions.md)
+- [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md)
 - [YAML 1.2.2 Specification](https://yaml.org/spec/1.2.2/)

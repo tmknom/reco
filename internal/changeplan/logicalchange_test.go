@@ -368,3 +368,58 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 		}
 	})
 }
+
+//trace:checks INV-002
+//trace:checks INV-003
+func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	mismatch := SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
+	creation := SettingPlan{Key: setting.EnvironmentResource, Environment: production, Result: Mismatch, Applicability: Applicable}
+	existing := SettingPlan{Key: setting.EnvironmentResource, Environment: production, Result: Match}
+	all := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll})
+	protected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches})
+	modeChange := SettingPlan{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Observed(all), Desired: protected, Result: Mismatch, Applicability: Applicable}
+	newRepositoryPlan := func(settings ...SettingPlan) RepositoryPlan {
+		return RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
+	}
+
+	rejected := []struct {
+		name     string
+		settings []SettingPlan
+		want     string
+	}{
+		{
+			name:     "creation of an environment is rejected naming the environment",
+			settings: []SettingPlan{mismatch, creation},
+			want:     "owner/repo: environments.production cannot be applied: applying environment changes is not supported",
+		},
+		{
+			name:     "change of the mode of an existing environment is rejected naming the setting",
+			settings: []SettingPlan{mismatch, existing, modeChange},
+			want:     "owner/repo: environments.production.deployment_branch_policy cannot be applied: applying environment changes is not supported",
+		},
+	}
+	for _, tc := range rejected {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := newRepositoryPlan(tc.settings...).LogicalChanges()
+			if err == nil || err.Error() != tc.want {
+				t.Errorf("LogicalChanges() = %+v, error = %v, want %q", got, err, tc.want)
+			}
+		})
+	}
+
+	t.Run("matched environment does not prevent the other logical changes", func(t *testing.T) {
+		got, err := newRepositoryPlan(mismatch, existing).LogicalChanges()
+		if err != nil || len(got) != 1 || !slices.Equal(got[0].Keys(), []setting.Key{setting.AllowAutoMerge}) {
+			t.Errorf("LogicalChanges() = %+v, error = %v, want only the allow_auto_merge change", got, err)
+		}
+	})
+
+	t.Run("not-applicable environment is rejected naming the environment", func(t *testing.T) {
+		undetermined := SettingPlan{Key: setting.EnvironmentResource, Environment: production, Result: NotComparable, Applicability: NotApplicable}
+		_, err := newRepositoryPlan(undetermined).LogicalChanges()
+		if want := "owner/repo: environments.production cannot be applied"; err == nil || err.Error() != want {
+			t.Errorf("LogicalChanges() error = %v, want %q", err, want)
+		}
+	})
+}

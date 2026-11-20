@@ -16,6 +16,19 @@ func TestJudgeApplicability(t *testing.T) {
 	generalMismatch := SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch}
 	enablesActions := SettingPlan{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch}
 	accessLevelPublic := notComparable(setting.ActionsAccessLevel, github.UnavailablePublicRepository)
+	production, staging := mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging")
+	creation := func(name setting.EnvironmentName) SettingPlan {
+		return SettingPlan{Key: setting.EnvironmentResource, Environment: name, ObservedEnvironment: lookup(t, name.String()), Result: Mismatch}
+	}
+	environmentPolicy := func(name setting.EnvironmentName, reason github.UnavailableReason) SettingPlan {
+		return SettingPlan{
+			Key: setting.EnvironmentDeploymentBranchPolicy, Environment: name, Observed: github.Unavailable[setting.Value](reason),
+			Desired: setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}), Result: NotComparable,
+		}
+	}
+	undeterminedEnvironment := SettingPlan{
+		Key: setting.EnvironmentResource, Environment: production, ObservedEnvironment: lookup(t, "production", github.Environment{Name: "prodüction"}), Result: NotComparable,
+	}
 	cases := []struct {
 		name string
 		in   SettingPlan
@@ -80,6 +93,25 @@ func TestJudgeApplicability(t *testing.T) {
 			want:       NotApplicable,
 			wantReason: NotApplicablePublicRepository,
 		},
+		{
+			name:       "environment whose existence cannot be determined is not applicable",
+			in:         undeterminedEnvironment,
+			want:       NotApplicable,
+			wantReason: NotApplicableEnvironmentNameUndetermined,
+		},
+		{
+			name:       "mode of an environment whose existence cannot be determined is not applicable",
+			in:         environmentPolicy(production, github.UnavailableEnvironmentNameUndetermined),
+			settings:   []SettingPlan{undeterminedEnvironment, environmentPolicy(production, github.UnavailableEnvironmentNameUndetermined)},
+			want:       NotApplicable,
+			wantReason: NotApplicableEnvironmentNameUndetermined,
+		},
+		{
+			name:     "mode of an absent environment created in the same plan is applicable",
+			in:       environmentPolicy(production, github.UnavailableEnvironmentAbsent),
+			settings: []SettingPlan{creation(production), environmentPolicy(production, github.UnavailableEnvironmentAbsent)},
+			want:     Applicable,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -96,23 +128,34 @@ func TestJudgeApplicability(t *testing.T) {
 
 	// 遷移表にない比較不能を適用可能として黙って通さない
 	panics := []struct {
-		name string
-		in   SettingPlan
+		name     string
+		in       SettingPlan
+		settings []SettingPlan
 	}{
 		{name: "allowed_actions not comparable for a reason other than disabled actions panics", in: notComparable(setting.AllowedActions, github.UnavailableNotSelected)},
 		{name: "not comparable setting without a fetch condition panics", in: notComparable(setting.AllowAutoMerge, github.UnavailableActionsDisabled)},
 		{name: "sha_pinning_required not comparable for a reason other than disabled actions panics", in: notComparable(setting.SHAPinningRequired, github.UnavailableNotSelected)},
 		{name: "access_level not comparable for a reason other than a public repository panics", in: notComparable(setting.ActionsAccessLevel, github.UnavailableActionsDisabled)},
 		{name: "setting other than access_level not comparable because the repository is public panics", in: notComparable(setting.AllowAutoMerge, github.UnavailablePublicRepository)},
+		{
+			name:     "mode of an absent environment without its creation in the plan panics",
+			in:       environmentPolicy(production, github.UnavailableEnvironmentAbsent),
+			settings: []SettingPlan{creation(staging), environmentPolicy(production, github.UnavailableEnvironmentAbsent)},
+		},
+		{name: "repository setting not comparable because an environment is absent panics", in: notComparable(setting.AllowAutoMerge, github.UnavailableEnvironmentAbsent)},
 	}
 	for _, tc := range panics {
 		t.Run(tc.name, func(t *testing.T) {
+			settings := tc.settings
+			if settings == nil {
+				settings = []SettingPlan{tc.in}
+			}
 			defer func() {
 				if recover() == nil {
 					t.Error("judgeApplicability() did not panic")
 				}
 			}()
-			_, _ = judgeApplicability(tc.in, []SettingPlan{tc.in})
+			_, _ = judgeApplicability(tc.in, settings)
 		})
 	}
 }
