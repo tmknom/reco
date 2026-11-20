@@ -41,7 +41,7 @@ GitHub は、`allowed_actions` が `selected` になるまで `selected_actions`
 
 | 変更前 | 途中の状態の `selected_actions` |
 |---|---|
-| Actions が有効で、`all` か `local_only` | GitHub が決めた値（`github_owned_allowed: true`、`verified_allowed: false`、`patterns_allowed: []`） |
+| `all` か `local_only`（Actions が無効なら、無効にする前が `all` か `local_only`） | GitHub が決めた値（`github_owned_allowed: true`、`verified_allowed: false`、`patterns_allowed: []`） |
 | Actions が無効で、無効にする前が `selected` | `github_owned_allowed` が `true` になるほかは、無効にする前の値のまま |
 
 途中の状態では、変更前にも変更後にも許可しない Actions が、一時的に許可されることがあります。たとえば `local_only` から `github_owned_allowed: false` の `selected` に変えると、途中の状態のあいだだけ、GitHub が作った Actions が許可されます。
