@@ -223,6 +223,7 @@ func TestDeploymentBranchPolicyValue_Equal(t *testing.T) {
 		{name: "patterns differing only in order are equal", a: selected(main, release), b: selected(release, main), equal: true},
 		{name: "different patterns differ", a: selected(main), b: selected(release), equal: false},
 		{name: "same name of a different type differs", a: selected(main), b: selected(tagMain), equal: false},
+		{name: "names differing only in letter case differ", a: selected(main), b: selected(DeploymentPattern{Type: DeploymentPatternBranch, Name: "MAIN"}), equal: false},
 		{name: "different kind of value differs", a: mode(DeploymentBranchPolicyAll), b: AllowedActionsPolicyValue(AllowedActionsAll), equal: false},
 	}
 	for _, tc := range cases {

@@ -98,6 +98,11 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 			return nil, fmt.Errorf("%s: %s cannot be applied", r.Target, s.Unit().String())
 		}
 	}
+	for _, s := range r.Settings {
+		if s.IsPlannedChange() && targetsSelectedDeploymentBranchPolicy(s) {
+			return nil, fmt.Errorf("%s: %s: applying mode selected is not supported", r.Target, s.Unit().String())
+		}
+	}
 	_, hasEnabled := r.settingPlanOf(setting.Unit{Key: setting.ActionsEnabled})
 	if _, hasPolicy := r.settingPlanOf(setting.Unit{Key: setting.AllowedActions}); hasEnabled && hasPolicy {
 		panic(fmt.Sprintf("changeplan: plans of %s and %s are in the same repository plan", setting.ActionsEnabled, setting.AllowedActions))
@@ -185,4 +190,10 @@ func shaPinningRequiredOperationOf(s SettingPlan) UpdateOperation {
 
 func targetsSelectedPolicy(s SettingPlan) bool {
 	return s.Key == setting.AllowedActions && s.Desired.AllowedActionsPolicy() == setting.AllowedActionsSelected
+}
+
+// targetsSelectedDeploymentBranchPolicy は、期待値の方式が selected のデプロイ元制限の計画かを返す。
+// 個別パターンを加える・取り除く更新操作がないため、承認の前に止める。
+func targetsSelectedDeploymentBranchPolicy(s SettingPlan) bool {
+	return s.Key == setting.EnvironmentDeploymentBranchPolicy && s.Desired.DeploymentBranchPolicy().Mode == setting.DeploymentBranchPolicySelected
 }

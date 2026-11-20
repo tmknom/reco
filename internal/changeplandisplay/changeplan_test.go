@@ -97,7 +97,7 @@ func TestText(t *testing.T) {
 			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n" +
 				"  environments.production: absent -> present\n" +
 				"  environments.production.deployment_branch_policy: (environment absent) -> protected_branches\n" +
-				"  environments.staging.deployment_branch_policy: selected [branch \"main\", tag \"v*\"] -> all\n\n" +
+				"  environments.staging.deployment_branch_policy:\n    selected [branch \"main\", tag \"v*\"]\n    -> all\n\n" +
 				"Plan: 1 repository to update, 3 changes\nRepositories checked: 1\n",
 		},
 	}

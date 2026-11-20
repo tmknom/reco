@@ -616,6 +616,89 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 		})
 	}
 
+	selectedMain := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{
+		Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{{Type: setting.DeploymentPatternBranch, Name: "main"}},
+	})
+	selectedRelease := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{
+		Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{{Type: setting.DeploymentPatternBranch, Name: "release"}},
+	})
+	selectedPolicyPlan := func(environment setting.EnvironmentName, observed, desired setting.Value, result ReconciliationResult) SettingPlan {
+		return SettingPlan{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment, Observed: github.Observed(observed), Desired: desired, Result: result, Applicability: Applicable}
+	}
+	rejectCases := []struct {
+		name     string
+		settings []SettingPlan
+		want     string
+	}{
+		{
+			name:     "mode change from all to selected is rejected naming the deployment branch policy unit",
+			settings: []SettingPlan{existing, selectedPolicyPlan(staging, all, selectedMain, Mismatch)},
+			want:     "owner/repo: environments.staging.deployment_branch_policy: applying mode selected is not supported",
+		},
+		{
+			name:     "pattern-only difference within selected is rejected",
+			settings: []SettingPlan{existing, selectedPolicyPlan(staging, selectedMain, selectedRelease, Mismatch)},
+			want:     "owner/repo: environments.staging.deployment_branch_policy: applying mode selected is not supported",
+		},
+		{
+			name: "creation with a not comparable selected mode is rejected naming the deployment branch policy unit",
+			settings: []SettingPlan{creation, {
+				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
+				Desired: selectedMain, Result: NotComparable, Applicability: Applicable,
+			}},
+			want: "owner/repo: environments.production.deployment_branch_policy: applying mode selected is not supported",
+		},
+		{
+			name: "the first of several selected changes in the plan order is named",
+			settings: []SettingPlan{existing, selectedPolicyPlan(staging, all, selectedMain, Mismatch), creation, {
+				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
+				Desired: selectedMain, Result: NotComparable, Applicability: Applicable,
+			}},
+			want: "owner/repo: environments.staging.deployment_branch_policy: applying mode selected is not supported",
+		},
+		{
+			name:     "not-applicable change is reported before the selected rejection",
+			settings: []SettingPlan{selectedPolicyPlan(staging, all, selectedMain, Mismatch), {Key: setting.EnvironmentResource, Environment: production, Result: NotComparable, Applicability: NotApplicable}},
+			want:     "owner/repo: environments.production cannot be applied",
+		},
+	}
+	for _, tc := range rejectCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := newRepositoryPlan(tc.settings...).LogicalChanges()
+			if err == nil || err.Error() != tc.want {
+				t.Errorf("LogicalChanges() error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+
+	t.Run("matched selected does not prevent the other logical changes", func(t *testing.T) {
+		matched := selectedPolicyPlan(staging, selectedMain, selectedMain, Match)
+		got, err := newRepositoryPlan(mismatch, existing, matched).LogicalChanges()
+		if err != nil {
+			t.Fatalf("LogicalChanges() error = %v", err)
+		}
+		if want := []LogicalChange{allowAutoMerge}; !reflect.DeepEqual(got, want) {
+			t.Errorf("LogicalChanges() =\n%+v\nwant\n%+v", got, want)
+		}
+	})
+
+	t.Run("change from selected to all stays one update relevant to the observed patterns", func(t *testing.T) {
+		got, err := newRepositoryPlan(existing, selectedPolicyPlan(staging, selectedMain, all, Mismatch)).LogicalChanges()
+		if err != nil {
+			t.Fatalf("LogicalChanges() error = %v", err)
+		}
+		want := []LogicalChange{{Operations: []UpdateOperation{{
+			Unit: stagingPolicyUnit, Desired: all,
+			RelevantSettings: []RelevantSetting{
+				{Unit: stagingUnit, EnvironmentAtApproval: existingStaging},
+				{Unit: stagingPolicyUnit, ValueAtApproval: github.Observed(selectedMain)},
+			},
+		}}}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("LogicalChanges() =\n%+v\nwant\n%+v", got, want)
+		}
+	})
+
 	t.Run("not-applicable environment is rejected naming the environment", func(t *testing.T) {
 		undetermined := SettingPlan{Key: setting.EnvironmentResource, Environment: production, Result: NotComparable, Applicability: NotApplicable}
 		_, err := newRepositoryPlan(undetermined).LogicalChanges()

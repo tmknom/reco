@@ -38,12 +38,12 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 	if s.EnablesActionsByPolicy() {
 		desired += " (enables GitHub Actions)"
 	}
-	if s.Key == setting.SelectedActions {
-		// 3項目を並べた値は長く、1行では -> を見つけにくいため、現在と期待値を別の行に書く
+	if showsValuesOnSeparateLines(s) {
 		fmt.Fprintf(&b, "  %s:\n    %s\n    -> %s\n", s.Unit().String(), current, desired)
 	} else {
 		fmt.Fprintf(&b, "  %s: %s -> %s\n", s.Unit().String(), current, desired)
 	}
+	b.WriteString(deploymentPatternChangesText(s))
 	if s.Applicability == changeplan.NotApplicable {
 		fmt.Fprintf(&b, "    Applicability: not applicable (%s)\n", notApplicableReasonText(s.NotApplicableReason))
 	}
@@ -119,4 +119,48 @@ func sideEffectText(effect changeplan.SideEffect) string {
 		return "GitHub discards the current selected_actions (" + lost.String() + ")"
 	}
 	return `GitHub may discard selected_actions if allowed_actions was "selected" before GitHub Actions was disabled (` + unreadWhileDisabled + `)`
+}
+
+// showsValuesOnSeparateLines は、現在と期待値を別の行に書くかを返す。
+// 選択方式の Actions 許可条件と、個別パターンを並べる selected のデプロイ元制限は値が長く、1 行では -> を見つけにくい。
+func showsValuesOnSeparateLines(s changeplan.SettingPlan) bool {
+	if s.Key == setting.SelectedActions {
+		return true
+	}
+	if s.Key != setting.EnvironmentDeploymentBranchPolicy {
+		return false
+	}
+	if s.Desired.DeploymentBranchPolicy().Mode == setting.DeploymentBranchPolicySelected {
+		return true
+	}
+	observed, ok := s.Observed.Value()
+	return ok && observed.DeploymentBranchPolicy().Mode == setting.DeploymentBranchPolicySelected
+}
+
+// deploymentPatternChangesText は、現在と期待値の両方が selected の確認済みの差分について、なくなるパターンと加わるパターンの行を返す。
+func deploymentPatternChangesText(s changeplan.SettingPlan) string {
+	if s.Key != setting.EnvironmentDeploymentBranchPolicy {
+		return ""
+	}
+	observedValue, ok := s.Observed.Value()
+	if !ok {
+		return ""
+	}
+	observed, desired := observedValue.DeploymentBranchPolicy(), s.Desired.DeploymentBranchPolicy()
+	if observed.Mode != setting.DeploymentBranchPolicySelected || desired.Mode != setting.DeploymentBranchPolicySelected {
+		return ""
+	}
+	var b strings.Builder
+	if removed := observed.PatternsNotIn(desired); len(removed) > 0 {
+		fmt.Fprintf(&b, "    Patterns to remove: %s\n", patternListText(removed))
+	}
+	if added := desired.PatternsNotIn(observed); len(added) > 0 {
+		fmt.Fprintf(&b, "    Patterns to add: %s\n", patternListText(added))
+	}
+	return b.String()
+}
+
+// patternListText は、個別パターンの一覧を、デプロイ元制限の値の中と同じ表記で返す。
+func patternListText(patterns []setting.DeploymentPattern) string {
+	return setting.DeploymentBranchPolicy{Patterns: patterns}.PatternsString()
 }

@@ -121,10 +121,9 @@ func (d document) environment(n *yaml.Node, path string) (EnvironmentDeclaration
 	return declaration, nil
 }
 
-// deploymentBranchPolicy は、デプロイ元制限の方式を読む。個別パターンは受け付けないため、patterns は未知のキーとして拒否する。
-// selected は show が表示し得る値だが、宣言では受け付けない。
+// deploymentBranchPolicy は、デプロイ元制限の方式と、方式が selected のときの個別パターンの一覧を読む。
 func (d document) deploymentBranchPolicy(n *yaml.Node, path string) (setting.DeploymentBranchPolicy, error) {
-	entries, err := d.mappingEntries(n, path, []string{"mode"}, nil)
+	entries, err := d.mappingEntries(n, path, []string{"mode"}, []string{"patterns"})
 	if err != nil {
 		return setting.DeploymentBranchPolicy{}, err
 	}
@@ -133,10 +132,72 @@ func (d document) deploymentBranchPolicy(n *yaml.Node, path string) (setting.Dep
 	if err != nil {
 		return setting.DeploymentBranchPolicy{}, err
 	}
-	if mode, ok := setting.ParseDeploymentBranchPolicyMode(s); ok && mode != setting.DeploymentBranchPolicySelected {
+	mode, ok := setting.ParseDeploymentBranchPolicyMode(s)
+	if !ok {
+		return setting.DeploymentBranchPolicy{}, invalid(entries["mode"], modePath, "must be all, protected_branches, or selected; got %q", s)
+	}
+	patternsNode, hasPatterns := entries["patterns"]
+	switch {
+	case mode == setting.DeploymentBranchPolicySelected && !hasPatterns:
+		return setting.DeploymentBranchPolicy{}, invalid(n, path, `mode "selected" requires patterns`)
+	case mode != setting.DeploymentBranchPolicySelected && hasPatterns:
+		return setting.DeploymentBranchPolicy{}, invalid(patternsNode, path+".patterns", `patterns is allowed only when mode is "selected"; got mode %q`, mode)
+	case !hasPatterns:
 		return setting.DeploymentBranchPolicy{Mode: mode}, nil
 	}
-	return setting.DeploymentBranchPolicy{}, invalid(entries["mode"], modePath, "must be all or protected_branches; got %q", s)
+	patterns, err := d.deploymentPatterns(patternsNode, path+".patterns")
+	if err != nil {
+		return setting.DeploymentBranchPolicy{}, err
+	}
+	return setting.DeploymentBranchPolicy{Mode: mode, Patterns: patterns}, nil
+}
+
+// deploymentPatterns は、個別パターンの一覧を宣言の順のまま返す。
+// 空のシーケンスは「個別パターンなし」の期待値で、省略と区別するため、空でも nil にしない。
+func (d document) deploymentPatterns(n *yaml.Node, path string) ([]setting.DeploymentPattern, error) {
+	items, err := d.sequenceContent(n, path)
+	if err != nil {
+		return nil, err
+	}
+	patterns := make([]setting.DeploymentPattern, 0, len(items))
+	for i, item := range items {
+		itemPath := fmt.Sprintf("%s[%d]", path, i)
+		pattern, err := d.deploymentPattern(item, itemPath)
+		if err != nil {
+			return nil, err
+		}
+		if j := slices.Index(patterns, pattern); j >= 0 {
+			return nil, invalid(item, itemPath, "duplicate pattern %s %q; same as %s[%d]", pattern.Type, pattern.Name, path, j)
+		}
+		patterns = append(patterns, pattern)
+	}
+	return patterns, nil
+}
+
+// deploymentPattern は、種類と名前の組である個別パターン 1 件を読む。
+func (d document) deploymentPattern(n *yaml.Node, path string) (setting.DeploymentPattern, error) {
+	entries, err := d.mappingEntries(n, path, []string{"type", "name"}, nil)
+	if err != nil {
+		return setting.DeploymentPattern{}, err
+	}
+	typePath := path + ".type"
+	typeString, err := d.stringValue(entries["type"], typePath)
+	if err != nil {
+		return setting.DeploymentPattern{}, err
+	}
+	patternType, ok := setting.ParseDeploymentPatternType(typeString)
+	if !ok {
+		return setting.DeploymentPattern{}, invalid(entries["type"], typePath, "must be branch or tag; got %q", typeString)
+	}
+	namePath := path + ".name"
+	name, err := d.stringValue(entries["name"], namePath)
+	if err != nil {
+		return setting.DeploymentPattern{}, err
+	}
+	if name == "" || strings.TrimSpace(name) != name {
+		return setting.DeploymentPattern{}, invalid(entries["name"], namePath, "must not be empty or have leading or trailing whitespace; got %q", name)
+	}
+	return setting.DeploymentPattern{Type: patternType, Name: name}, nil
 }
 
 // actions は、Actions の階層のうち reco が受け付ける permissions、workflow、access だけを読む。

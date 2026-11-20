@@ -36,7 +36,7 @@ type DesiredState struct {
 // EnvironmentDeclaration は、一つの Environment の宣言。その名前の Environment が存在することの期待値を兼ねる。
 type EnvironmentDeclaration struct {
 	Name setting.EnvironmentName
-	// DeploymentBranchPolicy は nil なら期待値の省略で、デプロイ元制限は管理範囲に含まれない。宣言したときは Patterns を持たない。
+	// DeploymentBranchPolicy は nil なら期待値の省略で、デプロイ元制限は管理範囲に含まれない。宣言したときは、方式が selected のときだけ、宣言の順の Patterns を持つ。
 	DeploymentBranchPolicy *setting.DeploymentBranchPolicy
 }
 

@@ -79,6 +79,16 @@ Plan cannot be applied.
 
 理由は、変更計画の `Applicability:` の行の括弧の中にあります。セミコロンの前が成り立っていないこと、後ろが設定ファイルの直し方です。この例では Actions が無効のため、同じリポジトリに `enabled: true` か `allowed_actions` を書き足してから、`plan` で `Plan cannot be applied.` が消えたことを確かめ、`apply` を実行し直します。パブリックリポジトリに `access_level` を書いて `(the repository is public; remove access_level, ...)` と示されたら、そのリポジトリの `access_level` を設定ファイルから消します。`(an environment on GitHub has a name reco cannot compare, ...)` と示されたら、GitHub 上に半角以外の文字を含む名前の Environment があり、設定ファイルに書いた Environment があるかを reco が確かめられません。`Applicability:` の行の上に名前が出ている Environment を、設定ファイルから消します。
 
+## `applying mode selected is not supported` と表示された
+
+`apply` は、`deployment_branch_policy` に `mode: selected` を書いた変更予定があると、変更計画を表示せず、承認を求めず、ほかのリポジトリも含めて何も変えずにエラーで終わります。reco は `selected` のパターンを加えたり取り除いたりしないためです。`plan` はこの変更予定を表示し、エラーにはしません。
+
+```text
+{"time":"...","level":"ERROR","msg":"command failed","error":"example/project-a: environments.production.deployment_branch_policy: applying mode selected is not supported; no changes made"}
+```
+
+ほかの変更を先に反映するには、エラーに出た Environment の `deployment_branch_policy` を設定ファイルから一時的に消し、`apply` を実行し直します。`deployment_branch_policy` を消した Environment は、あるかどうかだけを管理します。`selected` の設定は、GitHub の設定画面で変えます。
+
 ## 承認できない
 
 承認を求められずに `approval not available` で終わるときは、標準入力が端末になっていません。端末から直接 `apply` を実行します。コンテナイメージでは `-it` を付けます。

@@ -211,6 +211,15 @@ func TestPlannedChangeText_Environments(t *testing.T) {
 	selected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{
 		{Type: setting.DeploymentPatternBranch, Name: "main"}, {Type: setting.DeploymentPatternTag, Name: "v*"},
 	}})
+	selectedOf := func(patterns ...setting.DeploymentPattern) setting.Value {
+		return setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: patterns})
+	}
+	branch := func(name string) setting.DeploymentPattern {
+		return setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: name}
+	}
+	tag := func(name string) setting.DeploymentPattern {
+		return setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: name}
+	}
 	undetermined := github.Environments{Existing: []github.Environment{{Name: "café"}}}.Lookup(production)
 	const notApplicable = "    Applicability: not applicable (an environment on GitHub has a name reco cannot compare, such as one with non-ASCII characters; remove this environment from the configuration)\n"
 	cases := []struct {
@@ -242,7 +251,49 @@ func TestPlannedChangeText_Environments(t *testing.T) {
 				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Observed(selected),
 				Desired: all, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 			},
-			want: "  environments.production.deployment_branch_policy: selected [branch \"main\", tag \"v*\"] -> all\n",
+			want: "  environments.production.deployment_branch_policy:\n    selected [branch \"main\", tag \"v*\"]\n    -> all\n",
+		},
+		{
+			name: "mode changed to selected shows three lines without pattern lines",
+			s: changeplan.SettingPlan{
+				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Observed(all),
+				Desired: selected, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+			},
+			want: "  environments.production.deployment_branch_policy:\n    all\n    -> selected [branch \"main\", tag \"v*\"]\n",
+		},
+		{
+			name: "environment absent to selected shows three lines without pattern lines",
+			s: changeplan.SettingPlan{
+				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
+				Desired: selected, Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
+			},
+			want: "  environments.production.deployment_branch_policy:\n    (environment absent)\n    -> selected [branch \"main\", tag \"v*\"]\n",
+		},
+		{
+			name: "selected to selected with only added patterns shows only Patterns to add",
+			s: changeplan.SettingPlan{
+				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Observed(selectedOf(branch("main"))),
+				Desired: selectedOf(branch("main"), tag("v*")), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+			},
+			want: "  environments.production.deployment_branch_policy:\n    selected [branch \"main\"]\n    -> selected [branch \"main\", tag \"v*\"]\n    Patterns to add: [tag \"v*\"]\n",
+		},
+		{
+			name: "selected to selected with only removed patterns shows only Patterns to remove",
+			s: changeplan.SettingPlan{
+				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Observed(selectedOf(branch("main"), tag("v*"))),
+				Desired: selectedOf(branch("main")), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+			},
+			want: "  environments.production.deployment_branch_policy:\n    selected [branch \"main\", tag \"v*\"]\n    -> selected [branch \"main\"]\n    Patterns to remove: [tag \"v*\"]\n",
+		},
+		{
+			name: "selected to selected with both shows remove then add, in observed then declared order",
+			s: changeplan.SettingPlan{
+				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production,
+				Observed: github.Observed(selectedOf(branch("a"), branch("main"), branch("z"))),
+				Desired:  selectedOf(branch("y"), branch("main"), branch("b")), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+			},
+			want: "  environments.production.deployment_branch_policy:\n    selected [branch \"a\", branch \"main\", branch \"z\"]\n    -> selected [branch \"y\", branch \"main\", branch \"b\"]\n" +
+				"    Patterns to remove: [branch \"a\", branch \"z\"]\n    Patterns to add: [branch \"y\", branch \"b\"]\n",
 		},
 		{
 			name: "environment whose existence is unknown shows the state and why it is not applicable",
