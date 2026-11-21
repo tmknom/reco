@@ -197,6 +197,9 @@ func (d document) deploymentPattern(n *yaml.Node, path string) (setting.Deployme
 	if name == "" || strings.TrimSpace(name) != name {
 		return setting.DeploymentPattern{}, invalid(entries["name"], namePath, "must not be empty or have leading or trailing whitespace; got %q", name)
 	}
+	if strings.ContainsFunc(name, func(r rune) bool { return r <= ' ' }) {
+		return setting.DeploymentPattern{}, invalid(entries["name"], namePath, "must not contain ASCII spaces or C0 control characters; got %q", name)
+	}
 	return setting.DeploymentPattern{Type: patternType, Name: name}, nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -711,4 +712,141 @@ func TestWriteChangeReport_Environments(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestWriteChangeReport_DeploymentPatterns は、個別パターンを一つずつ取り除き、加える論理的な設定変更の変更結果の表示を確かめる。
+// 期待値は CLI 仕様の apply の表示例から導く。
+//
+//trace:checks FR-013 QR-002
+func TestWriteChangeReport_DeploymentPatterns(t *testing.T) {
+	target := mustReference(t, "owner/repo")
+	main, release, version := branchPattern("main"), branchPattern("release/*"), tagPattern("v*")
+	approvedAll := observedEnvironment(7, "production", setting.DeploymentBranchPolicyAll)
+	existence := setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "production")}
+	policy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: mustEnvironmentName(t, "production")}
+	succeeded := started(github.UpdateSucceeded)
+	changed := func(unit setting.Unit) operationRecord {
+		return operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: unit}
+	}
+	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed.\n"
+
+	cases := []struct {
+		name    string
+		records []changeRecord
+		want    string
+	}{
+		{
+			name: "addition rejected after the mode update shows each addition with a different outcome on its own line",
+			records: []changeRecord{{
+				change:       deploymentPatternsChange(t, "production", approvedAll, selectedPolicy(main, release, version)),
+				operations:   []operationRecord{succeeded, succeeded, started(github.UpdateRejected)},
+				confirmation: desiredStateMismatch,
+			}},
+			want: "  owner/repo: failed\n" +
+				"    Update request (environments.production.deployment_branch_policy): succeeded\n" +
+				"    Update request (patterns to add [branch \"main\"]): succeeded\n" +
+				"    Update request (patterns to add [branch \"release/*\"]): rejected\n" +
+				"    Update request (patterns to add [tag \"v*\"]): not started\n" +
+				"    Desired state: does not match\n\n" + rollbackNote,
+		},
+		{
+			name: "additions not started after removals show one line for each direction and the precondition after the additions",
+			records: []changeRecord{{
+				change: deploymentPatternsChange(t, "production",
+					selectedEnvironment(7, "production", []setting.DeploymentPattern{branchPattern("feature/*"), branchPattern("old/*")}, 11, 12), selectedPolicy(release, version)),
+				operations:   []operationRecord{succeeded, succeeded, changed(policy)},
+				confirmation: desiredStateMismatch,
+			}},
+			want: "  owner/repo: failed\n" +
+				"    Update request (patterns to remove [branch \"feature/*\", branch \"old/*\"]): succeeded\n" +
+				"    Update request (patterns to add [branch \"release/*\", tag \"v*\"]): not started\n" +
+				"    Precondition: environments.production.deployment_branch_policy is not the value expected after the preceding update\n" +
+				"    Desired state: does not match\n\n" + rollbackNote,
+		},
+		{
+			name: "removal not started by the precondition shows the precondition after its removal line and before the additions",
+			records: []changeRecord{{
+				change: deploymentPatternsChange(t, "production",
+					selectedEnvironment(7, "production", []setting.DeploymentPattern{branchPattern("a"), branchPattern("b"), branchPattern("c")}, 1, 2, 3),
+					selectedPolicy(branchPattern("d"), branchPattern("e"))),
+				operations:   []operationRecord{succeeded, changed(policy)},
+				confirmation: desiredStateMismatch,
+			}},
+			want: "  owner/repo: failed\n" +
+				"    Update request (patterns to remove [branch \"a\"]): succeeded\n" +
+				"    Update request (patterns to remove [branch \"b\", branch \"c\"]): not started\n" +
+				"    Precondition: environments.production.deployment_branch_policy is not the value expected after the preceding update\n" +
+				"    Update request (patterns to add [branch \"d\", branch \"e\"]): not started\n" +
+				"    Desired state: does not match\n\n" + rollbackNote,
+		},
+		{
+			name: "addition of unknown outcome after a creation is named by the environment and its policy once",
+			records: []changeRecord{
+				completedRecord(allowAutoMergeChange()),
+				{
+					change:       creationWithPatternsChange(t, "production", selectedPolicy(main, version)),
+					operations:   []operationRecord{succeeded, started(github.UpdateUnknown)},
+					confirmation: desiredStateMismatch,
+				},
+			},
+			want: "  owner/repo\n" +
+				"    general.allow_auto_merge: updated\n" +
+				"    environments.production + environments.production.deployment_branch_policy: failed\n" +
+				"      Update request (environments.production): succeeded\n" +
+				"      Update request (patterns to add [branch \"main\"]): unknown\n" +
+				"      Update request (patterns to add [tag \"v*\"]): not started\n" +
+				"      Desired state: does not match\n\n" +
+				"Note: No automatic retry was performed.\n",
+		},
+		{
+			name: "environment not as expected before a later update after a creation names the environment",
+			records: []changeRecord{{
+				change:       creationWithPatternsChange(t, "production", selectedPolicy(main, version)),
+				operations:   []operationRecord{succeeded, succeeded, changed(existence)},
+				confirmation: desiredStateMismatch,
+			}},
+			want: "  owner/repo: failed\n" +
+				"    Update request (environments.production): succeeded\n" +
+				"    Update request (patterns to add [branch \"main\"]): succeeded\n" +
+				"    Update request (patterns to add [tag \"v*\"]): not started\n" +
+				"    Precondition: environments.production is not the environment expected after the preceding update\n" +
+				"    Desired state: does not match\n\n" + rollbackNote,
+		},
+		{
+			name: "existing environment changed before a later update is shown as changed since approval",
+			records: []changeRecord{{
+				change: deploymentPatternsChange(t, "production",
+					selectedEnvironment(7, "production", []setting.DeploymentPattern{branchPattern("feature/*")}, 11), selectedPolicy(release)),
+				operations:   []operationRecord{succeeded, changed(existence)},
+				confirmation: desiredStateMismatch,
+			}},
+			want: "  owner/repo: failed\n" +
+				"    Update request (patterns to remove [branch \"feature/*\"]): succeeded\n" +
+				"    Update request (patterns to add [branch \"release/*\"]): not started\n" +
+				"    Precondition: environments.production changed since approval\n" +
+				"    Desired state: does not match\n\n" + rollbackNote,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			if err := writeChangeReport(&out, []repositoryRecord{{target: target, changes: tc.records}}); err != nil {
+				t.Fatalf("writeChangeReport() error = %v", err)
+			}
+			if out.String() != tc.want {
+				t.Errorf("writeChangeReport() wrote %q, want %q", out.String(), tc.want)
+			}
+		})
+	}
+
+	t.Run("undefined direction of a pattern update panics", func(t *testing.T) {
+		change := deploymentPatternsChange(t, "production", selectedEnvironment(7, "production", []setting.DeploymentPattern{main}, 10), selectedPolicy(main, release, version))
+		change.Operations[0].DeploymentPatternChange.Direction = changeplan.RemoveDeploymentPattern + 1
+		defer func() {
+			if recover() == nil {
+				t.Error("updateRequestLines() did not panic")
+			}
+		}()
+		updateRequestLines(changeRecord{change: change, operations: []operationRecord{succeeded, succeeded}})
+	})
 }

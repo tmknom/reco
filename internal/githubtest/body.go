@@ -90,7 +90,7 @@ type DeploymentBranchPoliciesBody struct {
 	Patterns   []DeploymentPatternBody
 }
 
-// DeploymentPatternBody は、デプロイ元パターンの一覧の要素である。Type は branch か tag。
+// DeploymentPatternBody は、デプロイ元パターンの一覧の要素と、作成の正常応答の本文である。Type は branch か tag。
 type DeploymentPatternBody struct {
 	ID   int64
 	Name string
@@ -164,7 +164,12 @@ func (b EnvironmentBody) JSON() string {
 func (b DeploymentBranchPoliciesBody) JSON() string {
 	patterns := make([]string, len(b.Patterns))
 	for i, p := range b.Patterns {
-		patterns[i] = fmt.Sprintf(`{"id": %d, "name": %q, "type": %q}`, p.ID, p.Name, p.Type)
+		patterns[i] = p.JSON()
 	}
 	return fmt.Sprintf(`{"total_count": %d, "branch_policies": [%s]}`, b.TotalCount, strings.Join(patterns, ", "))
+}
+
+// JSON は応答本文を返す。
+func (b DeploymentPatternBody) JSON() string {
+	return fmt.Sprintf(`{"id": %d, "name": %q, "type": %q}`, b.ID, b.Name, b.Type)
 }

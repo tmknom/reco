@@ -92,7 +92,7 @@ func changesError(records []changeRecord, target repository.Reference) error {
 	return nil
 }
 
-// changeLabel は、変更結果で論理的な設定変更を示す名前を返す。変える管理設定の名前を、更新操作の順に " + " でつなぐ。
+// changeLabel は、変更結果で論理的な設定変更を示す名前を返す。変える管理設定の名前を、更新操作の順に重複なく " + " でつなぐ。
 func changeLabel(change changeplan.LogicalChange) string {
 	units := change.Units()
 	names := make([]string, len(units))
@@ -131,26 +131,72 @@ func details(record changeRecord) []string {
 	return lines
 }
 
+// updateRequestRow は、変更結果の Update request の 1 行が表す、続けて並ぶ更新操作のまとまり。
+// operation は先頭の更新操作で、patterns は個別パターンの更新操作のときだけ意味を持つ、まとめた要素の実行順の並び。
+// precondition は、まとまりの中に変更前提の不成立で開始しなかった更新操作があるときの、その理由の行である。
+type updateRequestRow struct {
+	operation    changeplan.UpdateOperation
+	patterns     []setting.DeploymentPattern
+	outcome      string
+	precondition string
+}
+
 // updateRequestLines は、開始した論理的な設定変更の更新操作の結果を表示の行で返す。
 // 更新操作が一つなら、どの更新操作かを示さずに 1 行で示す。
-// 二つ以上なら更新操作ごとに 1 行を実行順に示し、開始しなかった更新操作は、変更前提を確かめていれば不成立の理由の行を続ける。
+// 二つ以上なら更新操作の結果を実行順に示し、開始しなかった更新操作は、変更前提を確かめていれば、それを含む行の次に不成立の理由の行を続ける。
+// 個別パターンの更新操作は数が多くなり得るため、向きと結果が同じで続けて並ぶものを 1 行にまとめる。
 func updateRequestLines(record changeRecord) []string {
 	if len(record.change.Operations) == 1 {
 		return []string{"Update request: " + updateOutcomeText(record.operation(0).update)}
 	}
-	var lines []string
+	var rows []updateRequestRow
 	for i, operation := range record.change.Operations {
 		o := record.operation(i)
+		outcome := "not started"
 		if o.started() {
-			lines = append(lines, fmt.Sprintf("Update request (%s): %s", operation.Unit.String(), updateOutcomeText(o.update)))
-			continue
+			outcome = updateOutcomeText(o.update)
 		}
-		lines = append(lines, fmt.Sprintf("Update request (%s): not started", operation.Unit.String()))
-		if o.precondition != preconditionNotChecked {
-			lines = append(lines, preconditionText(record.change, i, o))
+		pattern := operation.DeploymentPatternChange
+		last := len(rows) - 1
+		switch {
+		case !operation.ChangesDeploymentPattern():
+			rows = append(rows, updateRequestRow{operation: operation, outcome: outcome})
+		case last >= 0 && rows[last].operation.DeploymentPatternChange.Direction == pattern.Direction && rows[last].outcome == outcome:
+			rows[last].patterns = append(rows[last].patterns, pattern.Pattern)
+		default:
+			rows = append(rows, updateRequestRow{operation: operation, patterns: []setting.DeploymentPattern{pattern.Pattern}, outcome: outcome})
+		}
+		if !o.started() && o.precondition != preconditionNotChecked {
+			rows[len(rows)-1].precondition = preconditionText(record.change, i, o)
+		}
+	}
+	var lines []string
+	for _, row := range rows {
+		lines = append(lines, fmt.Sprintf("Update request (%s): %s", updateRequestLabel(row.operation, row.patterns), row.outcome))
+		if row.precondition != "" {
+			lines = append(lines, row.precondition)
 		}
 	}
 	return lines
+}
+
+// updateRequestLabel は、Update request の行の括弧の中に示す対象を返す。
+// 個別パターンの更新操作は、変える管理設定がまとまりの中で同じため、向きと要素 patterns で示す。要素は plan と同じ表記にする。
+// それ以外の更新操作は、変える管理設定の名前で示す。
+// 未定義の向きは不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+func updateRequestLabel(operation changeplan.UpdateOperation, patterns []setting.DeploymentPattern) string {
+	if !operation.ChangesDeploymentPattern() {
+		return operation.Unit.String()
+	}
+	direction := operation.DeploymentPatternChange.Direction
+	listed := setting.DeploymentBranchPolicy{Patterns: patterns}.PatternsString()
+	switch direction {
+	case changeplan.AddDeploymentPattern:
+		return "patterns to add " + listed
+	case changeplan.RemoveDeploymentPattern:
+		return "patterns to remove " + listed
+	}
+	panic(fmt.Sprintf("apply: undefined direction %d of a deployment pattern update", int(direction)))
 }
 
 // possibleCause は、設定に既知の原因の候補を返す。候補がなければ空文字列を返す。
@@ -174,6 +220,9 @@ func notAttemptedReason(record changeRecord) string {
 // 値が承認のあとに変わったとは限らないため、予定どおりの値でないことを示す。
 // 先頭の更新操作の承認時に予定した値が、先行する論理的な設定変更の結果 (有効にした Actions) の場合も、
 // その変更は完了を確かめていて観測し直しの対象にしないため、原因を断定せずに関係する現在値の変化として示す。
+// ただし、後続の更新操作でも、承認時に観測した Environment そのものを基準にした変化は、先行する更新操作が変えるものではないため、承認のあとの変化として示す。
+// 先頭の更新操作が作成の変更では、後続の Environment の基準は先行する作成で、
+// Environment は値を持たないため、予定どおりの値ではなく、予定どおりの Environment でないことを示す。
 // 不成立の記録だけを受け取るため、変更前提が成立した記録と確かめていない記録は不変条件の破れとして panic する。
 func preconditionText(change changeplan.LogicalChange, index int, o operationRecord) string {
 	switch o.precondition {
@@ -182,10 +231,16 @@ func preconditionText(change changeplan.LogicalChange, index int, o operationRec
 	case preconditionIdentityMismatch:
 		return "Precondition: repository ID differs from the approved repository"
 	case preconditionCurrentValueChanged:
-		if index == 0 {
+		switch {
+		case index == 0:
 			return "Precondition: " + o.changedSetting.String() + " changed since approval"
+		case o.changedSetting.Key == setting.EnvironmentResource && change.Operations[0].CreatesEnvironment():
+			return "Precondition: " + o.changedSetting.String() + " is not the environment expected after the preceding update"
+		case o.changedSetting.Key == setting.EnvironmentResource:
+			return "Precondition: " + o.changedSetting.String() + " changed since approval"
+		default:
+			return "Precondition: " + o.changedSetting.String() + " is not the value expected after the preceding update"
 		}
-		return "Precondition: " + o.changedSetting.String() + " is not the value expected after the preceding update"
 	default:
 		panic(fmt.Sprintf("apply: %s has no reason for not starting the update", change.Operations[index].Unit.String()))
 	}

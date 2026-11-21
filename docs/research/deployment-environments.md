@@ -59,7 +59,8 @@ Environment の名前は、パスパラメータ `environment_name` に URL エ�
 > - 空白と `/`：`%20` と `%2F` にエンコードした名前で、作成と取得ができ、`name` は空白と `/` を含む元の名前で返った。`/` をエンコードせずに送った取得は `404` を返し、`documentation_url` は Environment の取得の節ではなく `https://docs.github.com/rest` だった
 > - `..`：パスの要素を `%2E%2E` にした `PUT` は `404` を返し、Environment は作られなかった。同じ本文で名前を `a..` にした `PUT` は `200` を返した
 > - 大文字と小文字のほかに同じ Environment とみなす違い：`reco-check-café` を作成したあと、`reco-check-cafe`（アクセントなし）への取得と本文なしの `PUT` は、どちらも同じ `id` の Environment に当たり、新しい Environment は作られなかった。`reco-check-cafÉ`（ASCII 以外の大文字）と、`é` を `e` と結合文字 U+0301 に分けた名前への取得も同じ `id` を返した。既存の `staging` に対しては、`stàging`、全角の `ｓ` で始まる名前、`ſ`（U+017F）で始まる名前、末尾に空白を付けた名前、末尾に U+0001 を付けた名前への取得が、どれも `staging` を返した
-> - 別の Environment とみなした違い：`staging` に対し、先頭に空白かタブを付けた名前、内部に空白を挟んだ名前、`sta-ging`、`sta.ging`、末尾に `_`、`.`、`'`、`~` を付けた名前への取得は、どれも `404` を返した
+> - 別の Environment とみなした違い：`staging` に対し、先頭に空白かタブを付けた名前、内部に空白を挟んだ名前、`sta-ging`、`sta.ging`、末尾に `_`、`.`、`'`、`~` を付けた名前への取得は、どれも `404` を返した。`reco-check-018-u27` に対し、`-` を `_`、`.`、`~`、`+` に入れ替えた名前への取得も、`reco-check-018 a'b` に対し、内部の空白を二つにした名前、`'` を `` ` `` か `"` に入れ替えた名前、空白を `-` に入れ替えた名前への取得も、どれも `404` を返した
+> - `%`、`?`、`#`：`reco-check-018-%?#` を `%25%3F%23` にエンコードした名前で作成と取得ができ、`name` は元の名前で返った。`reco-check-018-%` と `reco-check-018-` への取得は `404` を返した
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -81,10 +82,11 @@ Environment の名前は、パスパラメータ `environment_name` に URL エ�
 一覧の要素が Environment をすべて含むか、要素の並び順、ページの終わりの判定方法は、記載がありません。
 
 > [!NOTE]
-> 次は、reco の開発者が実際の動作で確認した事項です（公開リポジトリで、Environment が1〜5件の状態で確認）。
+> 次は、reco の開発者が実際の動作で確認した事項です（公開リポジトリで、Environment が1〜7件の状態で確認）。
 >
 > - `total_count`：ページの大きさによらず、Environment の全件数を返した。`per_page` を省略したときの要素数と一致した
-> - ページング：`per_page=1` では各ページが1件を返した。応答ヘッダー `Link` は `next`、`last`、`prev`、`first` を含み、最後のページには `next` がなかった。`Link` の URL は `https://api.github.com/repositories/{repository_id}/environments?per_page=1&page=2` の形で、要求に使った `/repos/{owner}/{repo}` の形ではなかった。最後のページより後のページへの要求は `200` を返し、`environments` は空の配列、`total_count` は全件数だった
+> - ページング：`per_page=1` では各ページが1件を返した。7件の状態では、`per_page=2` で4ページ（2、2、2、1件）、`per_page=3` で3ページ（3、3、1件）に分かれ、どのページの `total_count` も7で、ページをまたいだ名前の重複と欠けはなかった。応答ヘッダー `Link` は `next`、`last`、`prev`、`first` を含み、最後のページには `next` がなかった。`Link` の URL は `https://api.github.com/repositories/{repository_id}/environments?per_page=1&page=2` の形で、要求に使った `/repos/{owner}/{repo}` の形ではなかった。最後のページより後のページへの要求は `200` を返し、`environments` は空の配列、`total_count` は全件数だった
+> - 本文の大きさ：`curl` の既定の `User-Agent` では字下げした本文を、`User-Agent` を `reco-check` にすると空白のない本文を返した。空白のない本文での一覧の要素1件は、保護ルールのない Environment で約450バイト、`branch_policy` の保護ルールだけを持つ Environment で約580バイト、レビュアー（ユーザー1人）と待機時間と `branch_policy` の保護ルールを持つ Environment で約1,700バイトだった
 > - 並び順：名前の昇順だった
 > - 一覧の要素と取得の内容：一覧の要素は、同じ時点の 3.2 の取得の本文と全フィールドが一致した（3件で比較）
 > - 作成と削除の直後の一覧：4.1 の作成と、Environment の削除（`DELETE /repos/{owner}/{repo}/environments/{environment_name}`）の直後（約1秒以内）の一覧は、作成した Environment を含み、削除した Environment を含まなかった（それぞれ数回）。確かめた範囲で、一覧は存在する Environment をすべて含んだ
@@ -154,9 +156,9 @@ Environment の名前は、パスパラメータ `environment_name` に URL エ�
 > - 既存の Environment への本文のない `PUT` と `{}` の `PUT`：`200` を返し、値は何も変わらなかった。`wait_timer`、`reviewers`、`prevent_self_review: true`、`can_admins_bypass: false`、`protected_branches: true` を持つ Environment で確かめた
 > - `can_admins_bypass`：本文に `can_admins_bypass: false` を送ると受け付けられ、取得が `false` を返した
 > - 省略したフィールドの保持：`wait_timer: 7`、`reviewers`（ユーザー1人）、`prevent_self_review: true`、`can_admins_bypass: false` を持つ Environment に `deployment_branch_policy` だけを送ると、4つの値と、待機時間とレビュアーの保護ルールの `id` は変わらなかった。`custom_branch_policies: true` で4件のパターンを持つ Environment に `wait_timer` だけを送ると、`deployment_branch_policy` と、4件のパターン（同じ `id`）は変わらなかった
-> - デプロイ元の制限を変える更新：`custom_branch_policies: true` から `protected_branches: true` または `null` に変えると、パターンはすべて失われ、`custom_branch_policies: true` に戻してもパターンの一覧は空だった。`custom_branch_policies: true` のまま同じ値を送り直したときは、パターンは同じ `id` で残った。パターンのエンドポイントの応答は [GitHub デプロイ元パターン API 仕様](deployment-branch-policies.md) の注釈にある
+> - デプロイ元の制限を変える更新：`custom_branch_policies: true` から `protected_branches: true` または `null` に変えると、パターンはすべて失われ、`custom_branch_policies: true` に戻してもパターンの一覧は空だった。`custom_branch_policies: true` のまま同じ値を送り直したときは、パターンは同じ `id` で残った。一度も `custom_branch_policies: true` にしたことのない Environment を `custom_branch_policies: true` に変えた直後と、`custom_branch_policies: true` を本文に含めて作った直後も、パターンの一覧は空だった（非公開リポジトリで確認）。`null` から `protected_branches: true`、`protected_branches: true` から `null`、`custom_branch_policies: true` から `null` に変えた更新では、Environment の `updated_at` は変わらなかった。パターンのエンドポイントの応答は [GitHub デプロイ元パターン API 仕様](deployment-branch-policies.md) の注釈にある
 > - 同じ値の `protected_branches` と `custom_branch_policies`：両方 `true`、両方 `false` のどちらも `422` を返し、本文の `message` は `"custom_branch_policies" and "protected_branches" cannot have the same value` だった。値は変わらなかった
-> - 更新直後の取得：作成と更新（約20回）の約1秒以内の取得は、どれも更新後の値を返した
+> - 更新直後の取得：作成と更新（約30回）の約1秒以内の取得は、どれも更新後の値を返した
 > - 別の名前の Environment：確認の前から存在した Environment は、別の名前の Environment を作成、更新、削除した確認の前後で、`updated_at` を含む全フィールドと、デプロイ元パターン（同じ `id`）が一致した
 
 | Relationship | Target | Target Type |

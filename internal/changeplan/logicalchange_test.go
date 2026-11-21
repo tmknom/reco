@@ -14,6 +14,8 @@ func TestLogicalChange_Units(t *testing.T) {
 	existence := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
 	policy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}
 	protected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches})
+	main := setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"}
+	selected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{main}})
 	cases := []struct {
 		name       string
 		operations []UpdateOperation
@@ -38,6 +40,24 @@ func TestLogicalChange_Units(t *testing.T) {
 			name:       "mode change of an existing environment changes only the mode",
 			operations: []UpdateOperation{{Unit: policy, Desired: protected}},
 			want:       []setting.Unit{policy},
+		},
+		{
+			name: "mode put and pattern updates return the mode unit once",
+			operations: []UpdateOperation{
+				{Unit: policy, Desired: selected},
+				{Unit: policy, Desired: selected, DeploymentPatternChange: DeploymentPatternChange{Direction: AddDeploymentPattern, Pattern: main}},
+				{Unit: policy, Desired: selected, DeploymentPatternChange: DeploymentPatternChange{Direction: RemoveDeploymentPattern, Pattern: main}},
+			},
+			want: []setting.Unit{policy},
+		},
+		{
+			name: "creation sending a mode and pattern updates return the environment and then its mode once each",
+			operations: []UpdateOperation{
+				{Unit: existence, Desired: selected},
+				{Unit: policy, Desired: selected, DeploymentPatternChange: DeploymentPatternChange{Direction: AddDeploymentPattern, Pattern: main}},
+				{Unit: policy, Desired: selected, DeploymentPatternChange: DeploymentPatternChange{Direction: AddDeploymentPattern, Pattern: main}},
+			},
+			want: []setting.Unit{existence, policy},
 		},
 	}
 	for _, tc := range cases {
@@ -76,11 +96,15 @@ func TestUpdateOperation_TargetsEnvironment(t *testing.T) {
 func TestUpdateOperation_EnvironmentRequestShape(t *testing.T) {
 	production := mustEnvironmentName(t, "production")
 	protected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches})
+	main := setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"}
+	selected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{main}})
+	policyUnit := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}
 	cases := []struct {
 		name        string
 		operation   UpdateOperation
 		wantCreates bool
 		wantSets    bool
+		wantPattern bool
 	}{
 		{
 			name:        "creation without a mode creates and does not set the mode",
@@ -98,6 +122,11 @@ func TestUpdateOperation_EnvironmentRequestShape(t *testing.T) {
 			wantCreates: false, wantSets: true,
 		},
 		{
+			name:        "adding a pattern changes a pattern and neither creates nor sets the mode",
+			operation:   UpdateOperation{Unit: policyUnit, Desired: selected, DeploymentPatternChange: DeploymentPatternChange{Direction: AddDeploymentPattern, Pattern: main}},
+			wantCreates: false, wantSets: false, wantPattern: true,
+		},
+		{
 			name:        "repository setting neither creates nor sets the mode",
 			operation:   UpdateOperation{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Desired: setting.BoolValue(true)},
 			wantCreates: false, wantSets: false,
@@ -110,6 +139,9 @@ func TestUpdateOperation_EnvironmentRequestShape(t *testing.T) {
 			}
 			if got := tc.operation.SetsDeploymentBranchPolicy(); got != tc.wantSets {
 				t.Errorf("SetsDeploymentBranchPolicy() = %t, want %t", got, tc.wantSets)
+			}
+			if got := tc.operation.ChangesDeploymentPattern(); got != tc.wantPattern {
+				t.Errorf("ChangesDeploymentPattern() = %t, want %t", got, tc.wantPattern)
 			}
 		})
 	}
@@ -507,6 +539,62 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 		},
 	}}}
 
+	branch := func(name string) setting.DeploymentPattern {
+		return setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: name}
+	}
+	tag := func(name string) setting.DeploymentPattern {
+		return setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: name}
+	}
+	// selectedOf は、個別パターンを引数の並びのまま持つ selected の値。空でも空でない集合として持つ。
+	selectedOf := func(patterns ...setting.DeploymentPattern) setting.Value {
+		return setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{
+			Mode: setting.DeploymentBranchPolicySelected, Patterns: append([]setting.DeploymentPattern{}, patterns...),
+		})
+	}
+	selectedMain := selectedOf(branch("main"))
+	selectedPolicyPlan := func(environment setting.EnvironmentName, observed, desired setting.Value, result ReconciliationResult) SettingPlan {
+		return SettingPlan{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment, Observed: github.Observed(observed), Desired: desired, Result: result, Applicability: Applicable}
+	}
+	creationSelected := func(environment setting.EnvironmentName, desired setting.Value) SettingPlan {
+		return SettingPlan{
+			Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
+			Desired: desired, Result: NotComparable, Applicability: Applicable,
+		}
+	}
+	// patternStep は、個別パターンの更新操作一つと、その更新操作の基準のデプロイ元制限の値。
+	// 存在する Environment の基準は、存在と ID、デプロイ元制限の値の順に並ぶ。
+	type patternStep struct {
+		direction DeploymentPatternDirection
+		pattern   setting.DeploymentPattern
+		base      setting.Value
+	}
+	stagingEnvironment := RelevantSetting{Unit: stagingUnit, EnvironmentAtApproval: existingStaging}
+	stagingPut := func(observed, desired setting.Value) UpdateOperation {
+		return UpdateOperation{Unit: stagingPolicyUnit, Desired: desired, RelevantSettings: []RelevantSetting{stagingEnvironment, {Unit: stagingPolicyUnit, ValueAtApproval: github.Observed(observed)}}}
+	}
+	patternSteps := func(desired setting.Value, steps ...patternStep) []UpdateOperation {
+		var operations []UpdateOperation
+		for _, step := range steps {
+			operations = append(operations, UpdateOperation{
+				Unit: stagingPolicyUnit, Desired: desired, DeploymentPatternChange: DeploymentPatternChange{Direction: step.direction, Pattern: step.pattern},
+				RelevantSettings: []RelevantSetting{stagingEnvironment, {Unit: stagingPolicyUnit, ValueAtApproval: github.Observed(step.base)}},
+			})
+		}
+		return operations
+	}
+	// 作成に続く更新操作の基準は、先行する更新操作が作成して存在することと、デプロイ元制限の値の順に並ぶ。Unit は作成の綴りで作る。
+	productionPolicyUnit := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}
+	productionSteps := func(desired setting.Value, steps ...patternStep) []UpdateOperation {
+		var operations []UpdateOperation
+		for _, step := range steps {
+			operations = append(operations, UpdateOperation{
+				Unit: productionPolicyUnit, Desired: desired, DeploymentPatternChange: DeploymentPatternChange{Direction: step.direction, Pattern: step.pattern},
+				RelevantSettings: []RelevantSetting{{Unit: productionUnit, CreatedByPrecedingOperation: true}, {Unit: productionPolicyUnit, ValueAtApproval: github.Observed(step.base)}},
+			})
+		}
+		return operations
+	}
+
 	cases := []struct {
 		name     string
 		settings []SettingPlan
@@ -541,6 +629,79 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 			name:     "matched environment does not prevent the other logical changes",
 			settings: []SettingPlan{mismatch, existing},
 			want:     []LogicalChange{allowAutoMerge},
+		},
+		{
+			name:     "all to selected puts the mode and then adds the declared patterns in the declared order, each relevant to the value advanced by the preceding updates",
+			settings: []SettingPlan{existing, selectedPolicyPlan(staging, all, selectedOf(branch("main"), tag("v*")), Mismatch)},
+			want: []LogicalChange{{Operations: append([]UpdateOperation{stagingPut(all, selectedOf(branch("main"), tag("v*")))},
+				patternSteps(selectedOf(branch("main"), tag("v*")),
+					patternStep{AddDeploymentPattern, branch("main"), selectedOf()},
+					patternStep{AddDeploymentPattern, tag("v*"), selectedOf(branch("main"))},
+				)...)}},
+		},
+		{
+			name:     "all to selected without patterns is one put of the mode",
+			settings: []SettingPlan{existing, selectedPolicyPlan(staging, all, selectedOf(), Mismatch)},
+			want:     []LogicalChange{{Operations: []UpdateOperation{stagingPut(all, selectedOf())}}},
+		},
+		{
+			name: "selected to selected removes the patterns not declared in the observed order and then adds the missing ones in the declared order without putting the mode",
+			settings: []SettingPlan{existing, selectedPolicyPlan(staging,
+				selectedOf(branch("b"), branch("a")), selectedOf(branch("d"), branch("a"), branch("c")), Mismatch)},
+			want: []LogicalChange{{Operations: patternSteps(selectedOf(branch("d"), branch("a"), branch("c")),
+				patternStep{RemoveDeploymentPattern, branch("b"), selectedOf(branch("b"), branch("a"))},
+				patternStep{AddDeploymentPattern, branch("d"), selectedOf(branch("a"))},
+				patternStep{AddDeploymentPattern, branch("c"), selectedOf(branch("a"), branch("d"))},
+			)}},
+		},
+		{
+			name:     "selected to no patterns removes each pattern relevant to the value without the patterns removed before",
+			settings: []SettingPlan{existing, selectedPolicyPlan(staging, selectedOf(branch("a"), branch("b")), selectedOf(), Mismatch)},
+			want: []LogicalChange{{Operations: patternSteps(selectedOf(),
+				patternStep{RemoveDeploymentPattern, branch("a"), selectedOf(branch("a"), branch("b"))},
+				patternStep{RemoveDeploymentPattern, branch("b"), selectedOf(branch("b"))},
+			)}},
+		},
+		{
+			name:     "patterns of the same name and another type are replaced",
+			settings: []SettingPlan{existing, selectedPolicyPlan(staging, selectedOf(branch("main")), selectedOf(tag("main")), Mismatch)},
+			want: []LogicalChange{{Operations: patternSteps(selectedOf(tag("main")),
+				patternStep{RemoveDeploymentPattern, branch("main"), selectedOf(branch("main"))},
+				patternStep{AddDeploymentPattern, tag("main"), selectedOf()},
+			)}},
+		},
+		{
+			name:     "creation with patterns is one logical change of the creation followed by the additions relevant to the created environment",
+			settings: []SettingPlan{creation, creationSelected(production, selectedOf(branch("main"), tag("v*")))},
+			want: []LogicalChange{{Operations: append([]UpdateOperation{createProduction(selectedOf(branch("main"), tag("v*"))).Operations[0]},
+				productionSteps(selectedOf(branch("main"), tag("v*")),
+					patternStep{AddDeploymentPattern, branch("main"), selectedOf()},
+					patternStep{AddDeploymentPattern, tag("v*"), selectedOf(branch("main"))},
+				)...)}},
+		},
+		{
+			name:     "creation with selected and no patterns is one update",
+			settings: []SettingPlan{creation, creationSelected(production, selectedOf())},
+			want:     []LogicalChange{createProduction(selectedOf())},
+		},
+		{
+			name: "additions after a creation use the spelling of the creation",
+			settings: []SettingPlan{creation, func() SettingPlan {
+				return creationSelected(mustEnvironmentName(t, "Production"), selectedMain)
+			}()},
+			want: []LogicalChange{{Operations: append([]UpdateOperation{createProduction(selectedMain).Operations[0]},
+				productionSteps(selectedMain, patternStep{AddDeploymentPattern, branch("main"), selectedOf()})...)}},
+		},
+		{
+			name: "selected of two environments are two logical changes in the plan order",
+			settings: []SettingPlan{
+				existing, selectedPolicyPlan(staging, all, selectedMain, Mismatch),
+				creation, creationSelected(production, selectedMain),
+			},
+			want: []LogicalChange{
+				{Operations: append([]UpdateOperation{stagingPut(all, selectedMain)}, patternSteps(selectedMain, patternStep{AddDeploymentPattern, branch("main"), selectedOf()})...)},
+				{Operations: append([]UpdateOperation{createProduction(selectedMain).Operations[0]}, productionSteps(selectedMain, patternStep{AddDeploymentPattern, branch("main"), selectedOf()})...)},
+			},
 		},
 	}
 	for _, tc := range cases {
@@ -603,61 +764,6 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 				}
 			}()
 			_, _ = newRepositoryPlan(tc.settings...).LogicalChanges()
-		})
-	}
-
-	selectedMain := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{
-		Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{{Type: setting.DeploymentPatternBranch, Name: "main"}},
-	})
-	selectedRelease := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{
-		Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{{Type: setting.DeploymentPatternBranch, Name: "release"}},
-	})
-	selectedPolicyPlan := func(environment setting.EnvironmentName, observed, desired setting.Value, result ReconciliationResult) SettingPlan {
-		return SettingPlan{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment, Observed: github.Observed(observed), Desired: desired, Result: result, Applicability: Applicable}
-	}
-	rejectCases := []struct {
-		name     string
-		settings []SettingPlan
-		want     string
-	}{
-		{
-			name:     "mode change from all to selected is rejected naming the deployment branch policy unit",
-			settings: []SettingPlan{existing, selectedPolicyPlan(staging, all, selectedMain, Mismatch)},
-			want:     "owner/repo: environments.staging.deployment_branch_policy: applying mode selected is not supported",
-		},
-		{
-			name:     "pattern-only difference within selected is rejected",
-			settings: []SettingPlan{existing, selectedPolicyPlan(staging, selectedMain, selectedRelease, Mismatch)},
-			want:     "owner/repo: environments.staging.deployment_branch_policy: applying mode selected is not supported",
-		},
-		{
-			name: "creation with a not comparable selected mode is rejected naming the deployment branch policy unit",
-			settings: []SettingPlan{creation, {
-				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
-				Desired: selectedMain, Result: NotComparable, Applicability: Applicable,
-			}},
-			want: "owner/repo: environments.production.deployment_branch_policy: applying mode selected is not supported",
-		},
-		{
-			name: "the first of several selected changes in the plan order is named",
-			settings: []SettingPlan{existing, selectedPolicyPlan(staging, all, selectedMain, Mismatch), creation, {
-				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
-				Desired: selectedMain, Result: NotComparable, Applicability: Applicable,
-			}},
-			want: "owner/repo: environments.staging.deployment_branch_policy: applying mode selected is not supported",
-		},
-		{
-			name:     "not-applicable change is reported before the selected rejection",
-			settings: []SettingPlan{selectedPolicyPlan(staging, all, selectedMain, Mismatch), {Key: setting.EnvironmentResource, Environment: production, Result: NotComparable, Applicability: NotApplicable}},
-			want:     "owner/repo: environments.production cannot be applied",
-		},
-	}
-	for _, tc := range rejectCases {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := newRepositoryPlan(tc.settings...).LogicalChanges()
-			if err == nil || err.Error() != tc.want {
-				t.Errorf("LogicalChanges() error = %v, want %q", err, tc.want)
-			}
 		})
 	}
 

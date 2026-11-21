@@ -2,6 +2,7 @@ package github
 
 import (
 	"net/url"
+	"strconv"
 
 	"github.com/tmknom/reco/internal/repository"
 )
@@ -59,6 +60,18 @@ func (c *Client) deploymentBranchPoliciesURL(reference repository.Reference, nam
 	}
 	u.RawPath += "/deployment-branch-policies"
 	u.Path += "/deployment-branch-policies"
+	return u, true
+}
+
+// deploymentBranchPolicyURL は、name の Environment の ID が id の個別パターンの URL を返す。name が environmentURL で組めなければ偽を返す。
+func (c *Client) deploymentBranchPolicyURL(reference repository.Reference, name string, id DeploymentPatternID) (*url.URL, bool) {
+	u, ok := c.deploymentBranchPoliciesURL(reference, name)
+	if !ok {
+		return nil, false
+	}
+	suffix := "/" + strconv.FormatInt(int64(id), 10)
+	u.RawPath += suffix
+	u.Path += suffix
 	return u, true
 }
 

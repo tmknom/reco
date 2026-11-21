@@ -104,3 +104,23 @@ func okEnvironment(environment githubtest.EnvironmentBody) response {
 func protectedBranchesBody() *githubtest.DeploymentBranchPolicyBody {
 	return &githubtest.DeploymentBranchPolicyBody{ProtectedBranches: true}
 }
+
+// selectedBody は、方式が selected の deployment_branch_policy。
+func selectedBody() *githubtest.DeploymentBranchPolicyBody {
+	return &githubtest.DeploymentBranchPolicyBody{CustomBranchPolicies: true}
+}
+
+// okDeploymentPatterns は、patterns を一覧の全体とする個別パターンの一覧の取得の正常応答。
+func okDeploymentPatterns(patterns ...githubtest.DeploymentPatternBody) response {
+	return response{status: http.StatusOK, body: githubtest.DeploymentBranchPoliciesBody{TotalCount: len(patterns), Patterns: patterns}.JSON()}
+}
+
+// okDeploymentPattern は、個別パターンを加える要求の正常応答。
+func okDeploymentPattern(pattern githubtest.DeploymentPatternBody) response {
+	return response{status: http.StatusOK, body: pattern.JSON()}
+}
+
+// noContent は、個別パターンを取り除く要求の正常応答。
+func noContent() response {
+	return response{status: http.StatusNoContent}
+}

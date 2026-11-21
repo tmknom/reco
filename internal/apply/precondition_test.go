@@ -1,6 +1,8 @@
 package apply
 
 import (
+	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/tmknom/reco/internal/changeplan"
@@ -77,7 +79,7 @@ func TestCheckPrecondition(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got, changed := checkPrecondition(1, operation, tc.observed); got != tc.want || changed != (setting.Unit{Key: tc.wantChanged}) {
+			if got, changed := checkPrecondition(1, operation, tc.observed, github.EnvironmentObservation{}); got != tc.want || changed != (setting.Unit{Key: tc.wantChanged}) {
 				t.Errorf("checkPrecondition() = %v, %q, want %v, %q", got, changed.Key, tc.want, tc.wantChanged)
 			}
 		})
@@ -133,7 +135,7 @@ func TestCheckPrecondition(t *testing.T) {
 	for _, tc := range actionsCases {
 		t.Run(tc.name, func(t *testing.T) {
 			observed := github.ObservationResult{RepositoryID: 1, ActionsPermissions: tc.observed}
-			if got, changed := checkPrecondition(1, tc.change.Operations[tc.index], observed); got != tc.want || changed != (setting.Unit{Key: tc.wantChanged}) {
+			if got, changed := checkPrecondition(1, tc.change.Operations[tc.index], observed, github.EnvironmentObservation{}); got != tc.want || changed != (setting.Unit{Key: tc.wantChanged}) {
 				t.Errorf("checkPrecondition() = %v, %q, want %v, %q", got, changed.Key, tc.want, tc.wantChanged)
 			}
 		})
@@ -146,7 +148,7 @@ func TestCheckPrecondition(t *testing.T) {
 			}
 		}()
 		empty := changeplan.UpdateOperation{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Desired: setting.BoolValue(true)}
-		checkPrecondition(1, empty, github.ObservationResult{RepositoryID: 1})
+		checkPrecondition(1, empty, github.ObservationResult{RepositoryID: 1}, github.EnvironmentObservation{})
 	})
 }
 
@@ -201,7 +203,39 @@ func TestPrecedingUpdateNotReflected(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			observed := github.ObservationResult{RepositoryID: 1, ActionsPermissions: tc.observed}
-			if got := precedingUpdateNotReflected(1, tc.change.Operations[:tc.index], observed); got != tc.want {
+			if got := precedingUpdateNotReflected(1, tc.change.Operations[:tc.index], observed, github.EnvironmentObservation{}); got != tc.want {
+				t.Errorf("precedingUpdateNotReflected() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	main, feature := branchPattern("main"), branchPattern("feature/*")
+	environmentCases := []struct {
+		name         string
+		change       changeplan.LogicalChange
+		index        int
+		environments *github.Environments
+		want         bool
+	}{
+		{
+			name:         "pattern addition with the set still as before the preceding removal is not reflected",
+			change:       deploymentPatternsChange(t, "staging", selectedEnvironment(7, "Staging", []setting.DeploymentPattern{main, feature}, 10, 11), selectedPolicy(main, branchPattern("release/*"))),
+			index:        1,
+			environments: environments(selectedEnvironment(7, "Staging", []setting.DeploymentPattern{main, feature}, 10, 11)),
+			want:         true,
+		},
+		{
+			name:         "pattern addition after a creation with the environment still absent is not reflected",
+			change:       creationWithPatternsChange(t, "production", selectedPolicy(main)),
+			index:        1,
+			environments: environments(),
+			want:         true,
+		},
+	}
+	for _, tc := range environmentCases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := github.ObservationResult{RepositoryID: 1, Environments: tc.environments}
+			if got := precedingUpdateNotReflected(1, tc.change.Operations[:tc.index], observed, github.EnvironmentObservation{}); got != tc.want {
 				t.Errorf("precedingUpdateNotReflected() = %v, want %v", got, tc.want)
 			}
 		})
@@ -287,10 +321,19 @@ func TestCheckPrecondition_Environments(t *testing.T) {
 	waitTimer := 30
 	protectedStaging := approvedStaging
 	protectedStaging.Protection = setting.EnvironmentProtection{WaitTimer: &waitTimer, CanAdminsBypass: true}
+	main, feature := branchPattern("main"), branchPattern("feature/*")
+	// 外す DELETE feature/*（基準 [main, feature/*]）、足す POST release/*（基準 [main]）の順
+	replacement := deploymentPatternsChange(t, "staging", selectedEnvironment(7, "Staging", []setting.DeploymentPattern{main, feature}, 10, 11), selectedPolicy(main, branchPattern("release/*")))
+	// 作成に続く POST の Environment の基準に、計画時の「存在しない」の観測結果も入れた、changeplan が作らない並び
+	creation := creationWithPatternsChange(t, "production", selectedPolicy(main))
+	creation.Operations[1].RelevantSettings = slices.Clone(creation.Operations[1].RelevantSettings)
+	creation.Operations[1].RelevantSettings[0].EnvironmentAtApproval = github.Environments{}.Lookup(production)
 
 	cases := []struct {
-		name        string
-		change      changeplan.LogicalChange
+		name   string
+		change changeplan.LogicalChange
+		// index は、確かめる更新操作の change.Operations の添字。
+		index       int
 		observed    github.ObservationResult
 		want        preconditionCheck
 		wantChanged setting.Unit
@@ -383,13 +426,121 @@ func TestCheckPrecondition_Environments(t *testing.T) {
 			want:        preconditionCurrentValueChanged,
 			wantChanged: existence(staging),
 		},
+		{
+			name:     "pattern removal holds when only the IDs of the patterns differ",
+			change:   replacement,
+			observed: github.ObservationResult{RepositoryID: 1, Environments: environments(selectedEnvironment(7, "Staging", []setting.DeploymentPattern{main, feature}, 20, 21))},
+			want:     preconditionHolds,
+		},
+		{
+			name:        "pattern addition with a pattern outside the expected set is a change of the policy",
+			change:      replacement,
+			index:       1,
+			observed:    github.ObservationResult{RepositoryID: 1, Environments: environments(selectedEnvironment(7, "Staging", []setting.DeploymentPattern{main, branchPattern("other/*")}, 10, 12))},
+			want:        preconditionCurrentValueChanged,
+			wantChanged: stagingPolicy,
+		},
+		{
+			name:        "pattern addition to an environment recreated with another ID is a change of the environment even if the set is as expected",
+			change:      replacement,
+			index:       1,
+			observed:    github.ObservationResult{RepositoryID: 1, Environments: environments(selectedEnvironment(8, "Staging", []setting.DeploymentPattern{main}, 10))},
+			want:        preconditionCurrentValueChanged,
+			wantChanged: existence(staging),
+		},
+		{
+			name:     "pattern addition after a creation reads only that the preceding update created the environment",
+			change:   creation,
+			index:    1,
+			observed: github.ObservationResult{RepositoryID: 1, Environments: environments(selectedEnvironment(8, "production", nil))},
+			want:     preconditionHolds,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, changed := checkPrecondition(1, tc.change.Operations[0], tc.observed)
+			got, changed := checkPrecondition(1, tc.change.Operations[tc.index], tc.observed, github.EnvironmentObservation{})
 			if got != tc.want || changed != tc.wantChanged {
 				t.Errorf("checkPrecondition() = %v, %+v, want %v, %+v", got, changed, tc.want, tc.wantChanged)
 			}
 		})
 	}
+}
+
+// TestMatchesCreatedEnvironment は、同じ論理的な設定変更が作成した Environment について、後続の更新操作の直前の観測が予定どおりかの規則を確かめる。
+//
+//trace:checks INV-004 FR-010
+func TestMatchesCreatedEnvironment(t *testing.T) {
+	name := mustEnvironmentName(t, "production")
+	lookup := func(existing ...github.Environment) github.EnvironmentObservation {
+		return github.Environments{Existing: existing}.Lookup(name)
+	}
+	created := lookup(observedEnvironment(8, "production", setting.DeploymentBranchPolicySelected))
+	cases := []struct {
+		name    string
+		created github.EnvironmentObservation
+		current github.EnvironmentObservation
+		want    bool
+	}{
+		{name: "existing without a base ID yet is as expected", created: github.EnvironmentObservation{}, current: created, want: true},
+		{name: "absent is not as expected", created: github.EnvironmentObservation{}, current: lookup(), want: false},
+		{name: "undetermined is not as expected", created: github.EnvironmentObservation{}, current: lookup(observedEnvironment(9, "prodüction", setting.DeploymentBranchPolicySelected)), want: false},
+		{name: "existing with an ID other than the base is not as expected", created: created, current: lookup(observedEnvironment(9, "production", setting.DeploymentBranchPolicySelected)), want: false},
+		{name: "existing with the base ID is as expected", created: created, current: lookup(observedEnvironment(8, "Production", setting.DeploymentBranchPolicyAll)), want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := matchesCreatedEnvironment(tc.created, tc.current); got != tc.want {
+				t.Errorf("matchesCreatedEnvironment() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestEnvironmentCreatedIn は、同じ論理的な設定変更が作成した Environment の ID の基準を、作成に続く最初の更新操作の直前の観測から引く規則を確かめる。
+//
+//trace:checks INV-004 FR-010
+func TestEnvironmentCreatedIn(t *testing.T) {
+	creation := creationWithPatternsChange(t, "production", selectedPolicy(branchPattern("main"), tagPattern("v*")))
+	observedWith := func(id github.EnvironmentID) github.ObservationResult {
+		return github.ObservationResult{RepositoryID: 1, Environments: environments(selectedEnvironment(id, "Production", nil))}
+	}
+	t.Run("creation with one read before the update has no base yet", func(t *testing.T) {
+		// 作成の直前の観測を引けば、そこにある Environment が基準になってしまうことを、存在する Environment を置いて確かめる
+		before := []github.ObservationResult{observedWith(7)}
+		if got := environmentCreatedIn(creation, before); !reflect.DeepEqual(got, github.EnvironmentObservation{}) {
+			t.Errorf("environmentCreatedIn() = %+v, want the zero value", got)
+		}
+	})
+	t.Run("creation with later reads is the environment read before the first update after the creation", func(t *testing.T) {
+		before := []github.ObservationResult{{RepositoryID: 1, Environments: environments()}, observedWith(8), observedWith(9)}
+		got, ok := environmentCreatedIn(creation, before).Existing()
+		if !ok || got.ID != 8 {
+			t.Errorf("environmentCreatedIn() = %+v, %v, want the environment with ID 8", got, ok)
+		}
+	})
+	t.Run("change without a creation has no base", func(t *testing.T) {
+		change := deploymentPatternsChange(t, "production", observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll), selectedPolicy(branchPattern("main")))
+		before := []github.ObservationResult{observedWith(8), observedWith(8)}
+		if got := environmentCreatedIn(change, before); !reflect.DeepEqual(got, github.EnvironmentObservation{}) {
+			t.Errorf("environmentCreatedIn() = %+v, want the zero value", got)
+		}
+	})
+	t.Run("creation with the environment not existing before the first update after it panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("environmentCreatedIn() did not panic")
+			}
+		}()
+		environmentCreatedIn(creation, []github.ObservationResult{{RepositoryID: 1, Environments: environments()}, {RepositoryID: 1, Environments: environments()}})
+	})
+	t.Run("change without a creation expecting a created environment panics", func(t *testing.T) {
+		change := deploymentPatternsChange(t, "production", observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll), selectedPolicy(branchPattern("main")))
+		change.Operations[1].RelevantSettings[0] = changeplan.RelevantSetting{Unit: change.Operations[1].RelevantSettings[0].Unit, CreatedByPrecedingOperation: true}
+		defer func() {
+			if recover() == nil {
+				t.Error("environmentCreatedIn() did not panic")
+			}
+		}()
+		environmentCreatedIn(change, []github.ObservationResult{observedWith(8)})
+	})
 }

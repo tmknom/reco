@@ -330,12 +330,6 @@ Plan cannot be applied.
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-b: actions.permissions.sha_pinning_required is not applicable; example/project-c: actions.permissions.sha_pinning_required is not applicable; no changes made"}
 ```
 
-`apply` は、期待値の方式が `selected` の `deployment_branch_policy` の変更予定を実行しません。個別パターンを加える更新操作と取り除く更新操作を持たないためです。適用不能な変更予定がなく、この変更予定が一つでもあれば、変更計画を表示せず、承認を求めず、どのリポジトリも更新せずにエラー終了します。stderr のエラーは、変更計画の並びで最初に当たった対象と設定を挙げ、`no changes made` を添えます。現在値が `selected` で期待値が `all` / `protected_branches` の変更予定は、これに当たらず実行します。
-
-```text
-{"time":"...","level":"ERROR","msg":"command failed","error":"example/project-a: environments.production.deployment_branch_policy: applying mode selected is not supported; no changes made"}
-```
-
 すべて変更不要の場合の表示例は次のとおりです。
 
 ```text
@@ -361,6 +355,7 @@ Repositories checked: 2
 | `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
 | `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
 | `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
+| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Repository File |
 
 ### 5.1 承認
 
@@ -399,11 +394,11 @@ Repositories updated: 2
 
 更新は逐次実行します。論理的な設定変更の中では、先行する更新操作の成功を確認してから次の更新操作へ進み、別の論理的な設定変更へは、その期待状態を確認してから進みます。複数のリポジトリに変更予定があるときは、設定宣言の `repositories` の並びで一つずつ更新し、あるリポジトリのすべての論理的な設定変更が完了したときだけ、次のリポジトリへ進みます。完了しなかった論理的な設定変更があれば、残りのリポジトリには、更新要求も、更新直前の確認のための読み取り要求も送りません。変更不要のリポジトリには、変更計画を作るための観測のあと、要求を送りません。自動ロールバックは行いません。
 
-更新要求のあいだは1秒以上空けます。そのため `apply` の所要時間は、2つ目以降の更新操作ごとに1秒以上延びます。別のリポジトリの更新要求とのあいだも同じです。このあいだに中断（`SIGINT`、`SIGTERM`）を受けた場合は、次の更新操作を開始しません（[アーキテクチャ設計](../design/architecture.md) 6.2節）。
+更新要求のあいだは1秒以上空けます。そのため `apply` の所要時間は、2つ目以降の更新操作ごとに1秒以上延びます。別のリポジトリの更新要求とのあいだも同じです。`deployment_branch_policy` の個別パターンは、加えるパターンと取り除くパターンの一つごとに更新要求を送るため、パターンの数だけ所要時間が延びます。このあいだに中断（`SIGINT`、`SIGTERM`）を受けた場合は、次の更新操作を開始しません（[アーキテクチャ設計](../design/architecture.md) 6.2節）。
 
 GitHub が更新を取得の結果に反映するまで時間がかかることがあるため、更新操作が成功したのに期待状態と一致しないとき、または期待値と比べる設定を GitHub の取得条件により確認できないときは、間隔を広げながら確認し直し、一致を確認できないまま合計約30秒が経てば `failed` とします（[アーキテクチャ設計](../design/architecture.md) 6.2節）。
 
-一つの論理的な設定変更が二つの更新操作からなるときは、後続の更新操作の直前の確認にも同じ遅れが現れ得ます。先行する更新操作が成功したのに、その更新操作が変えた設定が更新前の値のままのときは、同じ間隔で確認し直します。合計約30秒が経っても変わらなければ、後続の更新操作を開始せずに `failed` とします。先行する更新操作の更新要求は再送しません。
+一つの論理的な設定変更が複数の更新操作からなるときは、後続の更新操作の直前の確認にも同じ遅れが現れ得ます。先行する更新操作が成功したのに、その更新操作が変えた設定が更新前の値のままのときは、同じ間隔で確認し直します。合計約30秒が経っても変わらなければ、後続の更新操作を開始せずに `failed` とします。先行する更新操作の更新要求は再送しません。
 
 一つのリポジトリに複数の変更予定があるときは、承認の前に提示する順も、論理的な設定変更を実行する順も、4章が定める変更予定の表示順に従います。`allowed_actions` と `sha_pinning_required` の両方に変更予定があるときも、別々の論理的な設定変更として一つずつ更新します。
 
@@ -426,23 +421,27 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 すべてのリポジトリが `updated` または `no change` のときに限り、`Apply complete.` と、`updated` のリポジトリの数を `Repositories updated:` として示します。`no change` のリポジトリは数に含めません。
 
-いずれかの論理的な設定変更で更新操作を開始しており、完了しなかった論理的な設定変更があるときは、変更結果の末尾に注記（`Note:`）を添えます。開始した更新操作に成否不明があれば自動で再送していないことを、なければ自動ロールバックを行っていないことを示します。二つの更新操作からなる論理的な設定変更では、どちらの更新操作も判定に含めます。この判定は、選択したすべてのリポジトリの論理的な設定変更について行います。先に完了したリポジトリのあとで別のリポジトリが完了しなかった場合も、適用済みの変更が残るため注記を添えます。
+いずれかの論理的な設定変更で更新操作を開始しており、完了しなかった論理的な設定変更があるときは、変更結果の末尾に注記（`Note:`）を添えます。開始した更新操作に成否不明があれば自動で再送していないことを、なければ自動ロールバックを行っていないことを示します。複数の更新操作からなる論理的な設定変更では、すべての更新操作を判定に含めます。この判定は、選択したすべてのリポジトリの論理的な設定変更について行います。先に完了したリポジトリのあとで別のリポジトリが完了しなかった場合も、適用済みの変更が残るため注記を添えます。
 
 選択方式の Actions 許可条件は、3項目を個別の変更として表示せず、一体の設定グループとして扱います。Actions 許可ポリシーを `selected` へ変える変更と組み合わせて一つの論理的な設定変更となる場合は、変更結果を管理設定ごとの行に分けず、その変更全体について一つ示します。承認の前に提示する変更予定は、管理設定ごとの行のままです。
 
-論理的な設定変更ごとに結果を表示するときは、論理的な設定変更を、それが変える管理設定の名前で示します。二つの管理設定を変える論理的な設定変更は、更新操作の順に ` + ` でつないで示します（`actions.permissions.allowed_actions + actions.permissions.selected_actions`）。
+論理的な設定変更ごとに結果を表示するときは、論理的な設定変更を、それが変える管理設定の名前で示します。二つの管理設定を変える論理的な設定変更は、更新操作の順に ` + ` でつないで示します（`actions.permissions.allowed_actions + actions.permissions.selected_actions`）。同じ管理設定を変える更新操作が複数あっても、その管理設定の名前は一度だけ示します。
 
-Environment の作成も、完了すれば `updated` と示します。何を作成したかは、承認の前に提示した `absent -> present` が示します。`deployment_branch_policy` を宣言した Environment の作成は、一つの更新要求で Environment と方式を設定する一つの論理的な設定変更で、`environments.<名前> + environments.<名前>.deployment_branch_policy` と示します。方式を宣言していない作成は `environments.<名前>`、存在する Environment の方式の変更は `environments.<名前>.deployment_branch_policy` と示します。名前は設定宣言の綴りです。どれも更新操作は一つのため、`Update request` は1行です。
+Environment の作成も、完了すれば `updated` と示します。何を作成したかは、承認の前に提示した `absent -> present` が示します。`deployment_branch_policy` を宣言した Environment の作成は、一つの更新要求で Environment と方式を設定する一つの論理的な設定変更で、`environments.<名前> + environments.<名前>.deployment_branch_policy` と示します。方式を宣言していない作成は `environments.<名前>`、存在する Environment の方式の変更は `environments.<名前>.deployment_branch_policy` と示します。名前は設定宣言の綴りです。期待値の方式が `selected` の変更でなければ、更新操作は一つのため、`Update request` は1行です。
 
-二つの更新操作からなる論理的な設定変更が、更新操作を開始したあとで完了しなかった場合は、`Update request` の行を更新操作ごとに1行ずつ、実行順に示します。行は `Update request (<その更新操作が変える管理設定>): <結果>` の形で、結果は `succeeded`、`rejected`、`unknown`、開始しなかった更新操作を表す `not started` のいずれかです。先行する更新操作が成功し、後続の更新操作を開始できなかった場合は、完了済みの更新操作を `succeeded`、未開始の更新操作を `not started` と示し、変更全体を `failed` とします。`not started` は更新操作についての表示で、論理的な設定変更の `not attempted` とは区別します。
+期待値の方式が `selected` の `deployment_branch_policy` の変更は、方式を `selected` にする更新要求（方式が変わる場合だけで、作成ではその作成の更新要求）、取り除く個別パターンごとの更新要求、加える個別パターンごとの更新要求を、この順に送る一つの論理的な設定変更です（順の理由は[アーキテクチャ設計](../design/architecture.md) 5.4節）。名前は、存在する Environment では `environments.<名前>.deployment_branch_policy`、作成と重なる場合は `environments.<名前> + environments.<名前>.deployment_branch_policy` です。
 
-後続の更新操作を変更前提の不成立で開始できなかった場合は、`not started` の行の次に `Precondition:` の行で理由を示します。先行する更新操作が変えた設定が予定どおりの値でなかった場合は、`Precondition: <設定> is not the value expected after the preceding update` と示します。GitHub の反映が遅れている場合も、外部主体が値を変えた場合もこの表示になり、原因は断定しません。先行する更新操作が成功しなかったために開始しなかった場合は、理由の行を足しません。先行する更新操作が成功していれば、後続を開始できなかった場合も後続が失敗した場合も、更新後の確認を一度だけ行い、その結果と変更対象外の設定の予期しない変化を示します。この確認で期待状態との一致を確認しても、必要な更新操作の成功を確認していないため、`updated` に変更しません。最初の更新操作が拒否され、更新後の確認を行わなかった場合は `Desired state: not checked` と示します。
+複数の更新操作からなる論理的な設定変更が、更新操作を開始したあとで完了しなかった場合は、`Update request` の行を実行順に示します。行は `Update request (<対象>): <結果>` の形で、結果は `succeeded`、`rejected`、`unknown`、開始しなかった更新操作を表す `not started` のいずれかです。`<対象>` は、その更新操作が変える管理設定です。ただし、個別パターンを取り除く更新操作は `patterns to remove [<パターン>, ...]`、加える更新操作は `patterns to add [<パターン>, ...]` と示し、パターンは `plan` と同じく `branch "main"` の形で書きます。個別パターンの更新操作のうち、向きと結果が同じで続けて並ぶものは、1行にまとめてパターンを実行順に並べます。そのため、この行は複数の更新要求を表すことがあります。先行する更新操作が成功し、後続の更新操作を開始できなかった場合は、完了済みの更新操作を `succeeded`、未開始の更新操作を `not started` と示し、変更全体を `failed` とします。`not started` は更新操作についての表示で、論理的な設定変更の `not attempted` とは区別します。
+
+後続の更新操作を変更前提の不成立で開始できなかった場合は、その更新操作を含む `not started` の行の次に `Precondition:` の行で理由を示します。先行する更新操作が変えた設定が予定どおりの値でなかった場合は、`Precondition: <設定> is not the value expected after the preceding update` と示します。GitHub の反映が遅れている場合も、外部主体が値を変えた場合もこの表示になり、原因は断定しません。先行する更新操作が成功しなかったために開始しなかった場合は、理由の行を足しません。先行する更新操作が成功していれば、後続を開始できなかった場合も後続が失敗した場合も、更新後の確認を一度だけ行い、その結果と変更対象外の設定の予期しない変化を示します。この確認で期待状態との一致を確認しても、必要な更新操作の成功を確認していないため、`updated` に変更しません。最初の更新操作が拒否され、更新後の確認を行わなかった場合は `Desired state: not checked` と示します。
 
 更新を一度も開始していない変更は `not attempted` とし、変更前提の不成立と、先行する異常による停止のどちらに当たるかを区別して理由を示します。先行する異常による停止は、同じリポジトリの先行する論理的な設定変更が完了しなかった場合（`Stopped: a preceding change did not complete`）と、先行するリポジトリが完了しなかった場合（`Stopped: a preceding repository did not complete`）を文言で区別します。
 
 変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を示します（`Precondition: <設定> changed since approval`）。`Side effect:` で示した設定の値が承認の前に示した値から変わっていた場合は、その設定を示します。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。複数の設定が変わっていた場合は、論理的な設定変更が変える設定を優先して一つだけ示します。ただし、Actions が無効のリポジトリで、承認した変更が Actions を有効にしたあとに `sha_pinning_required` を確認できるようになったことは、予定どおりの変化で、示しません。`sha_pinning_required` の更新は `enabled: true` を送るため、その直前に Actions が無効だった場合は `Precondition: actions.permissions.enabled changed since approval` と示します。計画時に Actions が有効だった場合は、`sha_pinning_required` を確認できなくなったことを優先し、`actions.permissions.sha_pinning_required` を示します。`access_level` の更新の直前にリポジトリが公開になっていた場合も、`access_level` を確認できなくなったため、`Precondition: actions.access.access_level changed since approval` と示します。
 
-Environment では、Environment そのものの変化を `Precondition: environments.<名前> changed since approval` と示します。作成の承認のあとに同じ名前（ASCII の英字の大文字小文字だけが違う名前を含む）の Environment が作られた場合、宣言した名前と同じかどうかを判定できない名前の Environment が現れて存在を確かめられなくなった場合、方式の変更の承認のあとに Environment がなくなった場合、同じ名前で作り直されて ID が変わった場合が当たります。どれも更新直前の確認で見つかるため、更新要求を送らずに `not attempted` になります。Environment が変わらず方式（`selected` の個別パターンを含む）だけが変わっていた場合は、`Precondition: environments.<名前>.deployment_branch_policy changed since approval` と示します。両方が変わっていた場合は Environment そのものを優先します。作り直された Environment の方式を承認時の値と比べても、承認した変更が当てはまるかは分からないためです。
+Environment では、Environment そのものの変化を `Precondition: environments.<名前> changed since approval` と示します。作成の承認のあとに同じ名前（ASCII の英字の大文字小文字だけが違う名前を含む）の Environment が作られた場合、宣言した名前と同じかどうかを判定できない名前の Environment が現れて存在を確かめられなくなった場合、方式の変更の承認のあとに Environment がなくなった場合、同じ名前で作り直されて ID が変わった場合が当たります。先頭の更新操作の直前の確認で見つかった場合は、更新要求を送らずに `not attempted` になります。Environment が変わらず方式（`selected` の個別パターンを含む）だけが変わっていた場合は、`Precondition: environments.<名前>.deployment_branch_policy changed since approval` と示します。両方が変わっていた場合は Environment そのものを優先します。作り直された Environment の方式を承認時の値と比べても、承認した変更が当てはまるかは分からないためです。
+
+個別パターンの更新操作のように後続の更新操作の直前に Environment そのものが変わっていた場合は、存在する Environment では、承認したときから変わったため、先頭の更新操作と同じく `Precondition: environments.<名前> changed since approval` と示します。同じ論理的な設定変更が作成した Environment では、`Precondition: environments.<名前> is not the environment expected after the preceding update` と示します。作成のあとに Environment がなくなった場合や、作成のあとの最初の確認で見た ID から変わった場合が当たります。先行する更新操作が成功しているため、どちらの場合も変更全体は `failed` です。後続の更新操作の直前に個別パターンの集合が予定どおりでなかった場合は、`Precondition: environments.<名前>.deployment_branch_policy is not the value expected after the preceding update` と示します。予定どおりの集合は、承認時に観測した集合に、先行する更新操作が取り除いたパターンと加えたパターンを反映したものです。方式を `selected` にした更新操作や作成のあとは、パターンが一つもないことを予定します。パターンの ID だけが違う場合（同じ種類と名前で作り直された場合）は、予定どおりとして扱います。
 
 `failed` には、更新操作の失敗、更新操作の成否不明、成功応答後の期待状態の確認失敗、成功応答後の期待状態との不一致、成功応答後の変更対象外の設定の予期しない変化のいずれに当たるかを添えて示します。先行操作の成功後に後続操作を開始できなかった場合は、その旨を示します。変更対象外の設定の予期しない変化では、観測した変化を示しますが、reco に起因するとは断定しません。変更対象外の設定には、同じリポジトリのほかの管理設定も含みます。更新要求の応答を確認できない場合は成否不明とし、その後の再観測で期待状態が一致しても、更新操作の成否が判明したことにはならず、`updated` に変更しません。この再観測で変更対象外の設定の変化を観測した場合も、更新操作の結果と分けて示します。成否不明になった原因は、理由の行では区別せず、エラーとして示します。
 
@@ -628,6 +627,48 @@ Applying changes...
 Note: Some changes may already have been applied. No automatic rollback was performed.
 ```
 
+Environment の方式を `selected` に変えたあと、個別パターンを加える途中で GitHub に拒否された場合は次のとおりです。
+
+```text
+Applying changes...
+  example/project-a: failed
+    Update request (environments.production.deployment_branch_policy): succeeded
+    Update request (patterns to add [branch "main"]): succeeded
+    Update request (patterns to add [branch "release/*"]): rejected
+    Update request (patterns to add [tag "v*"]): not started
+    Desired state: does not match
+
+Note: Some changes may already have been applied. No automatic rollback was performed.
+```
+
+個別パターンを入れ替える変更で、パターンを取り除いたあとに外部主体が個別パターンを変えていた場合は次のとおりです。
+
+```text
+Applying changes...
+  example/project-a: failed
+    Update request (patterns to remove [branch "feature/*", branch "old/*"]): succeeded
+    Update request (patterns to add [branch "release/*", tag "v*"]): not started
+    Precondition: environments.production.deployment_branch_policy is not the value expected after the preceding update
+    Desired state: does not match
+
+Note: Some changes may already have been applied. No automatic rollback was performed.
+```
+
+存在しない Environment を `selected` と個別パターンで宣言し、作成のあとのパターンの追加が成否不明になった場合は次のとおりです。ほかの論理的な設定変更と並ぶため、名前で示します。
+
+```text
+Applying changes...
+  example/project-a
+    general.allow_auto_merge: updated
+    environments.production + environments.production.deployment_branch_policy: failed
+      Update request (environments.production): succeeded
+      Update request (patterns to add [branch "main"]): unknown
+      Update request (patterns to add [tag "v*"]): not started
+      Desired state: does not match
+
+Note: No automatic retry was performed.
+```
+
 異常時の表示では、確認済みの操作結果、成否が不明な範囲、未実行の変更を区別します。
 
 ## 6. `show`：現在状態の表示
@@ -770,6 +811,12 @@ GitHub は、名前変更前の名前で指定したリポジトリへの要求�
 {"time":"...","level":"ERROR","msg":"command failed","error":"fetch repository example/old-name: redirect not followed (HTTP 301): the repository may have been renamed or transferred; specify its current name"}
 ```
 
+ただし、個別パターンを加える要求への `303` は、同じ種類と名前のパターンがすでにある場合に GitHub が返す応答です（[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章）。その直前の確認で同じリポジトリを読めているため、名前変更の案内ではなく、パターンがすでにある場合の応答であることを示します。この場合も成否不明の `failed` で、成功や変更なしとは扱いません。
+
+```text
+{"time":"...","level":"ERROR","msg":"command failed","error":"change environments.production.deployment_branch_policy failed: add deployment pattern branch \"main\" to environment \"production\" example/project-a: update outcome unknown: redirect not followed (HTTP 303): GitHub returns this when the pattern already exists"}
+```
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-004` | Functional Requirement |
@@ -778,6 +825,7 @@ GitHub は、名前変更前の名前で指定したリポジトリへの要求�
 | `alignment` | `QR-002` | Quality Requirement |
 | `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Repository File |
 | `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
+| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Repository File |
 
 ## 8. References
 

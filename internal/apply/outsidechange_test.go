@@ -23,6 +23,13 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 		return github.ObservationResult{ActionsPermissions: actionsEnabled(setting.AllowedActionsLocalOnly, shaPinningRequired)}
 	}
 	setBack := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{}}
+	stagingAll := observedEnvironment(7, "staging", setting.DeploymentBranchPolicyAll)
+	selectedStaging := selectedEnvironment(7, "staging", nil)
+	// stagingWith は、e の wait_timer を wait 分にした staging を一覧の全体とする観測。
+	stagingWith := func(e github.Environment, wait int) github.ObservationResult {
+		e.Protection.WaitTimer = &wait
+		return github.ObservationResult{Environments: environments(e)}
+	}
 	cases := []struct {
 		name   string
 		change changeplan.LogicalChange
@@ -72,6 +79,21 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 				return e
 			}())},
 			want: []unexpectedOutsideChange{{Setting: "environments.staging.can_admins_bypass", Before: "false", After: "true"}},
+		},
+		{
+			// 個別パターンの更新操作も Environment を宛先とするため、それぞれの直前と比べると変化が更新操作の数だけ並ぶ
+			name:   "mode update and two pattern additions compare the protection only with the read before the mode update",
+			change: deploymentPatternsChange(t, "staging", stagingAll, selectedPolicy(branchPattern("main"), tagPattern("v*"))),
+			before: []github.ObservationResult{stagingWith(stagingAll, 30), stagingWith(selectedStaging, 30), stagingWith(selectedStaging, 30)},
+			after:  stagingWith(selectedStaging, 10),
+			want:   []unexpectedOutsideChange{{Setting: "environments.staging.wait_timer", Before: "30", After: "10"}},
+		},
+		{
+			name:   "pattern removal and addition do not compare the protection",
+			change: deploymentPatternsChange(t, "staging", selectedEnvironment(7, "staging", []setting.DeploymentPattern{branchPattern("feature/*")}, 11), selectedPolicy(branchPattern("main"))),
+			before: []github.ObservationResult{stagingWith(selectedStaging, 30), stagingWith(selectedStaging, 30)},
+			after:  stagingWith(selectedStaging, 10),
+			want:   nil,
 		},
 		{
 			name:   "policy and criteria changed by the logical change are not compared",

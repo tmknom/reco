@@ -1,6 +1,8 @@
 package apply
 
 import (
+	"slices"
+
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -47,4 +49,33 @@ func observedEnvironment(id github.EnvironmentID, name string, mode setting.Depl
 // modeValue は、方式 mode のデプロイ元制限の値。
 func modeValue(mode setting.DeploymentBranchPolicyMode) setting.Value {
 	return setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: mode})
+}
+
+// selectedEnvironment は、ID id、GitHub の綴り name、方式 selected で、個別パターン patterns を一覧の並びで持つ Environment の観測結果。
+// patterns[i] の GitHub の ID は ids[i] である。ID の対応を map で受けないのは、個別パターンの並びが定まらなくなるため。
+func selectedEnvironment(id github.EnvironmentID, name string, patterns []setting.DeploymentPattern, ids ...github.DeploymentPatternID) github.Environment {
+	identified := make(map[setting.DeploymentPattern]github.DeploymentPatternID, len(patterns))
+	for i, pattern := range patterns {
+		identified[pattern] = ids[i]
+	}
+	return github.Environment{
+		ID: id, Name: name,
+		DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: slices.Clone(patterns)},
+		DeploymentPatternIDs:   identified,
+	}
+}
+
+// branchPattern は、種類が branch で名前が name の個別パターン。
+func branchPattern(name string) setting.DeploymentPattern {
+	return setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: name}
+}
+
+// tagPattern は、種類が tag で名前が name の個別パターン。
+func tagPattern(name string) setting.DeploymentPattern {
+	return setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: name}
+}
+
+// selectedPolicy は、方式 selected で、個別パターン patterns を宣言の並びで持つデプロイ元制限。
+func selectedPolicy(patterns ...setting.DeploymentPattern) setting.DeploymentBranchPolicy {
+	return setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: append([]setting.DeploymentPattern{}, patterns...)}
 }
