@@ -380,7 +380,7 @@ func TestEnvironmentProtectionChanges(t *testing.T) {
 			want:   []unexpectedOutsideChange{{Setting: "environments.staging.can_admins_bypass", Before: "true", After: "false"}},
 		},
 		{
-			name:   "all three changed are three changes in the show order",
+			name:   "all three changed are three changes in the order wait_timer, required_reviewers, can_admins_bypass",
 			before: observed(base),
 			after:  observed(setting.EnvironmentProtection{WaitTimer: wait(5)}),
 			want: []unexpectedOutsideChange{

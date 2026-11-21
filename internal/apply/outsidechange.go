@@ -69,7 +69,7 @@ func outsideChangesAt(endpoint github.UpdateEndpoint, changed []setting.Unit, be
 	return changes
 }
 
-// environmentProtectionChanges は、宣言の名前 name の Environment の保護設定について、更新直前と更新後の観測の差を show の並びで返す。
+// environmentProtectionChanges は、宣言の名前 name の Environment の保護設定について、更新直前と更新後の観測の差を CLI 仕様の変更結果の並びで返す。
 // 比べる範囲はアーキテクチャ設計の未管理設定を保全する更新方式に従う。
 // どちらかの観測で存在しない Environment は、比べる値がないため返さない。
 func environmentProtectionChanges(name setting.EnvironmentName, before, after github.ObservationResult) []unexpectedOutsideChange {

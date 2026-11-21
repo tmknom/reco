@@ -22,28 +22,29 @@ export GH_TOKEN=$(gh auth token)
 
 ```bash
 $ reco show --repo example/project-a
-Repository: example/project-a
-
-General:
-  delete_branch_on_merge: false
-  allow_auto_merge: false
-Actions permissions:
-  enabled: true
-  allowed_actions: all
-  sha_pinning_required: false
-Workflow permissions:
-  default_workflow_permissions: read
-  can_approve_pull_request_reviews: false
-Actions access:
-  access_level: none
-Environments: none
+repositories:
+  - name: example/project-a
+    general:
+      delete_branch_on_merge: false
+      allow_auto_merge: false
+    actions:
+      permissions:
+        enabled: true
+        allowed_actions: all
+        sha_pinning_required: false
+      workflow:
+        default_workflow_permissions: read
+        can_approve_pull_request_reviews: false
+      access:
+        access_level: none
+    # environments: none
 ```
 
-本ドキュメントでは、`General:` の `delete_branch_on_merge`（Pull Request をマージしたあと、head ブランチを自動で削除するか）を変えます。以後は、`delete_branch_on_merge` の設定が `false` の場合に、`true` へ変更するシナリオで説明します。
+表示は、設定ファイルと同じ構造です。本ドキュメントでは、`general` の `delete_branch_on_merge`（Pull Request をマージしたあと、head ブランチを自動で削除するか）を変えます。以後は、`delete_branch_on_merge` の設定が `false` の場合に、`true` へ変更するシナリオで説明します。
 
 ## 最初の設定ファイルを書く
 
-設定ファイル「`reco.yaml`」を作成し、リポジトリ名と `delete_branch_on_merge` の設定を記述します。
+設定ファイル「`reco.yaml`」を作成し、`show` の表示を写し、`delete_branch_on_merge` 以外の設定の行を消して、値を `true` に書き換えます。
 
 ```yaml
 repositories:

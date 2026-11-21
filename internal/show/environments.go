@@ -2,39 +2,36 @@ package show
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// writeEnvironments は Environments の節を書く。
-// 一つもないときも節を省かず、存在しないと確かめたことと、表示しないことを区別できるようにする。
+// writeEnvironments は environments を書く。
 func writeEnvironments(b *strings.Builder, e github.Environments) {
 	if len(e.Existing) == 0 {
-		b.WriteString("Environments: none\n")
+		b.WriteString("    # environments: none\n")
 		return
 	}
-	b.WriteString("Environments:\n")
+	b.WriteString("    environments:\n")
 	for _, environment := range e.Existing {
 		// 名前は任意の文字を含み得るため、制御文字をエスケープして一行に収める
-		fmt.Fprintf(b, "  - name: %s\n    deployment_branch_policy:\n      mode: %s\n", strconv.Quote(environment.Name), environment.DeploymentBranchPolicy.Mode)
+		fmt.Fprintf(b, "      - name: %s\n        deployment_branch_policy:\n          mode: %s\n", quote(environment.Name), environment.DeploymentBranchPolicy.Mode)
 		if environment.DeploymentBranchPolicy.Mode == setting.DeploymentBranchPolicySelected {
-			fmt.Fprintf(b, "      patterns: %s\n", environment.DeploymentBranchPolicy.PatternsString())
+			writeDeploymentPatterns(b, environment.DeploymentBranchPolicy.Patterns)
 		}
-		writeEnvironmentProtection(b, environment.Protection)
 	}
 }
 
-// writeEnvironmentProtection は Environment の保護設定を書く。保護ルールがなければ none と示す。
-func writeEnvironmentProtection(b *strings.Builder, p setting.EnvironmentProtection) {
-	fmt.Fprintf(b, "    wait_timer: %s\n", p.WaitTimerString())
-	if p.RequiredReviewers == nil {
-		b.WriteString("    required_reviewers: none\n")
-	} else {
-		fmt.Fprintf(b, "    required_reviewers:\n      reviewers: %s\n      prevent_self_review: %t\n",
-			p.RequiredReviewers.ReviewersString(), p.RequiredReviewers.PreventSelfReview)
+// writeDeploymentPatterns は個別パターンを、空なら [] で、そうでなければ type と name の要素で書く。
+func writeDeploymentPatterns(b *strings.Builder, patterns []setting.DeploymentPattern) {
+	if len(patterns) == 0 {
+		b.WriteString("          patterns: []\n")
+		return
 	}
-	fmt.Fprintf(b, "    can_admins_bypass: %t\n", p.CanAdminsBypass)
+	b.WriteString("          patterns:\n")
+	for _, pattern := range patterns {
+		fmt.Fprintf(b, "            - type: %s\n              name: %s\n", pattern.Type, quote(pattern.Name))
+	}
 }

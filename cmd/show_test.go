@@ -66,6 +66,95 @@ func TestShow_Success(t *testing.T) {
 	}
 }
 
+// show の表示が設定ファイルとして読め、観測した値を期待値とする宣言になることを、plan が No changes. を返すことで確かめる。
+//
+//trace:checks FR-004
+func TestShow_OutputReadsAsConfiguration(t *testing.T) {
+	const environmentName = `prod "a" #1: x`
+	selected := &githubtest.DeploymentBranchPolicyBody{CustomBranchPolicies: true}
+	waitTimer := 30
+	cases := []struct {
+		name   string
+		routes map[string]githubtest.Response
+	}{
+		{
+			name: "private repository with selected policy and environments reads back with escaped strings",
+			routes: map[string]githubtest.Response{
+				"GET /repos/owner/repo":                     githubtest.OK(githubtest.RepositoryBody{ID: 1, DeleteBranchOnMerge: true, Private: true}.JSON()),
+				"GET /repos/owner/repo/actions/permissions": githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "selected", SHAPinningRequired: true}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/selected-actions": githubtest.OK(githubtest.SelectedActionsBody{
+					GitHubOwnedAllowed: true, PatternsAllowed: []string{`a"b\c`, "é/*", "#x: y", "\u200b"},
+				}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/workflow": githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "write", CanApprovePullRequestReviews: true}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/access":   githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "user"}.JSON()),
+				"GET /repos/owner/repo/environments": githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 3, Environments: []githubtest.EnvironmentBody{
+					{ID: 2, Name: environmentName, DeploymentBranchPolicy: selected},
+					{ID: 3, Name: "empty", DeploymentBranchPolicy: selected},
+					// 保護設定を持たせる。show が保護設定を表示すれば、plan が未知のキーとして拒否する
+					{ID: 4, Name: "staging", DeploymentBranchPolicy: &githubtest.DeploymentBranchPolicyBody{ProtectedBranches: true}, WaitTimer: &waitTimer},
+				}}.JSON()),
+				"GET /repos/owner/repo/environments/" + environmentName + "/deployment-branch-policies": githubtest.OK(githubtest.DeploymentBranchPoliciesBody{TotalCount: 2, Patterns: []githubtest.DeploymentPatternBody{
+					{ID: 5, Name: "release/*", Type: "branch"},
+					{ID: 6, Name: `v"\*`, Type: "tag"},
+				}}.JSON()),
+				"GET /repos/owner/repo/environments/empty/deployment-branch-policies": githubtest.OK(githubtest.DeploymentBranchPoliciesBody{}.JSON()),
+			},
+		},
+		{
+			name: "public repository with disabled actions and no environments reads back without the commented lines",
+			routes: map[string]githubtest.Response{
+				"GET /repos/owner/repo":                              githubtest.OK(githubtest.RepositoryBody{ID: 1}.JSON()),
+				"GET /repos/owner/repo/actions/permissions":          githubtest.OK(`{"enabled": false}`),
+				"GET /repos/owner/repo/actions/permissions/workflow": githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
+				"GET /repos/owner/repo/environments":                 githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
+			},
+		},
+		{
+			name: "local_only policy without selected actions reads back",
+			routes: map[string]githubtest.Response{
+				"GET /repos/owner/repo":                              githubtest.OK(githubtest.RepositoryBody{ID: 1, Private: true}.JSON()),
+				"GET /repos/owner/repo/actions/permissions":          githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "local_only"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/workflow": githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/access":   githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
+				"GET /repos/owner/repo/environments": githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 1, Environments: []githubtest.EnvironmentBody{
+					{ID: 2, Name: "production"},
+				}}.JSON()),
+			},
+		},
+		{
+			name: "selected policy without patterns reads back with the empty sequence",
+			routes: map[string]githubtest.Response{
+				"GET /repos/owner/repo":                                      githubtest.OK(githubtest.RepositoryBody{ID: 1, Private: true}.JSON()),
+				"GET /repos/owner/repo/actions/permissions":                  githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "selected"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/selected-actions": githubtest.OK(githubtest.SelectedActionsBody{VerifiedAllowed: true}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/workflow":         githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/access":           githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
+				"GET /repos/owner/repo/environments":                         githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, opts := newGitHubServer(t, githubtest.Routes(t, tc.routes))
+			env := Environment{WorkDir: t.TempDir(), Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue})}
+
+			code, shown, stderr := runExecute(t, env, opts, "show", "--repo", "owner/repo")
+			if code != 0 {
+				t.Fatalf("show got exit code %d, want 0 (stderr %q)", code, stderr)
+			}
+			writeConfig(t, env.WorkDir, "reco.yaml", shown)
+
+			code, stdout, stderr := runExecute(t, env, opts, "plan")
+			if code != 0 {
+				t.Errorf("plan got exit code %d, want 0 (show wrote %q, stderr %q)", code, shown, stderr)
+			}
+			if !strings.Contains(stdout, "No changes.") {
+				t.Errorf("plan got stdout %q, want No changes. for the configuration %q", stdout, shown)
+			}
+		})
+	}
+}
+
 func TestShow_InvalidInput(t *testing.T) {
 	cases := []struct {
 		name string

@@ -8,7 +8,7 @@
 reco show --repo example/project-d
 ```
 
-`show` の値を見て、設定したい値を `repositories` の下に書き足します。
+`show` の表示は設定ファイルと同じ構造です。表示の `repositories` の下の要素から、管理したい設定の行を残して値を書き換え、設定ファイルの `repositories` の下に書き足します。
 
 ```yaml
 repositories:

@@ -26,35 +26,46 @@ reco [--log-level LEVEL] apply [--config PATH] [--repo OWNER/REPO]
 
 ## `show`
 
-`--repo` で指定したリポジトリの、reco が扱える設定の現在の値を表示します。設定ファイルを書く前に、今の値を確かめるときに使います。
+`--repo` で指定したリポジトリの、設定ファイルに書ける設定の現在の値を表示します。設定ファイルを書く前に、今の値を確かめるときに使います。
 
 ```bash
 $ reco show --repo example/project-a
-Repository: example/project-a
-
-General:
-  delete_branch_on_merge: false
-  allow_auto_merge: false
-Actions permissions:
-  enabled: true
-  allowed_actions: all
-  sha_pinning_required: false
-Workflow permissions:
-  default_workflow_permissions: read
-  can_approve_pull_request_reviews: false
-Actions access:
-  access_level: none
-Environments:
-  - name: "production"
-    deployment_branch_policy:
-      mode: selected
-      patterns: [branch "main", tag "v*"]
-    wait_timer: 30
-    required_reviewers:
-      reviewers: [User 583231]
-      prevent_self_review: true
-    can_admins_bypass: false
+repositories:
+  - name: example/project-a
+    general:
+      delete_branch_on_merge: false
+      allow_auto_merge: false
+    actions:
+      permissions:
+        enabled: true
+        allowed_actions: all
+        sha_pinning_required: false
+      workflow:
+        default_workflow_permissions: read
+        can_approve_pull_request_reviews: false
+      access:
+        access_level: none
+    environments:
+      - name: "production"
+        deployment_branch_policy:
+          mode: selected
+          patterns:
+            - type: branch
+              name: "main"
+            - type: tag
+              name: "v*"
 ```
+
+表示は設定ファイルと同じ構造で、それぞれの値の位置が、設定ファイルにその設定を書く位置です。表示をそのまま設定ファイルにすると、表示したすべての設定を今の値のまま管理する設定ファイルになります。管理したい設定だけを残し、値を書き換えて使います。
+
+表示には、次の行も出ます。どちらも `#` で始まるコメントで、設定ファイルとしては読まれません。
+
+| 行 | 意味 |
+|---|---|
+| `# environments: none` | Environment が一つもない |
+| `# access:` と `#   access_level: unavailable (the repository is public)` | 公開リポジトリのため、`access_level` を読み取れない。この設定は非公開リポジトリにだけ書ける |
+
+Environment の `wait_timer`、`required_reviewers`、`can_admins_bypass` のように、設定ファイルに書けない設定は表示しません。
 
 ## `plan`
 

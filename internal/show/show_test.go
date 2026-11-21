@@ -33,13 +33,21 @@ func TestWriteObservationResult(t *testing.T) {
 	readOnly := &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: false}
 	notShared := &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessNone)}
 	noEnvironments := &github.Environments{}
+	const (
+		header           = "repositories:\n  - name: owner/repo\n"
+		defaultGeneral   = "    general:\n      delete_branch_on_merge: false\n      allow_auto_merge: false\n"
+		allPermissions   = "    actions:\n      permissions:\n        enabled: true\n        allowed_actions: all\n        sha_pinning_required: true\n"
+		readOnlyWorkflow = "      workflow:\n        default_workflow_permissions: read\n        can_approve_pull_request_reviews: false\n"
+		notSharedAccess  = "      access:\n        access_level: none\n"
+		noEnvironment    = "    # environments: none\n"
+	)
 	cases := []struct {
 		name     string
 		observed github.ObservationResult
 		want     string
 	}{
 		{
-			name: "all areas are shown in the CLI spec order and the all policy omits the criteria",
+			name: "all areas are shown in the configuration structure and the all policy omits the criteria",
 			observed: github.ObservationResult{
 				RepositoryID:        1,
 				General:             github.General{DeleteBranchOnMerge: true, AllowAutoMerge: false},
@@ -48,11 +56,9 @@ func TestWriteObservationResult(t *testing.T) {
 				ActionsAccess:       notShared,
 				Environments:        noEnvironments,
 			},
-			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: true\n  allow_auto_merge: false\n" +
-				"Actions permissions:\n  enabled: true\n  allowed_actions: all\n  sha_pinning_required: true\n" +
-				"Workflow permissions:\n  default_workflow_permissions: read\n  can_approve_pull_request_reviews: false\n" +
-				"Actions access:\n  access_level: none\n" +
-				"Environments: none\n",
+			want: header +
+				"    general:\n      delete_branch_on_merge: true\n      allow_auto_merge: false\n" +
+				allPermissions + readOnlyWorkflow + notSharedAccess + noEnvironment,
 		},
 		{
 			name: "opposite values are shown as observed",
@@ -64,14 +70,15 @@ func TestWriteObservationResult(t *testing.T) {
 				ActionsAccess:       &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessUser)},
 				Environments:        noEnvironments,
 			},
-			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: false\n  allow_auto_merge: true\n" +
-				"Actions permissions:\n  enabled: true\n  allowed_actions: all\n  sha_pinning_required: true\n" +
-				"Workflow permissions:\n  default_workflow_permissions: write\n  can_approve_pull_request_reviews: true\n" +
-				"Actions access:\n  access_level: user\n" +
-				"Environments: none\n",
+			want: header +
+				"    general:\n      delete_branch_on_merge: false\n      allow_auto_merge: true\n" +
+				allPermissions +
+				"      workflow:\n        default_workflow_permissions: write\n        can_approve_pull_request_reviews: true\n" +
+				"      access:\n        access_level: user\n" +
+				noEnvironment,
 		},
 		{
-			name: "selected policy shows the three criteria indented",
+			name: "selected policy shows the three criteria with one quoted pattern per line",
 			observed: github.ObservationResult{
 				RepositoryID: 1,
 				ActionsPermissions: &github.ActionsPermissions{
@@ -88,12 +95,30 @@ func TestWriteObservationResult(t *testing.T) {
 				ActionsAccess:       notShared,
 				Environments:        noEnvironments,
 			},
-			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: false\n  allow_auto_merge: false\n" +
-				"Actions permissions:\n  enabled: true\n  allowed_actions: selected\n  selected_actions:\n" +
-				"    github_owned_allowed: true\n    verified_allowed: false\n    patterns_allowed: [\"actions/checkout@v4\", \"example/*\"]\n  sha_pinning_required: false\n" +
-				"Workflow permissions:\n  default_workflow_permissions: read\n  can_approve_pull_request_reviews: false\n" +
-				"Actions access:\n  access_level: none\n" +
-				"Environments: none\n",
+			want: header + defaultGeneral +
+				"    actions:\n      permissions:\n        enabled: true\n        allowed_actions: selected\n        selected_actions:\n" +
+				"          github_owned_allowed: true\n          verified_allowed: false\n          patterns_allowed:\n" +
+				"            - \"actions/checkout@v4\"\n            - \"example/*\"\n        sha_pinning_required: false\n" +
+				readOnlyWorkflow + notSharedAccess + noEnvironment,
+		},
+		{
+			name: "selected policy without patterns shows the empty sequence",
+			observed: github.ObservationResult{
+				RepositoryID: 1,
+				ActionsPermissions: &github.ActionsPermissions{
+					Enabled:            true,
+					AllowedActions:     github.Observed(setting.AllowedActionsSelected),
+					SHAPinningRequired: github.Observed(false),
+					SelectedActions:    github.Observed(setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: true}),
+				},
+				WorkflowPermissions: readOnly,
+				ActionsAccess:       notShared,
+				Environments:        noEnvironments,
+			},
+			want: header + defaultGeneral +
+				"    actions:\n      permissions:\n        enabled: true\n        allowed_actions: selected\n        selected_actions:\n" +
+				"          github_owned_allowed: true\n          verified_allowed: true\n          patterns_allowed: []\n        sha_pinning_required: false\n" +
+				readOnlyWorkflow + notSharedAccess + noEnvironment,
 		},
 		{
 			name: "disabled actions shows only enabled without the policy, the criteria, and sha_pinning_required",
@@ -108,14 +133,12 @@ func TestWriteObservationResult(t *testing.T) {
 				ActionsAccess:       notShared,
 				Environments:        noEnvironments,
 			},
-			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: false\n  allow_auto_merge: false\n" +
-				"Actions permissions:\n  enabled: false\n" +
-				"Workflow permissions:\n  default_workflow_permissions: read\n  can_approve_pull_request_reviews: false\n" +
-				"Actions access:\n  access_level: none\n" +
-				"Environments: none\n",
+			want: header + defaultGeneral +
+				"    actions:\n      permissions:\n        enabled: false\n" +
+				readOnlyWorkflow + notSharedAccess + noEnvironment,
 		},
 		{
-			name: "public repository shows the access level as unavailable with the reason",
+			name: "public repository shows access and the unavailable access level as comments",
 			observed: github.ObservationResult{
 				RepositoryID:        1,
 				ActionsPermissions:  allPolicy,
@@ -123,11 +146,22 @@ func TestWriteObservationResult(t *testing.T) {
 				ActionsAccess:       &github.ActionsAccess{AccessLevel: github.Unavailable[setting.AccessLevel](github.UnavailablePublicRepository)},
 				Environments:        noEnvironments,
 			},
-			want: "Repository: owner/repo\n\nGeneral:\n  delete_branch_on_merge: false\n  allow_auto_merge: false\n" +
-				"Actions permissions:\n  enabled: true\n  allowed_actions: all\n  sha_pinning_required: true\n" +
-				"Workflow permissions:\n  default_workflow_permissions: read\n  can_approve_pull_request_reviews: false\n" +
-				"Actions access:\n  access_level: unavailable (the repository is public)\n" +
-				"Environments: none\n",
+			want: header + defaultGeneral + allPermissions + readOnlyWorkflow +
+				"      # access:\n      #   access_level: unavailable (the repository is public)\n" +
+				noEnvironment,
+		},
+		{
+			name: "organization access level is shown as observed",
+			observed: github.ObservationResult{
+				RepositoryID:        1,
+				ActionsPermissions:  allPolicy,
+				WorkflowPermissions: readOnly,
+				ActionsAccess:       &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessOrganization)},
+				Environments:        noEnvironments,
+			},
+			want: header + defaultGeneral + allPermissions + readOnlyWorkflow +
+				"      access:\n        access_level: organization\n" +
+				noEnvironment,
 		},
 	}
 	for _, tc := range cases {
