@@ -578,6 +578,9 @@ func TestObserveRepositoryAreas(t *testing.T) {
 			if !reflect.DeepEqual(observed.ActionsAccess, tc.wantAA) {
 				t.Errorf("ObserveRepository().ActionsAccess = %+v, want %+v", observed.ActionsAccess, tc.wantAA)
 			}
+			if observed.Dependabot != nil {
+				t.Errorf("ObserveRepository().Dependabot = %+v, want nil without the dependabot area", observed.Dependabot)
+			}
 
 			if len(got) != len(tc.wantPaths) {
 				t.Fatalf("got %d requests %+v, want paths %v", len(got), got, tc.wantPaths)

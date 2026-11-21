@@ -10,12 +10,13 @@ import (
 // 文字列の値は %q で埋め込む。Go の引用は ASCII の印字可能な文字では JSON の文字列と同じ形になり、テストはその範囲の値だけを使う。
 
 // RepositoryBody は、リポジトリの取得の応答本文である。
-// Private のゼロ値は公開のリポジトリを表す。
+// Private のゼロ値は公開のリポジトリを、Admin のゼロ値は admin のアクセスを持たないトークンの所有者を表す。
 type RepositoryBody struct {
 	ID                  int64
 	AllowAutoMerge      bool
 	DeleteBranchOnMerge bool
 	Private             bool
+	Admin               bool
 }
 
 // ActionsPermissionsBody は、Actions が有効なリポジトリの Actions permissions の取得の応答本文である。
@@ -44,6 +45,12 @@ type WorkflowPermissionsBody struct {
 // ActionsAccessBody は、リポジトリ外のワークフローからのアクセスの取得の応答本文である。
 type ActionsAccessBody struct {
 	AccessLevel string
+}
+
+// AutomatedSecurityFixesBody は、Dependabot security updates の取得の応答本文である。
+type AutomatedSecurityFixesBody struct {
+	Enabled bool
+	Paused  bool
 }
 
 // EnvironmentsBody は、Environment の一覧の1ページの応答本文である。
@@ -99,8 +106,8 @@ type DeploymentPatternBody struct {
 
 // JSON は応答本文を返す。
 func (b RepositoryBody) JSON() string {
-	return fmt.Sprintf(`{"id": %d, "allow_auto_merge": %t, "delete_branch_on_merge": %t, "private": %t}`,
-		b.ID, b.AllowAutoMerge, b.DeleteBranchOnMerge, b.Private)
+	return fmt.Sprintf(`{"id": %d, "allow_auto_merge": %t, "delete_branch_on_merge": %t, "private": %t, "permissions": {"admin": %t}}`,
+		b.ID, b.AllowAutoMerge, b.DeleteBranchOnMerge, b.Private, b.Admin)
 }
 
 // JSON は応答本文を返す。
@@ -126,6 +133,11 @@ func (b WorkflowPermissionsBody) JSON() string {
 // JSON は応答本文を返す。
 func (b ActionsAccessBody) JSON() string {
 	return fmt.Sprintf(`{"access_level": %q}`, b.AccessLevel)
+}
+
+// JSON は応答本文を返す。
+func (b AutomatedSecurityFixesBody) JSON() string {
+	return fmt.Sprintf(`{"enabled": %t, "paused": %t}`, b.Enabled, b.Paused)
 }
 
 // JSON は応答本文を返す。

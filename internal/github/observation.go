@@ -24,6 +24,8 @@ type ObservationResult struct {
 	ActionsAccess       *ActionsAccess
 	// Environments は、その設定の領域を選ばなかった観測では nil になる。Environment が一つもないことと取り違えさせないため、値型にしない。
 	Environments *Environments
+	// Dependabot は、その設定の領域を選ばなかった観測では nil になる。
+	Dependabot *Dependabot
 }
 
 // ActionsPermissions は Actions の実行許可のうち、reco が観測する設定である。
@@ -88,7 +90,7 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 // General は常に読み取るため、areas に AreaGeneral を含めても結果は変わらない。
 // 読み取り要求は areas の並びによらず、設計で定めた固定の順に送る。
 func (c *Client) ObserveRepository(ctx context.Context, reference repository.Reference, areas ...setting.Area) (ObservationResult, error) {
-	o, private, err := c.observeRepository(ctx, reference)
+	o, attributes, err := c.observeRepository(ctx, reference)
 	if err != nil {
 		return ObservationResult{}, fmt.Errorf("fetch repository %s: %w", reference, err)
 	}
@@ -111,7 +113,7 @@ func (c *Client) ObserveRepository(ctx context.Context, reference repository.Ref
 		o.WorkflowPermissions = &wp
 	}
 	if slices.Contains(areas, setting.AreaActionsAccess) {
-		aa, err := c.observeActionsAccess(ctx, reference, private)
+		aa, err := c.observeActionsAccess(ctx, reference, attributes.private)
 		if err != nil {
 			return ObservationResult{}, fmt.Errorf("fetch actions access %s: %w", reference, err)
 		}
@@ -124,15 +126,26 @@ func (c *Client) ObserveRepository(ctx context.Context, reference repository.Ref
 		}
 		o.Environments = &environments
 	}
+	// Dependabot の二つの設定は、片方だけの観測結果を作らない
+	if slices.Contains(areas, setting.AreaDependabot) {
+		alerts, err := c.observeDependabotAlerts(ctx, reference, attributes.admin)
+		if err != nil {
+			return ObservationResult{}, fmt.Errorf("fetch dependabot alerts %s: %w", reference, err)
+		}
+		updates, err := c.observeDependabotSecurityUpdates(ctx, reference)
+		if err != nil {
+			return ObservationResult{}, fmt.Errorf("fetch dependabot security updates %s: %w", reference, err)
+		}
+		o.Dependabot = &Dependabot{Alerts: alerts, SecurityUpdates: updates}
+	}
 	return o, nil
 }
 
-// observeRepository はリポジトリを読み取り、観測結果と公開範囲を返す。
-// 公開範囲は取得条件の判定にだけ使い、観測結果には載せない。
-func (c *Client) observeRepository(ctx context.Context, reference repository.Reference) (ObservationResult, bool, error) {
+// observeRepository はリポジトリを読み取り、観測結果と、後続の読み取りの判定にだけ使う値を返す。
+func (c *Client) observeRepository(ctx context.Context, reference repository.Reference) (ObservationResult, repositoryAttributes, error) {
 	_, body, err := c.send(ctx, http.MethodGet, c.repositoryURL(reference), nil, http.StatusOK)
 	if err != nil {
-		return ObservationResult{}, false, err
+		return ObservationResult{}, repositoryAttributes{}, err
 	}
 	return decodeRepository(body)
 }

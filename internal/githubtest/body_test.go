@@ -14,9 +14,17 @@ func TestBodies(t *testing.T) {
 		want map[string]any
 	}{
 		{
-			name: "repository body has id, the two merge-related fields, and the visibility",
-			body: RepositoryBody{ID: 7, AllowAutoMerge: true, Private: true}.JSON(),
-			want: map[string]any{"id": float64(7), "allow_auto_merge": true, "delete_branch_on_merge": false, "private": true},
+			name: "repository body has id, the two merge-related fields, the visibility, and the admin access",
+			body: RepositoryBody{ID: 7, AllowAutoMerge: true, Private: true, Admin: true}.JSON(),
+			want: map[string]any{
+				"id": float64(7), "allow_auto_merge": true, "delete_branch_on_merge": false, "private": true,
+				"permissions": map[string]any{"admin": true},
+			},
+		},
+		{
+			name: "automated security fixes body has enabled and paused",
+			body: AutomatedSecurityFixesBody{Enabled: true, Paused: true}.JSON(),
+			want: map[string]any{"enabled": true, "paused": true},
 		},
 		{
 			name: "actions permissions body is enabled with the policy and SHA pinning",

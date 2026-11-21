@@ -80,3 +80,15 @@ func (c *Client) actionsAccessURL(reference repository.Reference) *url.URL {
 	u.Path += "/access"
 	return u
 }
+
+func (c *Client) vulnerabilityAlertsURL(reference repository.Reference) *url.URL {
+	u := c.repositoryURL(reference)
+	u.Path += "/vulnerability-alerts"
+	return u
+}
+
+func (c *Client) automatedSecurityFixesURL(reference repository.Reference) *url.URL {
+	u := c.repositoryURL(reference)
+	u.Path += "/automated-security-fixes"
+	return u
+}

@@ -15,28 +15,33 @@ const privateRepositoryBody = `{
 	"private": true,
 	"html_url": "https://github.com/owner/repo",
 	"allow_auto_merge": true,
-	"delete_branch_on_merge": false
+	"delete_branch_on_merge": false,
+	"permissions": {"admin": true, "push": true, "pull": true}
 }`
 
 //trace:checks FR-004
 func TestDecodeRepository(t *testing.T) {
+	const general = `"id": 1296269, "allow_auto_merge": true, "delete_branch_on_merge": false, "private": false`
 	successes := []struct {
-		name        string
-		body        string
-		wantPrivate bool
+		name string
+		body string
+		want repositoryAttributes
 	}{
-		{name: "public repository is read with all fields", body: repositoryBody, wantPrivate: false},
-		{name: "private repository is read with all fields", body: privateRepositoryBody, wantPrivate: true},
+		{name: "public repository is read with all fields", body: repositoryBody, want: repositoryAttributes{admin: true}},
+		{name: "private repository is read with all fields", body: privateRepositoryBody, want: repositoryAttributes{private: true, admin: true}},
+		{name: "false permissions.admin is no admin access", body: `{` + general + `, "permissions": {"admin": false, "pull": true}}`, want: repositoryAttributes{}},
+		{name: "missing permissions is no admin access", body: `{` + general + `}`, want: repositoryAttributes{}},
+		{name: "permissions without admin is no admin access", body: `{` + general + `, "permissions": {"pull": true}}`, want: repositoryAttributes{}},
 	}
 	for _, tc := range successes {
 		t.Run(tc.name, func(t *testing.T) {
-			got, private, err := decodeRepository([]byte(tc.body))
+			got, attributes, err := decodeRepository([]byte(tc.body))
 			if err != nil {
 				t.Fatalf("decodeRepository() error = %v", err)
 			}
 			want := ObservationResult{RepositoryID: 1296269, General: General{AllowAutoMerge: true, DeleteBranchOnMerge: false}}
-			if got != want || private != tc.wantPrivate {
-				t.Errorf("decodeRepository() = (%+v, %t), want (%+v, %t)", got, private, want, tc.wantPrivate)
+			if got != want || attributes != tc.want {
+				t.Errorf("decodeRepository() = (%+v, %+v), want (%+v, %+v)", got, attributes, want, tc.want)
 			}
 		})
 	}
@@ -52,6 +57,7 @@ func TestDecodeRepository(t *testing.T) {
 		{name: "null allow_auto_merge is unexpected response", body: `{"id": 1, "full_name": "o/r", "allow_auto_merge": null, "delete_branch_on_merge": true, "private": false}`, errContains: "allow_auto_merge"},
 		{name: "missing private is unexpected response", body: `{"id": 1, "full_name": "o/r", "allow_auto_merge": true, "delete_branch_on_merge": true}`, errContains: "private"},
 		{name: "non-JSON body is unexpected response", body: `<html>`},
+		{name: "non-boolean permissions.admin is unexpected response", body: `{"id": 1, "allow_auto_merge": true, "delete_branch_on_merge": true, "private": false, "permissions": {"admin": "yes"}}`},
 	}
 	for _, tc := range failures {
 		t.Run(tc.name, func(t *testing.T) {

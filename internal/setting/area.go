@@ -10,4 +10,5 @@ const (
 	AreaWorkflowPermissions
 	AreaActionsAccess
 	AreaEnvironments
+	AreaDependabot
 )

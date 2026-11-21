@@ -83,7 +83,9 @@
 ## 3. `GET /repos/{owner}/{repo}`
 
 - 用途：リポジトリの情報と一般設定の取得
-- 主な応答フィールド：`id`（整数、必須）、`name`（文字列、必須）、`full_name`（文字列、必須）、`owner`（必須）、`updated_at`（日時の文字列、必須）、`delete_branch_on_merge`（boolean、必須ではない）、`allow_auto_merge`（boolean、必須ではない）、`private`（boolean、必須）、`visibility`（文字列、必須ではない）
+- 主な応答フィールド：`id`（整数、必須）、`name`（文字列、必須）、`full_name`（文字列、必須）、`owner`（必須）、`updated_at`（日時の文字列、必須）、`delete_branch_on_merge`（boolean、必須ではない）、`allow_auto_merge`（boolean、必須ではない）、`private`（boolean、必須）、`visibility`（文字列、必須ではない）、`permissions`（オブジェクト、必須ではない。中の `admin`、`push`、`pull` は boolean で必須）
+
+`permissions` の各値が、認証したユーザーのリポジトリでのロールを表すのか、トークンに与えた権限を表すのかは、スキーマに記載がありません。
 
 `updated_at` がどの変更で更新されるかは、スキーマに記載がありません。
 
@@ -94,6 +96,7 @@
 >
 > - `updated_at` と一般設定の変更：`PATCH /repos/{owner}/{repo}` で `allow_auto_merge` や `delete_branch_on_merge` を変更しても `updated_at` は変わらず、名前を変更すると変わった
 > - `private` と `visibility`：トークン所有者が Admin ロールを持つ個人アカウント所有の非公開リポジトリでは `private: true` と `visibility: "private"`、公開リポジトリでは `private: false` と `visibility: "public"` が返った。トークン所有者が Write 以上のロールを持たない第三者の公開リポジトリ（1.1節でマージ関連のフィールドが欠けたもの）でも、`private: false` は欠けずに返った
+> - `permissions.admin`：トークン所有者が Admin ロールを持つ公開・非公開のリポジトリでは `true`、第三者の公開リポジトリでは `false` が返った
 > - internal のリポジトリの応答は確認していない
 
 | Relationship | Target | Target Type |
