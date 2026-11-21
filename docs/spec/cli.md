@@ -451,7 +451,7 @@ Environment では、Environment そのものの変化を `Precondition: environ
 
 Environment の方式の変更のあとに Environment が存在しなかった場合は、`not in effect (the environment does not exist)` と示します。宣言した方式を持つ Environment がないためです。作成のあとに Environment が存在しなかった場合は、存在しないことを確認できているため、`does not match` と示します。作成と方式の変更のどちらでも、宣言した名前と同じかどうかを判定できない名前の Environment が現れ、存在を確かめられなかった場合は、reco が確認できなかったことを示す `not confirmed (environment existence unknown)` と示します。
 
-変更対象外の設定は、管理設定と同じ形の名前で示します。Environment の保護設定は、`show` の項目名に Environment の名前を前置して `environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.can_admins_bypass` と示し、値も `show` と同じ表記にします（`required_reviewers` は `none`、または `reviewers: [User 583231, Team 42], prevent_self_review: true` の1行）。名前は設定宣言の綴りです。複数が変わっていれば、`show` の並びで1行ずつ示します。
+変更対象外の設定は、管理設定と同じ形の名前で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` がデプロイを待たせる分数、`required_reviewers` が `reviewers: [User 583231, Team 42], prevent_self_review: true` の1行（レビュアーは GitHub が返した順）、`can_admins_bypass` が `true` か `false` です。`wait_timer` と `required_reviewers` は、その保護ルールがなければ `none` と示します。複数が変わっていれば、`wait_timer`、`required_reviewers`、`can_admins_bypass` の順に1行ずつ示します。保護設定は reco が宣言を受け付けず、`show` も表示しないため、名前と値の表記はここで定めます。
 
 更新操作が成功したのに期待状態と一致しない場合、reco は原因を断定しません。設定に既知の原因の候補があれば、`Possible cause:` として可能性の形で添えます。`general.allow_auto_merge` では、GitHub Free の非公開リポジトリで自動マージを利用できず、GitHub が更新を反映しないまま成功を応答する場合があることを示します（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）。更新操作の成否が不明な場合は添えません。
 
@@ -673,92 +673,90 @@ Note: No automatic retry was performed.
 
 ## 6. `show`：現在状態の表示
 
-`show` は設定宣言を使用せず、指定リポジトリについて GitHub から確認できた設定と関連リソースを表示します。認証・権限・通信による観測操作の失敗は、正常な観測結果ではなくエラーとします。GitHub の設定は変更しません。
+`show` は設定宣言を使用せず、指定リポジトリについて GitHub から確認できた管理設定の値と関連リソースを表示します。認証・権限・通信による観測操作の失敗は、正常な観測結果ではなくエラーとします。GitHub の設定は変更しません。
+
+表示は、YAML 設定仕様の設定宣言と同じ構造の YAML です。ルートの `repositories` に、`name` を指定したリポジトリとする要素を一つ置き、その下に `general`、`actions`（`permissions`、`workflow`、`access`）、`environments` の順で、確認できた値を設定宣言のキーで示します。`name` には、GitHub が返す名前ではなく、`--repo` に指定したリポジトリ指定を示します。観測操作の失敗の文言と同じ名前で対象を示すためです。設定宣言と同じ構造にするのは、表示から設定宣言のどこに何を書けばよいかを読み取れるようにし、表示をそのまま設定宣言の出発点にできるようにするためです。観測した値が設定宣言の入力検証を通る場合（この章の末尾）、表示を変えずに設定宣言として読むと、管理範囲は表示したすべての管理設定と Environment になり、期待値は観測時点の値と一致します。
+
+```text
+$ reco show --repo example/project-a
+repositories:
+  - name: example/project-a
+    general:
+      delete_branch_on_merge: true
+      allow_auto_merge: false
+    actions:
+      permissions:
+        enabled: true
+        allowed_actions: all
+        sha_pinning_required: false
+      workflow:
+        default_workflow_permissions: read
+        can_approve_pull_request_reviews: false
+      access:
+        access_level: none
+    # environments: none
+```
+
+表示するのは、設定宣言に書ける管理設定と Environment に限ります。Environment の保護設定（`wait_timer`、`required_reviewers`、`can_admins_bypass`）のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
 
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
 - **ほかの行から分かる**：行ごと示さない。上位の設定によってその設定が効いていない状態（Actions が無効、Actions 許可ポリシーが `selected` でない）がこれに当たり、その状態は上位の設定の行で示されるためである
-- **ほかの行から分からない**：行を省かず、値の位置に `unavailable (<理由>)` と示す。行を省くと、確認できなかった設定と reco が表示しない設定を区別できないためである。公開リポジトリの `access_level` がこれに当たる
+- **ほかの行から分からない**：行を省かず、YAML のコメントとして、値の位置に `unavailable (<理由>)` と示す。行を省くと、確認できなかった設定と reco が表示しない設定を区別できないためである。コメントにするのは、確認できなかった値を期待値として読ませないためである。公開リポジトリの `access_level` がこれに当たる
+
+`allowed_actions` が `selected` のときは、`selected_actions` の3項目を `sha_pinning_required` の前に示します。`patterns_allowed` は、パターンを関連リソースの名前と同じく二重引用符で囲んでエスケープし、GitHub が返した順に1行に一つずつ並べます。空の集合は `[]` と示します。
 
 ```text
-$ reco show --repo example/project-a
-Repository: example/project-a
-
-General:
-  delete_branch_on_merge: true
-  allow_auto_merge: false
-Actions permissions:
-  enabled: true
-  allowed_actions: all
-  sha_pinning_required: false
-Workflow permissions:
-  default_workflow_permissions: read
-  can_approve_pull_request_reviews: false
-Actions access:
-  access_level: none
-Environments: none
-```
-
-`allowed_actions` が `selected` のときは、`selected_actions` の3項目を字下げして、`sha_pinning_required` の前に示します。`patterns_allowed` は、パターンを二重引用符で囲んで並べます。空の集合は `[]` と示します。
-
-```text
-Actions permissions:
-  enabled: true
-  allowed_actions: selected
-  selected_actions:
-    github_owned_allowed: true
-    verified_allowed: false
-    patterns_allowed: ["actions/checkout@v7", "example/*"]
-  sha_pinning_required: false
+      permissions:
+        enabled: true
+        allowed_actions: selected
+        selected_actions:
+          github_owned_allowed: true
+          verified_allowed: false
+          patterns_allowed:
+            - "actions/checkout@v7"
+            - "example/*"
+        sha_pinning_required: false
 ```
 
 Actions が無効のリポジトリでは、`allowed_actions`、`selected_actions`、`sha_pinning_required` を取得できないため、`enabled` だけを示します。
 
 ```text
-Actions permissions:
-  enabled: false
+      permissions:
+        enabled: false
 ```
 
-`access_level` は非公開リポジトリにだけ適用される設定で、公開リポジトリでは取得できません（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 6章）。Actions が無効のリポジトリでも、非公開であれば値を示します。
+`access_level` は非公開リポジトリにだけ適用される設定で、公開リポジトリでは取得できません（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 6章）。公開リポジトリでは、`access` とその下の行をコメントとして示します。`access` の下に設定のない空のマッピングは、設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 8.1節）。Actions が無効のリポジトリでも、非公開であれば値を示します。
 
 ```text
-Actions access:
-  access_level: unavailable (the repository is public)
+      # access:
+      #   access_level: unavailable (the repository is public)
 ```
 
-関連リソースは、種類ごとの節に、存在するものをすべて示します。並びは GitHub が一覧で返した順で、reco は並べ替えません。名前は二重引用符で囲み、制御文字をエスケープして示します。一つもないときは、節を省かず、節の見出しに `none` と示します。節を省くと、存在しないと確かめたことと、reco がその種類を表示しないことを区別できないためです。
+関連リソースは、種類ごとに、存在するものをすべて示します。並びは GitHub が一覧で返した順で、reco は並べ替えません。名前は二重引用符で囲み、制御文字をエスケープして示します。エスケープは YAML の二重引用符のスカラーとして読める表記です。一つもないときは、種類のキーを省かず、YAML のコメントとして `none` と示します。キーを省くと、存在しないと確かめたことと、reco がその種類を表示しないことを区別できないためです。コメントにするのは、空のシーケンスを設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 8.1節）。
 
-Environment は `Environments:` の節に示します。Environment ごとに示す項目は次のとおりです。
-
-- **`deployment_branch_policy`**：`mode` に、デプロイ元制限の方式（`all`、`protected_branches`、`selected`）を示す。`selected` のときに限り、`patterns` に個別パターンを `<種類> "<名前>"` の形で、GitHub が返した順に並べる。種類は `branch` か `tag` で、空の集合は `[]` と示す
-- **`wait_timer`**：デプロイを待たせる分数。この保護ルールがなければ `none` と示す
-- **`required_reviewers`**：この保護ルールがなければ `none` と示す。あれば、`reviewers` にレビュアーを `User <ID>` か `Team <ID>` の形で並べ、`prevent_self_review` を示す
-- **`can_admins_bypass`**：管理者が保護ルールを迂回できるか
-
-`wait_timer`、`required_reviewers`、`can_admins_bypass` は reco が宣言を受け付けない設定ですが、確認できた値を示します。
+Environment は `environments` に示します。Environment ごとに、`name` と `deployment_branch_policy` を示します。`deployment_branch_policy` の `mode` には、デプロイ元制限の方式（`all`、`protected_branches`、`selected`）を示します。`selected` のときに限り、`patterns` に個別パターンを `type` と `name` の要素として、GitHub が返した順に並べます。`name` は Environment の名前と同じく二重引用符で囲んでエスケープして示します。空の集合は `[]` と示します。
 
 ```text
-Environments:
-  - name: "production"
-    deployment_branch_policy:
-      mode: selected
-      patterns: [branch "main", branch "release/*", tag "v*"]
-    wait_timer: 30
-    required_reviewers:
-      reviewers: [User 583231, Team 42]
-      prevent_self_review: true
-    can_admins_bypass: false
-  - name: "staging"
-    deployment_branch_policy:
-      mode: protected_branches
-    wait_timer: none
-    required_reviewers: none
-    can_admins_bypass: true
+    environments:
+      - name: "production"
+        deployment_branch_policy:
+          mode: selected
+          patterns:
+            - type: branch
+              name: "main"
+            - type: branch
+              name: "release/*"
+            - type: tag
+              name: "v*"
+      - name: "staging"
+        deployment_branch_policy:
+          mode: protected_branches
 ```
+
+表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。`organization` の `access_level`、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 8章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
 
 権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。行を省かず、欠けた項目を示してエラーとします。
-
-`show` の表示は人が読むためのものであり、設定宣言として再利用できる形式ではありません。
 
 | Relationship | Target | Target Type |
 |---|---|---|
