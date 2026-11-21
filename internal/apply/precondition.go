@@ -43,48 +43,48 @@ func checkPrecondition(approvedID repository.ID, operation changeplan.UpdateOper
 
 // matchesRelevantSetting は、関係する現在値の設定 relevant が、更新直前の観測 observed で承認時に予定した値と同じかを返す。
 // Environment そのものは値を持たないため、宣言の名前で一覧から引いた存在と ID を比べる。
-// 先行する更新操作が作成する Environment は EnvironmentAtApproval を持たないため、真偽値を先に読み、作成した Environment の基準 created と比べる。
+// 先行する更新操作が作成する Environment は AnticipatedEnvironment を持たないため、真偽値を先に読み、作成した Environment の基準 created と比べる。
 func matchesRelevantSetting(relevant changeplan.RelevantSetting, observed github.ObservationResult, created github.EnvironmentObservation) bool {
 	if relevant.Unit.Key == setting.EnvironmentResource {
 		current := observed.Environments.Lookup(relevant.Unit.Environment)
 		if relevant.CreatedByPrecedingOperation {
 			return matchesCreatedEnvironment(created, current)
 		}
-		return matchesEnvironmentAtApproval(relevant.EnvironmentAtApproval, current)
+		return matchesAnticipatedEnvironment(relevant.AnticipatedEnvironment, current)
 	}
-	return matchesValueAtApproval(relevant.ValueAtApproval, observed.Setting(relevant.Unit))
+	return matchesAnticipatedValue(relevant.AnticipatedValue, observed.Setting(relevant.Unit))
 }
 
-// matchesValueAtApproval は、関係する現在値 current が承認時に予定した値 atApproval と、ドメインモデルの承認と変更前提の意味で同じかを返す。
+// matchesAnticipatedValue は、関係する現在値 current が承認時に予定した値 anticipated と、ドメインモデルの承認と変更前提の意味で同じかを返す。
 // 観測不能の理由は観測値に対して読めないため、両方が観測不能のときだけ理由を比べる。
-func matchesValueAtApproval(atApproval, current github.SettingObservation[setting.Value]) bool {
-	approvedValue, approvedHasValue := atApproval.Value()
+func matchesAnticipatedValue(anticipated, current github.SettingObservation[setting.Value]) bool {
+	anticipatedValue, anticipatedHasValue := anticipated.Value()
 	currentValue, currentObserved := current.Value()
 	switch {
-	case approvedHasValue && currentObserved:
-		return approvedValue.Equal(currentValue)
-	case !approvedHasValue && !currentObserved:
-		return atApproval.UnavailableReason() == current.UnavailableReason()
+	case anticipatedHasValue && currentObserved:
+		return anticipatedValue.Equal(currentValue)
+	case !anticipatedHasValue && !currentObserved:
+		return anticipated.UnavailableReason() == current.UnavailableReason()
 	default:
 		return false
 	}
 }
 
-// matchesEnvironmentAtApproval は、Environment の現在の観測結果 current が、承認時に予定した存在 atApproval と同じかを返す。
+// matchesAnticipatedEnvironment は、Environment の現在の観測結果 current が、承認時に予定した存在 anticipated と同じかを返す。
 // 承認時に存在しなかったなら、現在も存在しないと確かめたときだけ同じとする。判定できない名前が現れた観測は、存在しないことを意味しないため。
 // 承認時に存在したなら、現在も存在し ID が同じときだけ同じとする。同じ名前で作り直された Environment は、承認した変更の相手ではないため。
 // 綴りと中の設定は比べない。
 // 承認時に観測不能かゼロ値の存在は、承認の前に適用不能として止めるため、不変条件の破れとして panic する。
-func matchesEnvironmentAtApproval(atApproval, current github.EnvironmentObservation) bool {
-	if atApproval.Absent() {
+func matchesAnticipatedEnvironment(anticipated, current github.EnvironmentObservation) bool {
+	if anticipated.Absent() {
 		return current.Absent()
 	}
-	approved, ok := atApproval.Existing()
+	anticipatedEnvironment, ok := anticipated.Existing()
 	if !ok {
-		panic("apply: environment at approval is neither existing nor absent")
+		panic("apply: anticipated environment is neither existing nor absent")
 	}
 	existing, ok := current.Existing()
-	return ok && existing.ID == approved.ID
+	return ok && existing.ID == anticipatedEnvironment.ID
 }
 
 // matchesCreatedEnvironment は、同じ論理的な設定変更が作成した Environment の現在の観測結果 current が、予定どおりかを返す。

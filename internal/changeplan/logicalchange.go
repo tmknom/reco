@@ -64,16 +64,16 @@ const (
 )
 
 // RelevantSetting は、変更前提で比べる関係する現在値の設定と、その承認時に予定した値。
-// ValueAtApproval と EnvironmentAtApproval は、Unit.Key の形に応じてどちらか一方だけを持つ。
+// AnticipatedValue と AnticipatedEnvironment は、Unit.Key の形に応じてどちらか一方だけを持つ。
 type RelevantSetting struct {
 	Unit setting.Unit
-	// ValueAtApproval は、承認時に予定した値。
-	ValueAtApproval github.SettingObservation[setting.Value]
-	// EnvironmentAtApproval は、承認時に予定した存在と ID。
+	// AnticipatedValue は、承認時に予定した値。
+	AnticipatedValue github.SettingObservation[setting.Value]
+	// AnticipatedEnvironment は、承認時に予定した存在と ID。
 	// Environment そのものは値を持たないため、存在の観測結果を承認時に予定した値にする。
-	EnvironmentAtApproval github.EnvironmentObservation
+	AnticipatedEnvironment github.EnvironmentObservation
 	// CreatedByPrecedingOperation は、承認時に予定した存在が、同じ論理的な設定変更の先行する更新操作による作成であること。
-	// 真のとき EnvironmentAtApproval は持たない。承認の時点で ID が定まらないため。
+	// 真のとき AnticipatedEnvironment は持たない。承認の時点で ID が定まらないため。
 	CreatedByPrecedingOperation bool
 }
 
@@ -151,7 +151,7 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 			// GitHub は Secret scanning が無効のあいだ、有効にする更新に成功を応答して値を変えないため、更新直前に有効と確かめる。
 			// 計画時に無効だった場合は、先行する Secret scanning の変更が有効にすることが予定どおりの変化である
 			operation.RelevantSettings = append(operation.RelevantSettings, RelevantSetting{
-				Unit: setting.Unit{Key: setting.SecretScanningEnabled}, ValueAtApproval: github.Observed(setting.BoolValue(true)),
+				Unit: setting.Unit{Key: setting.SecretScanningEnabled}, AnticipatedValue: github.Observed(setting.BoolValue(true)),
 			})
 		}
 		change := LogicalChange{
@@ -165,7 +165,7 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 			// 2つ目の承認時に予定した値は、1つ目による予定どおりの変化を反映したポリシーである
 			change.Operations = append(change.Operations, UpdateOperation{
 				Kind: SettingUpdate, Unit: criteria.Unit, Value: criteria.Desired,
-				RelevantSettings: []RelevantSetting{{Unit: s.Unit, ValueAtApproval: github.Observed(s.Desired)}},
+				RelevantSettings: []RelevantSetting{{Unit: s.Unit, AnticipatedValue: github.Observed(s.Desired)}},
 			})
 		}
 		changes = append(changes, change)
@@ -217,14 +217,14 @@ func (r RepositoryPlan) settingPlanOf(unit setting.Unit) (SettingPlan, bool) {
 // operationOf は、変更予定 s の設定の値を送る更新操作を返す。
 // 基準は、s の計画時の観測結果、副作用として提示した設定のうち reco が観測するものの計画時の観測結果、副作用を示さなかった設定の計画時の観測結果である。
 func operationOf(s SettingPlan) UpdateOperation {
-	relevant := []RelevantSetting{{Unit: s.Unit, ValueAtApproval: s.Observed}}
+	relevant := []RelevantSetting{{Unit: s.Unit, AnticipatedValue: s.Observed}}
 	for _, effect := range s.SideEffects {
 		if key, ok := effect.Kind.ObservedSetting(); ok {
-			relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: key}, ValueAtApproval: effect.Observed})
+			relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: key}, AnticipatedValue: effect.Observed})
 		}
 	}
 	for _, unshown := range s.SettingsWithoutSideEffect {
-		relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: unshown.Key}, ValueAtApproval: unshown.Observed})
+		relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: unshown.Key}, AnticipatedValue: unshown.Observed})
 	}
 	return UpdateOperation{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, RelevantSettings: relevant}
 }
@@ -235,9 +235,9 @@ func operationOf(s SettingPlan) UpdateOperation {
 func shaPinningRequiredOperationOf(s SettingPlan) UpdateOperation {
 	var relevant []RelevantSetting
 	if s.Result == Mismatch {
-		relevant = append(relevant, RelevantSetting{Unit: s.Unit, ValueAtApproval: s.Observed})
+		relevant = append(relevant, RelevantSetting{Unit: s.Unit, AnticipatedValue: s.Observed})
 	}
-	relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: setting.ActionsEnabled}, ValueAtApproval: github.Observed(setting.BoolValue(true))})
+	relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: setting.ActionsEnabled}, AnticipatedValue: github.Observed(setting.BoolValue(true))})
 	return UpdateOperation{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, RelevantSettings: relevant}
 }
 

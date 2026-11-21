@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-func TestManagementUnits_FollowsConfigurationOrder(t *testing.T) {
+func TestRepositorySettingUnits_FollowsConfigurationOrder(t *testing.T) {
 	want := []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
-	if got := ManagementUnits(); !slices.Equal(got, want) {
-		t.Errorf("ManagementUnits() = %v, want %v", got, want)
+	if got := RepositorySettingUnits(); !slices.Equal(got, want) {
+		t.Errorf("RepositorySettingUnits() = %v, want %v", got, want)
 	}
 }
 

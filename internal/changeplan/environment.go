@@ -42,7 +42,7 @@ func (r RepositoryPlan) environmentChangeOf(s SettingPlan) (LogicalChange, bool)
 	case isPolicyOfAbsentEnvironment(s) && ok && existence.IsCreation():
 		return LogicalChange{}, false
 	case s.Result == Mismatch && ok && existence.Result == Match:
-		environment := RelevantSetting{Unit: existence.Unit, EnvironmentAtApproval: existence.ObservedEnvironment}
+		environment := RelevantSetting{Unit: existence.Unit, AnticipatedEnvironment: existence.ObservedEnvironment}
 		return LogicalChange{DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}}, Operations: deploymentBranchPolicyOperations(s, environment)}, true
 	}
 	panic(fmt.Sprintf("changeplan: %s has no environment plan to pair with", s.Unit.String()))
@@ -57,7 +57,7 @@ func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
 		panic(fmt.Sprintf("changeplan: %s is a planned change other than a creation", s.Unit.String()))
 	}
 	change := LogicalChange{DesiredState: []DesiredSetting{{Unit: s.Unit}}}
-	existence := []RelevantSetting{{Unit: s.Unit, EnvironmentAtApproval: s.ObservedEnvironment}}
+	existence := []RelevantSetting{{Unit: s.Unit, AnticipatedEnvironment: s.ObservedEnvironment}}
 	policy, ok := r.settingPlanOf(setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: s.Unit.Environment})
 	if !ok {
 		change.Operations = []UpdateOperation{{Kind: EnvironmentCreation, Unit: s.Unit, RelevantSettings: existence}}
@@ -90,7 +90,7 @@ func deploymentBranchPolicyOperations(s SettingPlan, environment RelevantSetting
 	}
 	operations := []UpdateOperation{{
 		Kind: DeploymentBranchPolicyModeUpdate, Unit: s.Unit, Mode: after.Mode,
-		RelevantSettings: []RelevantSetting{environment, {Unit: s.Unit, ValueAtApproval: s.Observed}},
+		RelevantSettings: []RelevantSetting{environment, {Unit: s.Unit, AnticipatedValue: s.Observed}},
 	}}
 	if after.Mode != setting.DeploymentBranchPolicySelected {
 		return operations
@@ -112,7 +112,7 @@ func deploymentPatternOperations(unit setting.Unit, environment RelevantSetting,
 		base := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: patterns})
 		operations = append(operations, UpdateOperation{
 			Kind: kind, Unit: unit, Pattern: pattern,
-			RelevantSettings: []RelevantSetting{environment, {Unit: unit, ValueAtApproval: github.Observed(base)}},
+			RelevantSettings: []RelevantSetting{environment, {Unit: unit, AnticipatedValue: github.Observed(base)}},
 		})
 	}
 	for _, pattern := range remove {

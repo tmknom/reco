@@ -20,11 +20,11 @@ const (
 
 // reconcile は、期待値が明示された設定 (管理範囲内) だけを観測結果と照合する。
 // 期待値が省略された設定は管理範囲外のため、照合結果を作らず、観測値も読まない。
-// 並びは設定の領域の並び (YAML 設定仕様の章の並び) で、同じ領域の中では setting.ManagementUnits の並び、Environment は宣言の並びである。
+// 並びは設定の領域の並び (YAML 設定仕様の章の並び) で、同じ領域の中では setting.RepositorySettingUnits の並び、Environment は宣言の並びである。
 // 宣言に名前のない Environment は、観測結果にあっても計画に現れない。
 func reconcile(desired configuration.DesiredState, observed github.ObservationResult) []SettingPlan {
 	var settings []SettingPlan
-	for _, key := range setting.ManagementUnits() {
+	for _, key := range setting.RepositorySettingUnits() {
 		if d, ok := desired.Value(key); ok {
 			settings = append(settings, newSettingPlan(key, observed.Setting(setting.Unit{Key: key}), d))
 		}
@@ -41,7 +41,7 @@ func reconcile(desired configuration.DesiredState, observed github.ObservationRe
 // reconcile と同じ宣言で管理設定を決めるため、照合する設定の領域は必ず観測される。
 func managedAreas(desired configuration.DesiredState) []setting.Area {
 	var areas []setting.Area
-	for _, key := range setting.ManagementUnits() {
+	for _, key := range setting.RepositorySettingUnits() {
 		if _, ok := desired.Value(key); ok && !slices.Contains(areas, key.Area()) {
 			areas = append(areas, key.Area())
 		}

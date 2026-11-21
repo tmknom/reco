@@ -3,7 +3,7 @@ package setting
 
 import "fmt"
 
-// Key は設定の識別。リポジトリ設定では、値を表示にそのまま使い、管理の単位 (ManagementUnits) では YAML 設定仕様のキーのパスと一致する。
+// Key は設定の識別。リポジトリ設定では、値を表示にそのまま使い、管理の単位 (RepositorySettingUnits) では YAML 設定仕様のキーのパスと一致する。
 // Environment に関わる管理の単位では、Key は形だけを表し、名前との組 (Unit) で一つに定まる。
 type Key string
 
@@ -29,10 +29,10 @@ const (
 	EnvironmentDeploymentBranchPolicy Key = "environments.deployment_branch_policy"
 )
 
-// ManagementUnits は、リポジトリ設定の管理の単位 (reco が期待値の宣言を受け付ける設定) を YAML 設定仕様の章と表の並びで返す。
+// RepositorySettingUnits は、リポジトリ設定の管理の単位 (reco が期待値の宣言を受け付ける設定) を YAML 設定仕様の章と表の並びで返す。
 // 設定グループは一つの Key で表す。Environment に関わる管理の単位は、宣言の名前ごとに決まるため含めない。
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
-func ManagementUnits() []Key {
+func RepositorySettingUnits() []Key {
 	return []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
 }
 
