@@ -102,7 +102,7 @@ Applying changes...
   example/project-c: not attempted
     Stopped: a preceding repository did not complete
 
-Note: Some changes may already have been applied. No automatic rollback was performed.
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
 
 `failed` の下の行は、次のことを示します。

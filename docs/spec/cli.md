@@ -4,6 +4,8 @@
 
 本ドキュメントは、reco のコマンド、オプション、認証情報の選択、対話承認、表示内容、終了コードを定めます。対象は利用者から観察できる操作とその結果です。設定の照合や更新を実現する内部構成・API 操作順序は規定しません。
 
+表示には、reco の実行が終わったあとも残る影響と、利用者が判断や行動を変えられる情報だけを示します。更新のあいだだけ生じて実行が完了すれば残らない状態や、更新を何回に分けて送るかといった内部の手順は示しません。利用者が何もできない情報は、判断に必要な情報を埋もれさせ、残り続ける影響だと読み違えさせるためです。実行が完了しなかった場合は、残った状態を確かめるのに要る範囲で、どの更新まで済んだかを示します（5.2節）。
+
 reco は GitHub.com の個人アカウント所有リポジトリを対象とします。利用者が対象を指定し、必要な権限を持つ認証情報を用意します。所有者と認証主体の一致検査は行いません。
 
 ## 2. コマンドとオプション
@@ -282,7 +284,7 @@ Repositories checked: 1
 Plan cannot be applied.
 ```
 
-宣言した変更に伴って GitHub が管理範囲外の設定を削除する場合は、変更予定に `Side effect:` として失われる設定と現在値を添えます。この変更は適用可能であり、利用者が承認すれば実行します。現在は、Actions 許可ポリシーを `selected` から `all` / `local_only` へ変え、既存の選択方式の Actions 許可条件が失われる場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。Actions が無効のリポジトリで `all` / `local_only` を宣言した場合は、無効にする前のポリシーが `selected` であれば同じく失われますが、無効の間は値もポリシーも取得できないため、失われる可能性があることと、値を示せない理由を示します。遷移先が `selected` の変更には添えません。3項目は宣言した値で上書きされ、管理範囲内の変更になるためです。`Side effect:` は、副作用を伴う変更予定の最後の行として示します。変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。
+宣言した変更に伴って GitHub が管理範囲外の設定を削除する場合は、変更予定に `Side effect:` として失われる設定と現在値を添えます。この変更は適用可能であり、利用者が承認すれば実行します。現在は、Actions 許可ポリシーを `selected` から `all` / `local_only` へ変え、既存の選択方式の Actions 許可条件が失われる場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。Actions が無効のリポジトリで `all` / `local_only` を宣言した場合は、無効にする前のポリシーが `selected` であれば同じく失われますが、無効の間は値もポリシーも取得できないため、失われる可能性があることと、値を示せない理由を示します。遷移先が `selected` の変更には添えません。3項目は宣言した値で上書きされ、管理範囲内の変更になるためです。`Side effect:` は、変更が完了したあとも残る影響だけを示します。一つの変更の更新操作のあいだだけ生じる中間状態（[アーキテクチャ設計](../design/architecture.md) 5.4）は示しません。完了すれば残らず、利用者が承認の前に避ける手段もないためです。中間状態が残るのは変更が完了しなかった場合で、そのときは変更結果が `failed` と注記で示します（5.2節）。`Side effect:` は、副作用を伴う変更予定の最後の行として示します。変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。
 
 ```text
 Repository: example/project-a
@@ -421,7 +423,7 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 すべてのリポジトリが `updated` または `no change` のときに限り、`Apply complete.` と、`updated` のリポジトリの数を `Repositories updated:` として示します。`no change` のリポジトリは数に含めません。
 
-いずれかの論理的な設定変更で更新操作を開始しており、完了しなかった論理的な設定変更があるときは、変更結果の末尾に注記（`Note:`）を添えます。開始した更新操作に成否不明があれば自動で再送していないことを、なければ自動ロールバックを行っていないことを示します。複数の更新操作からなる論理的な設定変更では、すべての更新操作を判定に含めます。この判定は、選択したすべてのリポジトリの論理的な設定変更について行います。先に完了したリポジトリのあとで別のリポジトリが完了しなかった場合も、適用済みの変更が残るため注記を添えます。
+いずれかの論理的な設定変更で更新操作を開始しており、完了しなかった論理的な設定変更があるときは、変更結果の末尾に注記（`Note:`）を添えます。開始した更新操作に成否不明があれば自動で再送していないことを、なければ自動ロールバックを行っていないことを示します。どちらの注記にも、`reco plan` で残りの変更を確かめられることを添えます（`Run reco plan to see the remaining changes.`）。一つの変更の途中で止まった場合も、`plan` は先行する更新操作のあとの現在値を変更計画に示すため、利用者は残った中間状態と残りの変更を同じ表示で確かめられます。複数の更新操作からなる論理的な設定変更では、すべての更新操作を判定に含めます。この判定は、選択したすべてのリポジトリの論理的な設定変更について行います。先に完了したリポジトリのあとで別のリポジトリが完了しなかった場合も、適用済みの変更が残るため注記を添えます。
 
 選択方式の Actions 許可条件は、3項目を個別の変更として表示せず、一体の設定グループとして扱います。Actions 許可ポリシーを `selected` へ変える変更と組み合わせて一つの論理的な設定変更となる場合は、変更結果を管理設定ごとの行に分けず、その変更全体について一つ示します。承認の前に提示する変更予定は、管理設定ごとの行のままです。
 
@@ -469,7 +471,7 @@ Applying changes...
   example/project-b: not attempted
     Stopped: a preceding repository did not complete
 
-Note: Some changes may already have been applied. No automatic rollback was performed.
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
 
 この例で stderr へ表示するエラーは次のとおりです。
@@ -486,7 +488,7 @@ Applying changes...
   example/project-b: not attempted
     Stopped: a preceding repository did not complete
 
-Note: No automatic retry was performed.
+Note: No automatic retry was performed. Run reco plan to see the remaining changes.
 ```
 
 ```text
@@ -496,7 +498,7 @@ Applying changes...
     Desired state: does not match
     Possible cause: auto-merge is not available for private repositories on GitHub Free, where GitHub may accept the update without applying it
 
-Note: Some changes may already have been applied. No automatic rollback was performed.
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
 
 ```text
@@ -509,7 +511,7 @@ Applying changes...
     general.allow_auto_merge: not attempted
       Stopped: a preceding change did not complete
 
-Note: Some changes may already have been applied. No automatic rollback was performed.
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
 
 ```text
@@ -518,7 +520,7 @@ Applying changes...
     Update request: succeeded
     Desired state: not in effect (GitHub Actions is disabled)
 
-Note: Some changes may already have been applied. No automatic rollback was performed.
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
 
 ```text
@@ -528,7 +530,7 @@ Applying changes...
     Desired state: matches
     Other settings: actions.permissions.sha_pinning_required changed false -> true (cause not determined)
 
-Note: Some changes may already have been applied. No automatic rollback was performed.
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
 
 ```text
@@ -547,7 +549,7 @@ Applying changes...
     Precondition: actions.permissions.allowed_actions is not the value expected after the preceding update
     Desired state: does not match
 
-Note: Some changes may already have been applied. No automatic rollback was performed.
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
 
 先行する更新操作が成否不明の場合は、後続の更新操作を開始しません。
@@ -559,7 +561,7 @@ Applying changes...
     Update request (actions.permissions.selected_actions): not started
     Desired state: does not match
 
-Note: No automatic retry was performed.
+Note: No automatic retry was performed. Run reco plan to see the remaining changes.
 ```
 
 ほかの論理的な設定変更と並ぶときは、二つの管理設定をまとめた名前で示します。
@@ -575,7 +577,7 @@ Applying changes...
     actions.workflow.default_workflow_permissions: not attempted
       Stopped: a preceding change did not complete
 
-Note: Some changes may already have been applied. No automatic rollback was performed.
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
 
 先行するリポジトリが完了しなかった場合は次のとおりです。
@@ -589,7 +591,7 @@ Applying changes...
   example/project-c: not attempted
     Stopped: a preceding repository did not complete
 
-Note: Some changes may already have been applied. No automatic rollback was performed.
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
 
 先に完了したリポジトリのあとで、別のリポジトリの変更前提が成立しなかった場合は次のとおりです。
@@ -602,7 +604,7 @@ Applying changes...
   example/project-c: not attempted
     Stopped: a preceding repository did not complete
 
-Note: Some changes may already have been applied. No automatic rollback was performed.
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
 
 Environment の作成の承認のあとに、同じ名前の Environment が作られていた場合は次のとおりです。
@@ -624,7 +626,7 @@ Applying changes...
       Desired state: matches
       Other settings: environments.staging.wait_timer changed 30 -> none (cause not determined)
 
-Note: Some changes may already have been applied. No automatic rollback was performed.
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
 
 Environment の方式を `selected` に変えたあと、個別パターンを加える途中で GitHub に拒否された場合は次のとおりです。
@@ -638,7 +640,7 @@ Applying changes...
     Update request (patterns to add [tag "v*"]): not started
     Desired state: does not match
 
-Note: Some changes may already have been applied. No automatic rollback was performed.
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
 
 個別パターンを入れ替える変更で、パターンを取り除いたあとに外部主体が個別パターンを変えていた場合は次のとおりです。
@@ -651,7 +653,7 @@ Applying changes...
     Precondition: environments.production.deployment_branch_policy is not the value expected after the preceding update
     Desired state: does not match
 
-Note: Some changes may already have been applied. No automatic rollback was performed.
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
 
 存在しない Environment を `selected` と個別パターンで宣言し、作成のあとのパターンの追加が成否不明になった場合は次のとおりです。ほかの論理的な設定変更と並ぶため、名前で示します。
@@ -666,7 +668,7 @@ Applying changes...
       Update request (patterns to add [tag "v*"]): not started
       Desired state: does not match
 
-Note: No automatic retry was performed.
+Note: No automatic retry was performed. Run reco plan to see the remaining changes.
 ```
 
 異常時の表示では、確認済みの操作結果、成否が不明な範囲、未実行の変更を区別します。
