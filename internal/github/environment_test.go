@@ -43,8 +43,7 @@ func (e *environmentRoutes) Requests() []string {
 
 const firstPage = "?per_page=100&page=1"
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestObserveRepositoryEnvironments(t *testing.T) {
 	branch, tag := string(setting.DeploymentPatternBranch), string(setting.DeploymentPatternTag)
 	selected := &githubtest.DeploymentBranchPolicyBody{CustomBranchPolicies: true}
@@ -174,10 +173,7 @@ func TestObserveRepositoryEnvironments(t *testing.T) {
 // TestObserveRepositoryEnvironmentsFailure は、Environments の読み取りの失敗が、種類を保ったまま
 // 取得できた値を含まない観測操作の失敗になることを確かめる。種類の判定規則は TestClassifyFailure が確かめる。
 //
-//trace:checks FR-003
-//trace:checks FR-004
-//trace:checks QR-001
-//trace:checks QR-002
+//trace:checks FR-003 FR-004 QR-001 QR-002
 func TestObserveRepositoryEnvironmentsFailure(t *testing.T) {
 	const bodyMarker = "BODY-MARKER"
 	selected := &githubtest.DeploymentBranchPolicyBody{CustomBranchPolicies: true}

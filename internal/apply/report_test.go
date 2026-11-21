@@ -51,8 +51,7 @@ func TestUnavailableReasonText(t *testing.T) {
 
 }
 
-//trace:checks FR-013
-//trace:checks INV-005
+//trace:checks FR-013 INV-005
 func TestChangesError(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 
@@ -172,8 +171,7 @@ func TestNotAttemptedReason_StartedUpdatePanics(t *testing.T) {
 
 // TestWriteChangeReport_SingleChange は、論理的な設定変更が1件のとき、リポジトリの行に結果と理由を書く表示を確かめる。
 //
-//trace:checks FR-013
-//trace:checks QR-002
+//trace:checks FR-013 QR-002
 func TestWriteChangeReport_SingleChange(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 	change := allowAutoMergeChange()
@@ -345,9 +343,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 
 // TestWriteChangeReport_MultipleChanges は、論理的な設定変更が2件以上のときの集約規則と注記の規則を確かめる。
 //
-//trace:checks FR-013
-//trace:checks INV-005
-//trace:checks QR-002
+//trace:checks FR-013 INV-005 QR-002
 func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 	stopped := changeRecord{change: allowAutoMergeChange()}
@@ -467,9 +463,7 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 // TestWriteChangeReport_Repositories は、選択したすべての対象リポジトリを宣言順に示す規則、変更不要と停止の行、
 // Apply complete. の条件と数え方、対象リポジトリをまたぐ注記の判定を確かめる。期待値は CLI 仕様の apply の表示例から導く。
 //
-//trace:checks FR-013
-//trace:checks INV-005
-//trace:checks QR-002
+//trace:checks FR-013 INV-005 QR-002
 func TestWriteChangeReport_Repositories(t *testing.T) {
 	a, b, c := mustReference(t, "example/project-a"), mustReference(t, "example/project-b"), mustReference(t, "example/project-c")
 	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed.\n"
@@ -590,8 +584,7 @@ func TestWriteChangeReport_Repositories(t *testing.T) {
 
 // TestRepositoriesError は、宣言順で最初の完了以外の変更結果だけを error にし、停止した対象リポジトリの error を足さない規則を確かめる。
 //
-//trace:checks FR-013
-//trace:checks INV-005
+//trace:checks FR-013 INV-005
 func TestRepositoriesError(t *testing.T) {
 	first, second, third := mustReference(t, "owner/first"), mustReference(t, "owner/second"), mustReference(t, "owner/third")
 	rejected := changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{started(github.UpdateRejected)}, cause: github.ErrForbidden}
@@ -647,8 +640,7 @@ func updateRequestRows(first, second string) string {
 
 // TestWriteChangeReport_Environments は、Environment の作成と方式の変更の変更結果の表示を確かめる。期待値は CLI 仕様の apply の表示例から導く。
 //
-//trace:checks FR-013
-//trace:checks QR-002
+//trace:checks FR-013 QR-002
 func TestWriteChangeReport_Environments(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 	creation := creationChange(t, "production", modeValue(setting.DeploymentBranchPolicyProtectedBranches))

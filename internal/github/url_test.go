@@ -7,9 +7,7 @@ import (
 
 // TestEnvironmentURL は、名前を1つのパス要素として送ることを確かめる。
 //
-//trace:checks FR-004
-//trace:checks FR-011
-//trace:checks QR-002
+//trace:checks FR-004 FR-011 QR-002
 func TestEnvironmentURL(t *testing.T) {
 	cases := []struct {
 		name            string

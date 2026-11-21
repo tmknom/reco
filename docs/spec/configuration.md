@@ -125,7 +125,7 @@ Environment や Variable のように、一つのリポジトリに名前の違�
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `FR-005` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
-| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
 
 ### 4.1 入力の組み合わせ
 
@@ -175,7 +175,7 @@ GitHub の公式資料は `patterns_allowed` を公開リポジトリに適用�
 |---|---|---|
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
-| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
 
 ## 6. Actions access
 
@@ -194,7 +194,7 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `FR-006` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
-| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
 
 ## 7. Environments
 
@@ -220,7 +220,7 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `FR-005` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
-| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Internal Document |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
 
 ### 7.1 Environment の名前
 
@@ -236,7 +236,7 @@ GitHub 上の Environment の名前に ASCII 以外の文字などが含まれ�
 |---|---|---|
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
-| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Internal Document |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
 
 ### 7.2 デプロイ元制限の入力の組み合わせと `patterns`
 
@@ -275,7 +275,7 @@ environments:
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `FR-005` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
-| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Internal Document |
+| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Repository File |
 
 ## 8. 入力検証と対象名
 
@@ -329,8 +329,8 @@ GitHub は所有者名・リポジトリ名を大文字小文字非依存で扱�
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-001` | Functional Requirement |
-| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
-| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Repository File |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
 
 ## 9. References
 

@@ -10,8 +10,7 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-//trace:checks FR-001
-//trace:checks FR-005
+//trace:checks FR-001 FR-005
 func TestReconcile(t *testing.T) {
 	workflow := func(level setting.PermissionLevel, canApprove bool) *github.WorkflowPermissions {
 		return &github.WorkflowPermissions{DefaultWorkflowPermissions: level, CanApprovePullRequestReviews: canApprove}
@@ -94,8 +93,7 @@ func TestReconcile(t *testing.T) {
 
 // 期待値と観測値の組を、アーキテクチャ設計の遷移表の行ごとに照合する。
 //
-//trace:checks FR-005
-//trace:checks INV-001
+//trace:checks FR-005 INV-001
 func TestReconcile_ActionsPermissions(t *testing.T) {
 	criteria := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: true, PatternsAllowed: []string{"a/*", "b/*"}}
 	reordered := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: true, PatternsAllowed: []string{"b/*", "a/*"}}
@@ -278,8 +276,7 @@ func TestManagedAreas(t *testing.T) {
 	}
 }
 
-//trace:checks FR-001
-//trace:checks INV-001
+//trace:checks FR-001 INV-001
 func TestReconcile_Environments(t *testing.T) {
 	zeta, alpha := mustEnvironmentName(t, "zeta"), mustEnvironmentName(t, "alpha")
 	desired := configuration.DesiredState{

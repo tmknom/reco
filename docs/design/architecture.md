@@ -82,9 +82,9 @@ CLI が選択した認証情報だけを GitHub Access へ渡します。認証�
 | `alignment` | `FR-010` | Functional Requirement |
 | `alignment` | `QR-001` | Quality Requirement |
 | `alignment` | `INV-004` | Invariant |
-| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
-| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
-| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Repository File |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
 
 ### 2.3 package の分け方
 
@@ -179,10 +179,10 @@ Change Planning は照合とは別に適用可能性（Applicability）を判断
 | `alignment` | `FR-005` | Functional Requirement |
 | `alignment` | `FR-006` | Functional Requirement |
 | `alignment` | `QR-002` | Quality Requirement |
-| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
-| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
-| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Internal Document |
-| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Internal Document |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
+| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Repository File |
 
 ### 3.3 変更計画と実行単位
 
@@ -223,7 +223,7 @@ Change Planning は、選択された対象を設定宣言の `repositories` の
 | `alignment` | `FR-002` | Functional Requirement |
 | `alignment` | `FR-008` | Functional Requirement |
 | `alignment` | `INV-002` | Invariant |
-| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Repository File |
 
 ### 4.2 読み取り専用操作
 
@@ -283,8 +283,8 @@ GitHub Access は、認証付きリクエストの送信先を GitHub.com の RE
 | `alignment` | `QR-002` | Quality Requirement |
 | `alignment` | `INV-004` | Invariant |
 | `alignment` | `INV-005` | Invariant |
-| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
-| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Repository File |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
 
 ### 5.3 未管理設定を保全する更新方式
 
@@ -340,9 +340,9 @@ Environment では、`PUT /repos/{owner}/{repo}/environments/{environment_name}`
 | `alignment` | `FR-006` | Functional Requirement |
 | `alignment` | `FR-011` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
-| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
-| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
-| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Internal Document |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
 
 ### 5.4 非原子的な更新と中間状態
 
@@ -440,8 +440,8 @@ GitHub の複数の更新操作を原子的に実行する仕組みはありま�
 | `alignment` | `FR-012` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
 | `alignment` | `INV-004` | Invariant |
-| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
-| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Internal Document |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
 
 ## 6. 更新結果と障害時の制御
 
@@ -499,9 +499,9 @@ Change Execution は、各更新操作の応答と更新後の期待状態の観
 | `alignment` | `FR-012` | Functional Requirement |
 | `alignment` | `FR-013` | Functional Requirement |
 | `alignment` | `QR-002` | Quality Requirement |
-| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
-| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
-| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Repository File |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
 
 ### 6.2 停止・再観測・リトライ
 
@@ -536,8 +536,8 @@ GitHub は、セカンダリのレート制限を避けるため、更新系の�
 | `alignment` | `FR-013` | Functional Requirement |
 | `alignment` | `INV-004` | Invariant |
 | `alignment` | `INV-005` | Invariant |
-| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
-| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Repository File |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
 
 ## 7. References
 

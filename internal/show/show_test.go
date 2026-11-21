@@ -21,8 +21,7 @@ type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) { return 0, errWrite }
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestWriteObservationResult(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 	allPolicy := &github.ActionsPermissions{

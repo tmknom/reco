@@ -33,8 +33,7 @@ func TestIsApproval(t *testing.T) {
 	}
 }
 
-//trace:checks FR-009
-//trace:checks INV-003
+//trace:checks FR-009 INV-003
 func TestRequestApproval_NotTerminal(t *testing.T) {
 	var prompt bytes.Buffer
 	err := requestApproval(context.Background(), unreadableReader{t}, false, &prompt)
@@ -76,8 +75,7 @@ func (r *failingReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-//trace:checks FR-009
-//trace:checks INV-003
+//trace:checks FR-009 INV-003
 func TestRequestApproval_Terminal(t *testing.T) {
 	readFailure := errors.New("read failure")
 	cases := []struct {

@@ -10,9 +10,7 @@ import (
 
 // TestMatchesValueAtApproval は、承認時に予定した値と更新直前の設定の観測結果が同じかの規則を確かめる。
 //
-//trace:checks INV-001
-//trace:checks INV-004
-//trace:checks FR-010
+//trace:checks INV-001 INV-004 FR-010
 func TestMatchesValueAtApproval(t *testing.T) {
 	disabled := github.Unavailable[setting.Value](github.UnavailableActionsDisabled)
 	notSelected := github.Unavailable[setting.Value](github.UnavailableNotSelected)
@@ -41,9 +39,7 @@ func TestMatchesValueAtApproval(t *testing.T) {
 	}
 }
 
-//trace:checks INV-001
-//trace:checks INV-004
-//trace:checks FR-010
+//trace:checks INV-001 INV-004 FR-010
 func TestCheckPrecondition(t *testing.T) {
 	operation := allowAutoMergeChange().Operations[0]
 	cases := []struct {
@@ -157,8 +153,7 @@ func TestCheckPrecondition(t *testing.T) {
 // TestPrecedingUpdateNotReflected は、後続の更新操作の直前の観測が、先行する更新操作の直前の状態のままかの規則を確かめる。
 // 真のときだけ反映の遅れの可能性として観測し直すため、偽の側に倒れる形を確かめる。
 //
-//trace:checks INV-004
-//trace:checks INV-005
+//trace:checks INV-004 INV-005
 func TestPrecedingUpdateNotReflected(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -215,9 +210,7 @@ func TestPrecedingUpdateNotReflected(t *testing.T) {
 
 // TestMatchesEnvironmentAtApproval は、承認時に予定した Environment の存在と ID が、更新直前の観測と同じかの規則を確かめる。
 //
-//trace:checks INV-001
-//trace:checks INV-004
-//trace:checks FR-010
+//trace:checks INV-001 INV-004 FR-010
 func TestMatchesEnvironmentAtApproval(t *testing.T) {
 	name := mustEnvironmentName(t, "production")
 	lookup := func(existing ...github.Environment) github.EnvironmentObservation {
@@ -275,9 +268,7 @@ func TestMatchesEnvironmentAtApproval(t *testing.T) {
 // TestCheckPrecondition_Environments は、Environment の作成と方式の変更の更新直前の判定表を確かめる。
 // 存在の比べ方は TestMatchesEnvironmentAtApproval、方式の値の比べ方は TestMatchesValueAtApproval が確かめる。
 //
-//trace:checks INV-001
-//trace:checks INV-004
-//trace:checks FR-010
+//trace:checks INV-001 INV-004 FR-010
 func TestCheckPrecondition_Environments(t *testing.T) {
 	production := mustEnvironmentName(t, "production")
 	staging := mustEnvironmentName(t, "staging")

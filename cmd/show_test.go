@@ -9,9 +9,7 @@ import (
 	"github.com/tmknom/reco/internal/githubtest"
 )
 
-//trace:checks FR-003
-//trace:checks FR-004
-//trace:checks QR-001
+//trace:checks FR-003 FR-004 QR-001
 func TestShow_Success(t *testing.T) {
 	cases := []struct {
 		name string
@@ -123,9 +121,7 @@ func TestShow_TokenMissing(t *testing.T) {
 // 観測操作の失敗の種類ごとの文言は internal/github が決めて検証しているため、ここでは失敗が結果として表示されず、
 // 対象と理由が stderr に届くことを 1 種類で確かめる。
 //
-//trace:checks FR-003
-//trace:checks FR-004
-//trace:checks QR-001
+//trace:checks FR-003 FR-004 QR-001
 func TestShow_ObservationFailure(t *testing.T) {
 	server, opts := newGitHubServer(t, githubtest.Response{Status: http.StatusUnauthorized, Body: `{"message": "Bad credentials"}`})
 

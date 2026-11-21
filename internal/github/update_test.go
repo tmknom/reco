@@ -46,8 +46,7 @@ func TestUpdateOutcomeOf(t *testing.T) {
 
 // TestClientUpdate は、更新操作が変える設定から、その更新要求の送り先と本文を選ぶ規則を確かめる。
 //
-//trace:checks INV-001
-//trace:checks FR-011
+//trace:checks INV-001 FR-011
 func TestClientUpdate(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -148,8 +147,7 @@ func TestClientUpdate(t *testing.T) {
 
 // TestUpdateAllowAutoMerge は、送信する要求と本文が変更対象の項目だけであることを確かめる。
 //
-//trace:checks FR-011
-//trace:checks INV-001
+//trace:checks FR-011 INV-001
 func TestUpdateAllowAutoMerge(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -198,8 +196,7 @@ func TestUpdateAllowAutoMerge(t *testing.T) {
 // TestUpdateDeleteBranchOnMerge は、本文が変更対象の項目だけであることを確かめる。
 // 要求の形と結果の判定は updateAllowAutoMerge と共有するため、本文だけを確かめる。
 //
-//trace:checks FR-011
-//trace:checks INV-001
+//trace:checks FR-011 INV-001
 func TestUpdateDeleteBranchOnMerge(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -236,8 +233,7 @@ func TestUpdateDeleteBranchOnMerge(t *testing.T) {
 // TestUpdateAllowAutoMergeRejected は、GitHub が拒否した更新を成否不明と取り違えず、再送しないことを確かめる。
 // ステータスごとの種類は TestClassifyFailure が、拒否と成否不明の境界は TestUpdateOutcomeOf が確かめる。
 //
-//trace:checks FR-013
-//trace:checks INV-005
+//trace:checks FR-013 INV-005
 func TestUpdateAllowAutoMergeRejected(t *testing.T) {
 	var received atomic.Int32
 	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -259,8 +255,7 @@ func TestUpdateAllowAutoMergeRejected(t *testing.T) {
 
 // TestUpdateAllowAutoMergeOutcomeUnknown は、成否を確認できない応答を成否不明として返し、再送しないことを確かめる。
 //
-//trace:checks FR-013
-//trace:checks INV-005
+//trace:checks FR-013 INV-005
 func TestUpdateAllowAutoMergeOutcomeUnknown(t *testing.T) {
 	var redirected atomic.Int32
 	redirectTarget := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -377,9 +372,7 @@ func TestDescribeUpdateOutcome(t *testing.T) {
 
 // TestUpdateDefaultWorkflowPermissions は、送信する要求と本文が変更対象の項目だけであり、本文のない 204 を成功とすることを確かめる。
 //
-//trace:checks FR-011
-//trace:checks FR-013
-//trace:checks INV-001
+//trace:checks FR-011 FR-013 INV-001
 func TestUpdateDefaultWorkflowPermissions(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -428,8 +421,7 @@ func TestUpdateDefaultWorkflowPermissions(t *testing.T) {
 // TestUpdateCanApprovePullRequestReviews は、本文が変更対象の項目だけであることを確かめる。
 // 要求の形と結果の判定は updateDefaultWorkflowPermissions と共有するため、本文だけを確かめる。
 //
-//trace:checks FR-011
-//trace:checks INV-001
+//trace:checks FR-011 INV-001
 func TestUpdateCanApprovePullRequestReviews(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -465,8 +457,7 @@ func TestUpdateCanApprovePullRequestReviews(t *testing.T) {
 
 // TestUpdateWorkflowPermissionsRejected は、GitHub が拒否した PUT を失敗として返し、再送しないことを確かめる。
 //
-//trace:checks FR-013
-//trace:checks INV-005
+//trace:checks FR-013 INV-005
 func TestUpdateWorkflowPermissionsRejected(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -503,9 +494,7 @@ func TestUpdateWorkflowPermissionsRejected(t *testing.T) {
 // TestUpdateWorkflowPermissionsOutcomeUnknown は、正常応答の 204 以外で成否を確認できない応答を成否不明として返し、再送せず、
 // リダイレクトに追従せず、トークンや応答の内容をエラー文言に含めないことを確かめる。
 //
-//trace:checks FR-013
-//trace:checks INV-005
-//trace:checks QR-001
+//trace:checks FR-013 INV-005 QR-001
 func TestUpdateWorkflowPermissionsOutcomeUnknown(t *testing.T) {
 	var redirected atomic.Int32
 	redirectTarget := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
@@ -595,8 +584,7 @@ func TestUpdateWorkflowPermissionsOutcomeUnknown(t *testing.T) {
 // TestUpdateActionsEnabled は、本文が enabled だけで、allowed_actions と sha_pinning_required を送らないことを確かめる。
 // 要求の見出しと送り先は、同じ更新エンドポイントの TestUpdateAllowedActions と TestClientUpdate が確かめる。
 //
-//trace:checks FR-011
-//trace:checks INV-001
+//trace:checks FR-011 INV-001
 func TestUpdateActionsEnabled(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -633,8 +621,7 @@ func TestUpdateActionsEnabled(t *testing.T) {
 // TestUpdateSHAPinningRequired は、false を送るときも enabled が true のままであることを確かめる。
 // true を送る形は TestClientUpdate が確かめる。
 //
-//trace:checks FR-011
-//trace:checks INV-001
+//trace:checks FR-011 INV-001
 func TestUpdateSHAPinningRequired(t *testing.T) {
 	var gotBody []byte
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -658,9 +645,7 @@ func TestUpdateSHAPinningRequired(t *testing.T) {
 
 // TestUpdateAllowedActions は、要求の形と、本文が enabled: true と allowed_actions だけであることを確かめる。
 //
-//trace:checks FR-011
-//trace:checks FR-013
-//trace:checks INV-001
+//trace:checks FR-011 FR-013 INV-001
 func TestUpdateAllowedActions(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -719,8 +704,7 @@ func TestUpdateAllowedActions(t *testing.T) {
 // ステータスごとの種類は TestClassifyFailure が、失敗と成否不明の境界は TestUpdateOutcomeOf が、
 // リダイレクトと応答の喪失の扱いは TestUpdateWorkflowPermissionsOutcomeUnknown が確かめる。
 //
-//trace:checks FR-013
-//trace:checks INV-005
+//trace:checks FR-013 INV-005
 func TestUpdateAllowedActionsRejected(t *testing.T) {
 	var received atomic.Int32
 	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -764,8 +748,7 @@ func TestUpdateAccessLevelRejected(t *testing.T) {
 
 // TestEncodeSelectedActions は、Selected actions の本文が3項目をすべて含み、許可パターンを受け取った順のまま JSON の規則で送ることを確かめる。
 //
-//trace:checks FR-011
-//trace:checks INV-001
+//trace:checks FR-011 INV-001
 func TestEncodeSelectedActions(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -819,8 +802,7 @@ func TestMustMarshalJSONPanicsOnUnsupportedType(t *testing.T) {
 
 // TestUpdateSelectedActions は、要求の形と、本文に encodeSelectedActions の結果を送ることを確かめる。本文の規則は TestEncodeSelectedActions が確かめる。
 //
-//trace:checks FR-011
-//trace:checks FR-013
+//trace:checks FR-011 FR-013
 func TestUpdateSelectedActions(t *testing.T) {
 	var gotMethod, gotPath string
 	var gotHeader http.Header
@@ -866,8 +848,7 @@ func TestUpdateSelectedActions(t *testing.T) {
 
 // TestUpdateSelectedActionsRejected は、GitHub が競合として拒否した更新を失敗として返し、error がこの更新操作と対象を示し、再送しないことを確かめる。
 //
-//trace:checks FR-013
-//trace:checks INV-005
+//trace:checks FR-013 INV-005
 func TestUpdateSelectedActionsRejected(t *testing.T) {
 	var received atomic.Int32
 	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -900,8 +881,7 @@ func closeConnection(t *testing.T, w http.ResponseWriter) {
 
 // TestCreateEnvironment は、本文なしの PUT を Environment の名前を1要素にした宛先へ一度だけ送ることを確かめる。
 //
-//trace:checks INV-001
-//trace:checks FR-011
+//trace:checks INV-001 FR-011
 func TestCreateEnvironment(t *testing.T) {
 	cases := []struct {
 		name            string
@@ -953,8 +933,7 @@ func TestCreateEnvironment(t *testing.T) {
 
 // TestCreateEnvironmentPanicsOnUnaddressableName は、URL を組めない名前の更新を、要求を送らずに不変条件の破れとして panic することを確かめる。
 //
-//trace:checks INV-001
-//trace:checks FR-011
+//trace:checks INV-001 FR-011
 func TestCreateEnvironmentPanicsOnUnaddressableName(t *testing.T) {
 	var received atomic.Int32
 	c := newTestClient(t, func(http.ResponseWriter, *http.Request) { received.Add(1) })
@@ -985,8 +964,7 @@ func TestCreateEnvironmentPanicsOnUnaddressableName(t *testing.T) {
 
 // TestUpdateEnvironmentDeploymentBranchPolicy は、本文が deployment_branch_policy のキーだけで、方式の値を GitHub の形にすることを確かめる。
 //
-//trace:checks INV-001
-//trace:checks FR-011
+//trace:checks INV-001 FR-011
 func TestUpdateEnvironmentDeploymentBranchPolicy(t *testing.T) {
 	cases := []struct {
 		name string
@@ -1070,8 +1048,7 @@ func TestUpdateEnvironmentDeploymentBranchPolicyErrorNamesTheOperation(t *testin
 // TestUpdateEnvironmentOutcome は、Environment の更新の応答から成否を判定し、再送しないことを確かめる。
 // 方式の更新と作成は同じ非公開の更新要求を通るため、作成で確かめる。
 //
-//trace:checks FR-013
-//trace:checks INV-005
+//trace:checks FR-013 INV-005
 func TestUpdateEnvironmentOutcome(t *testing.T) {
 	validBody := githubtest.EnvironmentBody{ID: 7, Name: "Prod/Eu"}.JSON()
 	cases := []struct {

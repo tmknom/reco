@@ -12,8 +12,7 @@ import (
 // TestUnexpectedOutsideChanges は、二つの更新操作からなる論理的な設定変更で、変更対象外の設定を
 // その設定が影響を受け得る最初の更新操作の直前の観測と比べる規則を確かめる。
 //
-//trace:checks INV-001
-//trace:checks FR-012
+//trace:checks INV-001 FR-012
 func TestUnexpectedOutsideChanges(t *testing.T) {
 	selectedWith := func(shaPinningRequired bool, criteria setting.SelectedActionsCriteria) github.ObservationResult {
 		permissions := actionsSelected(criteria)
@@ -93,8 +92,7 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 
 // TestOutsideChangesAt は、論理的な設定変更が変えない設定を、管理範囲によらず比べる規則を確かめる。
 //
-//trace:checks INV-001
-//trace:checks FR-012
+//trace:checks INV-001 FR-012
 func TestOutsideChangesAt(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -271,8 +269,7 @@ func TestOutsideChangesAt(t *testing.T) {
 
 // TestEnvironmentProtectionChanges は、Environment の更新操作の変更対象外の設定を、その名前の Environment の保護設定に限って比べる規則を確かめる。
 //
-//trace:checks INV-001
-//trace:checks FR-012
+//trace:checks INV-001 FR-012
 func TestEnvironmentProtectionChanges(t *testing.T) {
 	staging := mustEnvironmentName(t, "staging")
 	wait := func(minutes int) *int { return &minutes }

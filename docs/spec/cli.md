@@ -78,11 +78,11 @@ $ GH_TOKEN=$(gh auth token) reco plan
 |---|---|---|
 | `alignment` | `FR-003` | Functional Requirement |
 | `alignment` | `QR-001` | Quality Requirement |
-| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
-| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
-| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
-| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Internal Document |
-| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Repository File |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
+| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Repository File |
 
 ## 4. `plan`：変更計画の確認
 
@@ -357,10 +357,10 @@ Repositories checked: 2
 | `alignment` | `INV-003` | Invariant |
 | `alignment` | `INV-004` | Invariant |
 | `alignment` | `INV-005` | Invariant |
-| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
-| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
-| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
-| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Repository File |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
 
 ### 5.1 承認
 
@@ -723,10 +723,10 @@ Environments:
 |---|---|---|
 | `alignment` | `FR-004` | Functional Requirement |
 | `alignment` | `QR-002` | Quality Requirement |
-| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
-| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Internal Document |
-| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Internal Document |
-| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Internal Document |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
+| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
+| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Repository File |
 
 ## 7. 出力と終了コード
 
@@ -776,8 +776,8 @@ GitHub は、名前変更前の名前で指定したリポジトリへの要求�
 | `alignment` | `FR-013` | Functional Requirement |
 | `alignment` | `QR-001` | Quality Requirement |
 | `alignment` | `QR-002` | Quality Requirement |
-| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Internal Document |
-| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Internal Document |
+| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Repository File |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
 
 ## 8. References
 

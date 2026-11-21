@@ -8,8 +8,7 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-//trace:checks FR-007
-//trace:checks INV-001
+//trace:checks FR-007 INV-001
 func TestSideEffects(t *testing.T) {
 	criteria := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: []string{"example/*"}}
 	policyValue := setting.AllowedActionsPolicyValue

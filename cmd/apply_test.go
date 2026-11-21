@@ -21,8 +21,7 @@ type streamWrite struct {
 	stream, text string
 }
 
-//trace:checks FR-008
-//trace:checks FR-002
+//trace:checks FR-008 FR-002
 func TestApply_NoChanges(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "sub/custom.yaml", declaredTwoRepositories)
@@ -45,9 +44,7 @@ func TestApply_NoChanges(t *testing.T) {
 	}
 }
 
-//trace:checks FR-009
-//trace:checks FR-011
-//trace:checks QR-001
+//trace:checks FR-009 FR-011 QR-001
 func TestApply_Approved(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", declaredRepository)
@@ -259,8 +256,7 @@ func TestApply_ApprovedWithTwoUpdates(t *testing.T) {
 	}
 }
 
-//trace:checks FR-009
-//trace:checks INV-003
+//trace:checks FR-009 INV-003
 func TestApply_NotApproved(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -314,9 +310,7 @@ func (w taggedWriter) Write(p []byte) (int, error) {
 // TestApply_SideEffectOnStdoutBeforeApprovalPrompt は、副作用を伴う変更計画で、Side effect: を stdout に、
 // 承認プロンプトを stderr に、この順で書くことを確かめる。
 //
-//trace:checks FR-009
-//trace:checks INV-001
-//trace:checks INV-003
+//trace:checks FR-009 INV-001 INV-003
 func TestApply_SideEffectOnStdoutBeforeApprovalPrompt(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", `repositories:
@@ -378,9 +372,7 @@ func TestApply_CanceledWhileWaitingForApproval(t *testing.T) {
 // 宣言順に一つずつ更新し、対象リポジトリのあいだで更新要求の間隔を待つ配線を確かめる。
 // 応答の数は観測し直しを求めない数だけ渡すため、待機が一回であることは、間隔が対象リポジトリをまたいで apply に届いていることを示す。
 //
-//trace:checks FR-009
-//trace:checks FR-011
-//trace:checks INV-003
+//trace:checks FR-009 FR-011 INV-003
 func TestApply_ApprovedMultipleRepositories(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", declaredTwoRepositories)
@@ -438,8 +430,7 @@ func TestApply_ApprovedMultipleRepositories(t *testing.T) {
 
 // 2件目の観測が失敗すると、変更計画を示さず、承認を求めず、更新要求を送らない。
 //
-//trace:checks INV-002
-//trace:checks FR-008
+//trace:checks INV-002 FR-008
 func TestApply_SecondObservationFailureFailsBeforeApproval(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", declaredTwoRepositories)
@@ -491,8 +482,7 @@ func TestApply_NoChangesForAllRepositories(t *testing.T) {
 	}
 }
 
-//trace:checks INV-002
-//trace:checks FR-003
+//trace:checks INV-002 FR-003
 func TestApply_FailsBeforeApproval(t *testing.T) {
 	cases := []struct {
 		name   string
