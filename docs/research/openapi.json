@@ -820,6 +820,119 @@
         }
       }
     },
+    "/repos/{owner}/{repo}/automated-security-fixes": {
+      "get": {
+        "summary": "Check if Dependabot security updates are enabled for a repository",
+        "description": "Shows whether Dependabot security updates are enabled, disabled or paused for a repository. The authenticated user must have admin read access to the repository. For more information, see \"[Configuring Dependabot security updates](https://docs.github.com/articles/configuring-automated-security-fixes)\".",
+        "tags": [
+          "repos"
+        ],
+        "operationId": "repos/check-automated-security-fixes",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/repos/repos#check-if-dependabot-security-updates-are-enabled-for-a-repository"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Response if Dependabot is enabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/check-automated-security-fixes"
+                },
+                "examples": {
+                  "default": {
+                    "value": {
+                      "enabled": true,
+                      "paused": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found if Dependabot is not enabled for the repository"
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "repos",
+          "subcategory": "repos"
+        }
+      },
+      "put": {
+        "summary": "Enable Dependabot security updates",
+        "description": "Enables Dependabot security updates for a repository. The authenticated user must have admin access to the repository. For more information, see \"[Configuring Dependabot security updates](https://docs.github.com/articles/configuring-automated-security-fixes)\".",
+        "tags": [
+          "repos"
+        ],
+        "operationId": "repos/enable-automated-security-fixes",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/repos/repos#enable-dependabot-security-updates"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Response"
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "repos",
+          "subcategory": "repos"
+        }
+      },
+      "delete": {
+        "summary": "Disable Dependabot security updates",
+        "description": "Disables Dependabot security updates for a repository. The authenticated user must have admin access to the repository. For more information, see \"[Configuring Dependabot security updates](https://docs.github.com/articles/configuring-automated-security-fixes)\".",
+        "tags": [
+          "repos"
+        ],
+        "operationId": "repos/disable-automated-security-fixes",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/repos/repos#disable-dependabot-security-updates"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Response"
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "repos",
+          "subcategory": "repos"
+        }
+      }
+    },
     "/repos/{owner}/{repo}/environments": {
       "get": {
         "summary": "List environments",
@@ -1297,6 +1410,231 @@
           "enabledForGitHubApps": true,
           "category": "deployments",
           "subcategory": "branch-policies"
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/private-vulnerability-reporting": {
+      "get": {
+        "summary": "Check if private vulnerability reporting is enabled for a repository",
+        "description": "Returns a boolean indicating whether or not private vulnerability reporting is enabled for the repository. For more information, see \"[Evaluating the security settings of a repository](https://docs.github.com/code-security/security-advisories/working-with-repository-security-advisories/evaluating-the-security-settings-of-a-repository)\".",
+        "tags": [
+          "repos"
+        ],
+        "operationId": "repos/check-private-vulnerability-reporting",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/repos/repos#check-if-private-vulnerability-reporting-is-enabled-for-a-repository"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private vulnerability reporting status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Whether or not private vulnerability reporting is enabled for the repository."
+                    }
+                  },
+                  "required": [
+                    "enabled"
+                  ]
+                },
+                "examples": {
+                  "default": {
+                    "value": {
+                      "enabled": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/bad_request"
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "repos",
+          "subcategory": "repos"
+        }
+      },
+      "put": {
+        "summary": "Enable private vulnerability reporting for a repository",
+        "description": "Enables private vulnerability reporting for a repository. The authenticated user must have admin access to the repository. For more information, see \"[Privately reporting a security vulnerability](https://docs.github.com/code-security/security-advisories/guidance-on-reporting-and-writing/privately-reporting-a-security-vulnerability).\"",
+        "tags": [
+          "repos"
+        ],
+        "operationId": "repos/enable-private-vulnerability-reporting",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/repos/repos#enable-private-vulnerability-reporting-for-a-repository"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          }
+        ],
+        "responses": {
+          "204": {
+            "$ref": "#/components/responses/no_content"
+          },
+          "422": {
+            "$ref": "#/components/responses/bad_request"
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "repos",
+          "subcategory": "repos"
+        }
+      },
+      "delete": {
+        "summary": "Disable private vulnerability reporting for a repository",
+        "description": "Disables private vulnerability reporting for a repository. The authenticated user must have admin access to the repository. For more information, see \"[Privately reporting a security vulnerability](https://docs.github.com/code-security/security-advisories/guidance-on-reporting-and-writing/privately-reporting-a-security-vulnerability)\".",
+        "tags": [
+          "repos"
+        ],
+        "operationId": "repos/disable-private-vulnerability-reporting",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/repos/repos#disable-private-vulnerability-reporting-for-a-repository"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          }
+        ],
+        "responses": {
+          "204": {
+            "$ref": "#/components/responses/no_content"
+          },
+          "422": {
+            "$ref": "#/components/responses/bad_request"
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "repos",
+          "subcategory": "repos"
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/vulnerability-alerts": {
+      "get": {
+        "summary": "Check if vulnerability alerts are enabled for a repository",
+        "description": "Shows whether dependency alerts are enabled or disabled for a repository. The authenticated user must have admin read access to the repository. For more information, see \"[About security alerts for vulnerable dependencies](https://docs.github.com/articles/about-security-alerts-for-vulnerable-dependencies)\".",
+        "tags": [
+          "repos"
+        ],
+        "operationId": "repos/check-vulnerability-alerts",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/repos/repos#check-if-vulnerability-alerts-are-enabled-for-a-repository"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Response if repository is enabled with vulnerability alerts"
+          },
+          "404": {
+            "description": "Not Found if repository is not enabled with vulnerability alerts"
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "repos",
+          "subcategory": "repos"
+        }
+      },
+      "put": {
+        "summary": "Enable vulnerability alerts",
+        "description": "Enables dependency alerts and the dependency graph for a repository. The authenticated user must have admin access to the repository. For more information, see \"[About security alerts for vulnerable dependencies](https://docs.github.com/articles/about-security-alerts-for-vulnerable-dependencies)\".",
+        "tags": [
+          "repos"
+        ],
+        "operationId": "repos/enable-vulnerability-alerts",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/repos/repos#enable-vulnerability-alerts"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Response"
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "repos",
+          "subcategory": "repos"
+        }
+      },
+      "delete": {
+        "summary": "Disable vulnerability alerts",
+        "description": "Disables dependency alerts and the dependency graph for a repository.\nThe authenticated user must have admin access to the repository. For more information,\nsee \"[About security alerts for vulnerable dependencies](https://docs.github.com/articles/about-security-alerts-for-vulnerable-dependencies)\".",
+        "tags": [
+          "repos"
+        ],
+        "operationId": "repos/disable-vulnerability-alerts",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/repos/repos#disable-vulnerability-alerts"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Response"
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "repos",
+          "subcategory": "repos"
         }
       }
     }
@@ -2629,6 +2967,21 @@
       }
     },
     "responses": {
+      "bad_request": {
+        "description": "Bad Request",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/basic-error"
+            }
+          },
+          "application/scim+json": {
+            "schema": {
+              "$ref": "#/components/schemas/scim-error"
+            }
+          }
+        }
+      },
       "forbidden": {
         "description": "Forbidden",
         "content": {
@@ -2648,6 +3001,9 @@
             }
           }
         }
+      },
+      "no_content": {
+        "description": "A header with no content is returned."
       },
       "not_found": {
         "description": "Resource not found",
@@ -2787,6 +3143,27 @@
             "type": "string"
           }
         }
+      },
+      "check-automated-security-fixes": {
+        "title": "Check Dependabot security updates",
+        "description": "Check Dependabot security updates",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "example": true,
+            "description": "Whether Dependabot security updates are enabled for the repository."
+          },
+          "paused": {
+            "type": "boolean",
+            "example": false,
+            "description": "Whether Dependabot security updates are paused for the repository."
+          }
+        },
+        "required": [
+          "enabled",
+          "paused"
+        ]
       },
       "code-of-conduct-simple": {
         "title": "Code Of Conduct Simple",
@@ -5036,6 +5413,38 @@
           "created_at",
           "updated_at"
         ]
+      },
+      "scim-error": {
+        "title": "Scim Error",
+        "description": "Scim Error",
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "nullable": true
+          },
+          "documentation_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer"
+          },
+          "scimType": {
+            "type": "string",
+            "nullable": true
+          },
+          "schemas": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
       },
       "security-and-analysis": {
         "nullable": true,
