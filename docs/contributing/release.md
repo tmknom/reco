@@ -13,7 +13,7 @@ CLI の名前は、`release.yml` の `APP_NAME` と `.goreleaser.yaml` の `proj
 | リポジトリ | 個人アカウントが所有する Public リポジトリ。起動者の制限（[リリースの起点とバージョン](#リリースの起点とバージョン)）は、所有者がユーザーであることを前提とする |
 | 実行基盤 | GitHub-hosted runners |
 | 配布する CLI | リポジトリ直下の main パッケージ。バイナリ名は `reco` |
-| 配布物 | Linux / macOS / Windows × amd64 / arm64 の 6 種類の配布バイナリと、バイナリごとの SBOM（SPDX JSON）。アーカイブにはせず、バイナリをそのまま配布する |
+| アーティファクト | Linux / macOS / Windows × amd64 / arm64 の 6 種類の実行ファイルと、バイナリごとの SBOM（SPDX JSON）。アーカイブにはせず、バイナリをそのまま配布する |
 | コンテナ | `linux/amd64`、`linux/arm64` のマルチアーキテクチャイメージ `ghcr.io/tmknom/reco` |
 | リリースの起点 | ローカルで作成してプッシュした `vX.Y.Z` 形式の Git タグ（[タグの作成](#タグの作成)） |
 | 認証 | `GITHUB_TOKEN` と GitHub Actions の OIDC だけを使う。長期保管する秘密鍵や GitHub App は導入しない |
@@ -28,9 +28,9 @@ deb / rpm / apk の OS パッケージと Homebrew Formula は、現時点では
 
 | 性質 | 保証・検証する内容 | 保証しない内容 |
 |---|---|---|
-| 完全性 | 配布バイナリと SBOM の SHA-256、OCI イメージの digest が期待値に一致する | ハッシュ値だけで期待値の入手元を信頼できること |
+| 完全性 | 実行ファイルと SBOM の SHA-256、OCI イメージの digest が期待値に一致する | ハッシュ値だけで期待値の入手元を信頼できること |
 | 来歴 | 成果物の digest と、リポジトリ、タグ、コミット、署名したワークフローの対応が署名で検証できる | 実行された処理やソースコードが安全であること、SBOM の記載内容が正確であること |
-| 機能品質 | テストが成功する。linux_amd64 の配布バイナリと、amd64 / arm64 のコンテナで、`--version` の出力がタグと一致する | 全障害・全欠陥の不存在、Linux 以外の OS での実行 |
+| 機能品質 | テストが成功する。linux_amd64 の実行ファイルと、amd64 / arm64 のコンテナで、`--version` の出力がタグと一致する | 全障害・全欠陥の不存在、Linux 以外の OS での実行 |
 | 公開の一貫性 | GitHub Release と GHCR のイメージを `container-image.txt` の digest で結び付け、公開後に照合する | GitHub Releases と GHCR の原子的な同時公開 |
 
 再現可能性（同じ入力から同じバイト列を再生成できること）と既知の脆弱性の検査は、現時点の保証に含めません。
@@ -54,8 +54,8 @@ SLSA の Build Level を名乗ることは目的にしません。
 - **ワークフローの成功**：post-verify までのすべてのジョブが成功した状態である。正式リリースの完了点とは別に判定するため、post-verify が失敗した場合は「公開済みだが、公開後の照合に失敗した」状態になる
 
 CLI は `--version` で、ビルド時に `-X main.version=<バージョン>` で埋め込んだ値だけを1行で出力します（出力の形式は [CLI](../spec/cli.md) が定めます）。
-GoReleaser が埋め込む値は先頭の `v` を除いた形（`1.2.3`）で、配布バイナリのファイル名に入るバージョンと同じです。
-ワークフローはこの出力を、ビルドしたバイナリにタグのバージョンが埋め込まれたことの確認に使います（build で linux_amd64 の配布バイナリ、verify-image でイメージ）。
+GoReleaser が埋め込む値は先頭の `v` を除いた形（`1.2.3`）で、実行ファイルのファイル名に入るバージョンと同じです。
+ワークフローはこの出力を、ビルドしたバイナリにタグのバージョンが埋め込まれたことの確認に使います（build で linux_amd64 の実行ファイル、verify-image でイメージ）。
 
 アプリケーション名とバージョンは、ワークフローの `env` に1回だけ書き、各ジョブはそれを参照します。
 preflight の outputs で後続のジョブへ渡す方法は採りません。
@@ -96,13 +96,13 @@ preflight ── タグが main の履歴にあるか、同じバージョンの
 test ── go mod verify / go vet / go test
     │
     ▼
-build ── GoReleaser で配布バイナリ 6 件、SBOM 6 件、SHA256SUMS を生成し、ビルド設定とバージョンを確認
+build ── GoReleaser で実行ファイル 6 件、SBOM 6 件、SHA256SUMS を生成し、ビルド設定とバージョンを確認
     │
     ▼
-attest ── 配布バイナリと SBOM の Artifact Attestation
+attest ── 実行ファイルと SBOM の Artifact Attestation
     │
     ▼
-container ── Linux 向けの配布バイナリを OCI 化して GHCR へ公開、証明
+container ── Linux 向けの実行ファイルを OCI 化して GHCR へ公開、証明
     │
     ▼
 verify-image ── GHCR から digest 指定で取得し、証明の検証、バイナリ照合、実行
@@ -115,7 +115,7 @@ post-verify ── 公開済みのアセットと GHCR を取得し直して照�
 ```
 
 取り消しにくい処理ほど後ろに置きます。
-GHCR への公開は、ビルドと配布バイナリの確認、来歴証明が成功してから行い、GitHub Release の公開は、GHCR に公開したイメージの検証が成功してから行います。
+GHCR への公開は、ビルドと実行ファイルの確認、来歴証明が成功してから行い、GitHub Release の公開は、GHCR に公開したイメージの検証が成功してから行います。
 
 | ジョブ | `needs` | `GITHUB_TOKEN` の権限 | ソースの Checkout |
 |---|---|---|---|
@@ -169,7 +169,7 @@ preflight は「Re-run all jobs」では実行し直されますが、「Re-run 
 
 ### build
 
-GoReleaser OSS で配布バイナリ 6 件、SBOM 6 件、`SHA256SUMS` を生成し、`release-assets` という名前の Actions Artifact としてアップロードします。
+GoReleaser OSS で実行ファイル 6 件、SBOM 6 件、`SHA256SUMS` を生成し、`release-assets` という名前の Actions Artifact としてアップロードします。
 このジョブの出力が、以降のすべてのジョブが扱う正規の成果物です。
 
 GoReleaser の `archives` の `binary` 形式は、配布するバイナリを `dist/` 直下に置かず、ビルド先のパスのまま配布名を与えます。
@@ -185,7 +185,7 @@ GoReleaser の `archives` の `binary` 形式は、配布するバイナリを `
 - **ディレクトリの中身**：バイナリの実行の後に、アップロードするディレクトリに配布するファイルと `SHA256SUMS` 以外がない。Upload はディレクトリごとアップロードするため、実行で生じたファイルも含めて確かめる
 - **照合**：最後に `SHA256SUMS` で照合し、照合したファイルをそのままアップロードする
 
-配布バイナリの確認を別ジョブにせず build に置くのは、アップロードするファイルそのものを確かめられ、build が OIDC も公開の権限も持たないためです。
+実行ファイルの確認を別ジョブにせず build に置くのは、アップロードするファイルそのものを確かめられ、build が OIDC も公開の権限も持たないためです。
 test ジョブでは、GoReleaser が作ったバイナリがまだ存在しないため、`-X` が効いたかを確かめられません。
 
 `--version` を公開前に実行して確かめるのは、linux_amd64 だけです。
@@ -195,7 +195,7 @@ darwin と windows は、`ldflags` が全ターゲットで共通であるとい
 
 ### attest
 
-`actions/attest` に `subject-checksums` として `SHA256SUMS` を渡し、`SHA256SUMS` に列挙された配布バイナリ 6 件と SBOM 6 件に SLSA Build Provenance の Artifact Attestation を付けます。
+`actions/attest` に `subject-checksums` として `SHA256SUMS` を渡し、`SHA256SUMS` に列挙された実行ファイル 6 件と SBOM 6 件に SLSA Build Provenance の Artifact Attestation を付けます。
 `SHA256SUMS` 自体は subject に含まれません。
 
 `actions/attest` は predicate の入力を省いたときに Build Provenance を作るため、入力は省きます。
@@ -207,11 +207,11 @@ darwin と windows は、`ldflags` が全ターゲットで共通であるとい
 
 ### container
 
-Linux 向けの配布バイナリ 2 件からマルチアーキテクチャのイメージをビルドし、GHCR に `vX.Y.Z` のタグで公開します。
+Linux 向けの実行ファイル 2 件からマルチアーキテクチャのイメージをビルドし、GHCR に `vX.Y.Z` のタグで公開します。
 公開した Image Index の digest に Artifact Attestation を付け、digest 付きの参照を後続のジョブへ渡します。
 
 GHCR への公開も取り消しにくいため、[release](#release) と同じく、来歴の検証を公開の条件にします。
-検証するのは、イメージに格納する Linux 向けの配布バイナリ 2 件だけです。
+検証するのは、イメージに格納する Linux 向けの実行ファイル 2 件だけです。
 
 公開の直前にも、同じバージョンのタグがないことを preflight と同じ判定で確かめます。
 これは、公開後の Attestation の生成などでこのジョブが失敗したとき、「Re-run failed jobs」で同じタグへ再び公開するのを防ぐためです。
@@ -230,7 +230,7 @@ amd64 と arm64 の runner で1回ずつ実行し、エミュレーションで�
 来歴とバイナリの一致を確かめてから、イメージを実行します。
 
 - **来歴**：Image Index の digest の Attestation が、期待する predicate type、リポジトリ、署名したワークフロー、タグ、コミット SHA で検証できる
-- **バイナリ**：イメージ内のバイナリが、Linux 向けの配布バイナリとバイト単位で一致する
+- **バイナリ**：イメージ内のバイナリが、Linux 向けの実行ファイルとバイト単位で一致する
 - **実行ユーザー**：`nonroot:nonroot` である
 - **バージョン**：`--version` の出力がタグと一致する
 
@@ -293,10 +293,10 @@ GitHub Release のアセットは、次の 14 件です。
 
 | アセット | 内容 | 生成するジョブ |
 |---|---|---|
-| `reco_<バージョン>_<os>_<arch>` | Linux、macOS 向けの配布バイナリ。4 件 | build |
-| `reco_<バージョン>_windows_<arch>.exe` | Windows 向けの配布バイナリ。2 件 | build |
-| `<配布バイナリ名>.sbom.json` | 配布バイナリごとの SBOM（SPDX JSON）。6 件 | build |
-| `SHA256SUMS` | 配布バイナリ 6 件と SBOM 6 件の SHA-256 | build |
+| `reco_<バージョン>_<os>_<arch>` | Linux、macOS 向けの実行ファイル。4 件 | build |
+| `reco_<バージョン>_windows_<arch>.exe` | Windows 向けの実行ファイル。2 件 | build |
+| `<実行ファイル名>.sbom.json` | 実行ファイルごとの SBOM（SPDX JSON）。6 件 | build |
+| `SHA256SUMS` | 実行ファイル 6 件と SBOM 6 件の SHA-256 | build |
 | `container-image.txt` | GHCR のイメージの digest 付きの参照。1行 | release |
 
 `<バージョン>` は先頭の `v` を除いた形です。
@@ -304,9 +304,9 @@ GitHub Release のアセットは、次の 14 件です。
 
 HTTP でダウンロードしたファイルには実行権限が付かないため、Linux と macOS の利用者は、ダウンロードしたバイナリに実行権限を付けてから使います（利用者向けの手順は `install -m 0755` で付ける）。
 
-ジョブ間で受け渡す Actions Artifact は `release-assets` の1つだけで、中身は配布バイナリ 6 件、SBOM 6 件、`SHA256SUMS` です。
-コンテナに格納する Linux バイナリは、container がこの Artifact の配布バイナリをそのまま使います。
-配布物と同じバイト列のため、配布バイナリを `SHA256SUMS` と Artifact Attestation で検証すれば足ります。
+ジョブ間で受け渡す Actions Artifact は `release-assets` の1つだけで、中身は実行ファイル 6 件、SBOM 6 件、`SHA256SUMS` です。
+コンテナに格納する Linux バイナリは、container がこの Artifact の実行ファイルをそのまま使います。
+アーティファクトと同じバイト列のため、実行ファイルを `SHA256SUMS` と Artifact Attestation で検証すれば足ります。
 Actions Artifact はファイルの実行権限を保持しないため、後続のジョブはバイナリを実行せず、イメージには Dockerfile の `COPY --chmod=0755` で実行権限を付けて格納します。
 
 イメージの参照（イメージ名、タグ付きの参照、digest 付きの参照）は、それぞれ1か所で定め、各ジョブでは組み立てずに受け取ります。
@@ -335,7 +335,7 @@ GoReleaser は runner の環境変数を引き継ぐため、ビルドに関わ�
 ツールチェーンや依存モジュールなど、環境変数以外のビルドの入力は、それぞれ別の方法で固定します（Go のバージョンは後述、依存モジュールは `go.sum`）。
 
 SBOM には生成時刻と実行ごとに変わる文書の識別子が入るため、同じ入力から生成し直しても同じバイト列になりません。
-SBOM の記載内容は、配布バイナリに埋め込まれたビルド情報から Syft が読み取ったもので、正確さはリリースの工程で確かめません。
+SBOM の記載内容は、実行ファイルに埋め込まれたビルド情報から Syft が読み取ったもので、正確さはリリースの工程で確かめません。
 
 `before.hooks` は置きません。
 `go generate` や `go mod tidy` をリリース中に実行すると、ソースや依存の定義がビルドの途中で変わり得るためです。
@@ -353,9 +353,9 @@ reco の `go.mod` には `toolchain` 行があるため、ビルドに使うバ�
 
 イメージを定義する Dockerfile は、container ジョブがワークフロー定義の中で書き出します。
 
-- **Dockerfile をワークフロー定義に固定する**：リポジトリに置いた Dockerfile をビルドに使わない。Dockerfile はビルドの定義で、`RUN`、`syntax` ディレクティブ（BuildKit が指定されたフロントエンドのイメージを取得し、ビルドに使う）、URL や Git リポジトリを指定した `ADD`、イメージを参照する `COPY --from` を加えると、ビルド中に実行したコマンドの結果や外部から取得したファイルが、配布バイナリのような検証を経ずに署名付きのイメージに入る。container ジョブは公開と署名の権限を持つため、Dockerfile の内容を、もともと `main` の変更のレビューに依存しているワークフロー定義に置く。命令を検査する仕組みを持たずに済み、書き出す Dockerfile は `RUN` を使わないため、QEMU も要らない
+- **Dockerfile をワークフロー定義に固定する**：リポジトリに置いた Dockerfile をビルドに使わない。Dockerfile はビルドの定義で、`RUN`、`syntax` ディレクティブ（BuildKit が指定されたフロントエンドのイメージを取得し、ビルドに使う）、URL や Git リポジトリを指定した `ADD`、イメージを参照する `COPY --from` を加えると、ビルド中に実行したコマンドの結果や外部から取得したファイルが、実行ファイルのような検証を経ずに署名付きのイメージに入る。container ジョブは公開と署名の権限を持つため、Dockerfile の内容を、もともと `main` の変更のレビューに依存しているワークフロー定義に置く。命令を検査する仕組みを持たずに済み、書き出す Dockerfile は `RUN` を使わないため、QEMU も要らない
 - **ベースイメージ**：Distroless static の nonroot。非 cgo の Go バイナリが必要とすることの多い CA 証明書とタイムゾーン情報を含む。Image Index の digest で固定し、Dependabot で更新する。Dependabot が読めるよう、固定する値はリポジトリ直下の `Dockerfile` の `FROM` に置き、`.github/dependabot.yml` の `docker` の `directory` を `/` にする。このファイルはビルドに使わず、container ジョブは、コメント行と空行を除いて digest で固定した `FROM` の 1 行だけであり、イメージ名がワークフロー定義に書いた名前と一致することを確かめてから、digest だけを取り出す。名前もワークフロー定義に固定するのは、命令と同じく、別のベースイメージに変えると検証を経ない内容が署名付きのイメージに入るためである。別のベースイメージへ移るときは、ワークフロー定義の名前と固定用のファイルを同時に変える
-- **Go を再コンパイルしない**：格納するのは Linux 向けの配布バイナリそのものである。イメージ内のバイナリは配布物とバイト単位で一致する
+- **Go を再コンパイルしない**：格納するのは Linux 向けの実行ファイルそのものである。イメージ内のバイナリはアーティファクトとバイト単位で一致する
 - **実行ユーザーと作業ディレクトリ**：`USER nonroot:nonroot` と、バイナリを指す `ENTRYPOINT` だけを指定し、`WORKDIR` は指定しない。作業ディレクトリはベースイメージの `/home/nonroot` のままのため、利用者は設定ファイルのあるディレクトリをマウントし、`docker run -w` で作業ディレクトリに指定する必要がある
 - **ビルドコンテキスト**：Linux バイナリ 2 つだけを置いた専用ディレクトリを渡す。ソースコードは Buildx に渡らない。Buildx の既定の Git コンテキストは、先行ステップで用意したファイルを反映しないため使わない
 - **タグ**：`vX.Y.Z` だけを付け、`latest` は付けない。イメージの識別と検証には digest を使う
@@ -375,7 +375,7 @@ GHCR へは `docker/login-action` に `GITHUB_TOKEN` を渡してログインし
 
 | subject | 生成するジョブ | 保存先 |
 |---|---|---|
-| 配布バイナリ 6 件と SBOM 6 件（`SHA256SUMS` に列挙されたもの） | attest | GitHub の Attestation API |
+| 実行ファイル 6 件と SBOM 6 件（`SHA256SUMS` に列挙されたもの） | attest | GitHub の Attestation API |
 | GHCR の Image Index digest | container | GitHub の Attestation API と GHCR（`push-to-registry: true`） |
 
 イメージの証明は、container ジョブの中で生成します。
@@ -455,11 +455,11 @@ GitHub の Immutable Releases は、現時点では有効にしません。
 - 公開後の Release のアセットと Git タグを、書き換えから保護すること
 - `SHA256SUMS` と `container-image.txt` の内容を、署名で検証できるようにすること
 
-配布バイナリとイメージには Artifact Attestation が付くため、それらの来歴の検証は Immutable Release がなくても成り立ちます。
+実行ファイルとイメージには Artifact Attestation が付くため、それらの来歴の検証は Immutable Release がなくても成り立ちます。
 
 ## 利用者による検証
 
-利用者は `gh attestation verify` で、配布物の生成元を確かめられます。
+利用者は `gh attestation verify` で、アーティファクトの生成元を確かめられます。
 Attestation は、検証する側が期待値を知っていて初めて意味を持つため、期待値を次のように定めます。
 
 | 期待値 | 値 |
@@ -469,7 +469,7 @@ Attestation は、検証する側が期待値を知っていて初めて意味�
 | ソースの ref | `refs/tags/vX.Y.Z` |
 | 実行基盤 | GitHub-hosted runners（`--deny-self-hosted-runners`） |
 
-配布バイナリは次のように検証します。
+実行ファイルは次のように検証します。
 
 ```bash
 gh attestation verify reco_X.Y.Z_linux_amd64 \
@@ -479,7 +479,7 @@ gh attestation verify reco_X.Y.Z_linux_amd64 \
   --deny-self-hosted-runners
 ```
 
-SBOM も、ファイル名を `<配布バイナリ名>.sbom.json` に変えた同じコマンドで検証します。
+SBOM も、ファイル名を `<実行ファイル名>.sbom.json` に変えた同じコマンドで検証します。
 
 コンテナイメージは、`container-image.txt` に書かれた digest 付きの参照で特定してから検証します。
 
@@ -542,9 +542,9 @@ Syft はタグではなく `main` ブランチのワークフローで署名し�
 3. `CGO_ENABLED=0` でビルドする。
 4. リリースの工程でソースコードや依存の定義を変更しない。
 5. Go のバイナリは build ジョブの GoReleaser だけが生成し、コンテナ化で再コンパイルしない。
-6. コンテナ内のバイナリは、Linux 向けの配布バイナリとバイト単位で一致する。
+6. コンテナ内のバイナリは、Linux 向けの実行ファイルとバイト単位で一致する。
 7. コンテナイメージは、digest で固定したベースイメージとビルドコンテキストのファイルだけで作り、ビルド中にコマンドを実行しない。
-8. 来歴証明の subject は、配布バイナリと SBOM の SHA-256、Image Index の digest である。
+8. 来歴証明の subject は、実行ファイルと SBOM の SHA-256、Image Index の digest である。
 9. OIDC の権限は attest と container だけに、公開の権限は container と release だけに与える。
 10. 必須の検証に失敗した場合は、GitHub Release を公開しない。
 11. 既存の GitHub Release と GHCR のバージョンタグを、自動で上書きしない。
@@ -559,7 +559,7 @@ Syft はタグではなく `main` ブランチのワークフローで署名し�
 - **実行中のタグの付け替え**：Tag Rulesets でタグを保護していないため、実行中にタグを付け替えられる可能性がある。release が公開の直前に、post-verify が公開後にタグの参照先を確認するが、確認の直後の付け替えは防げない
 - **存在確認の誤判定**：エラーメッセージの文言で判定するため、`gh` や Docker Buildx の文言が変わると、存在しないバージョンでも preflight や container が止まる
 - **公開物の書き換え**：Immutable Release を採用していないため、公開後のアセットとタグは書き換えから保護されていない
-- **作り直す前のビルドの Attestation**：利用者による検証はタグの名前を固定し、コミットを固定しない。[失敗時のやり直し](#失敗時のやり直し) で同じバージョンを作り直しても、前の実行が付けた Attestation は残るため、前のビルドの配布バイナリやイメージも利用者の検証を通る
+- **作り直す前のビルドの Attestation**：利用者による検証はタグの名前を固定し、コミットを固定しない。[失敗時のやり直し](#失敗時のやり直し) で同じバージョンを作り直しても、前の実行が付けた Attestation は残るため、前のビルドの実行ファイルやイメージも利用者の検証を通る
 - **Linux 以外の OS での実行**：macOS と Windows のバイナリは、リリースのどの工程でも実行していない。通常 CI が OS ごとに確かめていなければ、OS 固有の不具合を公開前に検出できない
 - **待機中の実行の取り消し**：`concurrency` の `queue` が `single` のため、リリースの実行中に2つ以上の実行が待機に入ると、先に待機していた実行が取り消される。取り消しは実行の一覧に残るため、気付いた時点で再実行する
 
@@ -571,7 +571,7 @@ Syft はタグではなく `main` ブランチのワークフローで署名し�
 |---|---|---|
 | OS matrix の通常 CI | OS 固有の処理がコードに入ったとき | プルリクエストで、Linux / macOS / Windows の runner で `go test` を実行する |
 | SBOM Attestation | `gh attestation verify` だけで、SBOM がどのバイナリを記述しているかまで確かめたいとき | `actions/attest` の `sbom-path` で、バイナリの digest を subject、SBOM を predicate とする Attestation を付ける。1回の呼び出しで渡せる SBOM は1つのため、バイナリごとに呼び出す。現在は、SBOM 自体の来歴と、SBOM に記録したバイナリの SHA-256 で対応を確かめる |
-| コンテナイメージの SBOM | 提供を求められたとき | 格納するバイナリは Linux 向けの配布バイナリと同じため、その SBOM で代えられないかを先に判断する |
+| コンテナイメージの SBOM | 提供を求められたとき | 格納するバイナリは Linux 向けの実行ファイルと同じため、その SBOM で代えられないかを先に判断する |
 | `govulncheck` | 外部のモジュールに依存しているとき | 通常 CI と定期実行で既知の脆弱性を検出し、結果からリスクを評価する。リリースワークフローには加えない。脆弱性を減らすリリースまで止めないよう、検出の有無をリリースの必須条件にしない |
 | 再ビルドによる再現性の確認 | Attestation と実行確認に加えて必要と判断したとき | 別の runner で再ビルドし、正規の `SHA256SUMS` のバイナリの行で照合する。SBOM は生成のたびに変わるため照合から外す |
 | Immutable Release | 同じバージョンの作り直しが不要になったとき | Immutable Releases と Tag Rulesets を有効にし、post-verify と利用者向けの手順に `gh release verify` を加える |

@@ -2,17 +2,17 @@
 
 ## コマンドの一覧
 
-```text
+```bash
 reco [--log-level LEVEL] show  --repo OWNER/REPO
 reco [--log-level LEVEL] plan  [--config PATH] [--repo OWNER/REPO]
 reco [--log-level LEVEL] apply [--config PATH] [--repo OWNER/REPO]
 ```
 
-| コマンド | 用途 | 設定ファイル | GitHub の設定を変えるか |
-|---|---|---|---|
-| `show` | 一つのリポジトリの現在の設定を見る | 使わない | 変えない |
-| `plan` | 設定ファイルと現在の設定を比べ、変更計画を見る | 使う | 変えない |
-| `apply` | 変更計画を見て承認し、設定を変える | 使う | 承認したあとに変える |
+| コマンド | 用途 | GitHub の設定を変えるか |
+|---|---|---|
+| `show` | 一つのリポジトリの現在の設定を見る | 変えない |
+| `plan` | 設定ファイルと現在の設定を比べ、変更計画を見る | 変えない |
+| `apply` | 変更計画を見て承認し、設定を変える | 承認したあとに変える |
 
 ## オプション
 
@@ -24,13 +24,11 @@ reco [--log-level LEVEL] apply [--config PATH] [--repo OWNER/REPO]
 | `--help`（`-h`） | すべて | 使い方を表示する | |
 | `--version`（`-v`） | コマンドを付けない `reco` | バージョンを表示する | |
 
-`--repo` で対象を一つに絞っても、reco は設定ファイル全体を読むため、ほかのリポジトリの書き方に誤りがあれば止まります。
-
 ## `show`
 
 `--repo` で指定したリポジトリの、reco が扱える設定の現在の値を表示します。設定ファイルを書く前に、今の値を確かめるときに使います。
 
-```text
+```bash
 $ reco show --repo example/project-a
 Repository: example/project-a
 
@@ -46,14 +44,6 @@ Workflow permissions:
   can_approve_pull_request_reviews: false
 Actions access:
   access_level: none
-Environments: none
-```
-
-パブリックリポジトリでは、`access_level` を `unavailable (the repository is public)` と表示します。この設定はプライベートリポジトリにだけ適用されるためです。
-
-`Environments:` には、リポジトリの Environment をすべて、GitHub が返した順に表示します。Environment ごとに、デプロイできるブランチとタグの制限（`deployment_branch_policy`）、保護ルール（`wait_timer`、`required_reviewers`）、管理者が保護ルールを迂回できるか（`can_admins_bypass`）を示します。
-
-```text
 Environments:
   - name: "production"
     deployment_branch_policy:
@@ -66,13 +56,11 @@ Environments:
     can_admins_bypass: false
 ```
 
-`mode` は、`all` が制限なし、`protected_branches` が保護されたブランチだけ、`selected` が `patterns` に並べたパターンに一致するブランチ（`branch`）とタグ（`tag`）だけからデプロイできることを示します。`wait_timer` と `required_reviewers` は、その保護ルールがなければ `none` と表示します。レビュアーは、GitHub のユーザー（`User`）かチーム（`Team`）の ID で示します。設定ファイルに書けるのは、Environment の名前と、`mode` と `patterns` です。
-
 ## `plan`
 
 設定ファイルと GitHub 上の現在の設定を比べ、変える予定の設定（変更計画）を表示します。
 
-```text
+```bash
 $ reco plan
 Configuration: ./reco.yaml
 
@@ -90,42 +78,21 @@ Repositories checked: 1
 | `Repository:` | 変える予定のあるリポジトリ。変える予定のないリポジトリは出ない |
 | `<設定>: <現在の値> -> <書いた値>` | GitHub の値が設定ファイルの値と違う設定。承認すると右の値に変える |
 | `environments.<名前>: absent -> present` | 設定ファイルに書いた Environment が GitHub 上にない。承認すると作成する |
-| `<設定>: (<今の状態>) -> <書いた値>` | 今は使われていない設定。`(not in use)` は `allowed_actions` が `selected` でないこと、`(GitHub Actions disabled)` は Actions が無効なこと、`(public repository)` はリポジトリがパブリックで `access_level` が適用されないこと、`(environment absent)` は Environment がまだないこと、`(existence unknown)` は Environment があるかを確かめられないことを示す。`(public repository)` と `(existence unknown)` の行には必ず `Applicability:` の行が付く。下に `Applicability:` の行がなければ、承認すると右の値に変える |
-| `Applicability: not applicable (<理由>)` | 安全に変えるための条件が成り立たないため、reco はこの設定を変えない。括弧の中は、何が成り立っていないかと、設定ファイルにどう書けばよいか |
-| `Patterns to remove:` | `deployment_branch_policy` の `patterns` のうち、GitHub 上にあって設定ファイルにないため、承認するとなくなるパターン |
-| `Patterns to add:` | `deployment_branch_policy` の `patterns` のうち、設定ファイルにあって GitHub 上にないため、承認すると加わるパターン |
-| `Side effect:` | この変更に伴って GitHub が消す値。読み取れた値は括弧の中に出る |
-| `Previous settings:` | Actions を `enabled: true` か `allowed_actions` で有効に戻すと、無効にする前の `sha_pinning_required` などの設定で再開すること。設定ファイルに書いた設定は挙げない。無効のあいだは値を読み取れないため、値は出ない |
+| `<設定>: (<今の状態>) -> <書いた値>` | 今は効いていない設定（Actions が無効、Environment がまだない、など）。承認すると右の値に変える |
+| `Applicability: not applicable (<理由>)` | 安全に変えるための条件が成り立たないため、reco はすぐ上の変更をしない。括弧の中は、何が成り立っていないかと、設定ファイルの直し方 |
+| `Patterns to remove:`、`Patterns to add:` | Environment のデプロイを許可するパターンのうち、設定ファイルにないものと、GitHub 上にないもの |
+| `Side effect:` | この変更に伴って GitHub が消す値 |
+| `Previous settings:` | Actions を有効に戻すと、設定ファイルに書いていない設定は、無効にする前の値で再開すること |
 | `Plan:` | 変える予定のリポジトリの数と、変える設定の数 |
 | `Repositories checked:` | 読み取ったリポジトリの数 |
 | `No changes.` | 設定ファイルに書いた設定が、すべて GitHub 上でもそのとおりになっている |
 | `Plan cannot be applied.` | `Applicability: not applicable` の変更が一つ以上ある。このままでは `apply` で変えられない |
 
-`Side effect:` は、`allowed_actions` を `selected` から `all` や `local_only` に変えるときに出ます。
-
-Environment の行は、設定ファイルに書いた綴りの名前で出ます。作成する Environment に `deployment_branch_policy` も書いたときは、作成の行と `deployment_branch_policy` の行の二つが出て、`Plan:` でも二つと数えます。
-
-`deployment_branch_policy` の今の値か書いた値が `selected` のときは、パターンを並べた値が長くなるため、今の値と書いた値を別々の行に出します。今の値も書いた値も `selected` なら、なくなるパターンと加わるパターンを `Patterns to remove:` と `Patterns to add:` の行で示します。
-
-```text
-Repository: example/project-a
-  environments.staging.deployment_branch_policy:
-    selected [branch "feature/*", branch "main"]
-    -> selected [branch "main", branch "release/*"]
-    Patterns to remove: [branch "feature/*"]
-    Patterns to add: [branch "release/*"]
-
-Plan: 1 repository to update, 1 change
-Repositories checked: 1
-```
-
-`selected` から `all` などに変える行には、なくなるパターンが矢印の左の行に並びます。
-
 ## `apply`
 
 変更計画を表示して承認を求め、承認されたら設定を変えます。
 
-```text
+```bash
 $ reco apply
 Configuration: ./reco.yaml
 
@@ -160,11 +127,7 @@ Repositories updated: 1
 | `not attempted` | 変更を始めなかった |
 | `Apply complete.` | すべてのリポジトリが `updated` か `no change` だった |
 
-変更計画に `Plan cannot be applied.` が出たときは、承認を求めず、どのリポジトリの設定も変えずにエラーで終わります。ほかのリポジトリの変更が問題なく行えても変えません。直し方は [Troubleshooting](troubleshooting.md#plan-cannot-be-applied-と表示された) にあります。
-
-`deployment_branch_policy` に `mode: selected` を書いた変更予定があるときも、何も変えずにエラーで終わります。対処は [Troubleshooting](troubleshooting.md#applying-mode-selected-is-not-supported-と表示された) にあります。
-
-`deployment_branch_policy` も書いた Environment の作成は、結果では一つの変更として数えます。そう数えた変更が二つ以上あり、どれかが完了しなかったリポジトリでは、結果を変更ごとに示し、この作成は `environments.production + environments.production.deployment_branch_policy` のように示します。
+変更計画に `Plan cannot be applied.` が出たときは、承認を求めず、どのリポジトリの設定も変えずにエラーで終わります。直し方は [Troubleshooting](troubleshooting.md#plan-cannot-be-applied-と表示された) にあります。
 
 どこかの変更が完了しなかったら、reco は残りの変更を始めずに止まります。すでに反映した変更は元に戻りません。`failed` や `not attempted` が出たときにすることは [Troubleshooting](troubleshooting.md#apply-が途中で止まった) にあります。
 
