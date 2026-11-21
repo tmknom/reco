@@ -308,6 +308,27 @@ func TestReconcile_Environments(t *testing.T) {
 }
 
 //trace:checks FR-005
+func TestReconcile_PrivateVulnerabilityReportingFollowsSecretScanning(t *testing.T) {
+	desired := configuration.DesiredState{
+		SecretScanning:                configuration.SecretScanning{Enabled: new(true)},
+		PrivateVulnerabilityReporting: configuration.PrivateVulnerabilityReporting{Enabled: new(true)},
+	}
+	observed := github.ObservationResult{
+		SecretScanning:                &github.SecretScanning{Enabled: github.Observed(true), PushProtection: github.Observed(true)},
+		PrivateVulnerabilityReporting: &github.PrivateVulnerabilityReporting{Enabled: github.Observed(true)},
+	}
+	var units []string
+	for _, s := range reconcile(desired, observed) {
+		units = append(units, s.Unit.String())
+	}
+	// YAML 設定仕様の表の並びで、Secret scanning のあとに Private vulnerability reporting が続く
+	want := []string{"security.secret_scanning", "security.private_vulnerability_reporting"}
+	if !reflect.DeepEqual(units, want) {
+		t.Errorf("reconcile() units = %v, want %v", units, want)
+	}
+}
+
+//trace:checks FR-005
 func TestReconcile_DependabotFollowsEnvironments(t *testing.T) {
 	production := mustEnvironmentName(t, "production")
 	desired := configuration.DesiredState{

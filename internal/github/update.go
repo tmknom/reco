@@ -136,6 +136,13 @@ func (c *Client) updateDependabotSecurityUpdates(ctx context.Context, reference 
 	return describeUpdateOutcome("update dependabot security updates", reference, status, err)
 }
 
+// updatePrivateVulnerabilityReporting は reference のリポジトリの Private vulnerability reporting を enabled に更新する。
+// 正常応答の 204 は本文を持たず、成功の判定に本文を使わない。
+func (c *Client) updatePrivateVulnerabilityReporting(ctx context.Context, reference repository.Reference, enabled bool) (UpdateOutcome, error) {
+	status, _, err := c.send(ctx, enablementMethod(enabled), c.privateVulnerabilityReportingURL(reference), nil, http.StatusNoContent)
+	return describeUpdateOutcome("update private vulnerability reporting", reference, status, err)
+}
+
 // enablementMethod は、有効にする要求と無効にする要求の HTTP メソッドを返す。
 // この更新エンドポイントは、設定の値を本文ではなくメソッドで受ける。
 func enablementMethod(enabled bool) string {
@@ -256,6 +263,8 @@ func updateRequestOf(key setting.Key) updateRequest {
 		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateSecretScanningEnabled)}
 	case setting.RepositoryPushProtection:
 		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateRepositoryPushProtection)}
+	case setting.PrivateVulnerabilityReportingEnabled:
+		return updateRequest{PrivateVulnerabilityReportingEndpoint, boolUpdate((*Client).updatePrivateVulnerabilityReporting)}
 	case setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy:
 		// Environment の更新要求は宛先に名前が要るため、設定の識別だけで引くこの関数では扱えない。
 	}

@@ -178,7 +178,7 @@ repositories:
 
 ## セキュリティの設定
 
-`security` には、Dependabot と Secret scanning の設定を書きます。
+`security` には、Dependabot、Secret scanning、Private vulnerability reporting の設定を書きます。
 
 ```yaml
 repositories:
@@ -188,6 +188,7 @@ repositories:
       dependabot_security_updates: true
       secret_scanning: true
       secret_scanning_push_protection: true
+      private_vulnerability_reporting: true
 ```
 
 | キー | 値 | 意味 |
@@ -196,6 +197,7 @@ repositories:
 | `dependabot_security_updates` | `true` / `false` | 脆弱性を直す Pull Request を Dependabot security updates に作らせるか |
 | `secret_scanning` | `true` / `false` | リポジトリに push されたシークレットを Secret scanning で検出するか |
 | `secret_scanning_push_protection` | `true` / `false` | シークレットを含む push を、リポジトリの push protection で拒否するか。利用者が自分のアカウントに設定する push protection とは別の設定 |
+| `private_vulnerability_reporting` | `true` / `false` | 見つけた脆弱性を、公開せずにメンテナーへ報告できるようにするか |
 
 どのキーも、一つだけを書いてもよいです。Dependabot の設定で気をつけることは次のとおりです。
 
@@ -215,6 +217,11 @@ Secret scanning の設定で気をつけることは次のとおりです。
 - `secret_scanning: false` にすると、GitHub は有効だったリポジトリの push protection も無効にする。`plan` は、この変化を `Side effect:` の行で示す
 - あとで `secret_scanning: true` に戻しても、リポジトリの push protection は戻らない。戻すには `secret_scanning_push_protection: true` も書く
 - Admin ロールが要る（[Authentication](authentication.md)）
+
+Private vulnerability reporting の設定で気をつけることは次のとおりです。
+
+- 非公開リポジトリには書けない。書くと `plan` に `Applicability: not applicable` と `Plan cannot be applied.` が出る。公開リポジトリにだけ書く
+- 変えるには Admin ロールが要る（[Authentication](authentication.md)）
 
 ## 未記載の設定の扱い
 

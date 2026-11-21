@@ -597,15 +597,16 @@ func TestDocumentDeclaration(t *testing.T) {
 	}
 }
 
-// TestDocumentSecurity は、4 つの設定がそれぞれ独立に宣言できることと、依存する設定を有効にできない組み合わせの拒否、判定の順序を確かめる。
+// TestDocumentSecurity は、security の各設定がそれぞれ独立に宣言できることと、依存する設定を有効にできない組み合わせの拒否、判定の順序を確かめる。
 //
 //trace:checks FR-001
 func TestDocumentSecurity(t *testing.T) {
 	cases := []struct {
-		name               string
-		src                string
-		want               Dependabot
-		wantSecretScanning SecretScanning
+		name                              string
+		src                               string
+		want                              Dependabot
+		wantSecretScanning                SecretScanning
+		wantPrivateVulnerabilityReporting PrivateVulnerabilityReporting
 		// wantPath は error の先頭に付く、問題の箇所のパス。パスの直後の " (" まで照合する。
 		wantPath   string
 		wantReason string
@@ -628,7 +629,7 @@ func TestDocumentSecurity(t *testing.T) {
 			name:       "unknown key is rejected",
 			src:        "dependabot_alerts: true\nsecret_scanning_validity_checks: true\n",
 			wantPath:   "P",
-			wantReason: `unknown key "secret_scanning_validity_checks"; expected dependabot_alerts, dependabot_security_updates, secret_scanning, secret_scanning_push_protection`,
+			wantReason: `unknown key "secret_scanning_validity_checks"; expected dependabot_alerts, dependabot_security_updates, secret_scanning, secret_scanning_push_protection, private_vulnerability_reporting`,
 		},
 		{name: "secret_scanning true alone is read, leaving the push protection omitted", src: "secret_scanning: true\n", wantSecretScanning: SecretScanning{Enabled: new(true)}},
 		{name: "secret_scanning false alone is read, leaving the push protection omitted", src: "secret_scanning: false\n", wantSecretScanning: SecretScanning{Enabled: new(false)}},
@@ -667,6 +668,20 @@ func TestDocumentSecurity(t *testing.T) {
 			wantPath:   "P",
 			wantReason: "dependabot_alerts false cannot be declared with dependabot_security_updates true",
 		},
+		{name: "private_vulnerability_reporting true alone is read", src: "private_vulnerability_reporting: true\n", wantPrivateVulnerabilityReporting: PrivateVulnerabilityReporting{Enabled: new(true)}},
+		{name: "private_vulnerability_reporting false alone is read", src: "private_vulnerability_reporting: false\n", wantPrivateVulnerabilityReporting: PrivateVulnerabilityReporting{Enabled: new(false)}},
+		{
+			name:                              "private_vulnerability_reporting has no combination rule with secret_scanning",
+			src:                               "secret_scanning: false\nprivate_vulnerability_reporting: true\n",
+			wantSecretScanning:                SecretScanning{Enabled: new(false)},
+			wantPrivateVulnerabilityReporting: PrivateVulnerabilityReporting{Enabled: new(true)},
+		},
+		{
+			name:       "invalid private_vulnerability_reporting value is rejected before the dependabot combination",
+			src:        "dependabot_alerts: false\ndependabot_security_updates: true\nprivate_vulnerability_reporting: yes\n",
+			wantPath:   "P.private_vulnerability_reporting",
+			wantReason: "must be true or false",
+		},
 		{
 			name:       "quoted dependabot_alerts is rejected at the value before the combination",
 			src:        "dependabot_alerts: \"false\"\ndependabot_security_updates: true\n",
@@ -683,7 +698,7 @@ func TestDocumentSecurity(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := decodeSnippet(t, tc.src)
-			got, gotSecretScanning, err := doc.security(doc.root, "P")
+			got, gotSecretScanning, gotPrivateVulnerabilityReporting, err := doc.security(doc.root, "P")
 			if tc.wantPath != "" {
 				if err == nil {
 					t.Fatalf("security() = %+v, %+v, want error", got, gotSecretScanning)
@@ -704,6 +719,9 @@ func TestDocumentSecurity(t *testing.T) {
 			}
 			if !reflect.DeepEqual(gotSecretScanning, tc.wantSecretScanning) {
 				t.Errorf("security() SecretScanning = %+v, want %+v", gotSecretScanning, tc.wantSecretScanning)
+			}
+			if !reflect.DeepEqual(gotPrivateVulnerabilityReporting, tc.wantPrivateVulnerabilityReporting) {
+				t.Errorf("security() PrivateVulnerabilityReporting = %+v, want %+v", gotPrivateVulnerabilityReporting, tc.wantPrivateVulnerabilityReporting)
 			}
 		})
 	}

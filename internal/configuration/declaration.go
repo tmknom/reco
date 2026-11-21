@@ -73,7 +73,7 @@ func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDe
 		}
 	}
 	if hasSecurity {
-		if desired.Dependabot, desired.SecretScanning, err = d.security(securityNode, path+".security"); err != nil {
+		if desired.Dependabot, desired.SecretScanning, desired.PrivateVulnerabilityReporting, err = d.security(securityNode, path+".security"); err != nil {
 			return RepositoryDeclaration{}, err
 		}
 	}
@@ -402,15 +402,15 @@ func (d document) general(n *yaml.Node, path string) (General, error) {
 	return general, nil
 }
 
-// security は、Dependabot の 2 つの設定と Secret scanning の 2 つの設定を読む。
-// 組み合わせの規則は 2 つの値で決まるため、4 つの値の誤りを先に示す。
-func (d document) security(n *yaml.Node, path string) (Dependabot, SecretScanning, error) {
-	entries, err := d.mappingEntries(n, path, nil, []string{"dependabot_alerts", "dependabot_security_updates", "secret_scanning", "secret_scanning_push_protection"})
+// security は security の設定を読む。組み合わせの規則は 2 つの値で決まるため、すべての値の誤りを先に示す。
+func (d document) security(n *yaml.Node, path string) (Dependabot, SecretScanning, PrivateVulnerabilityReporting, error) {
+	entries, err := d.mappingEntries(n, path, nil, []string{"dependabot_alerts", "dependabot_security_updates", "secret_scanning", "secret_scanning_push_protection", "private_vulnerability_reporting"})
 	if err != nil {
-		return Dependabot{}, SecretScanning{}, err
+		return Dependabot{}, SecretScanning{}, PrivateVulnerabilityReporting{}, err
 	}
 	var dependabot Dependabot
 	var secretScanning SecretScanning
+	var privateVulnerabilityReporting PrivateVulnerabilityReporting
 	for _, field := range []struct {
 		key string
 		dst **bool
@@ -419,6 +419,7 @@ func (d document) security(n *yaml.Node, path string) (Dependabot, SecretScannin
 		{"dependabot_security_updates", &dependabot.SecurityUpdates},
 		{"secret_scanning", &secretScanning.Enabled},
 		{"secret_scanning_push_protection", &secretScanning.PushProtection},
+		{"private_vulnerability_reporting", &privateVulnerabilityReporting.Enabled},
 	} {
 		value, ok := entries[field.key]
 		if !ok {
@@ -426,17 +427,17 @@ func (d document) security(n *yaml.Node, path string) (Dependabot, SecretScannin
 		}
 		v, err := d.boolValue(value, path+"."+field.key)
 		if err != nil {
-			return Dependabot{}, SecretScanning{}, err
+			return Dependabot{}, SecretScanning{}, PrivateVulnerabilityReporting{}, err
 		}
 		*field.dst = &v
 	}
 	if disablesPrerequisiteOfEnabled(dependabot.Alerts, dependabot.SecurityUpdates) {
-		return Dependabot{}, SecretScanning{}, invalid(n, path, "dependabot_alerts false cannot be declared with dependabot_security_updates true")
+		return Dependabot{}, SecretScanning{}, PrivateVulnerabilityReporting{}, invalid(n, path, "dependabot_alerts false cannot be declared with dependabot_security_updates true")
 	}
 	if disablesPrerequisiteOfEnabled(secretScanning.Enabled, secretScanning.PushProtection) {
-		return Dependabot{}, SecretScanning{}, invalid(n, path, "secret_scanning false cannot be declared with secret_scanning_push_protection true")
+		return Dependabot{}, SecretScanning{}, PrivateVulnerabilityReporting{}, invalid(n, path, "secret_scanning false cannot be declared with secret_scanning_push_protection true")
 	}
-	return dependabot, secretScanning, nil
+	return dependabot, secretScanning, privateVulnerabilityReporting, nil
 }
 
 // disablesPrerequisiteOfEnabled は、前提の設定を false、依存する設定を true と宣言しているかを返す。

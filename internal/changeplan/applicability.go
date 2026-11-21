@@ -81,7 +81,8 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 	case s.Unit.Key == setting.ActionsAccessLevel && reason == github.UnavailablePublicRepository:
 		// 公開範囲は reco が変える設定ではないため、同じリポジトリのほかの宣言では解消しない
 		return NotApplicable, NotApplicablePublicRepository
-	case s.Unit.Key.Area() == setting.AreaSecretScanning && reason == github.UnavailablePrivateRepository:
+	case reason == github.UnavailablePrivateRepository &&
+		(s.Unit.Key.Area() == setting.AreaSecretScanning || s.Unit.Key == setting.PrivateVulnerabilityReportingEnabled):
 		// 公開範囲は reco が変える設定ではないため、同じリポジトリのほかの宣言では解消しない
 		return NotApplicable, NotApplicablePrivateRepository
 	}

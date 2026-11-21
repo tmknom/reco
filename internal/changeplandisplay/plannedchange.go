@@ -45,7 +45,7 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 	}
 	b.WriteString(deploymentPatternChangesText(s))
 	if s.Applicability == changeplan.NotApplicable {
-		fmt.Fprintf(&b, "    Applicability: not applicable (%s)\n", notApplicableReasonText(s.NotApplicableReason))
+		fmt.Fprintf(&b, "    Applicability: not applicable (%s)\n", notApplicableReasonText(s.NotApplicableReason, s.Unit.Key))
 	}
 	if len(s.ResumedSettings) > 0 {
 		fmt.Fprintf(&b, "    Previous settings: %s\n", resumedSettingsText(s.ResumedSettings))
@@ -77,8 +77,9 @@ func repositoryStateText(reason github.UnavailableReason) string {
 }
 
 // notApplicableReasonText は、適用不能の理由を、利用者が対処を選べる CLI 仕様の文言で返す。
+// 非公開リポジトリの理由は複数の設定が持つため、直し方に挙げるキーを key から決める。
 // 未定義の理由は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
-func notApplicableReasonText(reason changeplan.NotApplicableReason) string {
+func notApplicableReasonText(reason changeplan.NotApplicableReason, key setting.Key) string {
 	switch reason {
 	case changeplan.NotApplicableActionsRemainDisabled:
 		return "GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it"
@@ -89,7 +90,7 @@ func notApplicableReasonText(reason changeplan.NotApplicableReason) string {
 	case changeplan.NotApplicableDependabotAlertsRemainDisabled:
 		return "Dependabot alerts is disabled; declare dependabot_alerts: true to enable it"
 	case changeplan.NotApplicablePrivateRepository:
-		return "the repository is private; remove secret_scanning and secret_scanning_push_protection, which reco manages only on public repositories"
+		return "the repository is private; remove " + string(key)[strings.LastIndex(string(key), ".")+1:] + ", which reco manages only on public repositories"
 	case changeplan.NotApplicableSecretScanningRemainsDisabled:
 		return "Secret scanning is disabled; declare secret_scanning: true to enable it"
 	}

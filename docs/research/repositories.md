@@ -246,6 +246,7 @@ Dependabot security updates は、Dependency graph と Dependabot alerts を有�
 > - 公開リポジトリ：取得は `200` で `enabled` を返した。`PUT` と `DELETE` は `204` で、すでに同じ状態のときも `204` だった。直後の取得は更新後の状態を示した
 > - 非公開リポジトリ：取得、`PUT`、`DELETE` のどれも `422` ではなく `404` で、本文の `message` は `Not Found` だった。存在しないリポジトリへの取得も同じ `404` と本文で、区別できない
 > - 第三者の公開リポジトリ（`permissions.admin` が `false`）：取得は `200` で `enabled` を返した
+> - 公開リポジトリで `PUT` と `DELETE` を送った前後で、General、GitHub Actions の権限、Environments、Dependabot alerts と Dependabot security updates（どちらも無効）、Secret scanning と push protection（どちらも有効）の値は変わらなかった
 
 | Relationship | Target | Target Type |
 |---|---|---|

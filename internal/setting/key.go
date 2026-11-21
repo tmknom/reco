@@ -21,7 +21,8 @@ const (
 	DependabotSecurityUpdates    Key = "security.dependabot_security_updates"
 	SecretScanningEnabled        Key = "security.secret_scanning"
 	// RepositoryPushProtection は、リポジトリに設定する push protection で、利用者が自分のアカウントに設定する push protection ではない。
-	RepositoryPushProtection Key = "security.secret_scanning_push_protection"
+	RepositoryPushProtection             Key = "security.secret_scanning_push_protection"
+	PrivateVulnerabilityReportingEnabled Key = "security.private_vulnerability_reporting"
 	// EnvironmentResource は、Environment そのもの (期待値は存在すること) の形。
 	EnvironmentResource Key = "environments"
 	// EnvironmentDeploymentBranchPolicy は、Environment の中のデプロイ元制限の形。
@@ -32,7 +33,7 @@ const (
 // 設定グループは一つの Key で表す。Environment に関わる管理の単位は、宣言の名前ごとに決まるため含めない。
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
 func ManagementUnits() []Key {
-	return []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection}
+	return []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
 }
 
 // Area は、k が属する設定の領域を返す。未知の設定は不変条件の破れとして panic する。
@@ -53,6 +54,8 @@ func (k Key) Area() Area {
 		return AreaDependabot
 	case SecretScanningEnabled, RepositoryPushProtection:
 		return AreaSecretScanning
+	case PrivateVulnerabilityReportingEnabled:
+		return AreaPrivateVulnerabilityReporting
 	}
 	panic(fmt.Sprintf("unknown setting %q", k))
 }

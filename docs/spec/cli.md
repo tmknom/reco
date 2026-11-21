@@ -68,7 +68,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 環境変数の優先順位は [GitHub CLI の環境変数仕様](https://cli.github.com/manual/gh_help_environment) と同じですが、reco が GitHub CLI の認証機構を利用することは意味しません。
 
-reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章、[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。`show` が読み取る Environment と個別パターンの一覧には、GitHub App の権限の分類で Actions の read に当たる権限が要ります。ほかのトークンがこの権限を持たず、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。`show` と、`security` を宣言したリポジトリの `plan` と `apply` が読み取る Dependabot alerts と Dependabot security updates の取得には、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。トークンの所有者が admin のアクセスを持たないリポジトリでは、どのコマンドも観測操作の失敗としてエラー終了します。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合（Administration の read を持たない fine-grained personal access token など）の応答は確かめていません。この場合に GitHub が Dependabot alerts の取得へ `404` を返すなら、`show` は有効な Dependabot alerts を `false` と表示し、`plan` と `apply` は `dependabot_alerts: false` の宣言を変更不要と判断します（[アーキテクチャ設計](../design/architecture.md) 3.2節）。`show` と、`secret_scanning` か `secret_scanning_push_protection` を宣言したリポジトリの `plan` と `apply` が読み取る Secret scanning の有効状態とリポジトリの push protection も、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 5章）。`apply` は、`general` の設定を更新する前後にもこの二つを読み取ります。同じ更新エンドポイント（`PATCH /repos/{owner}/{repo}`）で変わり得る設定として比べるためです（5.2節）。公開リポジトリの応答がこれらの値を含まないときは、どのコマンドも観測操作の失敗としてエラー終了します。`general` の設定の更新にも admin のアクセスが要るため（GitHub リポジトリ API 仕様 1章）、確かめた範囲では、この読み取りが `general` だけを宣言したリポジトリの `apply` を新たに止めることはありません。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合の応答は確かめていません。
+reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章、[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。`show` が読み取る Environment と個別パターンの一覧には、GitHub App の権限の分類で Actions の read に当たる権限が要ります。ほかのトークンがこの権限を持たず、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。`show` と、`security` を宣言したリポジトリの `plan` と `apply` が読み取る Dependabot alerts と Dependabot security updates の取得には、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。トークンの所有者が admin のアクセスを持たないリポジトリでは、どのコマンドも観測操作の失敗としてエラー終了します。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合（Administration の read を持たない fine-grained personal access token など）の応答は確かめていません。この場合に GitHub が Dependabot alerts の取得へ `404` を返すなら、`show` は有効な Dependabot alerts を `false` と表示し、`plan` と `apply` は `dependabot_alerts: false` の宣言を変更不要と判断します（[アーキテクチャ設計](../design/architecture.md) 3.2節）。`show` と、`secret_scanning` か `secret_scanning_push_protection` を宣言したリポジトリの `plan` と `apply` が読み取る Secret scanning の有効状態とリポジトリの push protection も、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 5章）。`apply` は、`general` の設定を更新する前後にもこの二つを読み取ります。同じ更新エンドポイント（`PATCH /repos/{owner}/{repo}`）で変わり得る設定として比べるためです（5.2節）。公開リポジトリの応答がこれらの値を含まないときは、どのコマンドも観測操作の失敗としてエラー終了します。`general` の設定の更新にも admin のアクセスが要るため（GitHub リポジトリ API 仕様 1章）、確かめた範囲では、この読み取りが `general` だけを宣言したリポジトリの `apply` を新たに止めることはありません。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合の応答は確かめていません。`show` と、`private_vulnerability_reporting` を宣言したリポジトリの `plan` と `apply` が読み取る Private vulnerability reporting の有効状態は、admin のアクセスを要しませんが、その更新には admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。非公開リポジトリでは、この設定を読み取りません。
 
 ```text
 $ GH_TOKEN=$(gh auth token) reco plan
@@ -203,7 +203,7 @@ Repositories checked: 1
 | Actions が無効 | `(GitHub Actions disabled)` | Actions が動いておらず、この設定は効いていない |
 | Actions 許可ポリシーが `selected` でない（選択方式の Actions 許可条件だけに当たる） | `(not in use)` | 選択方式の Actions 許可条件が使われていない |
 | リポジトリが公開（`access_level` だけに当たる） | `(public repository)` | この設定は公開リポジトリに適用されない |
-| リポジトリが非公開（Secret scanning の有効状態とリポジトリの push protection に当たる） | `(private repository)` | この設定は非公開リポジトリでは利用できない |
+| リポジトリが非公開（Secret scanning の有効状態、リポジトリの push protection、Private vulnerability reporting の有効状態に当たる） | `(private repository)` | この設定は非公開リポジトリでは利用できない |
 | 属する先の Environment が存在しない（Environment の中の設定に当たる） | `(environment absent)` | Environment がないため、この設定もない |
 | 宣言した名前と同じかどうかを判定できない名前の Environment がある（Environment とその中の設定に当たる） | `(existence unknown)` | その名前の Environment が存在するかを確かめられない |
 
@@ -234,7 +234,7 @@ Plan: 1 repository to update, 2 changes
 Repositories checked: 1
 ```
 
-安全な変更に必要な条件を確認できない変更予定には、変更予定の行のすぐ下に `Applicability: not applicable (<理由>)` を添えます。理由は、セミコロンの前に何が成り立っていないかを、後ろに設定ファイルの直し方を示します。適用不能な変更予定が一つでもあれば、`Repositories checked:` の後に空行を挟んで `Plan cannot be applied.` を一度だけ表示します。集計は、適用不能な変更予定と、適用不能な変更予定だけを持つリポジトリも数えます。現在は、Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言した場合と、公開リポジトリで `access_level` を宣言した場合と、宣言した名前と同じかどうかを判定できない名前の Environment があり、宣言した名前の Environment が存在するかを確かめられない場合と、Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を宣言せずに `dependabot_security_updates` を宣言し、その値を変える場合と、非公開リポジトリで `secret_scanning` か `secret_scanning_push_protection` を宣言した場合と、Secret scanning が無効のリポジトリで、`secret_scanning: true` を宣言せずに `secret_scanning_push_protection: true` を宣言し、その値を変える場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。
+安全な変更に必要な条件を確認できない変更予定には、変更予定の行のすぐ下に `Applicability: not applicable (<理由>)` を添えます。理由は、セミコロンの前に何が成り立っていないかを、後ろに設定ファイルの直し方を示します。適用不能な変更予定が一つでもあれば、`Repositories checked:` の後に空行を挟んで `Plan cannot be applied.` を一度だけ表示します。集計は、適用不能な変更予定と、適用不能な変更予定だけを持つリポジトリも数えます。現在は、Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言した場合と、公開リポジトリで `access_level` を宣言した場合と、宣言した名前と同じかどうかを判定できない名前の Environment があり、宣言した名前の Environment が存在するかを確かめられない場合と、Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を宣言せずに `dependabot_security_updates` を宣言し、その値を変える場合と、非公開リポジトリで `secret_scanning`、`secret_scanning_push_protection`、`private_vulnerability_reporting` のいずれかを宣言した場合と、Secret scanning が無効のリポジトリで、`secret_scanning: true` を宣言せずに `secret_scanning_push_protection: true` を宣言し、その値を変える場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。
 
 ```text
 Repository: example/project-a
@@ -322,10 +322,16 @@ Repository: example/project-a
 
 非公開リポジトリで Secret scanning の2設定を宣言した変更予定と、Secret scanning が無効のリポジトリで、`secret_scanning: true` を宣言せずにリポジトリの push protection を有効にする変更予定は、適用不能です。前者は、非公開リポジトリでは2設定を利用できず、更新のあとに値を確かめられないためです。後者は、GitHub が、Secret scanning が無効のあいだ、リポジトリの push protection を有効にする更新に成功を応答しながら値を変えないためです（GitHub リポジトリ API 仕様 5章）。リポジトリの push protection を無効にする変更予定は、Secret scanning の状態によらず適用可能です。
 
+非公開リポジトリで `private_vulnerability_reporting` を宣言した変更予定も、更新のあとに値を確かめられないため適用不能です（[YAML 設定仕様](configuration.md) 8.3）。公開リポジトリでは、有効にする変更予定も無効にする変更予定も、ほかの設定の状態によらず適用可能です。
+
+非公開リポジトリによる適用不能の理由は、セミコロンの後ろに、その変更予定のキーだけを消す直し方を示します。
+
 ```text
 Repository: example/project-a
   security.secret_scanning: (private repository) -> true
-    Applicability: not applicable (the repository is private; remove secret_scanning and secret_scanning_push_protection, which reco manages only on public repositories)
+    Applicability: not applicable (the repository is private; remove secret_scanning, which reco manages only on public repositories)
+  security.private_vulnerability_reporting: (private repository) -> true
+    Applicability: not applicable (the repository is private; remove private_vulnerability_reporting, which reco manages only on public repositories)
 ```
 
 ```text
@@ -491,7 +497,7 @@ Environment では、Environment そのものの変化を `Precondition: environ
 
 再観測の失敗とリポジトリ ID の変化による期待状態の確認失敗は、`not confirmed` に確認できなかった理由を括弧で添えて示します（`not confirmed (read failed)`、`not confirmed (repository ID changed)`）。
 
-期待値と比べる設定が GitHub の取得条件により観測不能だったことによる確認失敗は、`not in effect` に、宣言した設定が効いていない理由を括弧で添えて示します。理由は、Actions が無効なら `GitHub Actions is disabled`、Actions 許可ポリシーが `selected` でなければ `allowed_actions is not "selected"`、リポジトリが公開なら `the repository is public`、リポジトリが非公開なら `the repository is private` です。`allowed_actions` を宣言できるのは Actions を有効にする場合に限られ、`sha_pinning_required` は Actions を無効にする宣言と同時には宣言できず、`selected_actions` を宣言できるのは Actions 許可ポリシーを `selected` と宣言した場合に限られます（[YAML 設定仕様](configuration.md) 4章）。`access_level` は公開リポジトリには適用されず（[YAML 設定仕様](configuration.md) 6章）、Secret scanning の2設定は非公開リポジトリでは利用できません（[YAML 設定仕様](configuration.md) 8.2）。このため、この観測不能は、宣言した設定が効いていないことを意味します。値そのものは確認できていないため、`does not match` とは示しません。`not confirmed` とも示さないのは、reco が確認に失敗したと読ませず、利用者が確かめるべきリポジトリの状態を示すためです。
+期待値と比べる設定が GitHub の取得条件により観測不能だったことによる確認失敗は、`not in effect` に、宣言した設定が効いていない理由を括弧で添えて示します。理由は、Actions が無効なら `GitHub Actions is disabled`、Actions 許可ポリシーが `selected` でなければ `allowed_actions is not "selected"`、リポジトリが公開なら `the repository is public`、リポジトリが非公開なら `the repository is private` です。`allowed_actions` を宣言できるのは Actions を有効にする場合に限られ、`sha_pinning_required` は Actions を無効にする宣言と同時には宣言できず、`selected_actions` を宣言できるのは Actions 許可ポリシーを `selected` と宣言した場合に限られます（[YAML 設定仕様](configuration.md) 4章）。`access_level` は公開リポジトリには適用されず（[YAML 設定仕様](configuration.md) 6章）、Secret scanning の2設定と Private vulnerability reporting は、reco が公開リポジトリでだけ管理する設定です（[YAML 設定仕様](configuration.md) 8.2、8.3）。このため、この観測不能は、宣言した設定が効いていないことを意味します。値そのものは確認できていないため、`does not match` とは示しません。`not confirmed` とも示さないのは、reco が確認に失敗したと読ませず、利用者が確かめるべきリポジトリの状態を示すためです。
 
 Environment の方式の変更のあとに Environment が存在しなかった場合は、`not in effect (the environment does not exist)` と示します。宣言した方式を持つ Environment がないためです。作成のあとに Environment が存在しなかった場合は、存在しないことを確認できているため、`does not match` と示します。作成と方式の変更のどちらでも、宣言した名前と同じかどうかを判定できない名前の Environment が現れ、存在を確かめられなかった場合は、reco が確認できなかったことを示す `not confirmed (environment existence unknown)` と示します。
 
@@ -746,6 +752,7 @@ repositories:
       dependabot_security_updates: true
       secret_scanning: true
       secret_scanning_push_protection: true
+      private_vulnerability_reporting: false
 ```
 
 表示するのは、設定宣言に書ける管理設定と Environment に限ります。Environment の保護設定（`wait_timer`、`required_reviewers`、`can_admins_bypass`）のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
@@ -753,7 +760,7 @@ repositories:
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
 - **ほかの行から分かる**：行ごと示さない。上位の設定によってその設定が効いていない状態（Actions が無効、Actions 許可ポリシーが `selected` でない）がこれに当たり、その状態は上位の設定の行で示されるためである
-- **ほかの行から分からない**：行を省かず、YAML のコメントとして、値の位置に `unavailable (<理由>)` と示す。行を省くと、確認できなかった設定と reco が表示しない設定を区別できないためである。コメントにするのは、確認できなかった値を期待値として読ませないためである。公開リポジトリの `access_level` と、非公開リポジトリの Secret scanning の有効状態とリポジトリの push protection がこれに当たる
+- **ほかの行から分からない**：行を省かず、YAML のコメントとして、値の位置に `unavailable (<理由>)` と示す。行を省くと、確認できなかった設定と reco が表示しない設定を区別できないためである。コメントにするのは、確認できなかった値を期待値として読ませないためである。公開リポジトリの `access_level` と、非公開リポジトリの Secret scanning の有効状態、リポジトリの push protection、Private vulnerability reporting の有効状態がこれに当たる
 
 `allowed_actions` が `selected` のときは、`selected_actions` の3項目を `sha_pinning_required` の前に示します。`patterns_allowed` は、パターンを関連リソースの名前と同じく二重引用符で囲んでエスケープし、GitHub が返した順に1行に一つずつ並べます。空の集合は `[]` と示します。
 
@@ -818,6 +825,12 @@ Secret scanning の有効状態を `secret_scanning` に、リポジトリの pu
 ```text
       # secret_scanning: unavailable (the repository is private)
       # secret_scanning_push_protection: unavailable (the repository is private)
+```
+
+Private vulnerability reporting の有効状態を `private_vulnerability_reporting` に、有効なら `true`、無効なら `false` で示します。非公開リポジトリでは、Secret scanning の2設定と同じく、行を YAML のコメントとして `unavailable (the repository is private)` と示します（[YAML 設定仕様](configuration.md) 8.3）。
+
+```text
+      # private_vulnerability_reporting: unavailable (the repository is private)
 ```
 
 表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。`organization` の `access_level`、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 9章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。

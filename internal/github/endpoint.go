@@ -18,6 +18,7 @@ const (
 	ActionsAccessEndpoint
 	DependabotAlertsEndpoint
 	DependabotSecurityUpdatesEndpoint
+	PrivateVulnerabilityReportingEndpoint
 )
 
 // ObservedSettings は、e で reco が観測する設定を返す。
@@ -39,6 +40,8 @@ func (e UpdateEndpoint) ObservedSettings() []setting.Key {
 		return []setting.Key{setting.DependabotAlerts}
 	case DependabotSecurityUpdatesEndpoint:
 		return []setting.Key{setting.DependabotSecurityUpdates}
+	case PrivateVulnerabilityReportingEndpoint:
+		return []setting.Key{setting.PrivateVulnerabilityReportingEnabled}
 	}
 	panic(fmt.Sprintf("github: unknown update endpoint %d", e))
 }

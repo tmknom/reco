@@ -9,12 +9,13 @@ import (
 )
 
 // writeSecurity は security を書く。
-func writeSecurity(b *strings.Builder, d github.Dependabot, s github.SecretScanning) {
+func writeSecurity(b *strings.Builder, d github.Dependabot, s github.SecretScanning, p github.PrivateVulnerabilityReporting) {
 	b.WriteString("    security:\n")
 	fmt.Fprintf(b, "      dependabot_alerts: %t\n", d.Alerts)
 	b.WriteString("      dependabot_security_updates: " + securityUpdatesText(d.SecurityUpdates) + "\n")
-	b.WriteString(secretScanningLine("secret_scanning", s.Enabled))
-	b.WriteString(secretScanningLine("secret_scanning_push_protection", s.PushProtection))
+	b.WriteString(publicRepositorySettingLine("secret_scanning", s.Enabled))
+	b.WriteString(publicRepositorySettingLine("secret_scanning_push_protection", s.PushProtection))
+	b.WriteString(publicRepositorySettingLine("private_vulnerability_reporting", p.Enabled))
 }
 
 // securityUpdatesText は Dependabot security updates の値の表示を返す。
@@ -31,14 +32,14 @@ func securityUpdatesText(v setting.DependabotSecurityUpdatesState) string {
 	panic(fmt.Sprintf("show: undefined dependabot security updates value %d", int(v)))
 }
 
-// secretScanningLine は Secret scanning の設定 key の行を返す。観測不能の値は期待値として読ませないよう、YAML のコメントにする。
+// publicRepositorySettingLine は、非公開リポジトリでは観測不能になる真偽値の設定 key の行を返す。観測不能の値は期待値として読ませないよう、YAML のコメントにする。
 // 非公開以外の理由はこれらの設定に当たらず、非公開の文言で黙って示さないよう不変条件の破れとして panic する。
-func secretScanningLine(key string, o github.SettingObservation[bool]) string {
+func publicRepositorySettingLine(key string, o github.SettingObservation[bool]) string {
 	if enabled, ok := o.Value(); ok {
 		return fmt.Sprintf("      %s: %t\n", key, enabled)
 	}
 	if reason := o.UnavailableReason(); reason != github.UnavailablePrivateRepository {
-		panic(fmt.Sprintf("show: undefined unavailable reason %d for secret scanning", int(reason)))
+		panic(fmt.Sprintf("show: undefined unavailable reason %d for %s", int(reason), key))
 	}
 	return "      # " + key + ": unavailable (the repository is private)\n"
 }

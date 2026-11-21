@@ -940,6 +940,30 @@ func TestObservationResult_SettingOfSecretScanning(t *testing.T) {
 	}
 }
 
+//trace:checks FR-004 FR-005
+func TestObservationResult_SettingOfPrivateVulnerabilityReporting(t *testing.T) {
+	cases := []struct {
+		name     string
+		observed PrivateVulnerabilityReporting
+		want     SettingObservation[setting.Value]
+	}{
+		{name: "observed enablement is a boolean", observed: PrivateVulnerabilityReporting{Enabled: Observed(true)}, want: Observed(setting.BoolValue(true))},
+		{
+			name:     "private repository keeps the unavailable reason",
+			observed: PrivateVulnerabilityReporting{Enabled: Unavailable[bool](UnavailablePrivateRepository)},
+			want:     Unavailable[setting.Value](UnavailablePrivateRepository),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := ObservationResult{PrivateVulnerabilityReporting: &tc.observed}
+			if got := observed.Setting(setting.Unit{Key: setting.PrivateVulnerabilityReportingEnabled}); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Setting() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-004 QR-002
 func TestObservationResult_SettingOfActionsPermissions(t *testing.T) {
 	// 観測値の設定グループの許可パターンは、応答の並びと重複のまま運ばれることを確かめるため、順不同で重複を含める。

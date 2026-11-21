@@ -35,6 +35,7 @@ func TestWriteObservationResult(t *testing.T) {
 	noEnvironments := &github.Environments{}
 	enabledDependabot := &github.Dependabot{Alerts: true, SecurityUpdates: setting.DependabotSecurityUpdatesEnabled}
 	enabledSecretScanning := &github.SecretScanning{Enabled: github.Observed(true), PushProtection: github.Observed(true)}
+	disabledPrivateVulnerabilityReporting := &github.PrivateVulnerabilityReporting{Enabled: github.Observed(false)}
 	const (
 		header           = "repositories:\n  - name: owner/repo\n"
 		defaultGeneral   = "    general:\n      delete_branch_on_merge: false\n      allow_auto_merge: false\n"
@@ -43,7 +44,7 @@ func TestWriteObservationResult(t *testing.T) {
 		notSharedAccess  = "      access:\n        access_level: none\n"
 		noEnvironment    = "    # environments: none\n"
 		enabledSecurity  = "    security:\n      dependabot_alerts: true\n      dependabot_security_updates: true\n" +
-			"      secret_scanning: true\n      secret_scanning_push_protection: true\n"
+			"      secret_scanning: true\n      secret_scanning_push_protection: true\n      private_vulnerability_reporting: false\n"
 	)
 	cases := []struct {
 		name     string
@@ -53,14 +54,15 @@ func TestWriteObservationResult(t *testing.T) {
 		{
 			name: "all areas are shown in the configuration structure and the all policy omits the criteria",
 			observed: github.ObservationResult{
-				RepositoryID:        1,
-				General:             github.General{DeleteBranchOnMerge: true, AllowAutoMerge: false},
-				ActionsPermissions:  allPolicy,
-				WorkflowPermissions: readOnly,
-				ActionsAccess:       notShared,
-				Environments:        noEnvironments,
-				Dependabot:          enabledDependabot,
-				SecretScanning:      enabledSecretScanning,
+				RepositoryID:                  1,
+				General:                       github.General{DeleteBranchOnMerge: true, AllowAutoMerge: false},
+				ActionsPermissions:            allPolicy,
+				WorkflowPermissions:           readOnly,
+				ActionsAccess:                 notShared,
+				Environments:                  noEnvironments,
+				Dependabot:                    enabledDependabot,
+				SecretScanning:                enabledSecretScanning,
+				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
 			},
 			want: header +
 				"    general:\n      delete_branch_on_merge: true\n      allow_auto_merge: false\n" +
@@ -69,14 +71,15 @@ func TestWriteObservationResult(t *testing.T) {
 		{
 			name: "opposite values are shown as observed",
 			observed: github.ObservationResult{
-				RepositoryID:        1,
-				General:             github.General{DeleteBranchOnMerge: false, AllowAutoMerge: true},
-				ActionsPermissions:  allPolicy,
-				WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: true},
-				ActionsAccess:       &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessUser)},
-				Environments:        noEnvironments,
-				Dependabot:          enabledDependabot,
-				SecretScanning:      enabledSecretScanning,
+				RepositoryID:                  1,
+				General:                       github.General{DeleteBranchOnMerge: false, AllowAutoMerge: true},
+				ActionsPermissions:            allPolicy,
+				WorkflowPermissions:           &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: true},
+				ActionsAccess:                 &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessUser)},
+				Environments:                  noEnvironments,
+				Dependabot:                    enabledDependabot,
+				SecretScanning:                enabledSecretScanning,
+				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
 			},
 			want: header +
 				"    general:\n      delete_branch_on_merge: false\n      allow_auto_merge: true\n" +
@@ -99,11 +102,12 @@ func TestWriteObservationResult(t *testing.T) {
 						PatternsAllowed:    []string{"actions/checkout@v4", "example/*"},
 					}),
 				},
-				WorkflowPermissions: readOnly,
-				ActionsAccess:       notShared,
-				Environments:        noEnvironments,
-				Dependabot:          enabledDependabot,
-				SecretScanning:      enabledSecretScanning,
+				WorkflowPermissions:           readOnly,
+				ActionsAccess:                 notShared,
+				Environments:                  noEnvironments,
+				Dependabot:                    enabledDependabot,
+				SecretScanning:                enabledSecretScanning,
+				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
 			},
 			want: header + defaultGeneral +
 				"    actions:\n      permissions:\n        enabled: true\n        allowed_actions: selected\n        selected_actions:\n" +
@@ -121,11 +125,12 @@ func TestWriteObservationResult(t *testing.T) {
 					SHAPinningRequired: github.Observed(false),
 					SelectedActions:    github.Observed(setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: true}),
 				},
-				WorkflowPermissions: readOnly,
-				ActionsAccess:       notShared,
-				Environments:        noEnvironments,
-				Dependabot:          enabledDependabot,
-				SecretScanning:      enabledSecretScanning,
+				WorkflowPermissions:           readOnly,
+				ActionsAccess:                 notShared,
+				Environments:                  noEnvironments,
+				Dependabot:                    enabledDependabot,
+				SecretScanning:                enabledSecretScanning,
+				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
 			},
 			want: header + defaultGeneral +
 				"    actions:\n      permissions:\n        enabled: true\n        allowed_actions: selected\n        selected_actions:\n" +
@@ -141,11 +146,12 @@ func TestWriteObservationResult(t *testing.T) {
 					SHAPinningRequired: github.Unavailable[bool](github.UnavailableActionsDisabled),
 					SelectedActions:    github.Unavailable[setting.SelectedActionsCriteria](github.UnavailableActionsDisabled),
 				},
-				WorkflowPermissions: readOnly,
-				ActionsAccess:       notShared,
-				Environments:        noEnvironments,
-				Dependabot:          enabledDependabot,
-				SecretScanning:      enabledSecretScanning,
+				WorkflowPermissions:           readOnly,
+				ActionsAccess:                 notShared,
+				Environments:                  noEnvironments,
+				Dependabot:                    enabledDependabot,
+				SecretScanning:                enabledSecretScanning,
+				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
 			},
 			want: header + defaultGeneral +
 				"    actions:\n      permissions:\n        enabled: false\n" +
@@ -154,13 +160,14 @@ func TestWriteObservationResult(t *testing.T) {
 		{
 			name: "public repository shows access and the unavailable access level as comments",
 			observed: github.ObservationResult{
-				RepositoryID:        1,
-				ActionsPermissions:  allPolicy,
-				WorkflowPermissions: readOnly,
-				ActionsAccess:       &github.ActionsAccess{AccessLevel: github.Unavailable[setting.AccessLevel](github.UnavailablePublicRepository)},
-				Environments:        noEnvironments,
-				Dependabot:          enabledDependabot,
-				SecretScanning:      enabledSecretScanning,
+				RepositoryID:                  1,
+				ActionsPermissions:            allPolicy,
+				WorkflowPermissions:           readOnly,
+				ActionsAccess:                 &github.ActionsAccess{AccessLevel: github.Unavailable[setting.AccessLevel](github.UnavailablePublicRepository)},
+				Environments:                  noEnvironments,
+				Dependabot:                    enabledDependabot,
+				SecretScanning:                enabledSecretScanning,
+				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
 			},
 			want: header + defaultGeneral + allPermissions + readOnlyWorkflow +
 				"      # access:\n      #   access_level: unavailable (the repository is public)\n" +
@@ -169,13 +176,14 @@ func TestWriteObservationResult(t *testing.T) {
 		{
 			name: "organization access level is shown as observed",
 			observed: github.ObservationResult{
-				RepositoryID:        1,
-				ActionsPermissions:  allPolicy,
-				WorkflowPermissions: readOnly,
-				ActionsAccess:       &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessOrganization)},
-				Environments:        noEnvironments,
-				Dependabot:          enabledDependabot,
-				SecretScanning:      enabledSecretScanning,
+				RepositoryID:                  1,
+				ActionsPermissions:            allPolicy,
+				WorkflowPermissions:           readOnly,
+				ActionsAccess:                 &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessOrganization)},
+				Environments:                  noEnvironments,
+				Dependabot:                    enabledDependabot,
+				SecretScanning:                enabledSecretScanning,
+				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
 			},
 			want: header + defaultGeneral + allPermissions + readOnlyWorkflow +
 				"      access:\n        access_level: organization\n" +
@@ -196,12 +204,13 @@ func TestWriteObservationResult(t *testing.T) {
 
 	t.Run("write failure is returned", func(t *testing.T) {
 		observed := github.ObservationResult{
-			ActionsPermissions:  allPolicy,
-			WorkflowPermissions: readOnly,
-			ActionsAccess:       notShared,
-			Environments:        noEnvironments,
-			Dependabot:          enabledDependabot,
-			SecretScanning:      enabledSecretScanning,
+			ActionsPermissions:            allPolicy,
+			WorkflowPermissions:           readOnly,
+			ActionsAccess:                 notShared,
+			Environments:                  noEnvironments,
+			Dependabot:                    enabledDependabot,
+			SecretScanning:                enabledSecretScanning,
+			PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
 		}
 		err := writeObservationResult(failingWriter{}, target, observed)
 		if !errors.Is(err, errWrite) {
@@ -269,6 +278,7 @@ func TestRun(t *testing.T) {
 		for _, observed := range []string{
 			"default_workflow_permissions: write", `- name: "staging"`, "dependabot_security_updates: true # paused",
 			"# secret_scanning: unavailable (the repository is private)",
+			"# private_vulnerability_reporting: unavailable (the repository is private)",
 		} {
 			if !strings.Contains(out.String(), observed) {
 				t.Errorf("got Out %q, want it to contain %q", out.String(), observed)

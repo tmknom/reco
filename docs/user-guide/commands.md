@@ -59,6 +59,7 @@ repositories:
       dependabot_security_updates: true
       # secret_scanning: unavailable (the repository is private)
       # secret_scanning_push_protection: unavailable (the repository is private)
+      # private_vulnerability_reporting: unavailable (the repository is private)
 ```
 
 表示は設定ファイルと同じ構造で、それぞれの値の位置が、設定ファイルにその設定を書く位置です。表示をそのまま設定ファイルにすると、表示したすべての設定を今の値のまま管理する設定ファイルになります。管理したい設定だけを残し、値を書き換えて使います。
@@ -70,7 +71,7 @@ repositories:
 | `# environments: none` | Environment が一つもない |
 | `# access:` と `#   access_level: unavailable (the repository is public)` | 公開リポジトリのため、`access_level` を読み取れない。この設定は非公開リポジトリにだけ書ける |
 | `dependabot_security_updates: true # paused by GitHub (still enabled)` | Dependabot security updates は有効だが、GitHub が一時停止している。設定ファイルでは `true` と書いたのと同じ |
-| `# secret_scanning: unavailable (the repository is private)` / `# secret_scanning_push_protection: unavailable (the repository is private)` | 非公開リポジトリのため、Secret scanning とリポジトリの push protection の値を読み取れない |
+| `# secret_scanning: unavailable (the repository is private)` / `# secret_scanning_push_protection: unavailable (the repository is private)` / `# private_vulnerability_reporting: unavailable (the repository is private)` | 非公開リポジトリのため、Secret scanning、リポジトリの push protection、Private vulnerability reporting の値を読み取れない |
 
 Environment の `wait_timer`、`required_reviewers`、`can_admins_bypass` のように、設定ファイルに書けない設定は表示しません。
 

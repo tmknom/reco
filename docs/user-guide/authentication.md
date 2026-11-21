@@ -20,4 +20,4 @@ reco show --repo OWNER/REPO
 
 Read など Write より下のロールでは、GitHub が一般設定（`general`）の値を応答に含めないため、`show`、`plan`、`apply` のどれもエラーで止まります。
 
-Admin より下のロールでは、Dependabot alerts、Dependabot security updates、Secret scanning、リポジトリの push protection の値を読めないため、`show` と、`security` を設定ファイルに書いたリポジトリの `plan` と `apply` がエラーで止まります。公開リポジトリの `apply` は、`general` だけを書いた場合も、更新の前後に Secret scanning の値を読むため、同じく止まります。`general` の設定を変えるにも Admin ロールが要るため、Admin ロールのトークンでは止まりません。
+Admin より下のロールでは、Dependabot alerts、Dependabot security updates、Secret scanning、リポジトリの push protection の値を読めないため、`show` と、`security` にこれらの設定を書いたリポジトリの `plan` と `apply` がエラーで止まります。公開リポジトリの `apply` は、`general` だけを書いた場合も、更新の前後に Secret scanning の値を読むため、同じく止まります。`general` の設定を変えるにも Admin ロールが要るため、Admin ロールのトークンでは止まりません。Private vulnerability reporting の値は Admin より下のロールでも読めますが、変えるには Admin ロールが要ります。

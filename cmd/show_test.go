@@ -110,12 +110,13 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 		{
 			name: "public repository with disabled actions and no environments reads back without the commented lines",
 			routes: map[string]githubtest.Response{
-				"GET /repos/owner/repo":                              githubtest.OK(githubtest.RepositoryBody{ID: 1, Admin: true}.JSON()),
-				"GET /repos/owner/repo/actions/permissions":          githubtest.OK(`{"enabled": false}`),
-				"GET /repos/owner/repo/actions/permissions/workflow": githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
-				"GET /repos/owner/repo/environments":                 githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
-				"GET /repos/owner/repo/vulnerability-alerts":         {Status: http.StatusNotFound},
-				"GET /repos/owner/repo/automated-security-fixes":     githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),
+				"GET /repos/owner/repo":                                 githubtest.OK(githubtest.RepositoryBody{ID: 1, Admin: true}.JSON()),
+				"GET /repos/owner/repo/actions/permissions":             githubtest.OK(`{"enabled": false}`),
+				"GET /repos/owner/repo/actions/permissions/workflow":    githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
+				"GET /repos/owner/repo/environments":                    githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
+				"GET /repos/owner/repo/vulnerability-alerts":            {Status: http.StatusNotFound},
+				"GET /repos/owner/repo/automated-security-fixes":        githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),
+				"GET /repos/owner/repo/private-vulnerability-reporting": githubtest.OK(githubtest.PrivateVulnerabilityReportingBody{Enabled: true}.JSON()),
 			},
 		},
 		{
