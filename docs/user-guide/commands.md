@@ -26,7 +26,7 @@ reco [--log-level LEVEL] apply [--config PATH] [--repo OWNER/REPO]
 
 ## `show`
 
-`--repo` で指定したリポジトリの、設定ファイルに書ける設定の現在の値を表示します。設定ファイルを書く前に、今の値を確かめるときに使います。
+`--repo` で指定したリポジトリの、設定ファイルに書ける設定と `security` の設定の現在の値を表示します。設定ファイルを書く前に、今の値を確かめるときに使います。
 
 ```bash
 $ reco show --repo example/project-a
@@ -54,18 +54,25 @@ repositories:
               name: "main"
             - type: tag
               name: "v*"
+    # reco does not accept the security settings in the configuration file yet
+    # security:
+    #   dependabot_alerts: true
+    #   dependabot_security_updates: true
 ```
 
-表示は設定ファイルと同じ構造で、それぞれの値の位置が、設定ファイルにその設定を書く位置です。表示をそのまま設定ファイルにすると、表示したすべての設定を今の値のまま管理する設定ファイルになります。管理したい設定だけを残し、値を書き換えて使います。
+表示は設定ファイルと同じ構造で、それぞれの値の位置が、設定ファイルにその設定を書く位置です。表示をそのまま設定ファイルにすると、コメントで示した設定を除く、表示したすべての設定を今の値のまま管理する設定ファイルになります。管理したい設定だけを残し、値を書き換えて使います。
 
-表示には、次の行も出ます。どちらも `#` で始まるコメントで、設定ファイルとしては読まれません。
+表示には、次の行も出ます。どれも `#` で始まるコメントで、設定ファイルとしては読まれません。
 
 | 行 | 意味 |
 |---|---|
 | `# environments: none` | Environment が一つもない |
 | `# access:` と `#   access_level: unavailable (the repository is public)` | 公開リポジトリのため、`access_level` を読み取れない。この設定は非公開リポジトリにだけ書ける |
+| `# reco does not accept the security settings in the configuration file yet` | 次の `security` の設定は、まだ設定ファイルに書けない |
+| `# security:` とその下の行 | Dependabot alerts（`dependabot_alerts`）と Dependabot security updates（`dependabot_security_updates`）の現在の値 |
+| `#   dependabot_security_updates: true # paused by GitHub (still enabled)` | Dependabot security updates は有効だが、GitHub が一時停止している |
 
-Environment の `wait_timer`、`required_reviewers`、`can_admins_bypass` のように、設定ファイルに書けない設定は表示しません。
+Environment の `wait_timer`、`required_reviewers`、`can_admins_bypass` のように、`security` 以外で設定ファイルに書けない設定は表示しません。
 
 ## `plan`
 

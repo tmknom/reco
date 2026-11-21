@@ -126,7 +126,7 @@ API の成功応答を受け取ったことだけでは、必要な設定値を�
 
 リポジトリ ID を返す `GET /repos/{owner}/{repo}` は General の値も返すため、どの観測も General を含みます。Workflow permissions の応答はリポジトリ ID を含まないため（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 5.1）、Workflow permissions は別の読み取り要求で読み、その要求は `GET /repos/{owner}/{repo}` が成功したときだけ送ります。いずれかの要求が失敗すれば観測操作の失敗であり、取得できた値だけの観測結果は作りません。
 
-Actions の実行許可は、二つの読み取り要求で読みます。`GET /repos/{owner}/{repo}/actions/permissions` は `GET /repos/{owner}/{repo}` が成功したときだけ送ります。`GET /repos/{owner}/{repo}/actions/permissions/selected-actions` は、Actions 許可ポリシーを `selected` と観測したときだけ送ります。それ以外のときは GitHub が取得を拒否するためです（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 4章）。一回の観測で複数の設定の領域を読むときは、General、Actions の実行許可、Workflow permissions、リポジトリ外のワークフローからのアクセス、Environments の順に読み取り要求を送ります。
+Actions の実行許可は、二つの読み取り要求で読みます。`GET /repos/{owner}/{repo}/actions/permissions` は `GET /repos/{owner}/{repo}` が成功したときだけ送ります。`GET /repos/{owner}/{repo}/actions/permissions/selected-actions` は、Actions 許可ポリシーを `selected` と観測したときだけ送ります。それ以外のときは GitHub が取得を拒否するためです（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 4章）。一回の観測で複数の設定の領域を読むときは、General、Actions の実行許可、Workflow permissions、リポジトリ外のワークフローからのアクセス、Environments、Dependabot の順に読み取り要求を送ります。
 
 リポジトリ外のワークフローからのアクセスは、`GET /repos/{owner}/{repo}/actions/permissions/access` で読みます。この要求は、`GET /repos/{owner}/{repo}` の応答の `private` が真のときだけ送ります。公開リポジトリには設定が適用されず、GitHub が取得を拒否するためです（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 6章）。送るかどうかは `private` の観測値で決め、取得の `422` から公開であることを推測しません。権限のない公開リポジトリには `403` が返り、`422` が公開範囲だけを理由に返るとは確かめられていないためです。個人アカウント所有のリポジトリは internal の公開範囲を持たないため、`private` の真偽で足ります（[GitHub リポジトリ API 仕様](../research/repositories.md) 3章）。`private` は、どの設定の領域を読む観測でも取得契約に含め、欠けた応答は取得契約に適合しない応答とします。欠けた `private` を公開とみなすと、取得条件による観測不能を根拠なく作るためです。
 
@@ -155,6 +155,16 @@ Environments は、`GET /repos/{owner}/{repo}/environments` の全ページで�
 Environments に、取得条件による観測不能はありません。非公開リポジトリでも一覧と個別パターンを取得できたためです（GitHub デプロイ環境 API 仕様 1.1）。Environment の取得契約は、`id`、`name`、`deployment_branch_policy`、`protection_rules`、`can_admins_bypass` がそろうことです。`can_admins_bypass` は公式のスキーマにありませんが、常に返ることを確かめています（同 3.2）。保護ルールは `type` で読み分け、`wait_timer` と `required_reviewers` の値を読みます。それ以外の `type` の要素は読みません。個別パターンの取得契約は、`id`、`name`、`type` がそろい、`type` が `branch` か `tag` であることです。
 
 関連リソースの一覧は、その種類が属する設定の領域を読み取る観測でだけ読みます。`show` は reco が観測するすべての種類の一覧を読み、`plan` と `apply` は宣言された設定の領域の一覧だけを読みます。別の関連リソースに属する関連リソースは、属する先が存在すると確かめたときだけ読み、存在しないときは、属する先が存在しないことを理由とする観測不能とします。
+
+Dependabot は、二つの読み取り要求で読みます。`GET /repos/{owner}/{repo}/vulnerability-alerts` で Dependabot alerts を、`GET /repos/{owner}/{repo}/automated-security-fixes` で Dependabot security updates を、この順に読みます。どちらも `GET /repos/{owner}/{repo}` が成功したときだけ送り、Dependabot の領域を読む観測は必ず両方を送ります。一方の設定の変更予定の副作用と適用可能性が、もう一方の観測値で決まるためです（5.4節）。Dependabot alerts の取得が失敗すれば、Dependabot security updates の要求は送りません。
+
+Dependabot alerts の取得は、値を本文ではなくステータスで返します（[GitHub リポジトリ API 仕様](../research/repositories.md) 6章）。`204` を有効と読みます。`404` を無効と読むのは、同じ観測の `GET /repos/{owner}/{repo}` の応答の `permissions.admin` が `true` のときに限ります。公式資料がこの取得に admin read のアクセスを求めており、無効のときの `404` と、権限のない第三者のリポジトリや存在しないリポジトリへの `404` を、ステータスでは区別できないためです。本文の `message` は無効のときだけ違いましたが、公式資料の契約ではないため読みません。`permissions.admin` が `false` のときと、`permissions` か `admin` が欠けたときの `404` は、観測操作の失敗（対象が見つからない）のままです。`permissions` は取得契約に含めず、Dependabot の領域を読まない観測は、欠けていても `null` でも失敗しません。ただし、型の合わない `permissions`（オブジェクトでない、`admin` が boolean でない）は解釈できない本文であり、どの設定の領域を読む観測でも取得契約に適合しない応答とします。`204` と `404` のほかの応答は、`204` 以外の `2xx` を含めて観測操作の失敗です。`404` を無効と読む扱いは、この取得だけのものです。
+
+この条件には、確かめていない場合があります。`permissions.admin` が `true` でも、トークン自体の権限がこの取得に足りない場合です。Administration の read を持たない fine-grained personal access token や、`repo` の scope を持たない classic のトークンがこれに当たり得ます。GitHub が権限の不足として `404` を返すなら、reco は有効な Dependabot alerts を無効と読みます。この場合の `permissions.admin` の値と取得の応答は、どちらも確かめていません。確かめたのは、`repo` の scope を持つ `gh auth token` のトークンで、トークンの所有者が Admin ロールを持つ場合だけです（GitHub リポジトリ API 仕様 5章）。reco が必要な権限の確認と案内の前提にするのも、このトークンです（[CLI 仕様](../spec/cli.md) 3章）。
+
+Dependabot security updates の取得も admin read のアクセスを求め、その `404` は観測操作の失敗です。Dependabot alerts のあとに必ずこの取得を送るため、権限の足りないトークンや、二つの取得のあいだにリポジトリが消えるか admin のアクセスを失った場合は、観測の全体が失敗すると見込めます（権限の足りないトークンでの応答は確かめていません）。Dependabot alerts の `404` を無効と読む読み方は、この順序にも支えられています。
+
+Dependabot security updates の取得は、`200` の本文の `enabled` と `paused` を読みます。無効のときも `200` で `enabled: false` が返り、公式資料の「無効なら `404`」とは食い違います（GitHub リポジトリ API 仕様 7章）。そのため `404` は無効と読まず、観測操作の失敗とします。観測値は、無効（`enabled: false`、`paused: false`）、有効（`enabled: true`、`paused: false`）、有効で一時停止中（`enabled: true`、`paused: true`）の三つです。取得契約は、`enabled` と `paused` がそろい、この三つの組のどれかであることです。`enabled: false` と `paused: true` の組は、実際の動作で観測しておらず意味を根拠づけられないため、取得契約に適合しない応答とします。`security_and_analysis.dependabot_security_updates` は値が一致しましたが、一時停止を含まず、非公開リポジトリでは `GET /repos/{owner}/{repo}` が `security_and_analysis` を返さないため、取得元にしません。Dependabot の二つの設定に、取得条件による観測不能はありません。Dependency graph は読みません（5.4節）。
 
 取得条件による観測不能として扱うのは次の三つです。
 

@@ -14,14 +14,26 @@ type repositoryPayload struct {
 	AllowAutoMerge      *bool  `json:"allow_auto_merge"`
 	DeleteBranchOnMerge *bool  `json:"delete_branch_on_merge"`
 	Private             *bool  `json:"private"`
+	// Permissions は Dependabot の領域を読まない観測では使わないため、取得契約に含めず、欠落と null を許す。
+	Permissions *repositoryPermissionsPayload `json:"permissions"`
 }
 
-// decodeRepository はリポジトリの応答本文を、観測結果と、非公開のときに真になる公開範囲に変換する。
+type repositoryPermissionsPayload struct {
+	Admin *bool `json:"admin"`
+}
+
+// repositoryAttributes は、リポジトリの応答のうち、後続の読み取り要求を送るかと応答の解釈にだけ使い、観測結果に載せない値である。
+type repositoryAttributes struct {
+	private bool
+	admin   bool
+}
+
+// decodeRepository はリポジトリの応答本文を、観測結果と、観測結果に載せない値に変換する。
 // 欠落の理由を応答から確認できないため、欠けた値を既定値で補わず、契約外の応答として返す。
-func decodeRepository(data []byte) (ObservationResult, bool, error) {
+func decodeRepository(data []byte) (ObservationResult, repositoryAttributes, error) {
 	var p repositoryPayload
 	if err := json.Unmarshal(data, &p); err != nil {
-		return ObservationResult{}, false, fmt.Errorf("%w: %w", ErrUnexpectedResponse, err)
+		return ObservationResult{}, repositoryAttributes{}, fmt.Errorf("%w: %w", ErrUnexpectedResponse, err)
 	}
 	var missing []string
 	if p.ID == nil {
@@ -37,7 +49,7 @@ func decodeRepository(data []byte) (ObservationResult, bool, error) {
 		missing = append(missing, "private")
 	}
 	if len(missing) > 0 {
-		return ObservationResult{}, false, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missing, ", "))
+		return ObservationResult{}, repositoryAttributes{}, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missing, ", "))
 	}
 	return ObservationResult{
 		RepositoryID: repository.ID(*p.ID),
@@ -45,5 +57,5 @@ func decodeRepository(data []byte) (ObservationResult, bool, error) {
 			AllowAutoMerge:      *p.AllowAutoMerge,
 			DeleteBranchOnMerge: *p.DeleteBranchOnMerge,
 		},
-	}, *p.Private, nil
+	}, repositoryAttributes{private: *p.Private, admin: p.Permissions != nil && p.Permissions.Admin != nil && *p.Permissions.Admin}, nil
 }

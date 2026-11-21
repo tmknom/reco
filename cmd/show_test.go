@@ -22,12 +22,14 @@ func TestShow_Success(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			server, opts := newGitHubServer(t, githubtest.Routes(t, map[string]githubtest.Response{
 				// 非公開のリポジトリにし、show がリポジトリ外のワークフローからのアクセスまで読むことを確かめる
-				"GET /repos/owner/repo":                                      githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowAutoMerge: true, Private: true}.JSON()),
+				"GET /repos/owner/repo":                                      githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowAutoMerge: true, Private: true, Admin: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions":                  {Status: http.StatusOK, Body: actionsPermissionsBody},
 				"GET /repos/owner/repo/actions/permissions/selected-actions": {Status: http.StatusOK, Body: selectedActionsBody},
 				"GET /repos/owner/repo/actions/permissions/workflow":         {Status: http.StatusOK, Body: workflowPermissionsBody},
 				"GET /repos/owner/repo/actions/permissions/access":           githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
 				"GET /repos/owner/repo/environments":                         githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
+				"GET /repos/owner/repo/vulnerability-alerts":                 {Status: http.StatusNoContent},
+				"GET /repos/owner/repo/automated-security-fixes":             githubtest.OK(githubtest.AutomatedSecurityFixesBody{Enabled: true}.JSON()),
 			}))
 
 			code, stdout, stderr := runExecute(t, Environment{Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue, "GITHUB_TOKEN": githubEnvValue})}, opts, tc.args...)
@@ -47,6 +49,8 @@ func TestShow_Success(t *testing.T) {
 				"/repos/owner/repo/actions/permissions/workflow",
 				"/repos/owner/repo/actions/permissions/access",
 				"/repos/owner/repo/environments",
+				"/repos/owner/repo/vulnerability-alerts",
+				"/repos/owner/repo/automated-security-fixes",
 			}
 			got := server.Requests()
 			if len(got) != len(wantPaths) {
@@ -80,7 +84,7 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 		{
 			name: "private repository with selected policy and environments reads back with escaped strings",
 			routes: map[string]githubtest.Response{
-				"GET /repos/owner/repo":                     githubtest.OK(githubtest.RepositoryBody{ID: 1, DeleteBranchOnMerge: true, Private: true}.JSON()),
+				"GET /repos/owner/repo":                     githubtest.OK(githubtest.RepositoryBody{ID: 1, DeleteBranchOnMerge: true, Private: true, Admin: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions": githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "selected", SHAPinningRequired: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/selected-actions": githubtest.OK(githubtest.SelectedActionsBody{
 					GitHubOwnedAllowed: true, PatternsAllowed: []string{`a"b\c`, "é/*", "#x: y", "\u200b"},
@@ -98,38 +102,47 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 					{ID: 6, Name: `v"\*`, Type: "tag"},
 				}}.JSON()),
 				"GET /repos/owner/repo/environments/empty/deployment-branch-policies": githubtest.OK(githubtest.DeploymentBranchPoliciesBody{}.JSON()),
+				"GET /repos/owner/repo/vulnerability-alerts":                          {Status: http.StatusNoContent},
+				// 一時停止中の行末のコメントも、設定宣言として読むことを妨げない
+				"GET /repos/owner/repo/automated-security-fixes": githubtest.OK(githubtest.AutomatedSecurityFixesBody{Enabled: true, Paused: true}.JSON()),
 			},
 		},
 		{
 			name: "public repository with disabled actions and no environments reads back without the commented lines",
 			routes: map[string]githubtest.Response{
-				"GET /repos/owner/repo":                              githubtest.OK(githubtest.RepositoryBody{ID: 1}.JSON()),
+				"GET /repos/owner/repo":                              githubtest.OK(githubtest.RepositoryBody{ID: 1, Admin: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions":          githubtest.OK(`{"enabled": false}`),
 				"GET /repos/owner/repo/actions/permissions/workflow": githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
 				"GET /repos/owner/repo/environments":                 githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
+				"GET /repos/owner/repo/vulnerability-alerts":         {Status: http.StatusNotFound},
+				"GET /repos/owner/repo/automated-security-fixes":     githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),
 			},
 		},
 		{
 			name: "local_only policy without selected actions reads back",
 			routes: map[string]githubtest.Response{
-				"GET /repos/owner/repo":                              githubtest.OK(githubtest.RepositoryBody{ID: 1, Private: true}.JSON()),
+				"GET /repos/owner/repo":                              githubtest.OK(githubtest.RepositoryBody{ID: 1, Private: true, Admin: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions":          githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "local_only"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/workflow": githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/access":   githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
 				"GET /repos/owner/repo/environments": githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 1, Environments: []githubtest.EnvironmentBody{
 					{ID: 2, Name: "production"},
 				}}.JSON()),
+				"GET /repos/owner/repo/vulnerability-alerts":     {Status: http.StatusNotFound},
+				"GET /repos/owner/repo/automated-security-fixes": githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),
 			},
 		},
 		{
 			name: "selected policy without patterns reads back with the empty sequence",
 			routes: map[string]githubtest.Response{
-				"GET /repos/owner/repo":                                      githubtest.OK(githubtest.RepositoryBody{ID: 1, Private: true}.JSON()),
+				"GET /repos/owner/repo":                                      githubtest.OK(githubtest.RepositoryBody{ID: 1, Private: true, Admin: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions":                  githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "selected"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/selected-actions": githubtest.OK(githubtest.SelectedActionsBody{VerifiedAllowed: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/workflow":         githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/access":           githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
 				"GET /repos/owner/repo/environments":                         githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
+				"GET /repos/owner/repo/vulnerability-alerts":                 {Status: http.StatusNotFound},
+				"GET /repos/owner/repo/automated-security-fixes":             githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),
 			},
 		},
 	}
