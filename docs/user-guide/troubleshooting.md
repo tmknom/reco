@@ -79,16 +79,6 @@ Plan cannot be applied.
 
 理由は、変更計画の `Applicability:` の行の括弧の中にあります。セミコロンの前が成り立っていないこと、後ろが設定ファイルの直し方です。この例では Actions が無効のため、同じリポジトリに `enabled: true` か `allowed_actions` を書き足します。設定ファイルを直したら、`plan` で `Plan cannot be applied.` が消えたことを確かめ、`apply` を実行し直します。
 
-## `applying mode selected is not supported` と表示された
-
-`apply` は、`deployment_branch_policy` に `mode: selected` を書いた変更予定があると、変更計画を表示せず、承認を求めず、ほかのリポジトリも含めて何も変えずにエラーで終わります。reco は `selected` のパターンを加えたり取り除いたりしないためです。`plan` はこの変更予定を表示し、エラーにはしません。
-
-```text
-{"time":"...","level":"ERROR","msg":"command failed","error":"example/project-a: environments.production.deployment_branch_policy: applying mode selected is not supported; no changes made"}
-```
-
-ほかの変更を先に反映するには、エラーに出た Environment の `deployment_branch_policy` を設定ファイルから一時的に消し、`apply` を実行し直します。`deployment_branch_policy` を消した Environment は、あるかどうかだけを管理します。`selected` の設定は、GitHub の設定画面で変えます。
-
 ## 承認できない
 
 承認を求められずに `approval not available` で終わるときは、標準入力が端末になっていません。端末から直接 `apply` を実行します。コンテナイメージでは `-it` を付けます。
@@ -125,7 +115,7 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 | `Desired state: matches` | 読み直した値は設定ファイルのとおりだった |
 | `Desired state: does not match` | 読み直した値が設定ファイルのとおりでなかった |
 | `Desired state: not confirmed (read failed)` | 更新のあとで値を読み直せず、設定ファイルのとおりになったか確かめられなかった。読み直せなかった原因は、結果のあとに出るエラーの行に出る |
-| `Desired state: not confirmed (repository ID changed)` | 読み直したリポジトリが、承認したときとは別のリポジトリだった。同じ名前のリポジトリが、削除して作り直すなどして入れ替わっている |
+| `Desired state: not confirmed (repository ID changed)` | 読み直したリポジトリが、承認したときとは別のリポジトリだった。同じ名前のリポジトリが、削除して作り直すなどして入れ替わった可能性がある |
 | `Desired state: not in effect (<理由>)` | 書いた設定が GitHub で効いていなかった。括弧の中は効いていない理由（`GitHub Actions is disabled` など） |
 
 次の順に進めます。
@@ -133,6 +123,28 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 1. 結果のあとに出るエラーの行と、`failed` の下の行から、止まった原因を確かめる。エラーの行の内容に応じて、このページの該当するセクションで原因を取り除く
 2. `plan` を実行し、残っている変更を確かめる。完了した変更は、変更計画に出ない
 3. `apply` を実行し直して、残りの変更を適用する
+
+### 一つの変更の途中で止まった
+
+一つの変更が複数の更新に分かれるときは、`Update request (...)` の行が更新の順に並びます。`allowed_actions` を `selected` に変えて `selected_actions` も変える変更と、`mode: selected` の Environment でパターンを取り除くか加える変更が当たります。Environment の作成や、`mode` を `selected` に変える更新は、その変更の最初の更新として並びます。
+
+```text
+Applying changes...
+  example/project-a: failed
+    Update request (environments.production.deployment_branch_policy): succeeded
+    Update request (patterns to add [branch "main"]): succeeded
+    Update request (patterns to add [branch "release/*"]): rejected
+    Update request (patterns to add [tag "v*"]): not started
+    Desired state: does not match
+```
+
+| 行 | 意味 |
+|---|---|
+| `Update request (<設定>): ...` | その設定を変える更新の結果 |
+| `Update request (patterns to remove [...]): ...`、`Update request (patterns to add [...]): ...` | 括弧の中のパターンを取り除く更新と、加える更新の結果。取り除く更新どうし、または加える更新どうしで、同じ結果の更新が続くと、1行にまとめて並べる |
+| `not started` | その更新を始めなかった。前の更新が完了しなかったか、すぐ下の `Precondition:` の行の理由で始められなかった |
+
+この例では、`mode` を `selected` に変えて `main` のパターンまで加え、`release/*` を加える更新が拒否されて止まっています。`v*` はまだ加えていません。
 
 ### 自動マージの設定が反映されない
 
@@ -152,8 +164,9 @@ GitHub Free のアカウントが所有するプライベートリポジトリ�
 |---|---|
 | `rate limit exceeded` | GitHub の API の利用回数の上限を超えた。少なくとも1分待ってから実行し直す。同じエラーが続くなら、さらに間隔を空ける |
 | `communication failed`、`unexpected response (HTTP 5xx)` | 通信の失敗か、GitHub 側の障害。時間をおいて実行し直す |
-| `redirect not followed` | リポジトリの名前が変わったか、移転した可能性がある。設定ファイルの `name` と `--repo` に、今の名前を書く |
-| `Precondition: ... changed since approval` | 承認したあとに、その設定の値が変わったか、作成する予定の Environment と同じ名前の Environment が作られた。`plan` で今の値を確かめてから、`apply` し直す |
+| `redirect not followed`（下の `HTTP 303` の行を除く） | リポジトリの名前が変わったか、移転した可能性がある。設定ファイルの `name` と `--repo` に、今の名前を書く |
+| `redirect not followed (HTTP 303): GitHub returns this when the pattern already exists` | Environment に加えようとしたパターンが、GitHub 上にすでにあった。`plan` で今のパターンを確かめてから、`apply` し直す |
+| `Precondition: ... changed since approval` | 承認したあとに、その設定の値か Environment そのものが変わった。Environment そのものの変化は、作成する予定の名前の Environment が作られた、変える予定の Environment がなくなった、作り直されたなどの場合に当たる。`plan` で今の値を確かめてから、`apply` し直す |
 | そのほかの `Precondition:` | 更新を始める前の確認ができなかったか、一つ前の更新のあとの値が予定した値と違った。エラーの行があれば原因を取り除き、`plan` で確かめてから `apply` し直す |
 | `Other settings: ... (cause not determined)` | 変えようとしていない設定が、更新の前後で変わっていた。誰かが変えたものかを確かめ、`plan` で今の値を確かめる |
 

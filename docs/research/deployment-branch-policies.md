@@ -27,6 +27,7 @@
 >
 > - `custom_branch_policies` が `true` でないとき：`deployment_branch_policy` が `null` のときも `protected_branches: true` のときも、一覧、取得、作成はどれも `404` を返した。本文は `message` が `Not Found` の Basic Error だった。作成の `404` のあと、Environment の `deployment_branch_policy` は変わっていなかった
 > - 名前に `/` を含む Environment：`%2F` にエンコードした Environment の名前で、一覧と作成ができた
+> - 名前に `..` と `/` を含む Environment：`reco-check-a/../staging` を `reco-check-a%2F..%2Fstaging` にエンコードした一覧、作成、削除は、その名前の Environment のパターンにだけ作用した。同じリポジトリの `staging` の Environment のパターンは変わらず、この経路で `staging` のパターンの `id` を削除すると `404` を返した
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -66,7 +67,7 @@
 > 次は、reco の開発者が実際の動作で確認した事項です（公開リポジトリで、パターンが0〜4件の状態で確認）。
 >
 > - ページング：`per_page=1` では各ページが1件を返し、`total_count` は全件数だった。応答ヘッダー `Link` は [GitHub デプロイ環境 API 仕様](deployment-environments.md) 3.1 の一覧と同じく `/repositories/{repository_id}/...` の形の URL を持ち、最後のページには `next` がなかった
-> - 並び順：名前の昇順だった（`MAIN`、`main`、`v*` の順）
+> - 並び順：名前の昇順だった（`MAIN`、`main`、`v*` の順）。名前が同じブランチとタグのパターンでは、タグが先に並んだ（ブランチを先に作った1例）
 > - パターンがないとき：`custom_branch_policies` が `true` でパターンがない Environment では、`200` で `total_count: 0` と空の配列を返した
 
 | Relationship | Target | Target Type |
@@ -113,7 +114,8 @@
 > - `type` の省略：`type` を省略すると `branch` のパターンとして作られた
 > - 同じ名前と種類のパターン：すでにある名前と種類で作成すると `303` を返し、本文は空だった。`Location` は `https://api.github.com/repositories/{repository_id}/environments/{environment_name}/deployment-branch-policies` で、一覧の URL だった。新しいパターンは作られず、一覧の件数は変わらなかった
 > - 作り直したときの `id`：パターンを削除して同じ名前と種類で作り直すと、別の `id` になった
-> - 作成直後の取得：作成（約15回）の約1秒以内の一覧と取得は、どれも作成したパターンを含んだ
+> - 空白と制御文字を含む名前：`release `（末尾に半角空白）のブランチ、` release`（先頭に半角空白）のタグ、`rel ease`（途中に半角空白）のブランチの作成は、どれも `422` を返し、本文の `message` は `Name is invalid` だった。パターンは作られなかった。途中に U+0000、U+0001、U+0008、タブ、改行、U+000B、U+000C、CR、U+001B、U+001F を含む名前も、同じ `422` だった。一方、U+007F、U+0080、U+0085、U+009F、U+00A0、U+2003、U+2028、U+200B、U+3000 を途中に含む名前と、U+00A0、U+3000 を先頭か末尾に持つ名前、U+0085 を先頭に持つ名前は `200` を返し、送ったとおりの名前で作られた
+> - 作成直後の取得：作成（約20回）の約1秒以内の一覧と取得は、どれも作成したパターンを含んだ
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -124,10 +126,11 @@
 - 用途：Environment からのデプロイ元パターンの削除
 
 > [!NOTE]
-> 次は、reco の開発者が実際の動作で確認した事項です（公開リポジトリで確認）。
+> 次は、reco の開発者が実際の動作で確認した事項です（公開リポジトリで確認。削除の `204` は非公開リポジトリでも確認）。
 >
 > - 削除の応答：`204` を返し、本文はなかった。直後の一覧は、削除したパターンを含まなかった
 > - 削除済みのパターン：同じ `id` への2回目の削除は `404` を返した
+> - Environment のほかのフィールド：`wait_timer` の保護ルールを持ち `can_admins_bypass` が `false` の Environment で、パターンを作成したあとも削除したあとも、Environment の個別取得の本文はパターンを作成する前と一致した（`updated_at`、保護ルールの `id` を含む）
 
 | Relationship | Target | Target Type |
 |---|---|---|

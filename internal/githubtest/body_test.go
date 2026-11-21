@@ -93,6 +93,11 @@ func TestBodies(t *testing.T) {
 				map[string]any{"id": float64(4), "name": "main", "type": "tag"},
 			}},
 		},
+		{
+			name: "single deployment pattern body is the element object itself",
+			body: DeploymentPatternBody{ID: 5, Name: "release/*", Type: "branch"}.JSON(),
+			want: map[string]any{"id": float64(5), "name": "release/*", "type": "branch"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

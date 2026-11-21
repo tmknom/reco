@@ -17,14 +17,17 @@ type unexpectedOutsideChange struct {
 // unexpectedOutsideChanges は、change の変更対象外の設定について、更新後の観測 after での予期しない変化を返す。
 // before は、開始した更新操作の分だけの直前の観測である。
 // ドメインモデルの観測の時点の定めに従い、更新エンドポイントごとに、それへ送った最初の更新操作の直前と比べる。
-// Environment の更新操作は、宛先の Environment の保護設定を、その更新操作の直前と比べる。
+// Environment の PUT (作成と方式の変更) は、宛先の Environment の保護設定を、その更新操作の直前と比べる。
+// 個別パターンの更新操作は比べない。比べる範囲はアーキテクチャ設計の未管理設定を保全する更新方式に従う。
 func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.ObservationResult, after github.ObservationResult) []unexpectedOutsideChange {
 	var changes []unexpectedOutsideChange
 	var compared []github.UpdateEndpoint
 	for i, b := range before {
 		operation := change.Operations[i]
 		if operation.TargetsEnvironment() {
-			changes = append(changes, environmentProtectionChanges(operation.Unit.Environment, b, after)...)
+			if !operation.ChangesDeploymentPattern() {
+				changes = append(changes, environmentProtectionChanges(operation.Unit.Environment, b, after)...)
+			}
 			continue
 		}
 		endpoint := github.UpdateEndpointOf(operation.Unit.Key)

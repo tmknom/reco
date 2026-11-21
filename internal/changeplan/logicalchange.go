@@ -20,12 +20,31 @@ type LogicalChange struct {
 type UpdateOperation struct {
 	// Unit は、この更新操作が変える管理の単位。
 	Unit setting.Unit
-	// Desired は、この更新操作が送る期待値。
-	// Environment の作成では、同じ更新要求で設定する deployment_branch_policy の期待値で、方式を宣言していなければゼロ値（本文を送らない）。
+	// Desired は、この更新操作が実現する管理設定の期待値。
+	// Environment の作成では、宣言した deployment_branch_policy の値の全体で、作成の要求が送るのはその方式だけ。方式を宣言していなければゼロ値（本文を送らない）。
+	// 個別パターンの更新操作では、宣言したデプロイ元制限の値の全体で、送る要素は DeploymentPatternChange が持つ。
 	Desired setting.Value
+	// DeploymentPatternChange は、個別パターンを一つ加えるか取り除く更新操作だけが持つ。ゼロ値なら Desired を送る更新操作。
+	DeploymentPatternChange DeploymentPatternChange
 	// RelevantSettings は、この更新操作の変更前提の基準。変わっていたことを報告するときに優先する順に並べる。
 	RelevantSettings []RelevantSetting
 }
+
+// DeploymentPatternChange は、デプロイ元制限の個別パターンの集合の要素を一つ変える更新操作の、向きと要素。
+type DeploymentPatternChange struct {
+	Direction DeploymentPatternDirection
+	Pattern   setting.DeploymentPattern
+}
+
+// DeploymentPatternDirection は、個別パターンの更新操作の向き。ゼロ値は、個別パターンの更新操作でないことを表す。
+type DeploymentPatternDirection int
+
+const (
+	// AddDeploymentPattern は、個別パターンを一つ加える向き。
+	AddDeploymentPattern DeploymentPatternDirection = iota + 1
+	// RemoveDeploymentPattern は、個別パターンを一つ取り除く向き。
+	RemoveDeploymentPattern
+)
 
 // RelevantSetting は、変更前提で比べる関係する現在値の設定と、その承認時に予定した値。
 // ValueAtApproval と EnvironmentAtApproval は、Unit.Key の形に応じてどちらか一方だけを持つ。
@@ -36,16 +55,24 @@ type RelevantSetting struct {
 	// EnvironmentAtApproval は、承認時に予定した存在と ID。
 	// Environment そのものは値を持たないため、存在の観測結果を承認時に予定した値にする。
 	EnvironmentAtApproval github.EnvironmentObservation
+	// CreatedByPrecedingOperation は、承認時に予定した存在が、同じ論理的な設定変更の先行する更新操作による作成であること。
+	// 真のとき EnvironmentAtApproval は持たない。承認の時点で ID が定まらないため。
+	CreatedByPrecedingOperation bool
 }
 
-// Units は、c が変える管理の単位を更新操作の順に返す。
+// Units は、c が変える管理の単位を、最初に現れた順に、重複を除いて返す。
 // 方式を送る Environment の作成は、一つの更新操作で Environment とその方式を変えるため、存在、方式の順に二つ返す。
 func (c LogicalChange) Units() []setting.Unit {
 	var units []setting.Unit
+	add := func(unit setting.Unit) {
+		if !slices.Contains(units, unit) {
+			units = append(units, unit)
+		}
+	}
 	for _, operation := range c.Operations {
-		units = append(units, operation.Unit)
+		add(operation.Unit)
 		if operation.CreatesEnvironment() && operation.SetsDeploymentBranchPolicy() {
-			units = append(units, setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: operation.Unit.Environment})
+			add(setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: operation.Unit.Environment})
 		}
 	}
 	return units
@@ -61,8 +88,16 @@ func (o UpdateOperation) CreatesEnvironment() bool {
 	return o.Unit.Key == setting.EnvironmentResource
 }
 
-// SetsDeploymentBranchPolicy は、この更新操作が Environment の deployment_branch_policy を送るかを返す。
+// ChangesDeploymentPattern は、この更新操作が個別パターンを一つ加えるか取り除く更新操作かを返す。
+func (o UpdateOperation) ChangesDeploymentPattern() bool {
+	return o.DeploymentPatternChange.Direction != 0
+}
+
+// SetsDeploymentBranchPolicy は、この更新操作が Environment の deployment_branch_policy の方式を送るかを返す。
 func (o UpdateOperation) SetsDeploymentBranchPolicy() bool {
+	if o.ChangesDeploymentPattern() {
+		return false
+	}
 	switch o.Unit.Key {
 	case setting.EnvironmentDeploymentBranchPolicy:
 		return true
@@ -98,11 +133,6 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 			return nil, fmt.Errorf("%s: %s cannot be applied", r.Target, s.Unit().String())
 		}
 	}
-	for _, s := range r.Settings {
-		if s.IsPlannedChange() && targetsSelectedDeploymentBranchPolicy(s) {
-			return nil, fmt.Errorf("%s: %s: applying mode selected is not supported", r.Target, s.Unit().String())
-		}
-	}
 	_, hasEnabled := r.settingPlanOf(setting.Unit{Key: setting.ActionsEnabled})
 	if _, hasPolicy := r.settingPlanOf(setting.Unit{Key: setting.AllowedActions}); hasEnabled && hasPolicy {
 		panic(fmt.Sprintf("changeplan: plans of %s and %s are in the same repository plan", setting.ActionsEnabled, setting.AllowedActions))
@@ -119,8 +149,8 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 			}
 			continue
 		case s.Key.Area() == setting.AreaEnvironments:
-			if operation, ok := r.environmentOperationOf(s); ok {
-				changes = append(changes, LogicalChange{Operations: []UpdateOperation{operation}})
+			if operations, ok := r.environmentOperationsOf(s); ok {
+				changes = append(changes, LogicalChange{Operations: operations})
 			}
 			continue
 		}
@@ -190,10 +220,4 @@ func shaPinningRequiredOperationOf(s SettingPlan) UpdateOperation {
 
 func targetsSelectedPolicy(s SettingPlan) bool {
 	return s.Key == setting.AllowedActions && s.Desired.AllowedActionsPolicy() == setting.AllowedActionsSelected
-}
-
-// targetsSelectedDeploymentBranchPolicy は、期待値の方式が selected のデプロイ元制限の計画かを返す。
-// 個別パターンを加える・取り除く更新操作がないため、承認の前に止める。
-func targetsSelectedDeploymentBranchPolicy(s SettingPlan) bool {
-	return s.Key == setting.EnvironmentDeploymentBranchPolicy && s.Desired.DeploymentBranchPolicy().Mode == setting.DeploymentBranchPolicySelected
 }

@@ -985,6 +985,44 @@ func TestRun(t *testing.T) {
 		}
 	})
 
+	t.Run("mode change to selected with a pattern is applied by the mode and the pattern after a single approval", func(t *testing.T) {
+		all := githubtest.EnvironmentBody{ID: 7, Name: "production"}
+		selected := githubtest.EnvironmentBody{ID: 7, Name: "production", DeploymentBranchPolicy: selectedBody()}
+		main := githubtest.DeploymentPatternBody{ID: 10, Name: "main", Type: "branch"}
+		baseURL, server := newSequenceServer(t,
+			okRepository(1, false, false), okEnvironments(all),
+			okRepository(1, false, false), okEnvironments(all), okEnvironment(selected),
+			okRepository(1, false, false), okEnvironments(selected), okDeploymentPatterns(), okDeploymentPattern(main),
+			okRepository(1, false, false), okEnvironments(selected), okDeploymentPatterns(main))
+		var out bytes.Buffer
+		calls := 0
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(`repositories:
+  - name: owner/repo
+    environments:
+      - name: production
+        deployment_branch_policy:
+          mode: selected
+          patterns:
+            - type: branch
+              name: main
+`)}}
+
+		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		reads := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/environments"}
+		readPatterns := append(slices.Clone(reads), "GET /repos/owner/repo/environments/production/deployment-branch-policies")
+		want := slices.Concat(reads,
+			reads, []string{"PUT /repos/owner/repo/environments/production"},
+			readPatterns, []string{"POST /repos/owner/repo/environments/production/deployment-branch-policies"}, readPatterns)
+		if !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		if calls != 1 || !strings.Contains(out.String(), "owner/repo: updated") || !strings.Contains(out.String(), "Apply complete.") {
+			t.Errorf("approve calls = %d, Out = %q, want one approval and the repository updated", calls, out.String())
+		}
+	})
+
 	t.Run("missing configuration file stops before approval and requests", func(t *testing.T) {
 		baseURL, server := newSequenceServer(t)
 		var out bytes.Buffer

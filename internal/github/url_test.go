@@ -73,6 +73,27 @@ func TestDeploymentBranchPoliciesURL(t *testing.T) {
 	}
 }
 
+// TestDeploymentBranchPolicyURL は、一覧の URL に ID を足し、Path と RawPath の両方が同じ要素を指すことと、組めない名前を伝えることを確かめる。
+//
+//trace:checks FR-004
+func TestDeploymentBranchPolicyURL(t *testing.T) {
+	c := New(testToken)
+	u, ok := c.deploymentBranchPolicyURL(mustReference(t, "owner/repo"), "a/b", 42)
+	if !ok {
+		t.Fatal("deploymentBranchPolicyURL(\"a/b\", 42) ok = false, want true")
+	}
+	if got, want := u.EscapedPath(), "/repos/owner/repo/environments/a%2Fb/deployment-branch-policies/42"; got != want {
+		t.Errorf("escaped path = %q, want %q", got, want)
+	}
+	if got, want := u.Path, "/repos/owner/repo/environments/a/b/deployment-branch-policies/42"; got != want {
+		t.Errorf("path = %q, want %q", got, want)
+	}
+
+	if u, ok := c.deploymentBranchPolicyURL(mustReference(t, "owner/repo"), "..", 42); ok {
+		t.Errorf("deploymentBranchPolicyURL(\"..\", 42) = %q, true, want false", u)
+	}
+}
+
 func TestRepositoryURL(t *testing.T) {
 	cases := []struct {
 		name   string

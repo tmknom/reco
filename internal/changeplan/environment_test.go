@@ -103,12 +103,12 @@ func TestEnvironmentPlans(t *testing.T) {
 	}
 }
 
-// TestRepositoryPlan_EnvironmentOperationOfModeMismatchPanicsWithoutMatchedExistence は、存在する Environment の方式の不一致を、
+// TestRepositoryPlan_EnvironmentOperationsOfModeMismatchPanicsWithoutMatchedExistence は、存在する Environment の方式の不一致を、
 // 同じ名前の存在の計画が一致でなければ更新操作にせず panic することを確かめる。
 // 作成の計画と組むと、存在しない Environment の ID を基準にした方式の変更になるため。
 //
 //trace:checks INV-004
-func TestRepositoryPlan_EnvironmentOperationOfModeMismatchPanicsWithoutMatchedExistence(t *testing.T) {
+func TestRepositoryPlan_EnvironmentOperationsOfModeMismatchPanicsWithoutMatchedExistence(t *testing.T) {
 	staging := mustEnvironmentName(t, "staging")
 	creation := SettingPlan{Key: setting.EnvironmentResource, Environment: staging, ObservedEnvironment: lookup(t, "staging"), Result: Mismatch, Applicability: Applicable}
 	all := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll})
@@ -117,8 +117,46 @@ func TestRepositoryPlan_EnvironmentOperationOfModeMismatchPanicsWithoutMatchedEx
 	r := RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: []SettingPlan{creation, modeChange}}
 	defer func() {
 		if recover() == nil {
-			t.Error("environmentOperationOf() did not panic")
+			t.Error("environmentOperationsOf() did not panic")
 		}
 	}()
-	_, _ = r.environmentOperationOf(modeChange)
+	_, _ = r.environmentOperationsOf(modeChange)
+}
+
+// TestRepositoryPlan_EnvironmentOperationsOfIgnoresPatternsOfAnotherMode は、方式が selected でない期待値が個別パターンを持っていても、
+// その要素を加える更新操作を並べず、Environment の PUT 一つにすることを確かめる。値の型はこの形を作れ、宣言していない要素を送らないため。
+//
+//trace:checks INV-001
+func TestRepositoryPlan_EnvironmentOperationsOfIgnoresPatternsOfAnotherMode(t *testing.T) {
+	staging := mustEnvironmentName(t, "staging")
+	main := setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"}
+	protectedWithPattern := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches, Patterns: []setting.DeploymentPattern{main}})
+	all := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll})
+	creation := SettingPlan{Key: setting.EnvironmentResource, Environment: staging, ObservedEnvironment: lookup(t, "staging"), Result: Mismatch, Applicability: Applicable}
+	policyOfAbsent := SettingPlan{
+		Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
+		Desired: protectedWithPattern, Result: NotComparable, Applicability: Applicable,
+	}
+	existence := SettingPlan{
+		Key: setting.EnvironmentResource, Environment: staging,
+		ObservedEnvironment: lookup(t, "staging", github.Environment{ID: 7, Name: "staging", DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}}),
+		Result:              Match,
+	}
+	modeChange := SettingPlan{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging, Observed: github.Observed(all), Desired: protectedWithPattern, Result: Mismatch, Applicability: Applicable}
+	cases := []struct {
+		name string
+		r    RepositoryPlan
+		plan SettingPlan
+	}{
+		{name: "creation with a protected_branches value holding a pattern is one creation", r: RepositoryPlan{Settings: []SettingPlan{creation, policyOfAbsent}}, plan: creation},
+		{name: "mode change to a protected_branches value holding a pattern is one put", r: RepositoryPlan{Settings: []SettingPlan{existence, modeChange}}, plan: modeChange},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := tc.r.environmentOperationsOf(tc.plan)
+			if !ok || len(got) != 1 || got[0].ChangesDeploymentPattern() {
+				t.Errorf("environmentOperationsOf() = %+v, %t, want one update operation that is not a pattern update", got, ok)
+			}
+		})
+	}
 }

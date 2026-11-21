@@ -114,7 +114,7 @@ func TestObserveBeforeUpdate(t *testing.T) {
 			baseURL, server := newSequenceServer(t, tc.responses...)
 			delays := &delayRecorder{}
 
-			_, got, err := observeBeforeUpdate(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, 1, observationAreas(tc.change), delays.after, &updateInterval{updateStarted: true})
+			_, got, err := observeBeforeUpdate(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, 1, observationAreas(tc.change), nil, delays.after, &updateInterval{updateStarted: true})
 
 			if !slices.Equal(server.RequestLines(), tc.wantRequests) {
 				t.Errorf("requests = %v, want %v", server.RequestLines(), tc.wantRequests)
@@ -150,7 +150,7 @@ func TestObserveBeforeUpdate(t *testing.T) {
 		}
 		change := toSelectedChange()
 
-		_, got, err := observeBeforeUpdate(ctx, newClient(baseURL), newRepositoryPlan(t), change, 1, observationAreas(change), interrupted, &updateInterval{updateStarted: true})
+		_, got, err := observeBeforeUpdate(ctx, newClient(baseURL), newRepositoryPlan(t), change, 1, observationAreas(change), nil, interrupted, &updateInterval{updateStarted: true})
 
 		if !slices.Equal(server.RequestLines(), readNotSelected) {
 			t.Errorf("requests = %v, want %v", server.RequestLines(), readNotSelected)
@@ -174,7 +174,7 @@ func TestObserveBeforeUpdate(t *testing.T) {
 		}
 		change := toSelectedChange()
 
-		_, got, err := observeBeforeUpdate(ctx, newClient(baseURL), newRepositoryPlan(t), change, 1, observationAreas(change), interrupted, &updateInterval{updateStarted: true})
+		_, got, err := observeBeforeUpdate(ctx, newClient(baseURL), newRepositoryPlan(t), change, 1, observationAreas(change), nil, interrupted, &updateInterval{updateStarted: true})
 
 		if len(server.RequestLines()) != 0 {
 			t.Errorf("requests = %v, want none", server.RequestLines())
@@ -1637,6 +1637,11 @@ func TestExecuteRepositories(t *testing.T) {
 //trace:checks INV-001 INV-004
 func TestSendUpdate(t *testing.T) {
 	staging := observedEnvironment(7, "Staging", setting.DeploymentBranchPolicyAll)
+	mainBranch, mainTag := branchPattern("main"), tagPattern("main")
+	// 方式の PUT、POST v* の順
+	toSelectedPatterns := deploymentPatternsChange(t, "staging", staging, selectedPolicy(tagPattern("v*")))
+	// DELETE tag main だけ。計画時の ID は 10 と 11
+	removeMainTag := deploymentPatternsChange(t, "staging", selectedEnvironment(7, "Staging", []setting.DeploymentPattern{mainBranch, mainTag}, 10, 11), selectedPolicy(mainBranch))
 	cases := []struct {
 		name      string
 		operation changeplan.UpdateOperation
@@ -1673,6 +1678,23 @@ func TestSendUpdate(t *testing.T) {
 			response:  okEnvironment(githubtest.EnvironmentBody{ID: 7, Name: "Staging"}),
 			want:      githubtest.Request{Method: http.MethodPut, Path: "/repos/owner/repo/environments/Staging", Body: map[string]any{"deployment_branch_policy": nil}},
 		},
+		{
+			name:      "pattern addition is sent to the observed spelling with only the type and the name",
+			operation: toSelectedPatterns.Operations[1],
+			observed:  github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", nil))},
+			response:  okDeploymentPattern(githubtest.DeploymentPatternBody{ID: 30, Name: "v*", Type: "tag"}),
+			want: githubtest.Request{Method: http.MethodPost, Path: "/repos/owner/repo/environments/Staging/deployment-branch-policies", Body: map[string]any{
+				"name": "v*", "type": "tag",
+			}},
+		},
+		{
+			// 同じ名前で種類の違う個別パターンを並べ、種類と名前の組で ID を引くことを確かめる
+			name:      "pattern removal is sent to the ID of the pattern in the read before the update",
+			operation: removeMainTag.Operations[0],
+			observed:  github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", []setting.DeploymentPattern{mainBranch, mainTag}, 20, 21))},
+			response:  noContent(),
+			want:      githubtest.Request{Method: http.MethodDelete, Path: "/repos/owner/repo/environments/Staging/deployment-branch-policies/21"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1691,6 +1713,42 @@ func TestSendUpdate(t *testing.T) {
 			if !reflect.DeepEqual(requests[0], tc.want) {
 				t.Errorf("request = %+v, want %+v", requests[0], tc.want)
 			}
+		})
+	}
+
+	// 変更前提が成立した観測には取り除く個別パターンが必ずあるため、ない形は不変条件の破れになる
+	panicCases := []struct {
+		name      string
+		operation changeplan.UpdateOperation
+		observed  github.ObservationResult
+	}{
+		{
+			name:      "pattern removal without the pattern in the read before the update panics",
+			operation: removeMainTag.Operations[0],
+			observed:  github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", []setting.DeploymentPattern{mainBranch}, 20))},
+		},
+		{
+			name: "undefined direction of a pattern update panics",
+			operation: func() changeplan.UpdateOperation {
+				o := toSelectedPatterns.Operations[1]
+				o.DeploymentPatternChange.Direction = changeplan.RemoveDeploymentPattern + 1
+				return o
+			}(),
+			observed: github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", nil))},
+		},
+	}
+	for _, tc := range panicCases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, server := newSequenceServer(t)
+			defer func() {
+				if recover() == nil {
+					t.Error("sendUpdate() did not panic")
+				}
+				if len(server.RequestLines()) != 0 {
+					t.Errorf("requests = %v, want none", server.RequestLines())
+				}
+			}()
+			_, _ = sendUpdate(context.Background(), newClient(baseURL), mustReference(t, "owner/repo"), tc.operation, tc.observed)
 		})
 	}
 }
@@ -1841,6 +1899,206 @@ func TestExecuteChange_Environments(t *testing.T) {
 			}
 			if tc.wantPrecond == preconditionHolds && got.operation(0).update != tc.wantUpdate {
 				t.Errorf("update = %v, want %v", got.operation(0).update, tc.wantUpdate)
+			}
+			if got.confirmation != tc.wantDesired {
+				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
+			}
+			if !reflect.DeepEqual(got.unexpectedOutsideChanges, tc.wantOutside) {
+				t.Errorf("unexpectedOutsideChanges = %v, want %v", got.unexpectedOutsideChanges, tc.wantOutside)
+			}
+			if got.result() != tc.wantResult {
+				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)
+			}
+		})
+	}
+}
+
+// TestExecuteChange_DeploymentPatterns は、個別パターンを一つずつ取り除き、加える論理的な設定変更について、
+// 更新操作ごとの間隔と更新直前の観測、宛先の ID、止まり方、更新後の確認のつなぎ目を確かめる。
+//
+//trace:checks INV-001 INV-004 INV-005 FR-010 FR-011 FR-012 FR-013
+func TestExecuteChange_DeploymentPatterns(t *testing.T) {
+	const (
+		getRepository   = "GET /repos/owner/repo"
+		getEnvironments = "GET /repos/owner/repo/environments"
+		getPatterns     = "GET /repos/owner/repo/environments/production/deployment-branch-policies"
+		putProduction   = "PUT /repos/owner/repo/environments/production"
+		postPattern     = "POST /repos/owner/repo/environments/production/deployment-branch-policies"
+	)
+	deletePattern := func(id string) string {
+		return "DELETE /repos/owner/repo/environments/production/deployment-branch-policies/" + id
+	}
+	readSelected := []string{getRepository, getEnvironments, getPatterns}
+	readNotSelected := []string{getRepository, getEnvironments}
+	waitTimer, changedWaitTimer := 30, 10
+	selectedOf := func(id int64, wait *int) githubtest.EnvironmentBody {
+		return githubtest.EnvironmentBody{ID: id, Name: "production", DeploymentBranchPolicy: selectedBody(), WaitTimer: wait}
+	}
+	// observeSelected は、ID id で方式 selected の production を、個別パターン patterns とともに読む観測の応答。
+	observeSelected := func(id int64, wait *int, patterns ...githubtest.DeploymentPatternBody) []response {
+		return []response{okRepository(1, false, false), okEnvironments(selectedOf(id, wait)), okDeploymentPatterns(patterns...)}
+	}
+	pattern := func(id int64, p setting.DeploymentPattern) githubtest.DeploymentPatternBody {
+		return githubtest.DeploymentPatternBody{ID: id, Name: p.Name, Type: string(p.Type)}
+	}
+	main, feature, release, version := branchPattern("main"), branchPattern("feature/*"), branchPattern("release/*"), tagPattern("v*")
+	existence := setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "production")}
+	policy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: mustEnvironmentName(t, "production")}
+	approvedAll := observedEnvironment(7, "production", setting.DeploymentBranchPolicyAll)
+	// 計画時の ID は main が 10、feature/* が 11
+	approvedMainFeature := selectedEnvironment(7, "production", []setting.DeploymentPattern{main, feature}, 10, 11)
+	succeeded := operationRecord{precondition: preconditionHolds, update: github.UpdateSucceeded}
+
+	cases := []struct {
+		name           string
+		change         changeplan.LogicalChange
+		responses      [][]response
+		wantRequests   [][]string
+		wantDelays     []time.Duration
+		wantOperations []operationRecord
+		wantDesired    desiredStateConfirmation
+		wantOutside    []unexpectedOutsideChange
+		wantResult     changeResult
+	}{
+		{
+			name:   "all to selected with two patterns sends the mode and each pattern after a read and the interval and completes",
+			change: deploymentPatternsChange(t, "production", approvedAll, selectedPolicy(main, version)),
+			responses: [][]response{
+				{okRepository(1, false, false), okEnvironments(githubtest.EnvironmentBody{ID: 7, Name: "production"})},
+				{okEnvironment(selectedOf(7, nil))},
+				observeSelected(7, nil), {okDeploymentPattern(pattern(10, main))},
+				observeSelected(7, nil, pattern(10, main)), {okDeploymentPattern(pattern(11, version))},
+				observeSelected(7, nil, pattern(10, main), pattern(11, version)),
+			},
+			wantRequests:   [][]string{readNotSelected, {putProduction}, readSelected, {postPattern}, readSelected, {postPattern}, readSelected},
+			wantDelays:     []time.Duration{time.Second, time.Second},
+			wantOperations: []operationRecord{succeeded, succeeded, succeeded},
+			wantDesired:    desiredStateMatches,
+			wantResult:     completed,
+		},
+		{
+			name:   "replacement removes the pattern by the ID in the read before the update rather than the ID at planning and completes",
+			change: deploymentPatternsChange(t, "production", approvedMainFeature, selectedPolicy(main, release)),
+			responses: [][]response{
+				observeSelected(7, nil, pattern(10, main), pattern(20, feature)), {noContent()},
+				observeSelected(7, nil, pattern(10, main)), {okDeploymentPattern(pattern(30, release))},
+				observeSelected(7, nil, pattern(10, main), pattern(30, release)),
+			},
+			wantRequests:   [][]string{readSelected, {deletePattern("20")}, readSelected, {postPattern}, readSelected},
+			wantDelays:     []time.Duration{time.Second},
+			wantOperations: []operationRecord{succeeded, succeeded},
+			wantDesired:    desiredStateMatches,
+			wantResult:     completed,
+		},
+		{
+			name: "first removal rejected with 404 sends neither the rest nor a read after the update",
+			change: deploymentPatternsChange(t, "production", selectedEnvironment(7, "production", []setting.DeploymentPattern{feature, main, release}, 11, 10, 12),
+				selectedPolicy(main, version)),
+			responses:      [][]response{observeSelected(7, nil, pattern(11, feature), pattern(10, main), pattern(12, release)), {{status: http.StatusNotFound}}},
+			wantRequests:   [][]string{readSelected, {deletePattern("11")}},
+			wantOperations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateRejected}},
+			wantResult:     failed,
+		},
+		{
+			name:   "addition answered with 303 after a removal is not sent again, starts no later addition, and is read once for diagnosis",
+			change: deploymentPatternsChange(t, "production", approvedMainFeature, selectedPolicy(main, release, version)),
+			responses: [][]response{
+				observeSelected(7, nil, pattern(10, main), pattern(11, feature)), {noContent()},
+				observeSelected(7, nil, pattern(10, main)),
+				{{status: http.StatusSeeOther, location: "/repos/owner/repo/environments/production/deployment-branch-policies"}},
+				observeSelected(7, nil, pattern(10, main), pattern(12, release)),
+			},
+			wantRequests:   [][]string{readSelected, {deletePattern("11")}, readSelected, {postPattern}, readSelected},
+			wantDelays:     []time.Duration{time.Second},
+			wantOperations: []operationRecord{succeeded, {precondition: preconditionHolds, update: github.UpdateUnknown}},
+			wantDesired:    desiredStateMismatch,
+			wantResult:     failed,
+		},
+		{
+			name:   "pattern added by another party after a removal stops the addition without reading again",
+			change: deploymentPatternsChange(t, "production", approvedMainFeature, selectedPolicy(main, release)),
+			responses: [][]response{
+				observeSelected(7, nil, pattern(10, main), pattern(11, feature)), {noContent()},
+				observeSelected(7, nil, pattern(10, main), pattern(12, branchPattern("other/*"))),
+				observeSelected(7, nil, pattern(10, main), pattern(12, branchPattern("other/*"))),
+			},
+			wantRequests:   [][]string{readSelected, {deletePattern("11")}, readSelected, readSelected},
+			wantDelays:     []time.Duration{time.Second},
+			wantOperations: []operationRecord{succeeded, {precondition: preconditionCurrentValueChanged, changedSetting: policy}},
+			wantDesired:    desiredStateMismatch,
+			wantResult:     failed,
+		},
+		{
+			name:   "removal not yet reflected before the addition is read again and completes",
+			change: deploymentPatternsChange(t, "production", approvedMainFeature, selectedPolicy(main, release)),
+			responses: [][]response{
+				observeSelected(7, nil, pattern(10, main), pattern(11, feature)), {noContent()},
+				observeSelected(7, nil, pattern(10, main), pattern(11, feature)),
+				observeSelected(7, nil, pattern(10, main)), {okDeploymentPattern(pattern(12, release))},
+				observeSelected(7, nil, pattern(10, main), pattern(12, release)),
+			},
+			wantRequests:   [][]string{readSelected, {deletePattern("11")}, readSelected, readSelected, {postPattern}, readSelected},
+			wantDelays:     []time.Duration{time.Second, time.Second},
+			wantOperations: []operationRecord{succeeded, succeeded},
+			wantDesired:    desiredStateMatches,
+			wantResult:     completed,
+		},
+		{
+			name:           "pattern added since approval before the first update sends no update request",
+			change:         deploymentPatternsChange(t, "production", approvedMainFeature, selectedPolicy(main, release)),
+			responses:      [][]response{observeSelected(7, nil, pattern(10, main), pattern(11, feature), pattern(12, branchPattern("other/*")))},
+			wantRequests:   [][]string{readSelected},
+			wantOperations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: policy}},
+			wantResult:     notAttempted,
+		},
+		{
+			name:   "created environment recreated before the second addition stops it as a change of the environment",
+			change: creationWithPatternsChange(t, "production", selectedPolicy(main, version)),
+			responses: [][]response{
+				{okRepository(1, false, false), okEnvironments()}, {okEnvironment(selectedOf(8, nil))},
+				observeSelected(8, nil), {okDeploymentPattern(pattern(10, main))},
+				observeSelected(9, nil, pattern(20, main)),
+				observeSelected(9, nil, pattern(20, main)),
+			},
+			wantRequests:   [][]string{readNotSelected, {putProduction}, readSelected, {postPattern}, readSelected, readSelected},
+			wantDelays:     []time.Duration{time.Second, time.Second},
+			wantOperations: []operationRecord{succeeded, succeeded, {precondition: preconditionCurrentValueChanged, changedSetting: existence}},
+			wantDesired:    desiredStateMismatch,
+			wantResult:     failed,
+		},
+		{
+			// wait_timer を PUT と POST のあいだで変え、POST の直前とは同じ値にして、PUT の直前と比べることを確かめる
+			name:   "wait_timer changed after the mode update is one unexpected change compared with the read before it",
+			change: deploymentPatternsChange(t, "production", approvedAll, selectedPolicy(main)),
+			responses: [][]response{
+				{okRepository(1, false, false), okEnvironments(githubtest.EnvironmentBody{ID: 7, Name: "production", WaitTimer: &waitTimer})},
+				{okEnvironment(selectedOf(7, &waitTimer))},
+				observeSelected(7, &changedWaitTimer), {okDeploymentPattern(pattern(10, main))},
+				observeSelected(7, &changedWaitTimer, pattern(10, main)),
+			},
+			wantRequests:   [][]string{readNotSelected, {putProduction}, readSelected, {postPattern}, readSelected},
+			wantDelays:     []time.Duration{time.Second},
+			wantOperations: []operationRecord{succeeded, succeeded},
+			wantDesired:    desiredStateMatches,
+			wantOutside:    []unexpectedOutsideChange{{Setting: "environments.production.wait_timer", Before: "30", After: "10"}},
+			wantResult:     failed,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, server := newSequenceServer(t, slices.Concat(tc.responses...)...)
+			delays := &delayRecorder{}
+
+			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, delays.after, &updateInterval{})
+
+			if want := slices.Concat(tc.wantRequests...); !slices.Equal(server.RequestLines(), want) {
+				t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+			}
+			if !slices.Equal(delays.delays, tc.wantDelays) {
+				t.Errorf("delays = %v, want %v", delays.delays, tc.wantDelays)
+			}
+			if !slices.Equal(got.operations, tc.wantOperations) {
+				t.Errorf("operations = %+v, want %+v", got.operations, tc.wantOperations)
 			}
 			if got.confirmation != tc.wantDesired {
 				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)

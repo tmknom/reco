@@ -129,3 +129,43 @@ func relevantTo(key setting.Key, observed setting.Value) []changeplan.RelevantSe
 func singleUpdate(key setting.Key, desired setting.Value, relevant []changeplan.RelevantSetting) changeplan.LogicalChange {
 	return changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{{Unit: setting.Unit{Key: key}, Desired: desired, RelevantSettings: relevant}}}
 }
+
+// deploymentPatternsChange は、計画時に approved と観測した、宣言の名前 name の Environment のデプロイ元制限を desired にする論理的な設定変更。
+// 更新操作ごとに進む基準を手で写さず、changeplan が導いた並びを使う。
+func deploymentPatternsChange(t *testing.T, name string, approved github.Environment, desired setting.DeploymentBranchPolicy) changeplan.LogicalChange {
+	t.Helper()
+	environment := mustEnvironmentName(t, name)
+	observed := github.Environments{Existing: []github.Environment{approved}}.Lookup(environment)
+	return onlyLogicalChange(t, newRepositoryPlan(t,
+		changeplan.SettingPlan{Key: setting.EnvironmentResource, Environment: environment, ObservedEnvironment: observed, Result: changeplan.Match, Applicability: changeplan.Applicable},
+		changeplan.SettingPlan{
+			Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment, Observed: observed.DeploymentBranchPolicy(),
+			Desired: setting.DeploymentBranchPolicyValue(desired), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+		},
+	))
+}
+
+// creationWithPatternsChange は、計画時に存在しなかった name の Environment を、デプロイ元制限を desired にして作成する論理的な設定変更。
+// 更新操作ごとに進む基準を手で写さず、changeplan が導いた並びを使う。
+func creationWithPatternsChange(t *testing.T, name string, desired setting.DeploymentBranchPolicy) changeplan.LogicalChange {
+	t.Helper()
+	environment := mustEnvironmentName(t, name)
+	observed := github.Environments{}.Lookup(environment)
+	return onlyLogicalChange(t, newRepositoryPlan(t,
+		changeplan.SettingPlan{Key: setting.EnvironmentResource, Environment: environment, ObservedEnvironment: observed, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+		changeplan.SettingPlan{
+			Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment, Observed: observed.DeploymentBranchPolicy(),
+			Desired: setting.DeploymentBranchPolicyValue(desired), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
+		},
+	))
+}
+
+// onlyLogicalChange は、r から導いた論理的な設定変更がちょうど一つであるときの、その論理的な設定変更。
+func onlyLogicalChange(t *testing.T, r changeplan.RepositoryPlan) changeplan.LogicalChange {
+	t.Helper()
+	changes, err := r.LogicalChanges()
+	if err != nil || len(changes) != 1 {
+		t.Fatalf("LogicalChanges() = %+v, %v, want one logical change", changes, err)
+	}
+	return changes[0]
+}

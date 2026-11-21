@@ -176,6 +176,14 @@ func TestConfirmDesiredState_Environments(t *testing.T) {
 			want:         desiredStateUnavailable,
 			wantReason:   github.UnavailableEnvironmentNameUndetermined,
 		},
+		{
+			// 方式の PUT を送らない変更でも、個別パターンの更新操作の期待値で期待状態を確かめる
+			name: "pattern updates alone are a mismatch when one declared pattern is missing",
+			change: deploymentPatternsChange(t, "staging", selectedEnvironment(7, "Staging", []setting.DeploymentPattern{branchPattern("feature/*")}, 11),
+				selectedPolicy(branchPattern("main"), branchPattern("release/*"))),
+			environments: environments(selectedEnvironment(7, "Staging", []setting.DeploymentPattern{branchPattern("main")}, 12)),
+			want:         desiredStateMismatch,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

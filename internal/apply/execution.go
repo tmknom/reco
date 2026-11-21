@@ -74,10 +74,10 @@ func executeChanges(ctx context.Context, client *github.Client, r changeplan.Rep
 func executeChange(ctx context.Context, client *github.Client, r changeplan.RepositoryPlan, change changeplan.LogicalChange, after func(time.Duration) <-chan time.Time, interval *updateInterval) changeRecord {
 	record := changeRecord{change: change}
 	areas := observationAreas(change)
-	// before[i] は change.Operations[i] の直前の観測。変更対象外の設定の更新前の値を与える。
+	// before[i] は change.Operations[i] の直前の観測。変更対象外の設定の更新前の値と、作成した Environment の ID の基準を与える。
 	var before []github.ObservationResult
 	for i, operation := range change.Operations {
-		observed, checked, err := observeBeforeUpdate(ctx, client, r, change, i, areas, after, interval)
+		observed, checked, err := observeBeforeUpdate(ctx, client, r, change, i, areas, before, after, interval)
 		record.operations = append(record.operations, checked)
 		if err != nil {
 			record.cause = err
@@ -127,8 +127,9 @@ func executeChange(ctx context.Context, client *github.Client, r changeplan.Repo
 // 観測が先行する更新操作の直前の状態のままのあいだに限り、reobservationDelays の時間ずつ待って観測し直す。
 // その状態は後続の更新操作の基準 (予定どおりの変化) を満たさないため、観測し直すのは変更前提が成立しないときだけになる。
 // 観測し直すのは読み取りだけで、返す確認結果は常に最後の観測に対する checkPrecondition の結果である。
-func observeBeforeUpdate(ctx context.Context, client *github.Client, r changeplan.RepositoryPlan, change changeplan.LogicalChange, index int, areas []setting.Area, after func(time.Duration) <-chan time.Time, interval *updateInterval) (github.ObservationResult, operationRecord, error) {
+func observeBeforeUpdate(ctx context.Context, client *github.Client, r changeplan.RepositoryPlan, change changeplan.LogicalChange, index int, areas []setting.Area, before []github.ObservationResult, after func(time.Duration) <-chan time.Time, interval *updateInterval) (github.ObservationResult, operationRecord, error) {
 	operation := change.Operations[index]
+	created := environmentCreatedIn(change, before)
 	if err := interval.wait(ctx, after); err != nil {
 		return github.ObservationResult{}, operationRecord{precondition: preconditionUnconfirmed}, fmt.Errorf("wait for the interval between update requests before reading %s: %w", r.Target, err)
 	}
@@ -137,8 +138,8 @@ func observeBeforeUpdate(ctx context.Context, client *github.Client, r changepla
 		if err != nil {
 			return github.ObservationResult{}, operationRecord{precondition: preconditionUnconfirmed}, err
 		}
-		check, changed := checkPrecondition(r.RepositoryID, operation, observed)
-		if !precedingUpdateNotReflected(r.RepositoryID, change.Operations[:index], observed) || i == len(reobservationDelays) {
+		check, changed := checkPrecondition(r.RepositoryID, operation, observed, created)
+		if !precedingUpdateNotReflected(r.RepositoryID, change.Operations[:index], observed, created) || i == len(reobservationDelays) {
 			return observed, operationRecord{precondition: check, changedSetting: changed}, nil
 		}
 		if err := waitFor(ctx, after, reobservationDelays[i]); err != nil {
@@ -148,11 +149,23 @@ func observeBeforeUpdate(ctx context.Context, client *github.Client, r changepla
 }
 
 // sendUpdate は、変更前提を確かめた更新操作の更新要求を一度だけ送る。observed は、その変更前提を確かめた更新直前の観測である。
+// 個別パターンの更新操作は、送る要素を承認の前に決めており、更新直前の観測から得るのは宛先 (綴りと取り除く個別パターンの ID) だけである。
+// 未定義の向きは不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func sendUpdate(ctx context.Context, client *github.Client, target repository.Reference, operation changeplan.UpdateOperation, observed github.ObservationResult) (github.UpdateOutcome, error) {
 	if !operation.TargetsEnvironment() {
 		return client.Update(ctx, target, operation.Unit.Key, operation.Desired)
 	}
 	destination := environmentDestination(operation.Unit.Environment, observed)
+	if operation.ChangesDeploymentPattern() {
+		pattern := operation.DeploymentPatternChange
+		switch pattern.Direction {
+		case changeplan.AddDeploymentPattern:
+			return client.AddDeploymentPattern(ctx, target, destination, pattern.Pattern)
+		case changeplan.RemoveDeploymentPattern:
+			return client.RemoveDeploymentPattern(ctx, target, destination, pattern.Pattern, deploymentPatternIDOf(operation.Unit.Environment, pattern.Pattern, observed))
+		}
+		panic(fmt.Sprintf("apply: undefined direction %d of a deployment pattern update", int(pattern.Direction)))
+	}
 	if !operation.SetsDeploymentBranchPolicy() {
 		return client.CreateEnvironment(ctx, target, destination)
 	}
@@ -165,6 +178,19 @@ func environmentDestination(name setting.EnvironmentName, observed github.Observ
 		return existing.Name
 	}
 	return name.String()
+}
+
+// deploymentPatternIDOf は、宣言の名前 name の Environment の個別パターン pattern を取り除く要求の宛先の ID を、更新直前の観測 observed から引く。
+// 宛先の ID の取り方はドメインモデルの一覧の全体を宣言する設定との違いに従う。
+// 変更前提が成立した観測には取り除く個別パターンが必ずあるため、なければ不変条件の破れとして panic する。宛先を決め直して別の要素へ送らないため。
+// Environment が存在しない観測は ID の対応を持たないため、同じ分岐で panic になる。
+func deploymentPatternIDOf(name setting.EnvironmentName, pattern setting.DeploymentPattern, observed github.ObservationResult) github.DeploymentPatternID {
+	existing, _ := observed.Environments.Lookup(name).Existing()
+	id, ok := existing.DeploymentPatternIDs[pattern]
+	if !ok {
+		panic(fmt.Sprintf("apply: deployment pattern %s %q to remove is not in the read of environment %q before the update", pattern.Type, pattern.Name, name.String()))
+	}
+	return id
 }
 
 // reobservationDelays は、GitHub の反映の遅れを待って観測し直す前に待つ時間を、観測し直す順に並べたもの。
