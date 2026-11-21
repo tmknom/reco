@@ -201,6 +201,7 @@ Dependabot security updates は、Dependency graph と Dependabot alerts を有�
 > - 取得：有効なら `204`。無効なら `404` で、本文の `message` は `Vulnerability alerts are disabled.` だった。第三者の公開リポジトリと存在しないリポジトリへの取得も `404` で、`message` は `Not Found` だった。ステータスだけでは、無効と権限の不足・存在しないことを区別できない
 > - 更新の応答：`PUT` と `DELETE` は `204` で、すでに同じ状態のときも `204` だった。直後の取得は更新後の状態を示した
 > - Dependency graph：Dependabot alerts が無効で Dependency graph が有効な公開リポジトリ（確認前の状態）で、`PUT` は Dependency graph を有効のままにした。`DELETE` は Dependency graph を無効にした（SBOM の取得が `404`、設定画面でも無効）。そのあとの `PUT` は Dependency graph を有効に戻した。Dependabot alerts を無効のまま Dependency graph を有効に戻すには、設定画面の操作が要った。非公開リポジトリでも、`DELETE` のあと SBOM の取得が `404`、`PUT` のあと `200` になった
+> - Dependency graph を有効に戻した直後の SBOM：`PUT` の直後の SBOM の取得は `200` だったが、含まれるパッケージの数は `DELETE` の前より少なかった（公開リポジトリで 12 から 1、その十数秒後に 2）
 > - Dependabot security updates：`DELETE` は、有効だった Dependabot security updates を無効にした（公開リポジトリでは `enabled: true` から、非公開リポジトリでは `enabled: true` と `paused: true` から、`enabled: false` と `paused: false` へ）。`security_and_analysis.dependabot_security_updates` も `disabled` になった。そのあとの `PUT` は Dependabot security updates を有効に戻さなかった。`PUT` は、無効だった Dependabot security updates を有効にしなかった
 > - `PUT` と Dependabot security updates の一時停止：有効で一時停止中（`paused: true`）のリポジトリで Dependabot alerts の `PUT` を再び送っても、`paused` は `true` のままだった
 
@@ -225,6 +226,7 @@ Dependabot security updates は、Dependency graph と Dependabot alerts を有�
 > - 更新の応答：`PUT` と `DELETE` は `204` で、すでに同じ状態のときも `204` だった。一時停止中に `PUT` を送っても `paused` は `true` のままだった。いったん無効にして有効に戻すと、`paused` は `false` になった
 > - Dependabot alerts が無効のとき：`PUT` も `DELETE` も `422` で、本文の `message` は `Vulnerability alerts must be enabled to configure automated security fixes.` だった。Dependabot alerts は無効のままだった
 > - Dependabot alerts が有効のときの `DELETE` は、Dependabot alerts を変えなかった
+> - Dependabot alerts を有効にした直後：Dependabot alerts の `PUT` の約1秒後に送った `PUT` は、公開と非公開のどちらのリポジトリでも `422` ではなく `204` で、直後の取得は `enabled: true` を示した。Dependabot alerts と Dependency graph がどちらも無効だった公開リポジトリでも同じだった
 > - `security_and_analysis.dependabot_security_updates` との一致：公開リポジトリでは、すべての観測で、`enabled` が `true` なら `enabled`、`false` なら `disabled` だった。非公開リポジトリでは `GET` が `security_and_analysis` を返さず、`PATCH` の応答本文の値と一致した。`paused` に当たる項目は `security_and_analysis` にない
 
 | Relationship | Target | Target Type |
@@ -246,7 +248,7 @@ Dependabot security updates は、Dependency graph と Dependabot alerts を有�
 > - 公開リポジトリ：取得は `200` で `enabled` を返した。`PUT` と `DELETE` は `204` で、すでに同じ状態のときも `204` だった。直後の取得は更新後の状態を示した
 > - 非公開リポジトリ：取得、`PUT`、`DELETE` のどれも `422` ではなく `404` で、本文の `message` は `Not Found` だった。存在しないリポジトリへの取得も同じ `404` と本文で、区別できない
 > - 第三者の公開リポジトリ（`permissions.admin` が `false`）：取得は `200` で `enabled` を返した
-> - 公開リポジトリで `PUT` と `DELETE` を送った前後で、General、GitHub Actions の権限、Environments、Dependabot alerts と Dependabot security updates（どちらも無効）、Secret scanning と push protection（どちらも有効）の値は変わらなかった
+> - 公開リポジトリで `PUT` と `DELETE` を送った前後で、General、GitHub Actions の権限、Environments、Dependabot alerts と Dependabot security updates（どちらも無効）、Secret scanning と push protection（どちらも有効）の値は変わらなかった。Dependabot alerts と Dependabot security updates がどちらも有効のときも、この2つと Secret scanning、push protection、Dependency graph（SBOM の取得が `200`）の値は変わらなかった
 
 | Relationship | Target | Target Type |
 |---|---|---|
