@@ -79,8 +79,8 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	newRepositoryPlan := func(settings ...SettingPlan) RepositoryPlan {
 		return RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
 	}
-	relevant := func(key setting.Key, atApproval github.SettingObservation[setting.Value]) RelevantSetting {
-		return RelevantSetting{Unit: setting.Unit{Key: key}, ValueAtApproval: atApproval}
+	relevant := func(key setting.Key, anticipated github.SettingObservation[setting.Value]) RelevantSetting {
+		return RelevantSetting{Unit: setting.Unit{Key: key}, AnticipatedValue: anticipated}
 	}
 	// settingUpdate は、key の値 desired を送る更新操作。
 	settingUpdate := func(key setting.Key, desired setting.Value, relevant ...RelevantSetting) UpdateOperation {
@@ -386,11 +386,11 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 		DesiredState: []DesiredSetting{{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Value: setting.BoolValue(true)}},
 		Operations: []UpdateOperation{{
 			Kind: SettingUpdate, Unit: setting.Unit{Key: setting.AllowAutoMerge}, Value: setting.BoolValue(true),
-			RelevantSettings: []RelevantSetting{{Unit: setting.Unit{Key: setting.AllowAutoMerge}, ValueAtApproval: github.Observed(setting.BoolValue(false))}},
+			RelevantSettings: []RelevantSetting{{Unit: setting.Unit{Key: setting.AllowAutoMerge}, AnticipatedValue: github.Observed(setting.BoolValue(false))}},
 		}},
 	}
 	// 作成の基準は存在しないことだけで、方式を宣言していても方式の基準は並ばない
-	productionAbsent := []RelevantSetting{{Unit: productionUnit, EnvironmentAtApproval: absent}}
+	productionAbsent := []RelevantSetting{{Unit: productionUnit, AnticipatedEnvironment: absent}}
 	createProduction := LogicalChange{
 		DesiredState: []DesiredSetting{{Unit: productionUnit}},
 		Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: productionUnit, RelevantSettings: productionAbsent}},
@@ -407,13 +407,13 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 	stagingPolicyChange := func(desired setting.Value, operations ...UpdateOperation) LogicalChange {
 		return LogicalChange{DesiredState: []DesiredSetting{{Unit: stagingPolicyUnit, Value: desired}}, Operations: operations}
 	}
-	stagingEnvironment := RelevantSetting{Unit: stagingUnit, EnvironmentAtApproval: existingStaging}
+	stagingEnvironment := RelevantSetting{Unit: stagingUnit, AnticipatedEnvironment: existingStaging}
 	// stagingModeUpdate は、計画時に observed だった staging の方式を desired の方式にする更新操作。
 	// 方式の変更の基準は、Environment が存在し ID が同じこと、方式が計画時の観測値と同じことの順に並ぶ
 	stagingModeUpdate := func(observed, desired setting.Value) UpdateOperation {
 		return UpdateOperation{
 			Kind: DeploymentBranchPolicyModeUpdate, Unit: stagingPolicyUnit, Mode: desired.DeploymentBranchPolicy().Mode,
-			RelevantSettings: []RelevantSetting{stagingEnvironment, {Unit: stagingPolicyUnit, ValueAtApproval: github.Observed(observed)}},
+			RelevantSettings: []RelevantSetting{stagingEnvironment, {Unit: stagingPolicyUnit, AnticipatedValue: github.Observed(observed)}},
 		}
 	}
 	changeStagingMode := stagingPolicyChange(protected, stagingModeUpdate(all, protected))
@@ -452,7 +452,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 		for _, step := range steps {
 			operations = append(operations, UpdateOperation{
 				Kind: step.kind, Unit: stagingPolicyUnit, Pattern: step.pattern,
-				RelevantSettings: []RelevantSetting{stagingEnvironment, {Unit: stagingPolicyUnit, ValueAtApproval: github.Observed(step.base)}},
+				RelevantSettings: []RelevantSetting{stagingEnvironment, {Unit: stagingPolicyUnit, AnticipatedValue: github.Observed(step.base)}},
 			})
 		}
 		return operations
@@ -463,7 +463,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 		for _, step := range steps {
 			operations = append(operations, UpdateOperation{
 				Kind: step.kind, Unit: productionPolicyUnit, Pattern: step.pattern,
-				RelevantSettings: []RelevantSetting{{Unit: productionUnit, CreatedByPrecedingOperation: true}, {Unit: productionPolicyUnit, ValueAtApproval: github.Observed(step.base)}},
+				RelevantSettings: []RelevantSetting{{Unit: productionUnit, CreatedByPrecedingOperation: true}, {Unit: productionPolicyUnit, AnticipatedValue: github.Observed(step.base)}},
 			})
 		}
 		return operations
@@ -741,7 +741,9 @@ func TestRepositoryPlan_LogicalChangesOfSecretScanning(t *testing.T) {
 		})
 	}
 
-	self := func(s SettingPlan) RelevantSetting { return RelevantSetting{Unit: s.Unit, ValueAtApproval: s.Observed} }
+	self := func(s SettingPlan) RelevantSetting {
+		return RelevantSetting{Unit: s.Unit, AnticipatedValue: s.Observed}
+	}
 	enabling := mismatch(setting.RepositoryPushProtection, false, true)
 	disabling := mismatch(setting.RepositoryPushProtection, true, false)
 	changes := []struct {
@@ -752,7 +754,7 @@ func TestRepositoryPlan_LogicalChangesOfSecretScanning(t *testing.T) {
 		{
 			name:         "enabling push protection is relevant to secret scanning being enabled",
 			plan:         enabling,
-			wantRelevant: []RelevantSetting{self(enabling), {Unit: setting.Unit{Key: setting.SecretScanningEnabled}, ValueAtApproval: github.Observed(setting.BoolValue(true))}},
+			wantRelevant: []RelevantSetting{self(enabling), {Unit: setting.Unit{Key: setting.SecretScanningEnabled}, AnticipatedValue: github.Observed(setting.BoolValue(true))}},
 		},
 		{
 			name:         "disabling push protection is relevant only to itself",
@@ -804,7 +806,7 @@ func TestRepositoryPlan_LogicalChangesOfDependabot(t *testing.T) {
 	}
 	// changeOf は、計画 s の期待値を送る更新操作一つからなる論理的な設定変更で、基準は s の計画時の観測値と extra である。
 	changeOf := func(s SettingPlan, extra ...RelevantSetting) LogicalChange {
-		relevant := append([]RelevantSetting{{Unit: s.Unit, ValueAtApproval: s.Observed}}, extra...)
+		relevant := append([]RelevantSetting{{Unit: s.Unit, AnticipatedValue: s.Observed}}, extra...)
 		return LogicalChange{
 			DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}},
 			Operations:   []UpdateOperation{{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, RelevantSettings: relevant}},
@@ -854,14 +856,14 @@ func TestRepositoryPlan_LogicalChangesOfDependabot(t *testing.T) {
 		withSideEffect := alerts(true, false)
 		withSideEffect.SideEffects = []SideEffect{{Kind: SideEffectDependencyGraphDisabled}, {Kind: SideEffectSecurityUpdatesDisabled, Observed: paused}}
 		disabled := github.Observed(updatesValue(setting.DependabotSecurityUpdatesDisabled))
-		disabledUpdates := RelevantSetting{Unit: setting.Unit{Key: setting.DependabotSecurityUpdates}, ValueAtApproval: disabled}
+		disabledUpdates := RelevantSetting{Unit: setting.Unit{Key: setting.DependabotSecurityUpdates}, AnticipatedValue: disabled}
 		withoutSideEffect := alerts(true, false, SettingWithoutSideEffect{Key: setting.DependabotSecurityUpdates, Observed: disabled})
 		withoutSideEffect.SideEffects = []SideEffect{{Kind: SideEffectDependencyGraphDisabled}}
 		for _, tc := range []struct {
 			plan SettingPlan
 			want LogicalChange
 		}{
-			{plan: withSideEffect, want: withSideEffectSettings(changeOf(withSideEffect, RelevantSetting{Unit: setting.Unit{Key: setting.DependabotSecurityUpdates}, ValueAtApproval: paused}), setting.Unit{Key: setting.DependabotSecurityUpdates})},
+			{plan: withSideEffect, want: withSideEffectSettings(changeOf(withSideEffect, RelevantSetting{Unit: setting.Unit{Key: setting.DependabotSecurityUpdates}, AnticipatedValue: paused}), setting.Unit{Key: setting.DependabotSecurityUpdates})},
 			{plan: withoutSideEffect, want: changeOf(withoutSideEffect, disabledUpdates)},
 		} {
 			got, err := newRepositoryPlan(tc.plan).LogicalChanges()

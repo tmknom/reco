@@ -60,8 +60,8 @@ func selectedActionsChange() changeplan.LogicalChange {
 // enableActionsChange は、enableActionsNotComparable から導く論理的な設定変更。基準はどちらも Actions が無効による観測不能。
 func enableActionsChange() changeplan.LogicalChange {
 	return singleUpdate(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly), []changeplan.RelevantSetting{
-		{Unit: setting.Unit{Key: setting.AllowedActions}, ValueAtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
-		{Unit: setting.Unit{Key: setting.SelectedActions}, ValueAtApproval: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
+		{Unit: setting.Unit{Key: setting.AllowedActions}, AnticipatedValue: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
+		{Unit: setting.Unit{Key: setting.SelectedActions}, AnticipatedValue: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
 	})
 }
 
@@ -73,8 +73,8 @@ func enabledStateChange(to bool) changeplan.LogicalChange {
 // shaPinningRequiredChange は、Actions が有効のリポジトリで sha_pinning_required を false から true にする論理的な設定変更。
 func shaPinningRequiredChange() changeplan.LogicalChange {
 	return singleUpdate(setting.SHAPinningRequired, setting.BoolValue(true), []changeplan.RelevantSetting{
-		{Unit: setting.Unit{Key: setting.SHAPinningRequired}, ValueAtApproval: github.Observed(setting.BoolValue(false))},
-		{Unit: setting.Unit{Key: setting.ActionsEnabled}, ValueAtApproval: github.Observed(setting.BoolValue(true))},
+		{Unit: setting.Unit{Key: setting.SHAPinningRequired}, AnticipatedValue: github.Observed(setting.BoolValue(false))},
+		{Unit: setting.Unit{Key: setting.ActionsEnabled}, AnticipatedValue: github.Observed(setting.BoolValue(true))},
 	})
 }
 
@@ -92,7 +92,7 @@ func creationChange(t *testing.T, name string) changeplan.LogicalChange {
 		DesiredState: []changeplan.DesiredSetting{{Unit: unit}},
 		Operations: []changeplan.UpdateOperation{{
 			Kind: changeplan.EnvironmentCreation, Unit: unit,
-			RelevantSettings: []changeplan.RelevantSetting{{Unit: unit, EnvironmentAtApproval: github.Environments{}.Lookup(environment)}},
+			RelevantSettings: []changeplan.RelevantSetting{{Unit: unit, AnticipatedEnvironment: github.Environments{}.Lookup(environment)}},
 		}},
 	}
 }
@@ -106,7 +106,7 @@ func creationWithModeChange(t *testing.T, name string, mode setting.DeploymentBr
 		DesiredState: []changeplan.DesiredSetting{{Unit: unit}, {Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}, Value: modeValue(mode)}},
 		Operations: []changeplan.UpdateOperation{{
 			Kind: changeplan.EnvironmentCreationWithMode, Unit: unit, Mode: mode,
-			RelevantSettings: []changeplan.RelevantSetting{{Unit: unit, EnvironmentAtApproval: github.Environments{}.Lookup(environment)}},
+			RelevantSettings: []changeplan.RelevantSetting{{Unit: unit, AnticipatedEnvironment: github.Environments{}.Lookup(environment)}},
 		}},
 	}
 }
@@ -119,8 +119,8 @@ func modeChange(t *testing.T, name string, approved github.Environment, desired 
 	return changeplan.LogicalChange{DesiredState: []changeplan.DesiredSetting{{Unit: policy, Value: modeValue(desired)}}, Operations: []changeplan.UpdateOperation{{
 		Kind: changeplan.DeploymentBranchPolicyModeUpdate, Unit: policy, Mode: desired,
 		RelevantSettings: []changeplan.RelevantSetting{
-			{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, EnvironmentAtApproval: github.Environments{Existing: []github.Environment{approved}}.Lookup(environment)},
-			{Unit: policy, ValueAtApproval: github.Observed(setting.DeploymentBranchPolicyValue(approved.DeploymentBranchPolicy))},
+			{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, AnticipatedEnvironment: github.Environments{Existing: []github.Environment{approved}}.Lookup(environment)},
+			{Unit: policy, AnticipatedValue: github.Observed(setting.DeploymentBranchPolicyValue(approved.DeploymentBranchPolicy))},
 		},
 	}}}
 }
@@ -138,7 +138,7 @@ func newRepositoryPlanOf(t *testing.T, name string, id repository.ID, settings .
 
 // relevantTo は、key の設定だけを関係する現在値の設定とし、承認時に予定した値を観測値 observed とする変更前提の基準。
 func relevantTo(key setting.Key, observed setting.Value) []changeplan.RelevantSetting {
-	return []changeplan.RelevantSetting{{Unit: setting.Unit{Key: key}, ValueAtApproval: github.Observed(observed)}}
+	return []changeplan.RelevantSetting{{Unit: setting.Unit{Key: key}, AnticipatedValue: github.Observed(observed)}}
 }
 
 // singleUpdate は、key を desired にする更新操作一つからなる論理的な設定変更。

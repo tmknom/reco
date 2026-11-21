@@ -14,7 +14,7 @@ func TestUpdateEndpointObservedSettings(t *testing.T) {
 	// 更新操作を足して更新エンドポイントの一覧に足し忘れると、同じ更新エンドポイントのほかの設定を変えるときに
 	// その設定を比べ漏らすため、すべての管理の単位を回して検出する。
 	t.Run("every management unit is observed at its update endpoint", func(t *testing.T) {
-		for _, key := range setting.ManagementUnits() {
+		for _, key := range setting.RepositorySettingUnits() {
 			if got := UpdateEndpointOf(key).ObservedSettings(); !slices.Contains(got, key) {
 				t.Errorf("ObservedSettings() of the update endpoint of %q = %v, want it to contain %q", key, got, key)
 			}

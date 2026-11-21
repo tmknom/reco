@@ -10,32 +10,32 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// TestMatchesValueAtApproval は、承認時に予定した値と更新直前の設定の観測結果が同じかの規則を確かめる。
+// TestMatchesAnticipatedValue は、承認時に予定した値と更新直前の設定の観測結果が同じかの規則を確かめる。
 //
 //trace:checks INV-001 INV-004 FR-010
-func TestMatchesValueAtApproval(t *testing.T) {
+func TestMatchesAnticipatedValue(t *testing.T) {
 	disabled := github.Unavailable[setting.Value](github.UnavailableActionsDisabled)
 	notSelected := github.Unavailable[setting.Value](github.UnavailableNotSelected)
 	criteria := func(patterns ...string) github.SettingObservation[setting.Value] {
 		return github.Observed(setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{PatternsAllowed: patterns}))
 	}
 	cases := []struct {
-		name       string
-		atApproval github.SettingObservation[setting.Value]
-		current    github.SettingObservation[setting.Value]
-		want       bool
+		name        string
+		anticipated github.SettingObservation[setting.Value]
+		current     github.SettingObservation[setting.Value]
+		want        bool
 	}{
-		{name: "unavailable for the same reason is the same", atApproval: disabled, current: disabled, want: true},
-		{name: "unavailable for another reason differs", atApproval: disabled, current: notSelected, want: false},
-		{name: "observed value where unavailable was approved differs", atApproval: disabled, current: criteria("a/*"), want: false},
-		{name: "unavailable where an observed value was approved differs", atApproval: criteria("a/*"), current: disabled, want: false},
-		{name: "another observed value differs", atApproval: criteria("a/*"), current: criteria("b/*"), want: false},
-		{name: "observed values differing only in the order of patterns are the same", atApproval: criteria("a/*", "b/*"), current: criteria("b/*", "a/*"), want: true},
+		{name: "unavailable for the same reason is the same", anticipated: disabled, current: disabled, want: true},
+		{name: "unavailable for another reason differs", anticipated: disabled, current: notSelected, want: false},
+		{name: "observed value where unavailable was approved differs", anticipated: disabled, current: criteria("a/*"), want: false},
+		{name: "unavailable where an observed value was approved differs", anticipated: criteria("a/*"), current: disabled, want: false},
+		{name: "another observed value differs", anticipated: criteria("a/*"), current: criteria("b/*"), want: false},
+		{name: "observed values differing only in the order of patterns are the same", anticipated: criteria("a/*", "b/*"), current: criteria("b/*", "a/*"), want: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := matchesValueAtApproval(tc.atApproval, tc.current); got != tc.want {
-				t.Errorf("matchesValueAtApproval() = %v, want %v", got, tc.want)
+			if got := matchesAnticipatedValue(tc.anticipated, tc.current); got != tc.want {
+				t.Errorf("matchesAnticipatedValue() = %v, want %v", got, tc.want)
 			}
 		})
 	}
@@ -85,7 +85,7 @@ func TestCheckPrecondition(t *testing.T) {
 		})
 	}
 
-	// 関係する現在値の設定が複数並ぶ変更と、承認時に予定した値が観測不能の変更。値の比べ方は TestMatchesValueAtApproval が確かめる
+	// 関係する現在値の設定が複数並ぶ変更と、承認時に予定した値が観測不能の変更。値の比べ方は TestMatchesAnticipatedValue が確かめる
 	actionsCases := []struct {
 		name   string
 		change changeplan.LogicalChange
@@ -242,10 +242,10 @@ func TestPrecedingUpdateNotReflected(t *testing.T) {
 	}
 }
 
-// TestMatchesEnvironmentAtApproval は、承認時に予定した Environment の存在と ID が、更新直前の観測と同じかの規則を確かめる。
+// TestMatchesAnticipatedEnvironment は、承認時に予定した Environment の存在と ID が、更新直前の観測と同じかの規則を確かめる。
 //
 //trace:checks INV-001 INV-004 FR-010
-func TestMatchesEnvironmentAtApproval(t *testing.T) {
+func TestMatchesAnticipatedEnvironment(t *testing.T) {
 	name := mustEnvironmentName(t, "production")
 	lookup := func(existing ...github.Environment) github.EnvironmentObservation {
 		return github.Environments{Existing: existing}.Lookup(name)
@@ -254,53 +254,53 @@ func TestMatchesEnvironmentAtApproval(t *testing.T) {
 	undetermined := lookup(observedEnvironment(9, "prodüction", setting.DeploymentBranchPolicyAll))
 	approved := lookup(observedEnvironment(7, "production", setting.DeploymentBranchPolicyAll))
 	cases := []struct {
-		name       string
-		atApproval github.EnvironmentObservation
-		current    github.EnvironmentObservation
-		want       bool
+		name        string
+		anticipated github.EnvironmentObservation
+		current     github.EnvironmentObservation
+		want        bool
 	}{
-		{name: "absent at approval and still absent is the same", atApproval: absent, current: lookup(), want: true},
-		{name: "absent at approval and existing now differs", atApproval: absent, current: approved, want: false},
-		{name: "absent at approval and existing under a name differing only in case differs", atApproval: absent, current: lookup(observedEnvironment(8, "Production", setting.DeploymentBranchPolicyAll)), want: false},
-		{name: "absent at approval and undetermined now differs", atApproval: absent, current: undetermined, want: false},
+		{name: "absent at approval and still absent is the same", anticipated: absent, current: lookup(), want: true},
+		{name: "absent at approval and existing now differs", anticipated: absent, current: approved, want: false},
+		{name: "absent at approval and existing under a name differing only in case differs", anticipated: absent, current: lookup(observedEnvironment(8, "Production", setting.DeploymentBranchPolicyAll)), want: false},
+		{name: "absent at approval and undetermined now differs", anticipated: absent, current: undetermined, want: false},
 		{
-			name: "existing with the same ID is the same even if the spelling and the mode differ", atApproval: approved,
+			name: "existing with the same ID is the same even if the spelling and the mode differ", anticipated: approved,
 			current: lookup(observedEnvironment(7, "PRODUCTION", setting.DeploymentBranchPolicyProtectedBranches)), want: true,
 		},
-		{name: "existing with another ID differs", atApproval: approved, current: lookup(observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll)), want: false},
-		{name: "existing at approval and absent now differs", atApproval: approved, current: absent, want: false},
-		{name: "existing at approval and undetermined now differs", atApproval: approved, current: undetermined, want: false},
+		{name: "existing with another ID differs", anticipated: approved, current: lookup(observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll)), want: false},
+		{name: "existing at approval and absent now differs", anticipated: approved, current: absent, want: false},
+		{name: "existing at approval and undetermined now differs", anticipated: approved, current: undetermined, want: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := matchesEnvironmentAtApproval(tc.atApproval, tc.current); got != tc.want {
-				t.Errorf("matchesEnvironmentAtApproval() = %v, want %v", got, tc.want)
+			if got := matchesAnticipatedEnvironment(tc.anticipated, tc.current); got != tc.want {
+				t.Errorf("matchesAnticipatedEnvironment() = %v, want %v", got, tc.want)
 			}
 		})
 	}
 
 	// 承認の前に適用不能として止めるため、承認時に予定した値にならない観測結果
 	panicCases := []struct {
-		name       string
-		atApproval github.EnvironmentObservation
+		name        string
+		anticipated github.EnvironmentObservation
 	}{
-		{name: "undetermined at approval panics", atApproval: undetermined},
-		{name: "zero value at approval panics", atApproval: github.EnvironmentObservation{}},
+		{name: "undetermined at approval panics", anticipated: undetermined},
+		{name: "zero value at approval panics", anticipated: github.EnvironmentObservation{}},
 	}
 	for _, tc := range panicCases {
 		t.Run(tc.name, func(t *testing.T) {
 			defer func() {
 				if recover() == nil {
-					t.Error("matchesEnvironmentAtApproval() did not panic")
+					t.Error("matchesAnticipatedEnvironment() did not panic")
 				}
 			}()
-			matchesEnvironmentAtApproval(tc.atApproval, absent)
+			matchesAnticipatedEnvironment(tc.anticipated, absent)
 		})
 	}
 }
 
 // TestCheckPrecondition_Environments は、Environment の作成と方式の変更の更新直前の判定表を確かめる。
-// 存在の比べ方は TestMatchesEnvironmentAtApproval、方式の値の比べ方は TestMatchesValueAtApproval が確かめる。
+// 存在の比べ方は TestMatchesAnticipatedEnvironment、方式の値の比べ方は TestMatchesAnticipatedValue が確かめる。
 //
 //trace:checks INV-001 INV-004 FR-010
 func TestCheckPrecondition_Environments(t *testing.T) {
@@ -327,7 +327,7 @@ func TestCheckPrecondition_Environments(t *testing.T) {
 	// 作成に続く POST の Environment の基準に、計画時の「存在しない」の観測結果も入れた、changeplan が作らない並び
 	creation := creationWithPatternsChange(t, "production", selectedPolicy(main))
 	creation.Operations[1].RelevantSettings = slices.Clone(creation.Operations[1].RelevantSettings)
-	creation.Operations[1].RelevantSettings[0].EnvironmentAtApproval = github.Environments{}.Lookup(production)
+	creation.Operations[1].RelevantSettings[0].AnticipatedEnvironment = github.Environments{}.Lookup(production)
 
 	cases := []struct {
 		name   string
