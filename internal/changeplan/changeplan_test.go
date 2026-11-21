@@ -28,9 +28,7 @@ const twoRepositoriesSource = `repositories:
       delete_branch_on_merge: true
 `
 
-//trace:checks FR-006
-//trace:checks FR-007
-//trace:checks FR-008
+//trace:checks FR-006 FR-007 FR-008
 func TestPlan_NotApplicableError(t *testing.T) {
 	zeta, alpha := mustReference(t, "owner/zeta"), mustReference(t, "owner/alpha")
 	match := SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: Match}
@@ -167,8 +165,7 @@ func TestRepositoryPlan_HasPlannedChanges(t *testing.T) {
 	}
 }
 
-//trace:checks FR-006
-//trace:checks FR-007
+//trace:checks FR-006 FR-007
 func TestRepositoryPlan_NotApplicableChanges(t *testing.T) {
 	notApplicable := SettingPlan{
 		Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
@@ -229,9 +226,7 @@ func TestSettingPlan_EnablesActionsByPolicy(t *testing.T) {
 	}
 }
 
-//trace:checks FR-001
-//trace:checks FR-002
-//trace:checks FR-005
+//trace:checks FR-001 FR-002 FR-005
 func TestGenerate(t *testing.T) {
 	file := func(files fstest.MapFS) configuration.File {
 		return configuration.File{Dir: files, Name: "reco.yaml", Path: "./reco.yaml"}
@@ -333,34 +328,34 @@ func TestGenerate(t *testing.T) {
 			t.Errorf("got requests %v, want none", server.RequestLines())
 		}
 	})
+}
 
-	//trace:checks FR-008
-	t.Run("observation failure of the second repository stops before the third and returns no plan", func(t *testing.T) {
-		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
-			"GET /repos/owner/first":  githubtest.OK(githubtest.RepositoryBody{ID: 1}.JSON()),
-			"GET /repos/owner/second": {Status: http.StatusForbidden},
-		}))
-		client := github.New("test-token", github.WithBaseURL(server.URL()))
-		const src = "repositories:\n" +
-			"  - name: owner/first\n    general:\n      allow_auto_merge: true\n" +
-			"  - name: owner/second\n    general:\n      allow_auto_merge: true\n" +
-			"  - name: owner/third\n    general:\n      allow_auto_merge: true\n"
-		files := fstest.MapFS{"reco.yaml": {Data: []byte(src)}}
+//trace:checks FR-008
+func TestGenerate_SecondObservationFailureStopsPlan(t *testing.T) {
+	server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+		"GET /repos/owner/first":  githubtest.OK(githubtest.RepositoryBody{ID: 1}.JSON()),
+		"GET /repos/owner/second": {Status: http.StatusForbidden},
+	}))
+	client := github.New("test-token", github.WithBaseURL(server.URL()))
+	const src = "repositories:\n" +
+		"  - name: owner/first\n    general:\n      allow_auto_merge: true\n" +
+		"  - name: owner/second\n    general:\n      allow_auto_merge: true\n" +
+		"  - name: owner/third\n    general:\n      allow_auto_merge: true\n"
+	file := configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(src)}}, Name: "reco.yaml", Path: "./reco.yaml"}
 
-		got, err := Generate(context.Background(), client, file(files), nil)
-		if !errors.Is(err, github.ErrForbidden) {
-			t.Errorf("Generate() error = %v, want %v", err, github.ErrForbidden)
-		}
-		if err == nil || !strings.HasPrefix(err.Error(), "fetch repository owner/second") {
-			t.Errorf("Generate() error = %v, want it to start with %q", err, "fetch repository owner/second")
-		}
-		if !reflect.DeepEqual(got, Plan{}) {
-			t.Errorf("Generate() = %+v, want the zero plan", got)
-		}
-		if want := []string{"GET /repos/owner/first", "GET /repos/owner/second"}; !slices.Equal(server.RequestLines(), want) {
-			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
-		}
-	})
+	got, err := Generate(context.Background(), client, file, nil)
+	if !errors.Is(err, github.ErrForbidden) {
+		t.Errorf("Generate() error = %v, want %v", err, github.ErrForbidden)
+	}
+	if err == nil || !strings.HasPrefix(err.Error(), "fetch repository owner/second") {
+		t.Errorf("Generate() error = %v, want it to start with %q", err, "fetch repository owner/second")
+	}
+	if !reflect.DeepEqual(got, Plan{}) {
+		t.Errorf("Generate() = %+v, want the zero plan", got)
+	}
+	if want := []string{"GET /repos/owner/first", "GET /repos/owner/second"}; !slices.Equal(server.RequestLines(), want) {
+		t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+	}
 }
 
 const workflowSource = `repositories:
@@ -372,8 +367,7 @@ const workflowSource = `repositories:
         default_workflow_permissions: read
 `
 
-//trace:checks FR-004
-//trace:checks FR-005
+//trace:checks FR-004 FR-005
 func TestGenerate_ObservedAreas(t *testing.T) {
 	file := func(src string) configuration.File {
 		return configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(src)}}, Name: "reco.yaml", Path: "./reco.yaml"}
@@ -522,10 +516,7 @@ const actionsPermissionsSource = `repositories:
         allowed_actions: all
 `
 
-//trace:checks FR-004
-//trace:checks FR-005
-//trace:checks FR-006
-//trace:checks FR-007
+//trace:checks FR-004 FR-005 FR-006 FR-007
 func TestGenerate_ActionsPermissions(t *testing.T) {
 	file := configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(actionsPermissionsSource)}}, Name: "reco.yaml", Path: "./reco.yaml"}
 	repositoryBody := githubtest.RepositoryBody{ID: 7}.JSON()
@@ -678,8 +669,7 @@ const actionsAccessSource = `repositories:
         access_level: none
 `
 
-//trace:checks FR-005
-//trace:checks FR-006
+//trace:checks FR-005 FR-006
 func TestGenerate_ActionsAccess(t *testing.T) {
 	file := configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(actionsAccessSource)}}, Name: "reco.yaml", Path: "./reco.yaml"}
 

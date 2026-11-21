@@ -15,8 +15,7 @@ import (
 // TestListProgress は、1ページを読んだあとの読み終えたかの判定を確かめる。
 // 次のページを読むか、読み終えたか、失敗かは、件数の組だけで決まる。
 //
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestListProgress(t *testing.T) {
 	cases := []struct {
 		name         string
@@ -61,8 +60,7 @@ func TestListProgress(t *testing.T) {
 	}
 }
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestDecodeListPage(t *testing.T) {
 	t.Run("total and items are returned in the order they arrived", func(t *testing.T) {
 		total, items, err := decodeListPage([]byte(`{"total_count": 7, "things": [{"n": 2}, {"n": 1}], "other": [{"n": 9}]}`), "things")
@@ -122,8 +120,7 @@ func TestDecodeListPage(t *testing.T) {
 	}
 }
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestListPageURL(t *testing.T) {
 	u, err := url.Parse("http://127.0.0.1:1/repos/owner/repo/environments/a%2Fb/deployment-branch-policies")
 	if err != nil {
@@ -155,10 +152,7 @@ func listPageBody(total int, ns ...int) string {
 
 // TestListAll は、全ページを reco が組み立てた URL に順に送り、要素をつなぐことを確かめる。
 //
-//trace:checks FR-003
-//trace:checks FR-004
-//trace:checks QR-001
-//trace:checks QR-002
+//trace:checks FR-003 FR-004 QR-001 QR-002
 func TestListAll(t *testing.T) {
 	const path = "/repos/owner/repo/things"
 	var foreign atomic.Int32

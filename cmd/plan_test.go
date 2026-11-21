@@ -12,10 +12,7 @@ import (
 // mismatchedRepositoryBody は、宣言の期待値 true と異なる現在値 false を返す観測結果。
 var mismatchedRepositoryBody = githubtest.RepositoryBody{ID: 1}.JSON()
 
-//trace:checks FR-002
-//trace:checks FR-003
-//trace:checks FR-007
-//trace:checks QR-001
+//trace:checks FR-002 FR-003 FR-007 QR-001
 func TestPlan_Success(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -66,8 +63,7 @@ func TestPlan_Success(t *testing.T) {
 
 // 変更に伴う副作用は変更計画の一部として stdout に出し、Actions の実行許可の観測は宣言した対象でだけ送る。
 //
-//trace:checks FR-004
-//trace:checks FR-007
+//trace:checks FR-004 FR-007
 func TestPlan_ActionsPermissions(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", "repositories:\n  - name: owner/repo\n    actions:\n      permissions:\n        allowed_actions: all\n")
@@ -103,8 +99,7 @@ func TestPlan_ActionsPermissions(t *testing.T) {
 
 // 適用不能な変更予定は、変更計画を stdout に出したうえで、終了コード 1 と 1 件のエラーで知らせる。
 //
-//trace:checks FR-006
-//trace:checks FR-007
+//trace:checks FR-006 FR-007
 func TestPlan_NotApplicable(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", "repositories:\n  - name: owner/repo\n    actions:\n      permissions:\n        sha_pinning_required: true\n")
@@ -189,8 +184,7 @@ func TestPlan_TokenMissing(t *testing.T) {
 	}
 }
 
-//trace:checks FR-001
-//trace:checks QR-002
+//trace:checks FR-001 QR-002
 func TestPlan_ConfigNotFound(t *testing.T) {
 	server, opts := newGitHubServer(t, githubtest.OK(mismatchedRepositoryBody))
 
@@ -216,8 +210,7 @@ func TestPlan_ConfigNotFound(t *testing.T) {
 // 観測操作の失敗の種類ごとの文言は internal/github が決めて検証しているため、ここでは失敗が計画として表示されず、
 // 対象と理由が stderr に届くことを 1 種類で確かめる。
 //
-//trace:checks FR-004
-//trace:checks QR-001
+//trace:checks FR-004 QR-001
 func TestPlan_ObservationFailure(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", declaredRepository)

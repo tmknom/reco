@@ -2,8 +2,7 @@ package github
 
 import "testing"
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestSettingObservation(t *testing.T) {
 	t.Run("observed false is an observed value", func(t *testing.T) {
 		got, ok := Observed(false).Value()

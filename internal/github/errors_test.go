@@ -30,9 +30,7 @@ func TestIsRateLimited(t *testing.T) {
 	}
 }
 
-//trace:checks FR-003
-//trace:checks FR-004
-//trace:checks FR-013
+//trace:checks FR-003 FR-004 FR-013
 func TestClassifyFailure(t *testing.T) {
 	const renameHint = "the repository may have been renamed or transferred; specify its current name"
 	cases := []struct {

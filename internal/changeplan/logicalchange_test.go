@@ -117,8 +117,7 @@ func TestUpdateOperation_EnvironmentRequestShape(t *testing.T) {
 
 // TestLogicalChange_SettingsToChange は、変更対象外の設定から除く、論理的な設定変更が変える設定の範囲を確かめる。
 //
-//trace:checks INV-001
-//trace:checks FR-012
+//trace:checks INV-001 FR-012
 func TestLogicalChange_SettingsToChange(t *testing.T) {
 	cases := []struct {
 		name string
@@ -159,11 +158,7 @@ func TestLogicalChange_SettingsToChange(t *testing.T) {
 	}
 }
 
-//trace:checks INV-001
-//trace:checks INV-002
-//trace:checks INV-004
-//trace:checks FR-008
-//trace:checks FR-011
+//trace:checks INV-001 INV-002 INV-004 FR-008 FR-011
 func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	match := SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: Match}
 	mismatch := SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
@@ -470,12 +465,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 
 // TestRepositoryPlan_LogicalChangesOfEnvironments は、Environment の変更予定から導く更新操作の形と、その変更前提の基準を確かめる。
 //
-//trace:checks INV-001
-//trace:checks INV-002
-//trace:checks INV-003
-//trace:checks INV-004
-//trace:checks FR-010
-//trace:checks FR-011
+//trace:checks INV-001 INV-002 INV-003 INV-004 FR-010 FR-011
 func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 	production := mustEnvironmentName(t, "production")
 	staging := mustEnvironmentName(t, "staging")

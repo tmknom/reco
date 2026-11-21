@@ -147,8 +147,7 @@ func TestChangeRecord_Result(t *testing.T) {
 
 // TestRepositoryRecord_Result は、対象リポジトリごとの集約の四つの区別を確かめる。
 //
-//trace:checks FR-013
-//trace:checks INV-005
+//trace:checks FR-013 INV-005
 func TestRepositoryRecord_Result(t *testing.T) {
 	failed := changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{started(github.UpdateRejected)}}
 	unconfirmed := changeRecord{change: deleteBranchOnMergeChange(), operations: []operationRecord{{precondition: preconditionUnconfirmed}}}

@@ -9,8 +9,7 @@ import (
 
 // TestUpdateEndpointObservedSettings は、更新エンドポイントごとの、reco が観測する設定の一覧の不変条件を確かめる。
 //
-//trace:checks INV-001
-//trace:checks FR-012
+//trace:checks INV-001 FR-012
 func TestUpdateEndpointObservedSettings(t *testing.T) {
 	// 更新操作を足して更新エンドポイントの一覧に足し忘れると、同じ更新エンドポイントのほかの設定を変えるときに
 	// その設定を比べ漏らすため、すべての管理の単位を回して検出する。

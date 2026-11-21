@@ -39,8 +39,7 @@ const unknownKey setting.Key = "general.unknown"
 
 // TestExecutableChanges は、承認を求める前に、論理的な設定変更とその更新操作を確定する規則を確かめる。
 //
-//trace:checks INV-002
-//trace:checks FR-009
+//trace:checks INV-002 FR-009
 func TestExecutableChanges(t *testing.T) {
 	match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match}
 	// 宣言の並びを名前順と逆にし、名前順に並べ替える実装を失敗させる
@@ -143,12 +142,7 @@ func (w *failAfterWriter) Write(p []byte) (int, error) {
 	return w.buf.Write(p)
 }
 
-//trace:checks INV-002
-//trace:checks INV-003
-//trace:checks INV-005
-//trace:checks FR-008
-//trace:checks FR-009
-//trace:checks FR-013
+//trace:checks INV-002 INV-003 INV-005 FR-008 FR-009 FR-013
 func TestApplyPlan(t *testing.T) {
 	approve := func(calls *int) func(context.Context) error {
 		return func(context.Context) error {
@@ -574,11 +568,7 @@ const workflowConfigSource = `repositories:
         default_workflow_permissions: read
 `
 
-//trace:checks INV-001
-//trace:checks INV-002
-//trace:checks INV-004
-//trace:checks FR-008
-//trace:checks FR-011
+//trace:checks INV-001 INV-002 INV-004 FR-008 FR-011
 func TestRun(t *testing.T) {
 	newConfig := func(files fstest.MapFS, out *bytes.Buffer, baseURL *url.URL, calls *int) Config {
 		return Config{

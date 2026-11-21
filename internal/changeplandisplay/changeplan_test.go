@@ -30,9 +30,7 @@ func TestPluralize(t *testing.T) {
 	}
 }
 
-//trace:checks FR-005
-//trace:checks FR-007
-//trace:checks QR-002
+//trace:checks FR-005 FR-007 QR-002
 func TestText(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 	cases := []struct {
@@ -113,10 +111,7 @@ func TestText(t *testing.T) {
 
 // 期待値は CLI 仕様の plan の表示例から導く。
 //
-//trace:checks FR-005
-//trace:checks FR-007
-//trace:checks QR-002
-//trace:checks INV-001
+//trace:checks FR-005 FR-007 QR-002 INV-001
 func TestText_ActionsPermissions(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 	criteria := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: true, PatternsAllowed: []string{"example/*"}}
@@ -155,8 +150,7 @@ func TestText_ActionsPermissions(t *testing.T) {
 // 期待値は CLI 仕様の plan の表示例と、節の並び・数え方の規則から導く。
 // 計画は宣言の並びを名前順と逆にし、名前順に並べ替える実装を失敗させる。
 //
-//trace:checks FR-007
-//trace:checks QR-002
+//trace:checks FR-007 QR-002
 func TestText_Repositories(t *testing.T) {
 	zeta, alpha := mustReference(t, "owner/zeta"), mustReference(t, "owner/alpha")
 	match := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(false), Result: changeplan.Match}

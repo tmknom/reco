@@ -17,8 +17,7 @@ import (
 // actionsDisabledBody は Actions が無効のときの応答で、確認した動作のとおり allowed_actions を含まず sha_pinning_required が false である。
 const actionsDisabledBody = `{"enabled": false, "sha_pinning_required": false}`
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestDecodeWorkflowPermissions(t *testing.T) {
 	successes := []struct {
 		name string
@@ -103,9 +102,7 @@ func TestDecodeWorkflowPermissions(t *testing.T) {
 // TestObserveRepositoryFailure は、失敗応答が種類を保って呼び出し元に届き、
 // エラー文言にトークン、応答本文、転送先を含めないことを確かめる。種類の判定規則は TestClassifyFailure が確かめる。
 //
-//trace:checks FR-003
-//trace:checks FR-004
-//trace:checks QR-001
+//trace:checks FR-003 FR-004 QR-001
 func TestObserveRepositoryFailure(t *testing.T) {
 	const bodyMarker = "BODY-MARKER"
 	var redirected atomic.Int32
@@ -189,8 +186,7 @@ func TestObserveRepositoryFailure(t *testing.T) {
 	})
 }
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestDecodeActionsPermissions(t *testing.T) {
 	successes := []struct {
 		name string
@@ -293,8 +289,7 @@ func TestDecodeActionsPermissions(t *testing.T) {
 	}
 }
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestSelectedActionsUnavailability(t *testing.T) {
 	cases := []struct {
 		name            string
@@ -322,8 +317,7 @@ func TestSelectedActionsUnavailability(t *testing.T) {
 	}
 }
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestDecodeSelectedActions(t *testing.T) {
 	successes := []struct {
 		name string
@@ -411,8 +405,7 @@ func TestDecodeSelectedActions(t *testing.T) {
 // Selected actions を送らない3件は selectedActionsUnavailability の単体テストと条件が重なるが、
 // 取得条件に当たるときに要求そのものを送らないことは、要求の列でしか確かめられない。
 //
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestObserveRepositoryAreas(t *testing.T) {
 	type request struct {
 		method        string
@@ -615,10 +608,7 @@ func TestObserveRepositoryAreas(t *testing.T) {
 // TestObserveRepositoryAreasFailure が Workflow permissions の取得の失敗を複数の種類で置くのは、その失敗を固定の種類で包む誤りを検出するため。
 // 種類の判定規則は TestClassifyFailure が確かめる。
 //
-//trace:checks FR-003
-//trace:checks FR-004
-//trace:checks QR-001
-//trace:checks QR-002
+//trace:checks FR-003 FR-004 QR-001 QR-002
 func TestObserveRepositoryAreasFailure(t *testing.T) {
 	const bodyMarker = "BODY-MARKER"
 	var redirected atomic.Int32
@@ -720,10 +710,7 @@ func TestObserveRepositoryAreasFailure(t *testing.T) {
 // TestObserveActionsPermissionsFailure は、Actions の実行許可の読み取り要求の失敗が、種類を保ったまま
 // 取得できた値を含まない観測操作の失敗になり、後続の要求を送らないことを確かめる。種類の判定規則は TestClassifyFailure が確かめる。
 //
-//trace:checks FR-003
-//trace:checks FR-004
-//trace:checks QR-001
-//trace:checks QR-002
+//trace:checks FR-003 FR-004 QR-001 QR-002
 func TestObserveActionsPermissionsFailure(t *testing.T) {
 	const bodyMarker = "BODY-MARKER"
 	var redirected atomic.Int32
@@ -875,8 +862,7 @@ func TestObservationResult_Setting(t *testing.T) {
 	}
 }
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestObservationResult_SettingOfActionsPermissions(t *testing.T) {
 	// 観測値の設定グループの許可パターンは、応答の並びと重複のまま運ばれることを確かめるため、順不同で重複を含める。
 	criteria := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{"b/*", "a/*", "b/*"}}
@@ -944,8 +930,7 @@ func TestObservationResult_SettingOfActionsPermissions(t *testing.T) {
 	}
 }
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestObservationResult_SettingOfActionsAccess(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -1017,8 +1002,7 @@ func TestObservationResult_SettingOfUnknownSettingPanics(t *testing.T) {
 	_ = ObservationResult{}.Setting(setting.Unit{Key: "general.unknown"})
 }
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestAccessLevelUnavailability(t *testing.T) {
 	cases := []struct {
 		name            string
@@ -1039,8 +1023,7 @@ func TestAccessLevelUnavailability(t *testing.T) {
 	}
 }
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestDecodeActionsAccess(t *testing.T) {
 	// 受け付ける値の規則は setting.ParseAccessLevel が持つため、ここでは読み取りの経路を1つの値で確かめる
 	t.Run("defined access_level is read", func(t *testing.T) {
@@ -1087,10 +1070,7 @@ func TestDecodeActionsAccess(t *testing.T) {
 // TestObserveActionsAccessFailure は、非公開と観測したあとのリポジトリ外のワークフローからのアクセスの取得の失敗が、
 // 422 を含めて観測不能にならず、種類を保った観測操作の失敗になることを確かめる。種類の判定規則は TestClassifyFailure が確かめる。
 //
-//trace:checks FR-003
-//trace:checks FR-004
-//trace:checks QR-001
-//trace:checks QR-002
+//trace:checks FR-003 FR-004 QR-001 QR-002
 func TestObserveActionsAccessFailure(t *testing.T) {
 	const bodyMarker = "BODY-MARKER"
 	var redirected atomic.Int32

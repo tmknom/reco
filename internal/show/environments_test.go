@@ -8,8 +8,7 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestWriteEnvironments(t *testing.T) {
 	waitTimer := func(minutes int) *int { return &minutes }
 	unprotected := setting.EnvironmentProtection{CanAdminsBypass: true}

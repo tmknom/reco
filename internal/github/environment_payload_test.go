@@ -30,8 +30,7 @@ func environmentJSON(fields map[string]string) string {
 	return "{" + strings.Join(parts, ", ") + "}"
 }
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestDecodeEnvironment(t *testing.T) {
 	// actualShape は、reco が読まない項目 (node_id、url、reviewer.login など) と branch_policy の保護ルールを含む、実際の応答の形。
 	const actualShape = `{
@@ -132,8 +131,7 @@ func TestDecodeEnvironment(t *testing.T) {
 	}
 }
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestDecodeDeploymentBranchPolicyMode(t *testing.T) {
 	successes := []struct {
 		name string
@@ -188,8 +186,7 @@ func TestDecodeDeploymentBranchPolicyMode(t *testing.T) {
 	}
 }
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestDecodeEnvironmentProtection(t *testing.T) {
 	const waitTimerRule = `{"type": "wait_timer", "wait_timer": 30}`
 	const reviewersRule = `{"type": "required_reviewers", "prevent_self_review": true, "reviewers": [{"type": "User", "reviewer": {"id": 1}}, {"type": "Team", "reviewer": {"id": 2}}]}`
@@ -321,8 +318,7 @@ func TestDecodeEnvironmentProtection(t *testing.T) {
 	}
 }
 
-//trace:checks FR-004
-//trace:checks QR-002
+//trace:checks FR-004 QR-002
 func TestDecodeDeploymentPattern(t *testing.T) {
 	successes := []struct {
 		name        string

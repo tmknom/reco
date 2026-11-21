@@ -1,0 +1,30 @@
+definitions:
+  FR:
+    declarations:
+      - file: docs/spec/requirements.md
+        sections:
+          - "機能要求"
+  QR:
+    declarations:
+      - file: docs/spec/requirements.md
+        sections:
+          - "品質要求"
+  INV:
+    declarations:
+      - file: docs/spec/requirements.md
+        sections:
+          - "不変条件"
+scan:
+  markdown:
+    - "docs/**/*.md"
+  go:
+    - "*.go"
+    - "cmd/**/*.go"
+    - "internal/**/*.go"
+allowed_dependencies:
+  - from: "docs/research/**"
+    to:
+      - "docs/research/**"
+      - "scripts/**"
+  - from: "docs/user-guide/**"
+    to: []

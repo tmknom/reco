@@ -108,8 +108,7 @@ func TestConfirmDesiredState(t *testing.T) {
 
 // TestConfirmDesiredState_Environments は、Environment の作成と方式の変更の更新後の判定表を確かめる。
 //
-//trace:checks INV-004
-//trace:checks FR-012
+//trace:checks INV-004 FR-012
 func TestConfirmDesiredState_Environments(t *testing.T) {
 	approvedStaging := observedEnvironment(7, "Staging", setting.DeploymentBranchPolicyAll)
 	undetermined := observedEnvironment(9, "prodüction", setting.DeploymentBranchPolicyAll)

@@ -20,9 +20,7 @@ import (
 // 1つ目の反映の遅れを待って観測し直す規則を確かめる。
 // 観測し直すのは読み取りだけで、開始してよいのは最後の観測で変更前提が成立したときだけである。
 //
-//trace:checks INV-004
-//trace:checks INV-005
-//trace:checks FR-010
+//trace:checks INV-004 INV-005 FR-010
 func TestObserveBeforeUpdate(t *testing.T) {
 	const (
 		getRepository         = "GET /repos/owner/repo"
@@ -262,12 +260,7 @@ func TestObservationAreas(t *testing.T) {
 	}
 }
 
-//trace:checks INV-001
-//trace:checks INV-004
-//trace:checks INV-005
-//trace:checks FR-010
-//trace:checks FR-012
-//trace:checks FR-013
+//trace:checks INV-001 INV-004 INV-005 FR-010 FR-012 FR-013
 func TestExecuteChange(t *testing.T) {
 	disconnect := response{disconnect: true}
 	serverError := response{status: http.StatusInternalServerError}
@@ -606,12 +599,7 @@ func TestExecuteChange(t *testing.T) {
 // TestExecuteChange_ActionsPermissions は、Actions の実行許可の領域の設定を一つの更新操作で変える論理的な設定変更について、
 // 観測と更新の要求の送り先と、観測不能を伴う変更結果を確かめる。
 //
-//trace:checks INV-001
-//trace:checks INV-004
-//trace:checks INV-005
-//trace:checks FR-010
-//trace:checks FR-012
-//trace:checks FR-013
+//trace:checks INV-001 INV-004 INV-005 FR-010 FR-012 FR-013
 func TestExecuteChange_ActionsPermissions(t *testing.T) {
 	const (
 		getRepository         = "GET /repos/owner/repo"
@@ -906,12 +894,7 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 // TestExecuteChange_ActionsAccess は、access_level の論理的な設定変更について、観測と更新の要求の送り先と、
 // リポジトリが公開に変わって access_level が観測不能になったときの変更結果を確かめる。
 //
-//trace:checks INV-001
-//trace:checks INV-004
-//trace:checks FR-010
-//trace:checks FR-011
-//trace:checks FR-012
-//trace:checks FR-013
+//trace:checks INV-001 INV-004 FR-010 FR-011 FR-012 FR-013
 func TestExecuteChange_ActionsAccess(t *testing.T) {
 	const (
 		getRepository    = "GET /repos/owner/repo"
@@ -1003,12 +986,7 @@ func TestExecuteChange_ActionsAccess(t *testing.T) {
 // TestExecuteChange_TwoUpdates は、二つの更新操作からなる論理的な設定変更について、
 // 更新操作ごとの直前の観測と変更前提、先行する更新操作が成功したときだけ後続へ進むこと、更新後の確認のつなぎ目を確かめる。
 //
-//trace:checks INV-001
-//trace:checks INV-004
-//trace:checks INV-005
-//trace:checks FR-010
-//trace:checks FR-012
-//trace:checks FR-013
+//trace:checks INV-001 INV-004 INV-005 FR-010 FR-012 FR-013
 func TestExecuteChange_TwoUpdates(t *testing.T) {
 	const (
 		getRepository         = "GET /repos/owner/repo"
@@ -1257,11 +1235,7 @@ func TestExecuteChange_TwoUpdates(t *testing.T) {
 // 打ち切りの条件は変更結果が完了かどうかだけで、異常の種類から変更結果への対応は TestExecuteChange が確かめるため、
 // 未実行と失敗の代表だけを確かめる。
 //
-//trace:checks INV-004
-//trace:checks INV-005
-//trace:checks FR-010
-//trace:checks FR-012
-//trace:checks FR-013
+//trace:checks INV-004 INV-005 FR-010 FR-012 FR-013
 func TestExecuteChanges(t *testing.T) {
 	redirect := response{status: http.StatusTemporaryRedirect, location: "https://example.com/"}
 	noContent := response{status: http.StatusNoContent}
@@ -1476,10 +1450,7 @@ func TestExecuteChanges(t *testing.T) {
 // 完了以外の種類ごとの変更結果は executeChange のテストが確かめているため、停止の分岐を誤らせる代表だけを使う。
 // 対象リポジトリごとに ID を変え、先頭の計画の ID で変更前提を確かめる実装を失敗させる。
 //
-//trace:checks INV-004
-//trace:checks INV-005
-//trace:checks FR-010
-//trace:checks FR-013
+//trace:checks INV-004 INV-005 FR-010 FR-013
 func TestExecuteRepositories(t *testing.T) {
 	forbidden := response{status: http.StatusForbidden, body: `{"message": "Forbidden"}`}
 	redirect := response{status: http.StatusTemporaryRedirect, location: "https://example.com/"}
@@ -1663,8 +1634,7 @@ func TestExecuteRepositories(t *testing.T) {
 // TestSendUpdate は、更新操作ごとに送る更新要求の宛先と本文を確かめる。
 // Environment には、作成は宣言の綴りへ、存在する Environment には更新直前の観測の綴りへ、deployment_branch_policy だけを送る。
 //
-//trace:checks INV-001
-//trace:checks INV-004
+//trace:checks INV-001 INV-004
 func TestSendUpdate(t *testing.T) {
 	staging := observedEnvironment(7, "Staging", setting.DeploymentBranchPolicyAll)
 	cases := []struct {
@@ -1727,8 +1697,7 @@ func TestSendUpdate(t *testing.T) {
 
 // TestEnvironmentDestination は、Environment の更新要求の宛先の綴りを確かめる。
 //
-//trace:checks INV-001
-//trace:checks INV-004
+//trace:checks INV-001 INV-004
 func TestEnvironmentDestination(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -1751,13 +1720,7 @@ func TestEnvironmentDestination(t *testing.T) {
 
 // TestExecuteChange_Environments は、Environment の作成と方式の変更について、更新直前の観測、更新要求、更新後の確認のつなぎ目を確かめる。
 //
-//trace:checks INV-001
-//trace:checks INV-004
-//trace:checks INV-005
-//trace:checks FR-010
-//trace:checks FR-011
-//trace:checks FR-012
-//trace:checks FR-013
+//trace:checks INV-001 INV-004 INV-005 FR-010 FR-011 FR-012 FR-013
 func TestExecuteChange_Environments(t *testing.T) {
 	const (
 		getRepository    = "GET /repos/owner/repo"

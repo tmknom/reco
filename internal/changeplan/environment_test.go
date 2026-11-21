@@ -9,8 +9,7 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-//trace:checks FR-001
-//trace:checks FR-005
+//trace:checks FR-001 FR-005
 func TestEnvironmentPlans(t *testing.T) {
 	production := mustEnvironmentName(t, "production")
 	protected := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}

@@ -10,10 +10,7 @@ import (
 
 // 期待値は CLI 仕様 4章の表示例から導く。
 //
-//trace:checks FR-005
-//trace:checks FR-007
-//trace:checks QR-002
-//trace:checks INV-001
+//trace:checks FR-005 FR-007 QR-002 INV-001
 func TestPlannedChangeText(t *testing.T) {
 	criteria := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: true, PatternsAllowed: []string{"example/*"}}
 	policy := setting.AllowedActionsPolicyValue
@@ -201,9 +198,7 @@ func TestRepositoryStateText_UndefinedReasonPanics(t *testing.T) {
 
 // 期待値は CLI 仕様 4章の Environment の表示例から導く。
 //
-//trace:checks FR-005
-//trace:checks FR-006
-//trace:checks FR-007
+//trace:checks FR-005 FR-006 FR-007
 func TestPlannedChangeText_Environments(t *testing.T) {
 	production := mustEnvironmentName(t, "production")
 	protected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches})
