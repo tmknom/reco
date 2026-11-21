@@ -299,6 +299,8 @@ func unavailableReasonText(reason github.UnavailableReason) string {
 		return "the environment does not exist"
 	case github.UnavailableEnvironmentNameUndetermined:
 		// confirmationText が not in effect と示さないため、理由の文言を持たない
+	case github.UnavailablePrivateRepository:
+		// この理由を持つ設定は宣言を受け付けず、期待状態の確認に現れないため、理由の文言を持たない
 	}
 	panic(fmt.Sprintf("apply: undefined unavailable reason %d", int(reason)))
 }

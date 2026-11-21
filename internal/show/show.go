@@ -24,7 +24,7 @@ type Config struct {
 func Run(ctx context.Context, cfg Config) error {
 	client := github.New(cfg.Token, cfg.GitHubOptions...)
 	// 失敗の文言は対象名を含むため、ここでは包み直さない
-	observed, err := client.ObserveRepository(ctx, cfg.Target, setting.AreaActionsPermissions, setting.AreaWorkflowPermissions, setting.AreaActionsAccess, setting.AreaEnvironments, setting.AreaDependabot)
+	observed, err := client.ObserveRepository(ctx, cfg.Target, setting.AreaActionsPermissions, setting.AreaWorkflowPermissions, setting.AreaActionsAccess, setting.AreaEnvironments, setting.AreaDependabot, setting.AreaSecretScanning)
 	if err != nil {
 		return err
 	}
@@ -43,7 +43,7 @@ func writeObservationResult(w io.Writer, target repository.Reference, observed g
 		observed.WorkflowPermissions.DefaultWorkflowPermissions, observed.WorkflowPermissions.CanApprovePullRequestReviews)
 	writeActionsAccess(&b, *observed.ActionsAccess)
 	writeEnvironments(&b, *observed.Environments)
-	writeSecurity(&b, *observed.Dependabot)
+	writeSecurity(&b, *observed.Dependabot, *observed.SecretScanning)
 	// 全文を組み立ててから一度だけ書き、書き込みの失敗の経路を一つにする
 	_, err := io.WriteString(w, b.String())
 	return err

@@ -1,7 +1,9 @@
 package github
 
 import (
+	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -27,11 +29,20 @@ func TestDecodeRepository(t *testing.T) {
 		body string
 		want repositoryAttributes
 	}{
-		{name: "public repository is read with all fields", body: repositoryBody, want: repositoryAttributes{admin: true}},
+		{
+			name: "public repository is read with all fields",
+			body: repositoryBody,
+			want: repositoryAttributes{admin: true, securityAndAnalysis: json.RawMessage(repositorySecurityAndAnalysis)},
+		},
 		{name: "private repository is read with all fields", body: privateRepositoryBody, want: repositoryAttributes{private: true, admin: true}},
 		{name: "false permissions.admin is no admin access", body: `{` + general + `, "permissions": {"admin": false, "pull": true}}`, want: repositoryAttributes{}},
 		{name: "missing permissions is no admin access", body: `{` + general + `}`, want: repositoryAttributes{}},
 		{name: "permissions without admin is no admin access", body: `{` + general + `, "permissions": {"pull": true}}`, want: repositoryAttributes{}},
+		{
+			name: "non-object security_and_analysis is carried uninterpreted",
+			body: `{` + general + `, "security_and_analysis": "text"}`,
+			want: repositoryAttributes{securityAndAnalysis: json.RawMessage(`"text"`)},
+		},
 	}
 	for _, tc := range successes {
 		t.Run(tc.name, func(t *testing.T) {
@@ -40,7 +51,7 @@ func TestDecodeRepository(t *testing.T) {
 				t.Fatalf("decodeRepository() error = %v", err)
 			}
 			want := ObservationResult{RepositoryID: 1296269, General: General{AllowAutoMerge: true, DeleteBranchOnMerge: false}}
-			if got != want || attributes != tc.want {
+			if !reflect.DeepEqual(got, want) || !reflect.DeepEqual(attributes, tc.want) {
 				t.Errorf("decodeRepository() = (%+v, %+v), want (%+v, %+v)", got, attributes, want, tc.want)
 			}
 		})

@@ -68,7 +68,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 環境変数の優先順位は [GitHub CLI の環境変数仕様](https://cli.github.com/manual/gh_help_environment) と同じですが、reco が GitHub CLI の認証機構を利用することは意味しません。
 
-reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章、[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。`show` が読み取る Environment と個別パターンの一覧には、GitHub App の権限の分類で Actions の read に当たる権限が要ります。ほかのトークンがこの権限を持たず、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。`show` と、`security` を宣言したリポジトリの `plan` と `apply` が読み取る Dependabot alerts と Dependabot security updates の取得には、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。トークンの所有者が admin のアクセスを持たないリポジトリでは、どのコマンドも観測操作の失敗としてエラー終了します。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合（Administration の read を持たない fine-grained personal access token など）の応答は確かめていません。この場合に GitHub が Dependabot alerts の取得へ `404` を返すなら、`show` は有効な Dependabot alerts を `false` と表示し、`plan` と `apply` は `dependabot_alerts: false` の宣言を変更不要と判断します（[アーキテクチャ設計](../design/architecture.md) 3.2節）。
+reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章、[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。`show` が読み取る Environment と個別パターンの一覧には、GitHub App の権限の分類で Actions の read に当たる権限が要ります。ほかのトークンがこの権限を持たず、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。`show` と、`security` を宣言したリポジトリの `plan` と `apply` が読み取る Dependabot alerts と Dependabot security updates の取得には、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。トークンの所有者が admin のアクセスを持たないリポジトリでは、どのコマンドも観測操作の失敗としてエラー終了します。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合（Administration の read を持たない fine-grained personal access token など）の応答は確かめていません。この場合に GitHub が Dependabot alerts の取得へ `404` を返すなら、`show` は有効な Dependabot alerts を `false` と表示し、`plan` と `apply` は `dependabot_alerts: false` の宣言を変更不要と判断します（[アーキテクチャ設計](../design/architecture.md) 3.2節）。`show` が読み取る Secret scanning の有効状態とリポジトリの push protection も、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 5章）。公開リポジトリの応答がこれらの値を含まないときは、`show` は観測操作の失敗としてエラー終了します。
 
 ```text
 $ GH_TOKEN=$(gh auth token) reco plan
@@ -719,14 +719,19 @@ repositories:
     security:
       dependabot_alerts: true
       dependabot_security_updates: true
+      # reco does not accept the secret scanning settings in the configuration file yet
+      # secret_scanning: true
+      # secret_scanning_push_protection: true
 ```
 
 表示するのは、設定宣言に書ける管理設定と Environment に限ります。Environment の保護設定（`wait_timer`、`required_reviewers`、`can_admins_bypass`）のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
 
+Secret scanning の有効状態とリポジトリの push protection は、この規定の例外です。設定宣言はまだこの二つを受け付けませんが、受け付けるときと同じキー（`secret_scanning`、`secret_scanning_push_protection`）で、`security` の末尾に値を示します。二つの行は YAML のコメントとして示し、その前の行で、設定ファイルに書けないことを示します。コメントにするのは、表示を設定宣言として読めるままにし、書けない設定であることを利用者が行を見て分かるようにするためです。
+
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
 - **ほかの行から分かる**：行ごと示さない。上位の設定によってその設定が効いていない状態（Actions が無効、Actions 許可ポリシーが `selected` でない）がこれに当たり、その状態は上位の設定の行で示されるためである
-- **ほかの行から分からない**：行を省かず、YAML のコメントとして、値の位置に `unavailable (<理由>)` と示す。行を省くと、確認できなかった設定と reco が表示しない設定を区別できないためである。コメントにするのは、確認できなかった値を期待値として読ませないためである。公開リポジトリの `access_level` がこれに当たる
+- **ほかの行から分からない**：行を省かず、YAML のコメントとして、値の位置に `unavailable (<理由>)` と示す。行を省くと、確認できなかった設定と reco が表示しない設定を区別できないためである。コメントにするのは、確認できなかった値を期待値として読ませないためである。公開リポジトリの `access_level` と、非公開リポジトリの Secret scanning の有効状態とリポジトリの push protection がこれに当たる
 
 `allowed_actions` が `selected` のときは、`selected_actions` の3項目を `sha_pinning_required` の前に示します。`patterns_allowed` は、パターンを関連リソースの名前と同じく二重引用符で囲んでエスケープし、GitHub が返した順に1行に一つずつ並べます。空の集合は `[]` と示します。
 
@@ -778,12 +783,20 @@ Environment は `environments` に示します。Environment ごとに、`name` 
           mode: protected_branches
 ```
 
-`security` には、Dependabot alerts を `dependabot_alerts` に、Dependabot security updates を `dependabot_security_updates` に、有効なら `true`、無効なら `false` で示します。どちらも取得条件を持たないため、`unavailable` にはなりません。Dependabot security updates が一時停止中（GitHub が自動で更新を止めた状態）のときは、値を `true` とし、行末の YAML のコメントで一時停止中であることを示します。一時停止中も設定は有効のままであり、`false` と示すと無効と取り違え、値の位置に一時停止を書くと設定宣言の真偽値として読めないためです。
+`security` には、Dependabot alerts を `dependabot_alerts` に、Dependabot security updates を `dependabot_security_updates` に、有効なら `true`、無効なら `false` で示します。Dependabot の二つの設定は取得条件を持たないため、`unavailable` にはなりません。Dependabot security updates が一時停止中（GitHub が自動で更新を止めた状態）のときは、値を `true` とし、行末の YAML のコメントで一時停止中であることを示します。一時停止中も設定は有効のままであり、`false` と示すと無効と取り違え、値の位置に一時停止を書くと設定宣言の真偽値として読めないためです。
 
 ```text
     security:
       dependabot_alerts: true
       dependabot_security_updates: true # paused by GitHub (still enabled)
+```
+
+Secret scanning の有効状態を `secret_scanning` に、リポジトリの push protection を `secret_scanning_push_protection` に、有効なら `true`、無効なら `false` で示します。`secret_scanning_push_protection` は、リポジトリに設定する push protection で、利用者が自分のアカウントに設定する push protection とは別の設定です。二つの設定は、非公開リポジトリでは取得できません（[GitHub リポジトリ API 仕様](../research/repositories.md) 5章）。非公開リポジトリでは、値の位置に `unavailable (the repository is private)` と示します。
+
+```text
+      # reco does not accept the secret scanning settings in the configuration file yet
+      # secret_scanning: unavailable (the repository is private)
+      # secret_scanning_push_protection: unavailable (the repository is private)
 ```
 
 表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。`organization` の `access_level`、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 9章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。

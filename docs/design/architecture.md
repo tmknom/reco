@@ -166,13 +166,22 @@ Dependabot security updates の取得も admin read のアクセスを求め、�
 
 Dependabot security updates の取得は、`200` の本文の `enabled` と `paused` を読みます。無効のときも `200` で `enabled: false` が返り、公式資料の「無効なら `404`」とは食い違います（GitHub リポジトリ API 仕様 7章）。そのため `404` は無効と読まず、観測操作の失敗とします。観測値は、無効（`enabled: false`、`paused: false`）、有効（`enabled: true`、`paused: false`）、有効で一時停止中（`enabled: true`、`paused: true`）の三つです。取得契約は、`enabled` と `paused` がそろい、この三つの組のどれかであることです。`enabled: false` と `paused: true` の組は、実際の動作で観測しておらず意味を根拠づけられないため、取得契約に適合しない応答とします。`security_and_analysis.dependabot_security_updates` は値が一致しましたが、一時停止を含まず、非公開リポジトリでは `GET /repos/{owner}/{repo}` が `security_and_analysis` を返さないため、取得元にしません。Dependabot の二つの設定に、取得条件による観測不能はありません。Dependency graph は読みません（5.4節）。
 
-取得条件による観測不能として扱うのは次の三つです。
+Secret scanning の有効状態とリポジトリの push protection は、`GET /repos/{owner}/{repo}` の応答の `security_and_analysis.secret_scanning.status` と `security_and_analysis.secret_scanning_push_protection.status` から読みます。追加の読み取り要求は送りません。`enabled` を有効、`disabled` を無効と読みます。`security_and_analysis` のほかの項目は読みません。
+
+二つの設定は、応答の `private` が真のとき、`security_and_analysis` を読まずに観測不能とします。理由はリポジトリが非公開であることです。非公開リポジトリでは、`permissions.admin` が `true` でも応答から `security_and_analysis` が欠け、公式資料も、ユーザーが所有するリポジトリの Secret scanning を Enterprise Managed Users と GitHub Enterprise Server に限っています（[GitHub リポジトリ API 仕様](../research/repositories.md) 5章）。応答が `security_and_analysis` を含んでいても読まないのは、観測不能の根拠が公開範囲であり、フィールドの有無で分けると、非公開リポジトリへの push protection の更新が `200` のまま値を変えないにもかかわらず（同 5章）、その値を比べられる値として扱うことになるためです。
+
+`private` が偽のときは、二つの `status` がそろい、どちらも `enabled` か `disabled` であることを取得契約とします。`security_and_analysis` が欠けた応答、`null` の応答、どちらかの `status` が欠けた応答、定義にない `status` の応答は、取得契約に適合しない応答です。公開リポジトリで `security_and_analysis` が欠けるのは権限の不足であり（第三者の公開リポジトリで確かめた。同 5章）、マージ関連フィールドの欠落と同じく、取得条件による観測不能にしません。片方の設定だけの観測結果も作りません。この判定は、ほかの設定の領域の読み取り要求を送る前に行います。失敗が決まった観測のために、要求を送らないためです。
+
+`security_and_analysis` を取得契約に含めるのは、Secret scanning の領域を読む観測だけです。この領域を読まない観測は `security_and_analysis` を解釈せず、欠けていても、`null` でも、型が合わなくても失敗しません。General だけを宣言したリポジトリの `plan` を、宣言していない設定の応答の形で失敗させないためです。
+
+取得条件による観測不能として扱うのは次の四つです。
 
 | 取得条件 | 観測不能になる設定 | 根拠 |
 |---|---|---|
 | Actions が無効（`enabled: false`） | Actions 許可ポリシー、`sha_pinning_required`、選択方式の Actions 許可条件 | 応答に `allowed_actions` が含まれず、`sha_pinning_required` は保存された値によらず `false` で返る（GitHub Actions 権限 API 仕様 3.1） |
 | Actions 許可ポリシーが `selected` でない | 選択方式の Actions 許可条件 | 取得が `409` を返し、値は返らない（GitHub Actions 権限 API 仕様 4章） |
 | リポジトリが公開（`private: false`） | `access_level` | 公式資料が非公開リポジトリにだけ適用されると記載し、公開リポジトリへの取得は `422` を返して値を返さない（GitHub Actions 権限 API 仕様 6章） |
+| リポジトリが非公開（`private: true`） | Secret scanning の有効状態、リポジトリの push protection | 公式資料が、ユーザーが所有するリポジトリの Secret scanning を Enterprise Managed Users と GitHub Enterprise Server に限り、非公開リポジトリの応答は `security_and_analysis` を含まない（GitHub リポジトリ API 仕様 5章） |
 
 Actions の有効状態は取得条件を持たず、`GET /repos/{owner}/{repo}/actions/permissions` の応答が取得契約に適合すれば必ず観測値になります。Actions の有効状態だけを管理設定とするリポジトリでも、計画時の観測は Actions の実行許可を読み取ります。
 
@@ -475,7 +484,7 @@ Environment とその `deployment_branch_policy` の変更予定は、次の表�
 
 `selected` から `all` / `local_only` への切替によって、GitHub は選択方式の Actions 許可条件を残さず、`selected` に戻したときには上記の値に戻っています（GitHub Actions 権限 API 仕様 4章）。遷移先が `all` / `local_only` のとき選択方式の Actions 許可条件は宣言できないため（[YAML 設定仕様](../spec/configuration.md) 4.1）、その既存値は管理範囲外の設定であり、reco はこの消失を防げません。Change Planning は、この遷移を適用可能としたうえで、既存の選択方式の Actions 許可条件が失われることを観測した値とともに変更計画へ含めます（[CLI 仕様](../spec/cli.md) 4章）。消失を承認前に明示するのは、INV-001 が禁じる管理範囲外の設定の暗黙の削除に当たらないようにするためです。そのため、(1) の直前の変更前提に、変更計画に示した選択方式の Actions 許可条件の値を含めます。更新後は選択方式の Actions 許可条件を取得できないため、その値を保全済みとはみなさず、消失したものとして扱います。
 
-セキュリティ設定（Dependabot alerts、Dependabot security updates、Secret scanning、push protection）にも、一つの設定の更新が別の設定を変える依存があります。次の表は、その依存の扱いを定めます。Dependabot の2設定はサポート対象で、Secret scanning と push protection はまだサポート対象ではなく（[要求定義](../spec/requirements.md) 2章）、対応するときにこの表に従います。
+セキュリティ設定（Dependabot alerts、Dependabot security updates、Secret scanning の有効状態、リポジトリの push protection）にも、一つの設定の更新が別の設定を変える依存があります。次の表は、その依存の扱いを定めます。Dependabot の2設定はサポート対象で、Secret scanning の有効状態とリポジトリの push protection はまだサポート対象ではなく（[要求定義](../spec/requirements.md) 2章）、対応するときにこの表に従います。
 
 | 宣言した変更 | GitHub の動作（[GitHub リポジトリ API 仕様](../research/repositories.md) 5〜7章） | 扱い |
 |---|---|---|

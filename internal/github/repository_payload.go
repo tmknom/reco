@@ -16,19 +16,22 @@ type repositoryPayload struct {
 	Private             *bool  `json:"private"`
 	// Permissions は Dependabot の領域を読まない観測では使わないため、取得契約に含めず、欠落と null を許す。
 	Permissions *repositoryPermissionsPayload `json:"permissions"`
+	// SecurityAndAnalysis は Secret scanning の領域を読む観測だけが解釈する。ほかの観測が、宣言していない設定の応答の形で失敗しないよう、型を合わせず未解釈のまま受ける。
+	SecurityAndAnalysis json.RawMessage `json:"security_and_analysis"`
 }
 
 type repositoryPermissionsPayload struct {
 	Admin *bool `json:"admin"`
 }
 
-// repositoryAttributes は、リポジトリの応答のうち、後続の読み取り要求を送るかと応答の解釈にだけ使い、観測結果に載せない値である。
+// repositoryAttributes は、リポジトリの応答のうち、decodeRepository が観測結果に変換しない値である。
 type repositoryAttributes struct {
-	private bool
-	admin   bool
+	private             bool
+	admin               bool
+	securityAndAnalysis json.RawMessage
 }
 
-// decodeRepository はリポジトリの応答本文を、観測結果と、観測結果に載せない値に変換する。
+// decodeRepository はリポジトリの応答本文を、観測結果と、観測結果に変換しない値に変換する。
 // 欠落の理由を応答から確認できないため、欠けた値を既定値で補わず、契約外の応答として返す。
 func decodeRepository(data []byte) (ObservationResult, repositoryAttributes, error) {
 	var p repositoryPayload
@@ -57,5 +60,9 @@ func decodeRepository(data []byte) (ObservationResult, repositoryAttributes, err
 			AllowAutoMerge:      *p.AllowAutoMerge,
 			DeleteBranchOnMerge: *p.DeleteBranchOnMerge,
 		},
-	}, repositoryAttributes{private: *p.Private, admin: p.Permissions != nil && p.Permissions.Admin != nil && *p.Permissions.Admin}, nil
+	}, repositoryAttributes{
+		private:             *p.Private,
+		admin:               p.Permissions != nil && p.Permissions.Admin != nil && *p.Permissions.Admin,
+		securityAndAnalysis: p.SecurityAndAnalysis,
+	}, nil
 }

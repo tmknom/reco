@@ -15,6 +15,8 @@ const (
 	UnavailableEnvironmentAbsent
 	// UnavailableEnvironmentNameUndetermined は、宣言の名前と同じかどうかを判定できない名前の Environment があることを表す。
 	UnavailableEnvironmentNameUndetermined
+	// UnavailablePrivateRepository は、リポジトリが非公開であることを表す。
+	UnavailablePrivateRepository
 )
 
 // SettingObservation は、一つの設定の観測結果で、観測値か、理由を伴う観測不能のどちらか一方を持つ。

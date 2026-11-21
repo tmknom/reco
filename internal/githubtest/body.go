@@ -11,12 +11,15 @@ import (
 
 // RepositoryBody は、リポジトリの取得の応答本文である。
 // Private のゼロ値は公開のリポジトリを、Admin のゼロ値は admin のアクセスを持たないトークンの所有者を表す。
+// SecretScanning と SecretScanningPushProtection は、GitHub と同じく公開で admin のアクセスを持つときだけ security_and_analysis に含め、ゼロ値は disabled を表す。
 type RepositoryBody struct {
-	ID                  int64
-	AllowAutoMerge      bool
-	DeleteBranchOnMerge bool
-	Private             bool
-	Admin               bool
+	ID                           int64
+	AllowAutoMerge               bool
+	DeleteBranchOnMerge          bool
+	Private                      bool
+	Admin                        bool
+	SecretScanning               bool
+	SecretScanningPushProtection bool
 }
 
 // ActionsPermissionsBody は、Actions が有効なリポジトリの Actions permissions の取得の応答本文である。
@@ -106,8 +109,13 @@ type DeploymentPatternBody struct {
 
 // JSON は応答本文を返す。
 func (b RepositoryBody) JSON() string {
-	return fmt.Sprintf(`{"id": %d, "allow_auto_merge": %t, "delete_branch_on_merge": %t, "private": %t, "permissions": {"admin": %t}}`,
-		b.ID, b.AllowAutoMerge, b.DeleteBranchOnMerge, b.Private, b.Admin)
+	securityAndAnalysis := ""
+	if !b.Private && b.Admin {
+		securityAndAnalysis = fmt.Sprintf(`, "security_and_analysis": {"secret_scanning": {"status": %q}, "secret_scanning_push_protection": {"status": %q}}`,
+			securityStatus(b.SecretScanning), securityStatus(b.SecretScanningPushProtection))
+	}
+	return fmt.Sprintf(`{"id": %d, "allow_auto_merge": %t, "delete_branch_on_merge": %t, "private": %t, "permissions": {"admin": %t}%s}`,
+		b.ID, b.AllowAutoMerge, b.DeleteBranchOnMerge, b.Private, b.Admin, securityAndAnalysis)
 }
 
 // JSON は応答本文を返す。
@@ -184,4 +192,12 @@ func (b DeploymentBranchPoliciesBody) JSON() string {
 // JSON は応答本文を返す。
 func (b DeploymentPatternBody) JSON() string {
 	return fmt.Sprintf(`{"id": %d, "name": %q, "type": %q}`, b.ID, b.Name, b.Type)
+}
+
+// securityStatus は security_and_analysis の項目の status を返す。
+func securityStatus(enabled bool) string {
+	if enabled {
+		return "enabled"
+	}
+	return "disabled"
 }

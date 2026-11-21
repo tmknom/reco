@@ -70,6 +70,8 @@ func repositoryStateText(reason github.UnavailableReason) string {
 		return "(environment absent)"
 	case github.UnavailableEnvironmentNameUndetermined:
 		return "(existence unknown)"
+	case github.UnavailablePrivateRepository:
+		// この理由を持つ設定は宣言を受け付けず、変更計画に現れないため、状態の文言を持たない
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined unavailable reason %d", int(reason)))
 }

@@ -14,11 +14,31 @@ func TestBodies(t *testing.T) {
 		want map[string]any
 	}{
 		{
-			name: "repository body has id, the two merge-related fields, the visibility, and the admin access",
-			body: RepositoryBody{ID: 7, AllowAutoMerge: true, Private: true, Admin: true}.JSON(),
+			name: "private repository body has id, the two merge-related fields, the visibility, and the admin access, without security_and_analysis",
+			body: RepositoryBody{ID: 7, AllowAutoMerge: true, Private: true, Admin: true, SecretScanning: true}.JSON(),
 			want: map[string]any{
 				"id": float64(7), "allow_auto_merge": true, "delete_branch_on_merge": false, "private": true,
 				"permissions": map[string]any{"admin": true},
+			},
+		},
+		{
+			name: "public repository body without admin access has no security_and_analysis",
+			body: RepositoryBody{ID: 7, SecretScanning: true}.JSON(),
+			want: map[string]any{
+				"id": float64(7), "allow_auto_merge": false, "delete_branch_on_merge": false, "private": false,
+				"permissions": map[string]any{"admin": false},
+			},
+		},
+		{
+			name: "public repository body with admin access has the secret scanning statuses in security_and_analysis",
+			body: RepositoryBody{ID: 7, Admin: true, SecretScanning: true}.JSON(),
+			want: map[string]any{
+				"id": float64(7), "allow_auto_merge": false, "delete_branch_on_merge": false, "private": false,
+				"permissions": map[string]any{"admin": true},
+				"security_and_analysis": map[string]any{
+					"secret_scanning":                 map[string]any{"status": "enabled"},
+					"secret_scanning_push_protection": map[string]any{"status": "disabled"},
+				},
 			},
 		},
 		{
