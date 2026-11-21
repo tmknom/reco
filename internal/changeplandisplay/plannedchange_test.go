@@ -25,7 +25,7 @@ func TestPlannedChangeText(t *testing.T) {
 		{
 			name: "single setting mismatch is shown as current -> desired on one line",
 			s: changeplan.SettingPlan{
-				Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
+				Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
 				Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 			},
 			want: "  general.allow_auto_merge: false -> true\n",
@@ -33,7 +33,7 @@ func TestPlannedChangeText(t *testing.T) {
 		{
 			name: "criteria group mismatch shows the current and desired values on separate lines",
 			s: changeplan.SettingPlan{
-				Key:      setting.SelectedActions,
+				Unit:     setting.Unit{Key: setting.SelectedActions},
 				Observed: github.Observed(setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{}})),
 				Desired:  setting.SelectedActionsCriteriaValue(criteria), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 			},
@@ -44,7 +44,7 @@ func TestPlannedChangeText(t *testing.T) {
 		{
 			name: "not-comparable criteria group under a policy other than selected shows not in use as the repository state on separate lines",
 			s: changeplan.SettingPlan{
-				Key: setting.SelectedActions, Observed: notSelected, Desired: setting.SelectedActionsCriteriaValue(criteria),
+				Unit: setting.Unit{Key: setting.SelectedActions}, Observed: notSelected, Desired: setting.SelectedActionsCriteriaValue(criteria),
 				Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
 			},
 			want: "  actions.permissions.selected_actions:\n" +
@@ -54,7 +54,7 @@ func TestPlannedChangeText(t *testing.T) {
 		{
 			name: "not-comparable criteria group on disabled actions shows actions disabled as the repository state",
 			s: changeplan.SettingPlan{
-				Key: setting.SelectedActions, Observed: disabled, Desired: setting.SelectedActionsCriteriaValue(criteria),
+				Unit: setting.Unit{Key: setting.SelectedActions}, Observed: disabled, Desired: setting.SelectedActionsCriteriaValue(criteria),
 				Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
 			},
 			want: "  actions.permissions.selected_actions:\n" +
@@ -64,7 +64,7 @@ func TestPlannedChangeText(t *testing.T) {
 		{
 			name: "not-comparable policy that enables actions shows the repository state on one line and marks the desired value",
 			s: changeplan.SettingPlan{
-				Key: setting.AllowedActions, Observed: disabled, Desired: policy(setting.AllowedActionsSelected),
+				Unit: setting.Unit{Key: setting.AllowedActions}, Observed: disabled, Desired: policy(setting.AllowedActionsSelected),
 				Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
 			},
 			want: "  actions.permissions.allowed_actions: (GitHub Actions disabled) -> selected (enables GitHub Actions)\n",
@@ -72,7 +72,7 @@ func TestPlannedChangeText(t *testing.T) {
 		{
 			name: "known change shows the side effect with the observed criteria under it",
 			s: changeplan.SettingPlan{
-				Key: setting.AllowedActions, Observed: github.Observed(policy(setting.AllowedActionsSelected)), Desired: policy(setting.AllowedActionsAll),
+				Unit: setting.Unit{Key: setting.AllowedActions}, Observed: github.Observed(policy(setting.AllowedActionsSelected)), Desired: policy(setting.AllowedActionsAll),
 				Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 				SideEffects: []changeplan.SideEffect{{Key: setting.SelectedActions, Observed: github.Observed(setting.SelectedActionsCriteriaValue(criteria))}},
 			},
@@ -82,7 +82,7 @@ func TestPlannedChangeText(t *testing.T) {
 		{
 			name: "not-comparable setting shows the possible loss when the observed criteria are unavailable",
 			s: changeplan.SettingPlan{
-				Key: setting.AllowedActions, Observed: disabled, Desired: policy(setting.AllowedActionsLocalOnly),
+				Unit: setting.Unit{Key: setting.AllowedActions}, Observed: disabled, Desired: policy(setting.AllowedActionsLocalOnly),
 				Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
 				SideEffects: []changeplan.SideEffect{{Key: setting.SelectedActions, Observed: disabled}},
 			},
@@ -92,7 +92,7 @@ func TestPlannedChangeText(t *testing.T) {
 		{
 			name: "policy enabling actions shows the one resumed setting before the side effect",
 			s: changeplan.SettingPlan{
-				Key: setting.AllowedActions, Observed: disabled, Desired: policy(setting.AllowedActionsLocalOnly),
+				Unit: setting.Unit{Key: setting.AllowedActions}, Observed: disabled, Desired: policy(setting.AllowedActionsLocalOnly),
 				Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
 				SideEffects:     []changeplan.SideEffect{{Key: setting.SelectedActions, Observed: disabled}},
 				ResumedSettings: []setting.Key{setting.SHAPinningRequired},
@@ -104,7 +104,7 @@ func TestPlannedChangeText(t *testing.T) {
 		{
 			name: "reenabling actions lists the resumed settings",
 			s: changeplan.SettingPlan{
-				Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
+				Unit: setting.Unit{Key: setting.ActionsEnabled}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
 				Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 				ResumedSettings: []setting.Key{setting.AllowedActions, setting.SelectedActions, setting.SHAPinningRequired},
 			},
@@ -114,7 +114,7 @@ func TestPlannedChangeText(t *testing.T) {
 		{
 			name: "reenabling actions with sha_pinning_required declared lists only the policy and the criteria",
 			s: changeplan.SettingPlan{
-				Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
+				Unit: setting.Unit{Key: setting.ActionsEnabled}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
 				Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 				ResumedSettings: []setting.Key{setting.AllowedActions, setting.SelectedActions},
 			},
@@ -124,7 +124,7 @@ func TestPlannedChangeText(t *testing.T) {
 		{
 			name: "not-applicable change shows the applicability with the reason under it",
 			s: changeplan.SettingPlan{
-				Key: setting.SHAPinningRequired, Observed: disabled, Desired: setting.BoolValue(true),
+				Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: disabled, Desired: setting.BoolValue(true),
 				Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableActionsRemainDisabled,
 			},
 			want: "  actions.permissions.sha_pinning_required: (GitHub Actions disabled) -> true\n" +
@@ -133,7 +133,7 @@ func TestPlannedChangeText(t *testing.T) {
 		{
 			name: "access_level of a public repository shows the repository state and the reason to remove the declaration",
 			s: changeplan.SettingPlan{
-				Key: setting.ActionsAccessLevel, Observed: github.Unavailable[setting.Value](github.UnavailablePublicRepository), Desired: setting.AccessLevelValue(setting.AccessNone),
+				Unit: setting.Unit{Key: setting.ActionsAccessLevel}, Observed: github.Unavailable[setting.Value](github.UnavailablePublicRepository), Desired: setting.AccessLevelValue(setting.AccessNone),
 				Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicablePublicRepository,
 			},
 			want: "  actions.access.access_level: (public repository) -> none\n" +
@@ -142,7 +142,7 @@ func TestPlannedChangeText(t *testing.T) {
 		{
 			name: "applicable not-comparable sha_pinning_required shows no applicability",
 			s: changeplan.SettingPlan{
-				Key: setting.SHAPinningRequired, Observed: disabled, Desired: setting.BoolValue(true),
+				Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: disabled, Desired: setting.BoolValue(true),
 				Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
 			},
 			want: "  actions.permissions.sha_pinning_required: (GitHub Actions disabled) -> true\n",
@@ -150,7 +150,7 @@ func TestPlannedChangeText(t *testing.T) {
 		{
 			name: "match is empty",
 			s: changeplan.SettingPlan{
-				Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true),
+				Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true),
 				Result: changeplan.Match,
 			},
 			want: "",
@@ -172,7 +172,7 @@ func TestPlannedChangeText_SideEffectOnOtherSettingPanics(t *testing.T) {
 		}
 	}()
 	_ = PlannedChangeText(changeplan.SettingPlan{
-		Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
+		Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
 		Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 		SideEffects: []changeplan.SideEffect{{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true))}},
 	})
@@ -224,18 +224,18 @@ func TestPlannedChangeText_Environments(t *testing.T) {
 	}{
 		{
 			name: "matched environment is not shown",
-			s:    changeplan.SettingPlan{Key: setting.EnvironmentResource, Environment: production, Result: changeplan.Match},
+			s:    changeplan.SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Result: changeplan.Match},
 			want: "",
 		},
 		{
 			name: "creation shows absent -> present",
-			s:    changeplan.SettingPlan{Key: setting.EnvironmentResource, Environment: production, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+			s:    changeplan.SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 			want: "  environments.production: absent -> present\n",
 		},
 		{
 			name: "mode of an environment to create shows environment absent as the state",
 			s: changeplan.SettingPlan{
-				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
+				Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
 				Desired: protected, Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
 			},
 			want: "  environments.production.deployment_branch_policy: (environment absent) -> protected_branches\n",
@@ -243,7 +243,7 @@ func TestPlannedChangeText_Environments(t *testing.T) {
 		{
 			name: "mode changed from selected shows the patterns in the current value without a side effect",
 			s: changeplan.SettingPlan{
-				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Observed(selected),
+				Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Observed(selected),
 				Desired: all, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 			},
 			want: "  environments.production.deployment_branch_policy:\n    selected [branch \"main\", tag \"v*\"]\n    -> all\n",
@@ -251,7 +251,7 @@ func TestPlannedChangeText_Environments(t *testing.T) {
 		{
 			name: "mode changed to selected shows three lines without pattern lines",
 			s: changeplan.SettingPlan{
-				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Observed(all),
+				Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Observed(all),
 				Desired: selected, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 			},
 			want: "  environments.production.deployment_branch_policy:\n    all\n    -> selected [branch \"main\", tag \"v*\"]\n",
@@ -259,7 +259,7 @@ func TestPlannedChangeText_Environments(t *testing.T) {
 		{
 			name: "environment absent to selected shows three lines without pattern lines",
 			s: changeplan.SettingPlan{
-				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
+				Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
 				Desired: selected, Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
 			},
 			want: "  environments.production.deployment_branch_policy:\n    (environment absent)\n    -> selected [branch \"main\", tag \"v*\"]\n",
@@ -267,7 +267,7 @@ func TestPlannedChangeText_Environments(t *testing.T) {
 		{
 			name: "selected to selected with only added patterns shows only Patterns to add",
 			s: changeplan.SettingPlan{
-				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Observed(selectedOf(branch("main"))),
+				Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Observed(selectedOf(branch("main"))),
 				Desired: selectedOf(branch("main"), tag("v*")), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 			},
 			want: "  environments.production.deployment_branch_policy:\n    selected [branch \"main\"]\n    -> selected [branch \"main\", tag \"v*\"]\n    Patterns to add: [tag \"v*\"]\n",
@@ -275,7 +275,7 @@ func TestPlannedChangeText_Environments(t *testing.T) {
 		{
 			name: "selected to selected with only removed patterns shows only Patterns to remove",
 			s: changeplan.SettingPlan{
-				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Observed(selectedOf(branch("main"), tag("v*"))),
+				Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Observed(selectedOf(branch("main"), tag("v*"))),
 				Desired: selectedOf(branch("main")), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 			},
 			want: "  environments.production.deployment_branch_policy:\n    selected [branch \"main\", tag \"v*\"]\n    -> selected [branch \"main\"]\n    Patterns to remove: [tag \"v*\"]\n",
@@ -283,7 +283,7 @@ func TestPlannedChangeText_Environments(t *testing.T) {
 		{
 			name: "selected to selected with both shows remove then add, in observed then declared order",
 			s: changeplan.SettingPlan{
-				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production,
+				Unit:     setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production},
 				Observed: github.Observed(selectedOf(branch("a"), branch("main"), branch("z"))),
 				Desired:  selectedOf(branch("y"), branch("main"), branch("b")), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 			},
@@ -293,7 +293,7 @@ func TestPlannedChangeText_Environments(t *testing.T) {
 		{
 			name: "environment whose existence is unknown shows the state and why it is not applicable",
 			s: changeplan.SettingPlan{
-				Key: setting.EnvironmentResource, Environment: production, ObservedEnvironment: undetermined, Result: changeplan.NotComparable,
+				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, ObservedEnvironment: undetermined, Result: changeplan.NotComparable,
 				Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableEnvironmentNameUndetermined,
 			},
 			want: "  environments.production: (existence unknown) -> present\n" + notApplicable,
@@ -301,7 +301,7 @@ func TestPlannedChangeText_Environments(t *testing.T) {
 		{
 			name: "mode of an environment whose existence is unknown shows the same state",
 			s: changeplan.SettingPlan{
-				Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined),
+				Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined),
 				Desired: protected, Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableEnvironmentNameUndetermined,
 			},
 			want: "  environments.production.deployment_branch_policy: (existence unknown) -> protected_branches\n" + notApplicable,

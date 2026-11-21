@@ -61,7 +61,7 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 		{
 			// 計画が作らない並び。同じ更新エンドポイントの更新操作が並んでも、後の直前の観測を基準にしないことを確かめる
 			name: "two updates to the same endpoint compare only with the read before the first of them",
-			change: changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{
+			change: changeplan.LogicalChange{DesiredState: allowedActionsChange().DesiredState, Operations: []changeplan.UpdateOperation{
 				allowedActionsChange().Operations[0], allowedActionsChange().Operations[0],
 			}},
 			before: []github.ObservationResult{localOnly(false), localOnly(true)},
@@ -110,6 +110,17 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("undefined kind of an update operation panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("unexpectedOutsideChanges() did not panic")
+			}
+		}()
+		change := allowAutoMergeChange()
+		change.Operations[0].Kind = changeplan.DeploymentPatternRemoval + 1
+		unexpectedOutsideChanges(change, []github.ObservationResult{{}}, github.ObservationResult{})
+	})
 }
 
 // TestOutsideChangesAt は、論理的な設定変更が変えない設定を、管理範囲によらず比べる規則を確かめる。

@@ -41,7 +41,7 @@ func TestText(t *testing.T) {
 		{
 			name: "mismatch is shown as a change with a summary",
 			settings: []changeplan.SettingPlan{
-				{Key: "general.allow_auto_merge", Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{Unit: setting.Unit{Key: "general.allow_auto_merge"}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 			},
 			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n  general.allow_auto_merge: false -> true\n\n" +
 				"Plan: 1 repository to update, 1 change\nRepositories checked: 1\n",
@@ -49,13 +49,13 @@ func TestText(t *testing.T) {
 		{
 			name: "general and workflow permissions mismatches are shown in the plan order with enumerated values and counted",
 			settings: []changeplan.SettingPlan{
-				{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 				{
-					Key:      setting.DefaultWorkflowPermissions,
+					Unit:     setting.Unit{Key: setting.DefaultWorkflowPermissions},
 					Observed: github.Observed(setting.PermissionLevelValue(setting.PermissionWrite)), Desired: setting.PermissionLevelValue(setting.PermissionRead),
 					Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 				},
-				{Key: setting.CanApprovePullRequestReviews, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{Unit: setting.Unit{Key: setting.CanApprovePullRequestReviews}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 			},
 			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n" +
 				"  general.allow_auto_merge: false -> true\n" +
@@ -66,8 +66,8 @@ func TestText(t *testing.T) {
 		{
 			name: "matched settings are not shown as changes",
 			settings: []changeplan.SettingPlan{
-				{Key: "general.delete_branch_on_merge", Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match},
-				{Key: "general.allow_auto_merge", Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{Unit: setting.Unit{Key: "general.delete_branch_on_merge"}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match},
+				{Unit: setting.Unit{Key: "general.allow_auto_merge"}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 			},
 			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n  general.allow_auto_merge: true -> false\n\n" +
 				"Plan: 1 repository to update, 1 change\nRepositories checked: 1\n",
@@ -75,16 +75,16 @@ func TestText(t *testing.T) {
 		{
 			name: "creation and mode changes of environments are shown in the plan order and each counted",
 			settings: []changeplan.SettingPlan{
-				{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "production"), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "production")}, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 				{
-					Key: setting.EnvironmentDeploymentBranchPolicy, Environment: mustEnvironmentName(t, "production"),
+					Unit:     setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: mustEnvironmentName(t, "production")},
 					Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
 					Desired:  setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}),
 					Result:   changeplan.NotComparable, Applicability: changeplan.Applicable,
 				},
-				{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "staging"), Result: changeplan.Match},
+				{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "staging")}, Result: changeplan.Match},
 				{
-					Key: setting.EnvironmentDeploymentBranchPolicy, Environment: mustEnvironmentName(t, "staging"),
+					Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: mustEnvironmentName(t, "staging")},
 					Observed: github.Observed(setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{
 						{Type: setting.DeploymentPatternBranch, Name: "main"}, {Type: setting.DeploymentPatternTag, Name: "v*"},
 					}})),
@@ -126,8 +126,8 @@ func TestText_ActionsPermissions(t *testing.T) {
 		{
 			name: "all to selected counts the policy mismatch and the not-comparable criteria group as two changes",
 			settings: []changeplan.SettingPlan{
-				{Key: setting.AllowedActions, Observed: github.Observed(policy(setting.AllowedActionsAll)), Desired: policy(setting.AllowedActionsSelected), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
-				{Key: setting.SelectedActions, Observed: notSelected, Desired: setting.SelectedActionsCriteriaValue(criteria), Result: changeplan.NotComparable, Applicability: changeplan.Applicable},
+				{Unit: setting.Unit{Key: setting.AllowedActions}, Observed: github.Observed(policy(setting.AllowedActionsAll)), Desired: policy(setting.AllowedActionsSelected), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{Unit: setting.Unit{Key: setting.SelectedActions}, Observed: notSelected, Desired: setting.SelectedActionsCriteriaValue(criteria), Result: changeplan.NotComparable, Applicability: changeplan.Applicable},
 			},
 			want: header +
 				"  actions.permissions.allowed_actions: all -> selected\n" +
@@ -153,18 +153,18 @@ func TestText_ActionsPermissions(t *testing.T) {
 //trace:checks FR-007 QR-002
 func TestText_Repositories(t *testing.T) {
 	zeta, alpha := mustReference(t, "owner/zeta"), mustReference(t, "owner/alpha")
-	match := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(false), Result: changeplan.Match}
-	mismatch := changeplan.SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
+	match := changeplan.SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(false), Result: changeplan.Match}
+	mismatch := changeplan.SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
 	notComparable := changeplan.SettingPlan{
-		Key: setting.AllowedActions, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled),
+		Unit: setting.Unit{Key: setting.AllowedActions}, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled),
 		Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
 	}
 	notApplicable := changeplan.SettingPlan{
-		Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
+		Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
 		Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableActionsRemainDisabled,
 	}
 	workflowMismatch := changeplan.SettingPlan{
-		Key: setting.DefaultWorkflowPermissions, Observed: github.Observed(setting.PermissionLevelValue(setting.PermissionWrite)),
+		Unit: setting.Unit{Key: setting.DefaultWorkflowPermissions}, Observed: github.Observed(setting.PermissionLevelValue(setting.PermissionWrite)),
 		Desired: setting.PermissionLevelValue(setting.PermissionRead), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 	}
 	const notApplicableText = "  actions.permissions.sha_pinning_required: (GitHub Actions disabled) -> true\n" +

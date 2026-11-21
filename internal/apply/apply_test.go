@@ -41,7 +41,7 @@ const unknownKey setting.Key = "general.unknown"
 //
 //trace:checks INV-002 FR-009
 func TestExecutableChanges(t *testing.T) {
-	match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match}
+	match := changeplan.SettingPlan{Unit: setting.Unit{Key: setting.DeleteBranchOnMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match}
 	// 宣言の並びを名前順と逆にし、名前順に並べ替える実装を失敗させる
 	plans := func(t *testing.T, settings ...[]changeplan.SettingPlan) changeplan.Plan {
 		t.Helper()
@@ -95,7 +95,7 @@ func TestExecutableChanges(t *testing.T) {
 	t.Run("environment changes are executable without looking up an update endpoint", func(t *testing.T) {
 		production := mustEnvironmentName(t, "production")
 		creation := changeplan.SettingPlan{
-			Key: setting.EnvironmentResource, Environment: production, ObservedEnvironment: github.Environments{}.Lookup(production),
+			Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, ObservedEnvironment: github.Environments{}.Lookup(production),
 			Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 		}
 		p := plans(t, []changeplan.SettingPlan{creation})
@@ -103,7 +103,7 @@ func TestExecutableChanges(t *testing.T) {
 		if err != nil {
 			t.Fatalf("executableChanges() error = %v", err)
 		}
-		want := []repositoryChanges{{plan: p.Repositories[0], changes: []changeplan.LogicalChange{creationChange(t, "production", setting.Value{})}}}
+		want := []repositoryChanges{{plan: p.Repositories[0], changes: []changeplan.LogicalChange{creationChange(t, "production")}}}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("executableChanges() = %+v, want %+v", got, want)
 		}
@@ -126,6 +126,18 @@ func TestExecutableChanges(t *testing.T) {
 		}()
 		_, _ = executableChanges(plans(t, []changeplan.SettingPlan{allowAutoMergeMismatch()}, []changeplan.SettingPlan{unknownMismatch()}))
 	})
+}
+
+// TestCheckUpdateEndpoint_UndefinedKindPanics は、宛先を決められない未定義の種類の更新操作を、承認の前に不変条件の破れとして止めることを確かめる。
+//
+//trace:checks INV-002
+func TestCheckUpdateEndpoint_UndefinedKindPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("checkUpdateEndpoint() did not panic")
+		}
+	}()
+	checkUpdateEndpoint(changeplan.UpdateOperation{Unit: setting.Unit{Key: setting.AllowAutoMerge}})
 }
 
 // failAfterWriter は、n 回の書き込みに成功したあとの書き込みを失敗させる。
@@ -151,7 +163,7 @@ func TestApplyPlan(t *testing.T) {
 		}
 	}
 
-	match := changeplan.SettingPlan{Key: setting.DeleteBranchOnMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match}
+	match := changeplan.SettingPlan{Unit: setting.Unit{Key: setting.DeleteBranchOnMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match}
 
 	t.Run("no change in any repository does not ask for approval or send a request", func(t *testing.T) {
 		baseURL, server := newSequenceServer(t)
@@ -1137,7 +1149,7 @@ func actionsPermissionsConfigSource(policy string) string {
 // allowAutoMergeMismatch は、allowAutoMergeChange を導く適用可能な変更予定。
 func allowAutoMergeMismatch() changeplan.SettingPlan {
 	return changeplan.SettingPlan{
-		Key:           setting.AllowAutoMerge,
+		Unit:          setting.Unit{Key: setting.AllowAutoMerge},
 		Observed:      github.Observed(setting.BoolValue(false)),
 		Desired:       setting.BoolValue(true),
 		Result:        changeplan.Mismatch,
@@ -1148,7 +1160,7 @@ func allowAutoMergeMismatch() changeplan.SettingPlan {
 // deleteBranchOnMergeMismatch は、deleteBranchOnMergeChange を導く適用可能な変更予定。
 func deleteBranchOnMergeMismatch() changeplan.SettingPlan {
 	return changeplan.SettingPlan{
-		Key:           setting.DeleteBranchOnMerge,
+		Unit:          setting.Unit{Key: setting.DeleteBranchOnMerge},
 		Observed:      github.Observed(setting.BoolValue(false)),
 		Desired:       setting.BoolValue(true),
 		Result:        changeplan.Mismatch,
@@ -1160,7 +1172,7 @@ func deleteBranchOnMergeMismatch() changeplan.SettingPlan {
 func allowedActionsMismatch() changeplan.SettingPlan {
 	operation := allowedActionsChange().Operations[0]
 	return changeplan.SettingPlan{
-		Key: operation.Unit.Key, Observed: operation.RelevantSettings[0].ValueAtApproval, Desired: operation.Desired, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+		Unit: operation.Unit, Observed: operation.RelevantSettings[0].ValueAtApproval, Desired: operation.Value, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 	}
 }
 
@@ -1177,7 +1189,7 @@ func selectedToAllChange() changeplan.LogicalChange {
 // 比較不能で適用可能な変更予定。選択方式の Actions 許可条件が失われる可能性を副作用として伴う。
 func enableActionsNotComparable() changeplan.SettingPlan {
 	return changeplan.SettingPlan{
-		Key: setting.AllowedActions, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled),
+		Unit: setting.Unit{Key: setting.AllowedActions}, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled),
 		Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
 		SideEffects: []changeplan.SideEffect{{Key: setting.SelectedActions, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)}},
 	}
@@ -1196,22 +1208,27 @@ func enableSelectedChange() changeplan.LogicalChange {
 // toSelectedChange は、Actions 許可ポリシーを local_only から selected にし、選択方式の Actions 許可条件を declaredCriteria にする、
 // 二つの更新操作からなる論理的な設定変更。2つ目の基準は、1つ目による予定どおりの変化を反映したポリシーだけである。
 func toSelectedChange() changeplan.LogicalChange {
-	return changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{
-		{
-			Unit: setting.Unit{Key: setting.AllowedActions}, Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected),
-			RelevantSettings: relevantTo(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly)),
+	policy, criteria := setting.Unit{Key: setting.AllowedActions}, setting.Unit{Key: setting.SelectedActions}
+	selected, declared := setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected), setting.SelectedActionsCriteriaValue(declaredCriteria)
+	return changeplan.LogicalChange{
+		DesiredState: []changeplan.DesiredSetting{{Unit: policy, Value: selected}, {Unit: criteria, Value: declared}},
+		Operations: []changeplan.UpdateOperation{
+			{
+				Kind: changeplan.SettingUpdate, Unit: policy, Value: selected,
+				RelevantSettings: relevantTo(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly)),
+			},
+			{
+				Kind: changeplan.SettingUpdate, Unit: criteria, Value: declared,
+				RelevantSettings: relevantTo(setting.AllowedActions, selected),
+			},
 		},
-		{
-			Unit: setting.Unit{Key: setting.SelectedActions}, Desired: setting.SelectedActionsCriteriaValue(declaredCriteria),
-			RelevantSettings: relevantTo(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected)),
-		},
-	}}
+	}
 }
 
 // shaPinningRequiredNotApplicable は、Actions が無効で観測不能だった sha_pinning_required の、理由つきの適用不能な変更予定。
 func shaPinningRequiredNotApplicable() changeplan.SettingPlan {
 	return changeplan.SettingPlan{
-		Key: setting.SHAPinningRequired, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
+		Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
 		Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableActionsRemainDisabled,
 	}
 }
@@ -1223,5 +1240,5 @@ func newPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.Plan {
 
 // unknownMismatch は、更新要求を持たない設定の適用可能な変更予定。
 func unknownMismatch() changeplan.SettingPlan {
-	return changeplan.SettingPlan{Key: unknownKey, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
+	return changeplan.SettingPlan{Unit: setting.Unit{Key: unknownKey}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
 }

@@ -15,7 +15,7 @@ type SideEffect struct {
 // sideEffects は、s の変更予定に伴う副作用を、アーキテクチャ設計の遷移表に従って返す。
 // 現在のポリシーを観測できないとき (Actions が無効) も、無効にする前が selected だった可能性があるため副作用にする。
 func sideEffects(s SettingPlan, observed github.ObservationResult) []SideEffect {
-	if s.Key != setting.AllowedActions || s.Desired.AllowedActionsPolicy() == setting.AllowedActionsSelected {
+	if s.Unit.Key != setting.AllowedActions || s.Desired.AllowedActionsPolicy() == setting.AllowedActionsSelected {
 		return nil
 	}
 	if current, ok := s.Observed.Value(); ok && current.AllowedActionsPolicy() != setting.AllowedActionsSelected {

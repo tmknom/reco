@@ -66,11 +66,6 @@ func DeploymentBranchPolicyValue(policy DeploymentBranchPolicy) Value {
 	return Value{kind: kindDeploymentBranchPolicy, branchPolicy: policy}
 }
 
-// IsZero は、値がないゼロ値かどうかを返す。BoolValue(false) のように各値のゼロ値を持つ値は、値があるため偽。
-func (v Value) IsZero() bool {
-	return v.kind == kindNone
-}
-
 // Equal は、二つの値が設定の意味で同じ値かどうかを返す。
 // 値のないゼロ値は設定の値ではなく、比べようとするのは不変条件の破れのため panic する。
 // 同じ値として扱うと、確かめていない値が一致や変更前提の成立として黙って通るため。

@@ -32,16 +32,16 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 		current = repositoryStateText(s.UnavailableReason())
 	}
 	desired := "present"
-	if s.Key != setting.EnvironmentResource {
+	if s.Unit.Key != setting.EnvironmentResource {
 		desired = s.Desired.String()
 	}
 	if s.EnablesActionsByPolicy() {
 		desired += " (enables GitHub Actions)"
 	}
 	if showsValuesOnSeparateLines(s) {
-		fmt.Fprintf(&b, "  %s:\n    %s\n    -> %s\n", s.Unit().String(), current, desired)
+		fmt.Fprintf(&b, "  %s:\n    %s\n    -> %s\n", s.Unit.String(), current, desired)
 	} else {
-		fmt.Fprintf(&b, "  %s: %s -> %s\n", s.Unit().String(), current, desired)
+		fmt.Fprintf(&b, "  %s: %s -> %s\n", s.Unit.String(), current, desired)
 	}
 	b.WriteString(deploymentPatternChangesText(s))
 	if s.Applicability == changeplan.NotApplicable {
@@ -124,10 +124,10 @@ func sideEffectText(effect changeplan.SideEffect) string {
 // showsValuesOnSeparateLines は、現在と期待値を別の行に書くかを返す。
 // 選択方式の Actions 許可条件と、個別パターンを並べる selected のデプロイ元制限は値が長く、1 行では -> を見つけにくい。
 func showsValuesOnSeparateLines(s changeplan.SettingPlan) bool {
-	if s.Key == setting.SelectedActions {
+	if s.Unit.Key == setting.SelectedActions {
 		return true
 	}
-	if s.Key != setting.EnvironmentDeploymentBranchPolicy {
+	if s.Unit.Key != setting.EnvironmentDeploymentBranchPolicy {
 		return false
 	}
 	if s.Desired.DeploymentBranchPolicy().Mode == setting.DeploymentBranchPolicySelected {
@@ -139,7 +139,7 @@ func showsValuesOnSeparateLines(s changeplan.SettingPlan) bool {
 
 // deploymentPatternChangesText は、現在と期待値の両方が selected の確認済みの差分について、なくなるパターンと加わるパターンの行を返す。
 func deploymentPatternChangesText(s changeplan.SettingPlan) string {
-	if s.Key != setting.EnvironmentDeploymentBranchPolicy {
+	if s.Unit.Key != setting.EnvironmentDeploymentBranchPolicy {
 		return ""
 	}
 	observedValue, ok := s.Observed.Value()

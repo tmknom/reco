@@ -46,42 +46,42 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan) (Applicability, N
 	}
 	reason := s.UnavailableReason()
 	switch {
-	case s.Key.Area() == setting.AreaEnvironments && reason == github.UnavailableEnvironmentNameUndetermined:
+	case s.Unit.Key.Area() == setting.AreaEnvironments && reason == github.UnavailableEnvironmentNameUndetermined:
 		// 作成すれば、GitHub が同じとみなす既存の Environment を変え得る。同じリポジトリのほかの宣言では解消しない
 		return NotApplicable, NotApplicableEnvironmentNameUndetermined
-	case s.Key == setting.EnvironmentDeploymentBranchPolicy && reason == github.UnavailableEnvironmentAbsent:
+	case s.Unit.Key == setting.EnvironmentDeploymentBranchPolicy && reason == github.UnavailableEnvironmentAbsent:
 		// Environment の宣言は存在の宣言を兼ねるため、同じ変更計画が先にその Environment を作成する
-		if !createsEnvironment(settings, s.Environment) {
-			panic(fmt.Sprintf("changeplan: %s is not comparable without the creation of its environment", s.Unit().String()))
+		if !createsEnvironment(settings, s.Unit.Environment) {
+			panic(fmt.Sprintf("changeplan: %s is not comparable without the creation of its environment", s.Unit.String()))
 		}
 		return Applicable, 0
-	case s.Key == setting.AllowedActions && reason == github.UnavailableActionsDisabled:
+	case s.Unit.Key == setting.AllowedActions && reason == github.UnavailableActionsDisabled:
 		return Applicable, 0
-	case s.Key == setting.SelectedActions && (reason == github.UnavailableNotSelected || reason == github.UnavailableActionsDisabled):
+	case s.Unit.Key == setting.SelectedActions && (reason == github.UnavailableNotSelected || reason == github.UnavailableActionsDisabled):
 		return Applicable, 0
-	case s.Key == setting.SHAPinningRequired && reason == github.UnavailableActionsDisabled:
+	case s.Unit.Key == setting.SHAPinningRequired && reason == github.UnavailableActionsDisabled:
 		if expectsActionsEnabled(settings) {
 			return Applicable, 0
 		}
 		return NotApplicable, NotApplicableActionsRemainDisabled
-	case s.Key == setting.ActionsAccessLevel && reason == github.UnavailablePublicRepository:
+	case s.Unit.Key == setting.ActionsAccessLevel && reason == github.UnavailablePublicRepository:
 		// 公開範囲は reco が変える設定ではないため、同じリポジトリのほかの宣言では解消しない
 		return NotApplicable, NotApplicablePublicRepository
 	}
-	panic(fmt.Sprintf("changeplan: %s is not comparable for an unexpected reason %d", s.Unit().String(), int(reason)))
+	panic(fmt.Sprintf("changeplan: %s is not comparable for an unexpected reason %d", s.Unit.String(), int(reason)))
 }
 
 // expectsActionsEnabled は、管理設定の計画 settings の期待状態が、Actions が有効であることを含むかを返す。
 // Actions 許可ポリシーの期待値は、照合結果によらず Actions が有効であることを含む。
 func expectsActionsEnabled(settings []SettingPlan) bool {
 	return slices.ContainsFunc(settings, func(s SettingPlan) bool {
-		return s.Key == setting.AllowedActions || (s.Key == setting.ActionsEnabled && s.Desired.Bool())
+		return s.Unit.Key == setting.AllowedActions || (s.Unit.Key == setting.ActionsEnabled && s.Desired.Bool())
 	})
 }
 
 // createsEnvironment は、管理設定の計画 settings が、name の Environment の作成を含むかを返す。
 func createsEnvironment(settings []SettingPlan, name setting.EnvironmentName) bool {
 	return slices.ContainsFunc(settings, func(s SettingPlan) bool {
-		return s.IsCreation() && s.Environment.EqualFold(name)
+		return s.IsCreation() && s.Unit.Environment.EqualFold(name)
 	})
 }

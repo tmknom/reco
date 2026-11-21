@@ -87,9 +87,8 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 // executableChanges は、選択したすべての対象リポジトリについて、論理的な設定変更を実行順で返す。
 // 戻り値は変更計画のリポジトリの計画と同じ長さ、同じ並びで、変更不要の対象リポジトリも changes が空の要素として含む。
 // 論理的な設定変更にできない変更予定の拒否は、論理的な設定変更を導く changeplan が持つ。
-// INV-002 のため、すべての対象リポジトリの更新操作の更新エンドポイントを承認の前に引き、更新要求を持たない設定の更新操作があれば、
-// 先の対象リポジトリを更新したあとではなく、更新要求を一つも送る前に止める。戻り値を使わないのは、この呼び出しが引けることの検査だけを目的とするため。
-// Environment の更新操作は、更新エンドポイントが Environment の名前ごとに別で、設定の識別だけでは引けないため、検査から除く。
+// INV-002 のため、すべての対象リポジトリの更新操作を承認の前に checkUpdateEndpoint で確かめ、
+// 宛先を決められない更新操作があれば、先の対象リポジトリを更新したあとではなく、更新要求を一つも送る前に止める。
 func executableChanges(p changeplan.Plan) ([]repositoryChanges, error) {
 	repositories := make([]repositoryChanges, len(p.Repositories))
 	for i, r := range p.Repositories {
@@ -99,12 +98,26 @@ func executableChanges(p changeplan.Plan) ([]repositoryChanges, error) {
 		}
 		for _, change := range changes {
 			for _, operation := range change.Operations {
-				if !operation.TargetsEnvironment() {
-					github.UpdateEndpointOf(operation.Unit.Key)
-				}
+				checkUpdateEndpoint(operation)
 			}
 		}
 		repositories[i] = repositoryChanges{plan: r, changes: changes}
 	}
 	return repositories, nil
+}
+
+// checkUpdateEndpoint は、operation の更新要求の宛先を承認の前に決められるかを確かめ、決められなければ panic する。
+// 設定の更新操作は更新エンドポイントを引き、更新要求を持たない設定なら UpdateEndpointOf が panic する。戻り値を使わないのは、引けることの検査だけを目的とするため。
+// Environment の更新操作は、更新エンドポイントが Environment の名前ごとに別で、設定の識別だけでは引けないため、引かずに通す。
+// 未定義の種類は宛先が決まらないため、不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+func checkUpdateEndpoint(operation changeplan.UpdateOperation) {
+	switch operation.Kind {
+	case changeplan.SettingUpdate:
+		github.UpdateEndpointOf(operation.Unit.Key)
+		return
+	case changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate,
+		changeplan.DeploymentPatternAddition, changeplan.DeploymentPatternRemoval:
+		return
+	}
+	panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))
 }

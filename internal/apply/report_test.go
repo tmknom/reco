@@ -644,7 +644,7 @@ func updateRequestRows(first, second string) string {
 //trace:checks FR-013 QR-002
 func TestWriteChangeReport_Environments(t *testing.T) {
 	target := mustReference(t, "owner/repo")
-	creation := creationChange(t, "production", modeValue(setting.DeploymentBranchPolicyProtectedBranches))
+	creation := creationWithModeChange(t, "production", setting.DeploymentBranchPolicyProtectedBranches)
 	staging := modeChange(t, "staging", observedEnvironment(7, "Staging", setting.DeploymentBranchPolicyAll), setting.DeploymentBranchPolicyProtectedBranches)
 	succeeded := []operationRecord{started(github.UpdateSucceeded)}
 	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed.\n"
@@ -697,7 +697,7 @@ func TestWriteChangeReport_Environments(t *testing.T) {
 		},
 		{
 			name:    "creation absent after the update does not match",
-			records: []changeRecord{{change: creationChange(t, "production", setting.Value{}), operations: succeeded, confirmation: desiredStateMismatch}},
+			records: []changeRecord{{change: creationChange(t, "production"), operations: succeeded, confirmation: desiredStateMismatch}},
 			want:    "  owner/repo: failed\n    Update request: succeeded\n    Desired state: does not match\n\n" + rollbackNote,
 		},
 	}
@@ -839,9 +839,9 @@ func TestWriteChangeReport_DeploymentPatterns(t *testing.T) {
 		})
 	}
 
-	t.Run("undefined direction of a pattern update panics", func(t *testing.T) {
+	t.Run("undefined kind of an update operation panics", func(t *testing.T) {
 		change := deploymentPatternsChange(t, "production", selectedEnvironment(7, "production", []setting.DeploymentPattern{main}, 10), selectedPolicy(main, release, version))
-		change.Operations[0].DeploymentPatternChange.Direction = changeplan.RemoveDeploymentPattern + 1
+		change.Operations[0].Kind = changeplan.DeploymentPatternRemoval + 1
 		defer func() {
 			if recover() == nil {
 				t.Error("updateRequestLines() did not panic")

@@ -211,7 +211,7 @@ func TestUpdateIntervalWait(t *testing.T) {
 	})
 }
 
-// TestObservationAreas は、更新直前と更新後の観測で読む設定の領域を、更新操作と基準の設定から導く規則を確かめる。
+// TestObservationAreas は、更新直前と更新後の観測で読む設定の領域を、更新操作の宛先と基準の設定、期待状態の設定から導く規則を確かめる。
 func TestObservationAreas(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -232,7 +232,7 @@ func TestObservationAreas(t *testing.T) {
 		},
 		{
 			name:    "environment change reads the environments area",
-			change:  creationChange(t, "production", setting.Value{}),
+			change:  creationChange(t, "production"),
 			want:    []setting.Area{setting.AreaEnvironments},
 			notWant: []setting.Area{setting.AllowedActions.Area()},
 		},
@@ -241,6 +241,16 @@ func TestObservationAreas(t *testing.T) {
 			name:   "relevant setting in another area is also read",
 			change: singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), relevantTo(setting.DefaultWorkflowPermissions, setting.PermissionLevelValue(setting.PermissionRead))),
 			want:   []setting.Area{setting.AllowAutoMerge.Area(), setting.DefaultWorkflowPermissions.Area()},
+		},
+		{
+			// どの変更予定にも生じない組。期待値と比べる設定の領域を読まないと、観測結果にその値がないことを確かめる
+			name: "desired setting in another area is also read",
+			change: func() changeplan.LogicalChange {
+				change := allowAutoMergeChange()
+				change.DesiredState = append(change.DesiredState, changeplan.DesiredSetting{Unit: setting.Unit{Key: setting.DefaultWorkflowPermissions}, Value: setting.PermissionLevelValue(setting.PermissionRead)})
+				return change
+			}(),
+			want: []setting.Area{setting.AllowAutoMerge.Area(), setting.DefaultWorkflowPermissions.Area()},
 		},
 	}
 	for _, tc := range cases {
@@ -1657,14 +1667,14 @@ func TestSendUpdate(t *testing.T) {
 		},
 		{
 			name:      "creation without a mode is sent to the declared name without a body",
-			operation: creationChange(t, "production", setting.Value{}).Operations[0],
+			operation: creationChange(t, "production").Operations[0],
 			observed:  github.ObservationResult{Environments: environments(staging)},
 			response:  okEnvironment(githubtest.EnvironmentBody{ID: 8, Name: "production"}),
 			want:      githubtest.Request{Method: http.MethodPut, Path: "/repos/owner/repo/environments/production"},
 		},
 		{
 			name:      "creation with a mode is sent with only the mode",
-			operation: creationChange(t, "production", modeValue(setting.DeploymentBranchPolicyProtectedBranches)).Operations[0],
+			operation: creationWithModeChange(t, "production", setting.DeploymentBranchPolicyProtectedBranches).Operations[0],
 			observed:  github.ObservationResult{Environments: environments()},
 			response:  okEnvironment(githubtest.EnvironmentBody{ID: 8, Name: "production", DeploymentBranchPolicy: protectedBranchesBody()}),
 			want: githubtest.Request{Method: http.MethodPut, Path: "/repos/owner/repo/environments/production", Body: map[string]any{
@@ -1728,10 +1738,10 @@ func TestSendUpdate(t *testing.T) {
 			observed:  github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", []setting.DeploymentPattern{mainBranch}, 20))},
 		},
 		{
-			name: "undefined direction of a pattern update panics",
+			name: "undefined kind of an update operation panics",
 			operation: func() changeplan.UpdateOperation {
 				o := toSelectedPatterns.Operations[1]
-				o.DeploymentPatternChange.Direction = changeplan.RemoveDeploymentPattern + 1
+				o.Kind = changeplan.DeploymentPatternRemoval + 1
 				return o
 			}(),
 			observed: github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", nil))},
@@ -1790,7 +1800,7 @@ func TestExecuteChange_Environments(t *testing.T) {
 	production := githubtest.EnvironmentBody{ID: 8, Name: "production", DeploymentBranchPolicy: protectedBranchesBody()}
 	stagingAll := githubtest.EnvironmentBody{ID: 7, Name: "staging", WaitTimer: &waitTimer}
 	stagingProtected := githubtest.EnvironmentBody{ID: 7, Name: "staging", DeploymentBranchPolicy: protectedBranchesBody(), WaitTimer: &waitTimer}
-	creation := creationChange(t, "production", modeValue(setting.DeploymentBranchPolicyProtectedBranches))
+	creation := creationWithModeChange(t, "production", setting.DeploymentBranchPolicyProtectedBranches)
 	approvedStaging := observedEnvironment(7, "staging", setting.DeploymentBranchPolicyAll)
 	approvedStaging.Protection.WaitTimer = &waitTimer
 	stagingMode := modeChange(t, "staging", approvedStaging, setting.DeploymentBranchPolicyProtectedBranches)
