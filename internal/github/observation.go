@@ -26,6 +26,8 @@ type ObservationResult struct {
 	Environments *Environments
 	// Dependabot は、その設定の領域を選ばなかった観測では nil になる。
 	Dependabot *Dependabot
+	// SecretScanning は、その設定の領域を選ばなかった観測では nil になる。非公開リポジトリの観測不能と取り違えさせないため、値型にしない。
+	SecretScanning *SecretScanning
 }
 
 // ActionsPermissions は Actions の実行許可のうち、reco が観測する設定である。
@@ -98,6 +100,14 @@ func (c *Client) ObserveRepository(ctx context.Context, reference repository.Ref
 	if err != nil {
 		return ObservationResult{}, fmt.Errorf("fetch repository %s: %w", reference, err)
 	}
+	// Secret scanning はリポジトリの応答から読むため、ほかの要求より先に判定し、失敗は同じ取得の失敗として包む
+	if slices.Contains(areas, setting.AreaSecretScanning) {
+		ss, err := decodeSecretScanning(attributes.private, attributes.securityAndAnalysis)
+		if err != nil {
+			return ObservationResult{}, fmt.Errorf("fetch repository %s: %w", reference, err)
+		}
+		o.SecretScanning = &ss
+	}
 	if slices.Contains(areas, setting.AreaActionsPermissions) {
 		ap, err := c.observeActionsPermissions(ctx, reference)
 		if err != nil {
@@ -145,7 +155,7 @@ func (c *Client) ObserveRepository(ctx context.Context, reference repository.Ref
 	return o, nil
 }
 
-// observeRepository はリポジトリを読み取り、観測結果と、後続の読み取りの判定にだけ使う値を返す。
+// observeRepository はリポジトリを読み取り、観測結果と、観測結果に変換しない値を返す。
 func (c *Client) observeRepository(ctx context.Context, reference repository.Reference) (ObservationResult, repositoryAttributes, error) {
 	_, body, err := c.send(ctx, http.MethodGet, c.repositoryURL(reference), nil, http.StatusOK)
 	if err != nil {

@@ -19,8 +19,18 @@ const repositoryBody = `{
 	"html_url": "https://github.com/owner/repo",
 	"allow_auto_merge": true,
 	"delete_branch_on_merge": false,
-	"permissions": {"admin": true, "push": true, "pull": true}
+	"permissions": {"admin": true, "push": true, "pull": true},
+	"security_and_analysis": ` + repositorySecurityAndAnalysis + `
 }`
+
+// repositorySecurityAndAnalysis は repositoryBody の security_and_analysis で、スキーマにない secret_scanning_validity_checks も GitHub と同じく含める。
+const repositorySecurityAndAnalysis = `{
+		"secret_scanning": {"status": "enabled"},
+		"secret_scanning_push_protection": {"status": "disabled"},
+		"dependabot_security_updates": {"status": "enabled"},
+		"secret_scanning_non_provider_patterns": {"status": "disabled"},
+		"secret_scanning_validity_checks": {"status": "disabled"}
+	}`
 
 const (
 	repositoryPath          = "/repos/owner/repo"

@@ -34,6 +34,7 @@ func TestWriteObservationResult(t *testing.T) {
 	notShared := &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessNone)}
 	noEnvironments := &github.Environments{}
 	enabledDependabot := &github.Dependabot{Alerts: true, SecurityUpdates: setting.DependabotSecurityUpdatesEnabled}
+	enabledSecretScanning := &github.SecretScanning{Enabled: github.Observed(true), PushProtection: github.Observed(true)}
 	const (
 		header           = "repositories:\n  - name: owner/repo\n"
 		defaultGeneral   = "    general:\n      delete_branch_on_merge: false\n      allow_auto_merge: false\n"
@@ -41,7 +42,9 @@ func TestWriteObservationResult(t *testing.T) {
 		readOnlyWorkflow = "      workflow:\n        default_workflow_permissions: read\n        can_approve_pull_request_reviews: false\n"
 		notSharedAccess  = "      access:\n        access_level: none\n"
 		noEnvironment    = "    # environments: none\n"
-		enabledSecurity  = "    security:\n      dependabot_alerts: true\n      dependabot_security_updates: true\n"
+		enabledSecurity  = "    security:\n      dependabot_alerts: true\n      dependabot_security_updates: true\n" +
+			"      # reco does not accept the secret scanning settings in the configuration file yet\n" +
+			"      # secret_scanning: true\n      # secret_scanning_push_protection: true\n"
 	)
 	cases := []struct {
 		name     string
@@ -58,6 +61,7 @@ func TestWriteObservationResult(t *testing.T) {
 				ActionsAccess:       notShared,
 				Environments:        noEnvironments,
 				Dependabot:          enabledDependabot,
+				SecretScanning:      enabledSecretScanning,
 			},
 			want: header +
 				"    general:\n      delete_branch_on_merge: true\n      allow_auto_merge: false\n" +
@@ -73,6 +77,7 @@ func TestWriteObservationResult(t *testing.T) {
 				ActionsAccess:       &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessUser)},
 				Environments:        noEnvironments,
 				Dependabot:          enabledDependabot,
+				SecretScanning:      enabledSecretScanning,
 			},
 			want: header +
 				"    general:\n      delete_branch_on_merge: false\n      allow_auto_merge: true\n" +
@@ -99,6 +104,7 @@ func TestWriteObservationResult(t *testing.T) {
 				ActionsAccess:       notShared,
 				Environments:        noEnvironments,
 				Dependabot:          enabledDependabot,
+				SecretScanning:      enabledSecretScanning,
 			},
 			want: header + defaultGeneral +
 				"    actions:\n      permissions:\n        enabled: true\n        allowed_actions: selected\n        selected_actions:\n" +
@@ -120,6 +126,7 @@ func TestWriteObservationResult(t *testing.T) {
 				ActionsAccess:       notShared,
 				Environments:        noEnvironments,
 				Dependabot:          enabledDependabot,
+				SecretScanning:      enabledSecretScanning,
 			},
 			want: header + defaultGeneral +
 				"    actions:\n      permissions:\n        enabled: true\n        allowed_actions: selected\n        selected_actions:\n" +
@@ -139,6 +146,7 @@ func TestWriteObservationResult(t *testing.T) {
 				ActionsAccess:       notShared,
 				Environments:        noEnvironments,
 				Dependabot:          enabledDependabot,
+				SecretScanning:      enabledSecretScanning,
 			},
 			want: header + defaultGeneral +
 				"    actions:\n      permissions:\n        enabled: false\n" +
@@ -153,6 +161,7 @@ func TestWriteObservationResult(t *testing.T) {
 				ActionsAccess:       &github.ActionsAccess{AccessLevel: github.Unavailable[setting.AccessLevel](github.UnavailablePublicRepository)},
 				Environments:        noEnvironments,
 				Dependabot:          enabledDependabot,
+				SecretScanning:      enabledSecretScanning,
 			},
 			want: header + defaultGeneral + allPermissions + readOnlyWorkflow +
 				"      # access:\n      #   access_level: unavailable (the repository is public)\n" +
@@ -167,6 +176,7 @@ func TestWriteObservationResult(t *testing.T) {
 				ActionsAccess:       &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessOrganization)},
 				Environments:        noEnvironments,
 				Dependabot:          enabledDependabot,
+				SecretScanning:      enabledSecretScanning,
 			},
 			want: header + defaultGeneral + allPermissions + readOnlyWorkflow +
 				"      access:\n        access_level: organization\n" +
@@ -186,7 +196,14 @@ func TestWriteObservationResult(t *testing.T) {
 	}
 
 	t.Run("write failure is returned", func(t *testing.T) {
-		observed := github.ObservationResult{ActionsPermissions: allPolicy, WorkflowPermissions: readOnly, ActionsAccess: notShared, Environments: noEnvironments, Dependabot: enabledDependabot}
+		observed := github.ObservationResult{
+			ActionsPermissions:  allPolicy,
+			WorkflowPermissions: readOnly,
+			ActionsAccess:       notShared,
+			Environments:        noEnvironments,
+			Dependabot:          enabledDependabot,
+			SecretScanning:      enabledSecretScanning,
+		}
 		err := writeObservationResult(failingWriter{}, target, observed)
 		if !errors.Is(err, errWrite) {
 			t.Errorf("writeObservationResult() error = %v, want %v", err, errWrite)
@@ -250,7 +267,10 @@ func TestRun(t *testing.T) {
 				t.Errorf("got Authorization %q, want it to contain the token", r.Authorization)
 			}
 		}
-		for _, observed := range []string{"default_workflow_permissions: write", `- name: "staging"`, "dependabot_security_updates: true # paused"} {
+		for _, observed := range []string{
+			"default_workflow_permissions: write", `- name: "staging"`, "dependabot_security_updates: true # paused",
+			"# secret_scanning: unavailable (the repository is private)",
+		} {
 			if !strings.Contains(out.String(), observed) {
 				t.Errorf("got Out %q, want it to contain %q", out.String(), observed)
 			}
@@ -268,7 +288,7 @@ func TestRun(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// 失敗した取得より後の領域は登録しない。失敗のあとに観測を続ければ、stub が登録のない要求として報告する
 			routes := map[string]githubtest.Response{
-				"GET " + repositoryPath:         githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowAutoMerge: true}.JSON()),
+				"GET " + repositoryPath:         githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowAutoMerge: true, Admin: true}.JSON()),
 				"GET " + actionsPermissionsPath: githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "all"}.JSON()),
 			}
 			routes["GET "+tc.failedPath] = githubtest.Response{Status: http.StatusForbidden}
