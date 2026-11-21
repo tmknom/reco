@@ -30,8 +30,9 @@ type DesiredState struct {
 	WorkflowPermissions WorkflowPermissions
 	ActionsAccess       ActionsAccess
 	// Environments は宣言の並びのまま持ち、environments を省略したリポジトリでは nil。
-	Environments []EnvironmentDeclaration
-	Dependabot   Dependabot
+	Environments   []EnvironmentDeclaration
+	Dependabot     Dependabot
+	SecretScanning SecretScanning
 }
 
 // EnvironmentDeclaration は、一つの Environment の宣言。その名前の Environment が存在することの期待値を兼ねる。
@@ -76,6 +77,13 @@ type Dependabot struct {
 	SecurityUpdates *bool
 }
 
+// SecretScanning は、Secret scanning の領域の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
+// 2つの期待値は互いの状態を含まない (YAML 設定仕様の Security)。
+type SecretScanning struct {
+	Enabled        *bool
+	PushProtection *bool
+}
+
 // Value は、key の設定の期待値を返す。期待値が省略されていれば ok は偽になる。
 // 未知の設定は不変条件の破れとして panic する。
 // 設定を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
@@ -118,6 +126,10 @@ func (d DesiredState) Value(key setting.Key) (value setting.Value, ok bool) {
 			return setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesStateOf(*enabled)), true
 		}
 		return setting.Value{}, false
+	case setting.SecretScanningEnabled:
+		return optionalBoolValue(d.SecretScanning.Enabled)
+	case setting.RepositoryPushProtection:
+		return optionalBoolValue(d.SecretScanning.PushProtection)
 	case setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy:
 		// Environment の管理の単位は名前との組で識別するため、この関数では引けない。
 	}

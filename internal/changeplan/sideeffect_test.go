@@ -153,6 +153,77 @@ func TestSideEffects_DependabotAlerts(t *testing.T) {
 	}
 }
 
+//trace:checks FR-007 FR-010 INV-001
+func TestSideEffects_SecretScanning(t *testing.T) {
+	public := func(enabled, pushProtection bool) github.ObservationResult {
+		return github.ObservationResult{SecretScanning: &github.SecretScanning{Enabled: github.Observed(enabled), PushProtection: github.Observed(pushProtection)}}
+	}
+	private := github.ObservationResult{SecretScanning: &github.SecretScanning{
+		Enabled:        github.Unavailable[bool](github.UnavailablePrivateRepository),
+		PushProtection: github.Unavailable[bool](github.UnavailablePrivateRepository),
+	}}
+	cases := []struct {
+		name     string
+		observed github.ObservationResult
+		desired  bool
+		// declaresPushProtection は、同じリポジトリで secret_scanning_push_protection を false と宣言するか。
+		declaresPushProtection bool
+		want                   []SideEffect
+		wantWithout            []SettingWithoutSideEffect
+	}{
+		{
+			name:     "disabling secret scanning disables the undeclared enabled push protection",
+			observed: public(true, true),
+			want:     []SideEffect{{Kind: SideEffectPushProtectionDisabled, Observed: github.Observed(setting.BoolValue(true))}},
+		},
+		{
+			name:        "disabling secret scanning keeps the undeclared disabled push protection as a setting without side effect",
+			observed:    public(true, false),
+			wantWithout: []SettingWithoutSideEffect{{Key: setting.RepositoryPushProtection, Observed: github.Observed(setting.BoolValue(false))}},
+		},
+		{
+			name:                   "disabling secret scanning leaves declared push protection to the plan",
+			observed:               public(true, true),
+			declaresPushProtection: true,
+		},
+		{
+			name:     "enabling secret scanning has neither",
+			observed: public(false, false),
+			desired:  true,
+		},
+		{
+			name:     "not comparable secret scanning on a private repository has neither because it is not applicable",
+			observed: private,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := newSettingPlan(setting.SecretScanningEnabled, tc.observed.Setting(setting.Unit{Key: setting.SecretScanningEnabled}), setting.BoolValue(tc.desired))
+			settings := []SettingPlan{plan}
+			if tc.declaresPushProtection {
+				settings = append(settings, newSettingPlan(setting.RepositoryPushProtection, tc.observed.Setting(setting.Unit{Key: setting.RepositoryPushProtection}), setting.BoolValue(false)))
+			}
+			got, without := sideEffects(plan, tc.observed, settings)
+			if !reflect.DeepEqual(got, tc.want) || !reflect.DeepEqual(without, tc.wantWithout) {
+				t.Errorf("sideEffects() = %+v, %+v, want %+v, %+v", got, without, tc.want, tc.wantWithout)
+			}
+		})
+	}
+}
+
+func TestSideEffects_DependentWithoutObservationPanics(t *testing.T) {
+	observed := github.ObservationResult{SecretScanning: &github.SecretScanning{
+		Enabled: github.Observed(true), PushProtection: github.Unavailable[bool](github.UnavailablePrivateRepository),
+	}}
+	plan := newSettingPlan(setting.SecretScanningEnabled, observed.Setting(setting.Unit{Key: setting.SecretScanningEnabled}), setting.BoolValue(false))
+	defer func() {
+		if recover() == nil {
+			t.Error("sideEffects() did not panic for the unobserved dependent setting")
+		}
+	}()
+	sideEffects(plan, observed, []SettingPlan{plan})
+}
+
 func TestSideEffectKind_ObservedSetting(t *testing.T) {
 	cases := []struct {
 		kind   SideEffectKind
@@ -161,6 +232,7 @@ func TestSideEffectKind_ObservedSetting(t *testing.T) {
 	}{
 		{kind: SideEffectSelectedActionsDiscarded, want: setting.SelectedActions, wantOK: true},
 		{kind: SideEffectSecurityUpdatesDisabled, want: setting.DependabotSecurityUpdates, wantOK: true},
+		{kind: SideEffectPushProtectionDisabled, want: setting.RepositoryPushProtection, wantOK: true},
 		{kind: SideEffectDependencyGraphEnabled, wantOK: false},
 		{kind: SideEffectDependencyGraphDisabled, wantOK: false},
 	}

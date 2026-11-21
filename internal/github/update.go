@@ -40,6 +40,18 @@ func (c *Client) updateDeleteBranchOnMerge(ctx context.Context, reference reposi
 	return c.updateRepository(ctx, reference, fmt.Appendf(nil, `{"delete_branch_on_merge":%t}`, enabled))
 }
 
+// updateSecretScanningEnabled は reference のリポジトリの Secret scanning の有効状態を enabled に更新する。
+// security_and_analysis の中のこの項目だけを送り、もう一方の項目とトップレベルの一般設定の保持に依拠する（アーキテクチャ設計の未管理設定を保全する更新方式）。
+func (c *Client) updateSecretScanningEnabled(ctx context.Context, reference repository.Reference, enabled bool) (UpdateOutcome, error) {
+	return c.updateRepository(ctx, reference, encodeSecurityAndAnalysis("secret_scanning", enabled))
+}
+
+// updateRepositoryPushProtection は reference のリポジトリの push protection を enabled に更新する。
+// 送る項目と依拠する保持は updateSecretScanningEnabled と同じ。
+func (c *Client) updateRepositoryPushProtection(ctx context.Context, reference repository.Reference, enabled bool) (UpdateOutcome, error) {
+	return c.updateRepository(ctx, reference, encodeSecurityAndAnalysis("secret_scanning_push_protection", enabled))
+}
+
 // updateRepository は body を本文とする更新要求を送る。
 // 成功応答の本文は、更新の契約に適合するかを確かめるためだけに解釈する。
 func (c *Client) updateRepository(ctx context.Context, reference repository.Reference, body []byte) (UpdateOutcome, error) {
@@ -240,6 +252,10 @@ func updateRequestOf(key setting.Key) updateRequest {
 		return updateRequest{DependabotSecurityUpdatesEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
 			return c.updateDependabotSecurityUpdates(ctx, reference, value.DependabotSecurityUpdates().Enabled())
 		}}
+	case setting.SecretScanningEnabled:
+		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateSecretScanningEnabled)}
+	case setting.RepositoryPushProtection:
+		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateRepositoryPushProtection)}
 	case setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy:
 		// Environment の更新要求は宛先に名前が要るため、設定の識別だけで引くこの関数では扱えない。
 	}
@@ -282,6 +298,13 @@ func encodeSelectedActions(criteria setting.SelectedActionsCriteria) []byte {
 	}{criteria.GitHubOwnedAllowed, criteria.VerifiedAllowed, patterns})
 }
 
+// encodeSecurityAndAnalysis は、security_and_analysis の中の item の status だけを送る PATCH の本文にする。
+func encodeSecurityAndAnalysis(item string, enabled bool) []byte {
+	return mustMarshalJSON(map[string]map[string]map[string]string{
+		"security_and_analysis": {item: {"status": securityStatus(enabled)}},
+	})
+}
+
 // encodeDeploymentPattern は pattern を個別パターンを加える POST の本文にする。
 // type は省略すると GitHub が branch として作るため、種類によらず必ず送る。名前は任意の文字列のため、JSON の規則でエスケープする。
 func encodeDeploymentPattern(pattern setting.DeploymentPattern) []byte {
@@ -292,7 +315,7 @@ func encodeDeploymentPattern(pattern setting.DeploymentPattern) []byte {
 }
 
 // mustMarshalJSON は v を JSON にする。
-// 本文の型は bool、string、[]string だけを持ち、json.Marshal がどの値でも失敗しないため、失敗を不変条件の破れとして panic する。
+// 本文の型は bool、string、[]string と、string を値に持つ map だけを持ち、json.Marshal がどの値でも失敗しないため、失敗を不変条件の破れとして panic する。
 // encoding/json に Must の関数がないため、この包みを置く。
 func mustMarshalJSON(v any) []byte {
 	data, err := json.Marshal(v)

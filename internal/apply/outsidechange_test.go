@@ -96,6 +96,24 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			want:   nil,
 		},
 		{
+			name: "push protection shown as a side effect of disabling secret scanning is not compared",
+			change: func() changeplan.LogicalChange {
+				change := singleUpdate(setting.SecretScanningEnabled, setting.BoolValue(false), relevantTo(setting.SecretScanningEnabled, setting.BoolValue(true)))
+				change.SideEffectSettings = []setting.Unit{{Key: setting.RepositoryPushProtection}}
+				return change
+			}(),
+			before: []github.ObservationResult{{SecretScanning: publicSecretScanning(true, true)}},
+			after:  github.ObservationResult{SecretScanning: publicSecretScanning(false, false)},
+			want:   nil,
+		},
+		{
+			name:   "push protection not shown as a side effect of disabling secret scanning is compared",
+			change: singleUpdate(setting.SecretScanningEnabled, setting.BoolValue(false), append(relevantTo(setting.SecretScanningEnabled, setting.BoolValue(true)), relevantTo(setting.RepositoryPushProtection, setting.BoolValue(false))...)),
+			before: []github.ObservationResult{{SecretScanning: publicSecretScanning(true, false)}},
+			after:  github.ObservationResult{SecretScanning: publicSecretScanning(false, true)},
+			want:   []unexpectedOutsideChange{{Setting: string(setting.RepositoryPushProtection), Before: "false", After: "true"}},
+		},
+		{
 			name:   "policy and criteria changed by the logical change are not compared",
 			change: toSelectedChange(),
 			before: []github.ObservationResult{localOnly(false), selectedWith(false, setBack)},
@@ -138,40 +156,40 @@ func TestOutsideChangesAt(t *testing.T) {
 			name:     "same settings have no change",
 			change:   allowAutoMergeChange(),
 			endpoint: github.RepositoryEndpoint,
-			before:   github.ObservationResult{General: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false}},
-			after:    github.ObservationResult{General: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false}},
+			before:   github.ObservationResult{General: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false}, SecretScanning: publicSecretScanning(true, true)},
+			after:    github.ObservationResult{General: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false}, SecretScanning: publicSecretScanning(true, true)},
 			want:     nil,
 		},
 		{
 			name:     "allow_auto_merge change reports different delete_branch_on_merge with both values",
 			change:   allowAutoMergeChange(),
 			endpoint: github.RepositoryEndpoint,
-			before:   github.ObservationResult{General: github.General{DeleteBranchOnMerge: false}},
-			after:    github.ObservationResult{General: github.General{DeleteBranchOnMerge: true}},
+			before:   github.ObservationResult{General: github.General{DeleteBranchOnMerge: false}, SecretScanning: publicSecretScanning(true, true)},
+			after:    github.ObservationResult{General: github.General{DeleteBranchOnMerge: true}, SecretScanning: publicSecretScanning(true, true)},
 			want:     []unexpectedOutsideChange{{Setting: string(setting.DeleteBranchOnMerge), Before: "false", After: "true"}},
 		},
 		{
 			name:     "allow_auto_merge change does not report its own setting",
 			change:   allowAutoMergeChange(),
 			endpoint: github.RepositoryEndpoint,
-			before:   github.ObservationResult{General: github.General{AllowAutoMerge: false}},
-			after:    github.ObservationResult{General: github.General{AllowAutoMerge: true}},
+			before:   github.ObservationResult{General: github.General{AllowAutoMerge: false}, SecretScanning: publicSecretScanning(true, true)},
+			after:    github.ObservationResult{General: github.General{AllowAutoMerge: true}, SecretScanning: publicSecretScanning(true, true)},
 			want:     nil,
 		},
 		{
 			name:     "delete_branch_on_merge change reports different allow_auto_merge with both values",
 			change:   deleteBranchOnMergeChange(),
 			endpoint: github.RepositoryEndpoint,
-			before:   github.ObservationResult{General: github.General{AllowAutoMerge: false}},
-			after:    github.ObservationResult{General: github.General{AllowAutoMerge: true}},
+			before:   github.ObservationResult{General: github.General{AllowAutoMerge: false}, SecretScanning: publicSecretScanning(true, true)},
+			after:    github.ObservationResult{General: github.General{AllowAutoMerge: true}, SecretScanning: publicSecretScanning(true, true)},
 			want:     []unexpectedOutsideChange{{Setting: string(setting.AllowAutoMerge), Before: "false", After: "true"}},
 		},
 		{
 			name:     "delete_branch_on_merge change does not report its own setting",
 			change:   deleteBranchOnMergeChange(),
 			endpoint: github.RepositoryEndpoint,
-			before:   github.ObservationResult{General: github.General{DeleteBranchOnMerge: false}},
-			after:    github.ObservationResult{General: github.General{DeleteBranchOnMerge: true}},
+			before:   github.ObservationResult{General: github.General{DeleteBranchOnMerge: false}, SecretScanning: publicSecretScanning(true, true)},
+			after:    github.ObservationResult{General: github.General{DeleteBranchOnMerge: true}, SecretScanning: publicSecretScanning(true, true)},
 			want:     nil,
 		},
 		{
@@ -195,6 +213,28 @@ func TestOutsideChangesAt(t *testing.T) {
 			}},
 		},
 		{
+			name:     "general change reports different secret scanning settings at the same endpoint",
+			change:   allowAutoMergeChange(),
+			endpoint: github.RepositoryEndpoint,
+			before:   github.ObservationResult{SecretScanning: publicSecretScanning(true, true)},
+			after:    github.ObservationResult{SecretScanning: publicSecretScanning(false, false)},
+			want: []unexpectedOutsideChange{
+				{Setting: string(setting.SecretScanningEnabled), Before: "true", After: "false"},
+				{Setting: string(setting.RepositoryPushProtection), Before: "true", After: "false"},
+			},
+		},
+		{
+			name:     "secret scanning change reports different general settings and the other secret scanning setting",
+			change:   singleUpdate(setting.RepositoryPushProtection, setting.BoolValue(false), relevantTo(setting.RepositoryPushProtection, setting.BoolValue(true))),
+			endpoint: github.RepositoryEndpoint,
+			before:   github.ObservationResult{General: github.General{AllowAutoMerge: false}, SecretScanning: publicSecretScanning(true, true)},
+			after:    github.ObservationResult{General: github.General{AllowAutoMerge: true}, SecretScanning: publicSecretScanning(false, false)},
+			want: []unexpectedOutsideChange{
+				{Setting: string(setting.AllowAutoMerge), Before: "false", After: "true"},
+				{Setting: string(setting.SecretScanningEnabled), Before: "true", After: "false"},
+			},
+		},
+		{
 			name:     "workflow permissions change does not compare general settings",
 			change:   defaultWorkflowPermissionsChange(),
 			endpoint: github.WorkflowPermissionsEndpoint,
@@ -214,10 +254,12 @@ func TestOutsideChangesAt(t *testing.T) {
 			endpoint: github.RepositoryEndpoint,
 			before: github.ObservationResult{
 				General:             github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false},
+				SecretScanning:      publicSecretScanning(true, true),
 				WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: false},
 			},
 			after: github.ObservationResult{
 				General:             github.General{AllowAutoMerge: true, DeleteBranchOnMerge: false},
+				SecretScanning:      publicSecretScanning(true, true),
 				WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: true},
 			},
 			want: nil,
@@ -293,7 +335,7 @@ func TestOutsideChangesAt(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := outsideChangesAt(tc.endpoint, tc.change.SettingsToChange(), tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
+			if got := outsideChangesAt(tc.endpoint, tc.change.ExcludedFromOutsideSettings(), tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("outsideChangesAt() = %v, want %v", got, tc.want)
 			}
 		})

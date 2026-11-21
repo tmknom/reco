@@ -896,6 +896,50 @@ func TestObservationResult_SettingOfDependabot(t *testing.T) {
 	}
 }
 
+//trace:checks FR-004 FR-005
+func TestObservationResult_SettingOfSecretScanning(t *testing.T) {
+	private := Unavailable[bool](UnavailablePrivateRepository)
+	cases := []struct {
+		name     string
+		observed SecretScanning
+		key      setting.Key
+		want     SettingObservation[setting.Value]
+	}{
+		{
+			name:     "secret_scanning returns its own observed value",
+			observed: SecretScanning{Enabled: Observed(true), PushProtection: Observed(false)},
+			key:      setting.SecretScanningEnabled,
+			want:     Observed(setting.BoolValue(true)),
+		},
+		{
+			name:     "push protection returns its own observed value",
+			observed: SecretScanning{Enabled: Observed(true), PushProtection: Observed(false)},
+			key:      setting.RepositoryPushProtection,
+			want:     Observed(setting.BoolValue(false)),
+		},
+		{
+			name:     "secret_scanning on a private repository keeps the unavailable reason",
+			observed: SecretScanning{Enabled: private, PushProtection: private},
+			key:      setting.SecretScanningEnabled,
+			want:     Unavailable[setting.Value](UnavailablePrivateRepository),
+		},
+		{
+			name:     "push protection on a private repository keeps the unavailable reason",
+			observed: SecretScanning{Enabled: private, PushProtection: private},
+			key:      setting.RepositoryPushProtection,
+			want:     Unavailable[setting.Value](UnavailablePrivateRepository),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := ObservationResult{SecretScanning: &tc.observed}
+			if got := observed.Setting(setting.Unit{Key: tc.key}); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Setting(%q) = %v, want %v", tc.key, got, tc.want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-004 QR-002
 func TestObservationResult_SettingOfActionsPermissions(t *testing.T) {
 	// 観測値の設定グループの許可パターンは、応答の並びと重複のまま運ばれることを確かめるため、順不同で重複を含める。

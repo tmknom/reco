@@ -67,6 +67,14 @@ func decodeSecretScanning(private bool, securityAndAnalysis json.RawMessage) (Se
 	return SecretScanning{Enabled: Observed(enabled), PushProtection: Observed(pushProtection)}, nil
 }
 
+// securityStatus は、有効状態を security_and_analysis の項目の status にする。parseSecurityStatus の逆である。
+func securityStatus(enabled bool) string {
+	if enabled {
+		return "enabled"
+	}
+	return "disabled"
+}
+
 // parseSecurityStatus は security_and_analysis の項目の status を有効状態に読む。GitHub の定義に合わせて大文字と小文字を区別する。
 func parseSecurityStatus(status string) (enabled, ok bool) {
 	switch status {

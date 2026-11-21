@@ -73,7 +73,7 @@ func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDe
 		}
 	}
 	if hasSecurity {
-		if desired.Dependabot, err = d.security(securityNode, path+".security"); err != nil {
+		if desired.Dependabot, desired.SecretScanning, err = d.security(securityNode, path+".security"); err != nil {
 			return RepositoryDeclaration{}, err
 		}
 	}
@@ -402,30 +402,45 @@ func (d document) general(n *yaml.Node, path string) (General, error) {
 	return general, nil
 }
 
-// security は、Dependabot の 2 つの設定を読む。
-// 組み合わせの規則は 2 つの値で決まるため、値の誤りを先に示す。
-func (d document) security(n *yaml.Node, path string) (Dependabot, error) {
-	entries, err := d.mappingEntries(n, path, nil, []string{"dependabot_alerts", "dependabot_security_updates"})
+// security は、Dependabot の 2 つの設定と Secret scanning の 2 つの設定を読む。
+// 組み合わせの規則は 2 つの値で決まるため、4 つの値の誤りを先に示す。
+func (d document) security(n *yaml.Node, path string) (Dependabot, SecretScanning, error) {
+	entries, err := d.mappingEntries(n, path, nil, []string{"dependabot_alerts", "dependabot_security_updates", "secret_scanning", "secret_scanning_push_protection"})
 	if err != nil {
-		return Dependabot{}, err
+		return Dependabot{}, SecretScanning{}, err
 	}
 	var dependabot Dependabot
-	if value, ok := entries["dependabot_alerts"]; ok {
-		v, err := d.boolValue(value, path+".dependabot_alerts")
-		if err != nil {
-			return Dependabot{}, err
+	var secretScanning SecretScanning
+	for _, field := range []struct {
+		key string
+		dst **bool
+	}{
+		{"dependabot_alerts", &dependabot.Alerts},
+		{"dependabot_security_updates", &dependabot.SecurityUpdates},
+		{"secret_scanning", &secretScanning.Enabled},
+		{"secret_scanning_push_protection", &secretScanning.PushProtection},
+	} {
+		value, ok := entries[field.key]
+		if !ok {
+			continue
 		}
-		dependabot.Alerts = &v
-	}
-	if value, ok := entries["dependabot_security_updates"]; ok {
-		v, err := d.boolValue(value, path+".dependabot_security_updates")
+		v, err := d.boolValue(value, path+"."+field.key)
 		if err != nil {
-			return Dependabot{}, err
+			return Dependabot{}, SecretScanning{}, err
 		}
-		dependabot.SecurityUpdates = &v
+		*field.dst = &v
 	}
-	if dependabot.Alerts != nil && !*dependabot.Alerts && dependabot.SecurityUpdates != nil && *dependabot.SecurityUpdates {
-		return Dependabot{}, invalid(n, path, "dependabot_alerts false cannot be declared with dependabot_security_updates true")
+	if disablesPrerequisiteOfEnabled(dependabot.Alerts, dependabot.SecurityUpdates) {
+		return Dependabot{}, SecretScanning{}, invalid(n, path, "dependabot_alerts false cannot be declared with dependabot_security_updates true")
 	}
-	return dependabot, nil
+	if disablesPrerequisiteOfEnabled(secretScanning.Enabled, secretScanning.PushProtection) {
+		return Dependabot{}, SecretScanning{}, invalid(n, path, "secret_scanning false cannot be declared with secret_scanning_push_protection true")
+	}
+	return dependabot, secretScanning, nil
+}
+
+// disablesPrerequisiteOfEnabled は、前提の設定を false、依存する設定を true と宣言しているかを返す。
+// GitHub はこの状態を保てないため (YAML 設定仕様の Security)、どちらの組でも拒否する。
+func disablesPrerequisiteOfEnabled(prerequisite, dependent *bool) bool {
+	return prerequisite != nil && !*prerequisite && dependent != nil && *dependent
 }

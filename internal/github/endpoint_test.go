@@ -21,17 +21,6 @@ func TestUpdateEndpointObservedSettings(t *testing.T) {
 		}
 	})
 
-	// 観測は変える設定の領域の単位で読むため、領域の外の設定を比べると、更新要求を送ったあとで観測値がなく止まる。
-	t.Run("every observed setting at an update endpoint is in the area of the setting it updates", func(t *testing.T) {
-		for _, key := range setting.ManagementUnits() {
-			for _, observed := range UpdateEndpointOf(key).ObservedSettings() {
-				if observed.Area() != key.Area() {
-					t.Errorf("%q observed at the update endpoint of %q is in area %v, want %v", observed, key, observed.Area(), key.Area())
-				}
-			}
-		}
-	})
-
 	// 更新エンドポイントごとに本文なしの要求を送るため、ほかの設定を観測に含めると、更新後に比べる設定が増えて保全の確認が崩れる。
 	t.Run("each dependabot endpoint observes only its own setting", func(t *testing.T) {
 		cases := []struct {

@@ -170,6 +170,8 @@ Secret scanning の利用条件は、Secret scanning の概説に記載があり
 > - 非公開リポジトリでの更新：`secret_scanning` を `enabled` にする `PATCH` は `422` で、本文の `message` は `Secret scanning is not available for this repository.` だった。`secret_scanning_push_protection` を `enabled` にする `PATCH` は `200` を返したが値を変えなかった。`secret_scanning` を `disabled` にする `PATCH` は `200` を返した
 > - `200` の応答本文：公開リポジトリと非公開リポジトリのどちらでも、ネストした項目を送る `PATCH` とトップレベルだけを送る `PATCH` の応答本文が `security_and_analysis` を含み、値は直後の `GET`（公開リポジトリ）と一致した。非公開リポジトリでは、`GET` が返さない `security_and_analysis` が応答本文に現れ、`secret_scanning` と `secret_scanning_push_protection` は `disabled`、`dependabot_security_updates` は 7章の取得と同じ値だった
 > - `secret_scanning_non_provider_patterns` を `enabled` にする `PATCH` は、公開リポジトリで `200` を返したが値を変えなかった
+> - 反映：公開リポジトリで、`secret_scanning_push_protection` を `disabled` にしてから約1秒おいて `secret_scanning` を `disabled` にする `PATCH`、`secret_scanning` を `enabled` にしてから約1秒おいて `secret_scanning_push_protection` を `enabled` にする `PATCH` は、どちらも応答本文と直後の `GET` が送った値を返した。`secret_scanning` だけを `disabled` にした直後の `GET` では、`secret_scanning_push_protection` もすでに `disabled` だった
+> - トップレベルの更新の前後：公開リポジトリで `delete_branch_on_merge` だけを送る `PATCH` の直後と約2秒後の `GET` で、`secret_scanning` と `secret_scanning_push_protection` の値は更新前と変わらなかった
 
 | Relationship | Target | Target Type |
 |---|---|---|

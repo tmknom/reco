@@ -30,6 +30,8 @@ repositories:
     security:
       dependabot_alerts: true
       dependabot_security_updates: true
+      secret_scanning: true
+      secret_scanning_push_protection: true
 
   - name: example/project-b
     general:
@@ -286,8 +288,14 @@ environments:
 |---|---|---|---|---|
 | `security.dependabot_alerts` | 真偽値 | `true` / `false` | 依存関係の脆弱性を Dependabot alerts で知らせるか | 独立 |
 | `security.dependabot_security_updates` | 真偽値 | `true` / `false` | 脆弱性を直す Pull Request を Dependabot security updates が作るか | 独立 |
+| `security.secret_scanning` | 真偽値 | `true` / `false` | リポジトリに push されたシークレットを Secret scanning で検出するか | 独立 |
+| `security.secret_scanning_push_protection` | 真偽値 | `true` / `false` | シークレットを含む push を、リポジトリの push protection で拒否するか。利用者が自分のアカウントに設定する push protection とは別の設定 | 独立 |
 
-2つの設定は独立した管理の単位で、どちらか一方だけを宣言できます。どちらの期待値も、もう一方の設定の状態を含みません。
+4つの設定は独立した管理の単位で、どれか一つだけを宣言できます。4つとも省略した `security` は、空のマッピングとして拒否します（9.1）。Dependabot の2設定のどちらの期待値も、もう一方の設定の状態を含みません。Secret scanning の2設定についても同じです。
+
+4つの設定のいずれかの値が真偽値でない誤りは、次に挙げる組み合わせの誤りより先に示します。Dependabot の2設定の組み合わせの誤りと、Secret scanning の2設定の組み合わせの誤りが両方あるときは、Dependabot の誤りを示します。
+
+### 8.1 Dependabot
 
 GitHub が Dependabot security updates を一時停止していても、設定としては有効のままです（[GitHub リポジトリ API 仕様](../research/repositories.md) 7章）。そのため、一時停止中の Dependabot security updates は `dependabot_security_updates: true` と一致します。一時停止は宣言できず、reco は一時停止を解除しません。
 
@@ -299,13 +307,29 @@ GitHub が Dependabot security updates を一時停止していても、設定�
 | `false` | 省略、`false` | 有効 |
 | `false` | `true` | エラー |
 | 省略 | `true`、`false` | 有効 |
-| 省略 | 省略（`security` 自体を宣言） | エラー（空のマッピング） |
 
-`dependabot_alerts: false` と `dependabot_security_updates: true` を同時に宣言できないのは、GitHub が、Dependabot alerts が無効のリポジトリで Dependabot security updates の有効化を拒否し（GitHub リポジトリ API 仕様 7章）、この状態を実現できないためです。どちらかの値が真偽値でない誤りは、この組み合わせの誤りより先に示します。組み合わせが2つの値で決まるためです。
+`dependabot_alerts: false` と `dependabot_security_updates: true` を同時に宣言できないのは、GitHub が、Dependabot alerts が無効のリポジトリで Dependabot security updates の有効化を拒否し（GitHub リポジトリ API 仕様 7章）、この状態を実現できないためです。値の誤りを先に示すのは、組み合わせが2つの値で決まるためです。
 
 Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を宣言せずに `dependabot_security_updates` の値を変える宣言をすると、その変更予定は適用不能になります（[アーキテクチャ設計](../design/architecture.md) 5.4）。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。
 
 `dependabot_alerts: false` は、Dependabot alerts を無効にする宣言です。GitHub は、Dependabot alerts を無効にすると、Dependency graph と、有効だった Dependabot security updates も無効にします（GitHub リポジトリ API 仕様 6章）。reco はこの変化を変更に伴う副作用として承認の前に示したうえで、宣言どおりに無効にします。Dependency graph は reco が宣言を受け付けない設定です。
+
+### 8.2 Secret scanning
+
+2つの設定の組み合わせは次のとおりです。
+
+| `secret_scanning` | `secret_scanning_push_protection` | 判定 |
+|---|---|---|
+| `true` | 省略、`true`、`false` | 有効 |
+| `false` | 省略、`false` | 有効 |
+| `false` | `true` | エラー |
+| 省略 | `true`、`false` | 有効 |
+
+`secret_scanning: false` と `secret_scanning_push_protection: true` を同時に宣言できないのは、GitHub が、Secret scanning を無効にするとリポジトリの push protection も無効にし、Secret scanning が無効のあいだはリポジトリの push protection を有効にする更新を反映しないため（GitHub リポジトリ API 仕様 5章）、この状態を実現できないためです。
+
+2つの設定は、非公開リポジトリでは利用できません。非公開リポジトリでどちらかを宣言すると、その変更予定は適用不能になります。Secret scanning が無効のリポジトリで、`secret_scanning: true` を宣言せずに `secret_scanning_push_protection: true` を宣言した場合も、その変更予定は適用不能になります（[アーキテクチャ設計](../design/architecture.md) 5.4）。どちらの判断も、入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。
+
+`secret_scanning: false` は、Secret scanning を無効にする宣言です。GitHub は、Secret scanning を無効にすると、有効だったリポジトリの push protection も無効にします。reco はこの変化を変更に伴う副作用として承認の前に示したうえで、宣言どおりに無効にします。あとで Secret scanning を有効に戻しても、リポジトリの push protection は有効に戻りません。
 
 | Relationship | Target | Target Type |
 |---|---|---|

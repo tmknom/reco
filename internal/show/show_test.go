@@ -43,8 +43,7 @@ func TestWriteObservationResult(t *testing.T) {
 		notSharedAccess  = "      access:\n        access_level: none\n"
 		noEnvironment    = "    # environments: none\n"
 		enabledSecurity  = "    security:\n      dependabot_alerts: true\n      dependabot_security_updates: true\n" +
-			"      # reco does not accept the secret scanning settings in the configuration file yet\n" +
-			"      # secret_scanning: true\n      # secret_scanning_push_protection: true\n"
+			"      secret_scanning: true\n      secret_scanning_push_protection: true\n"
 	)
 	cases := []struct {
 		name     string

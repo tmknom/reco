@@ -108,6 +108,18 @@ func TestJudgeApplicability(t *testing.T) {
 			wantReason: NotApplicableEnvironmentNameUndetermined,
 		},
 		{
+			name:       "secret_scanning not comparable because the repository is private is not applicable",
+			in:         notComparable(setting.SecretScanningEnabled, github.UnavailablePrivateRepository),
+			want:       NotApplicable,
+			wantReason: NotApplicablePrivateRepository,
+		},
+		{
+			name:       "push protection not comparable because the repository is private is not applicable",
+			in:         notComparable(setting.RepositoryPushProtection, github.UnavailablePrivateRepository),
+			want:       NotApplicable,
+			wantReason: NotApplicablePrivateRepository,
+		},
+		{
 			name:     "mode of an absent environment created in the same plan is applicable",
 			in:       environmentPolicy(production, github.UnavailableEnvironmentAbsent),
 			settings: []SettingPlan{creation(production), environmentPolicy(production, github.UnavailableEnvironmentAbsent)},
@@ -144,6 +156,8 @@ func TestJudgeApplicability(t *testing.T) {
 			settings: []SettingPlan{creation(staging), environmentPolicy(production, github.UnavailableEnvironmentAbsent)},
 		},
 		{name: "repository setting not comparable because an environment is absent panics", in: notComparable(setting.AllowAutoMerge, github.UnavailableEnvironmentAbsent)},
+		{name: "setting other than secret scanning not comparable because the repository is private panics", in: notComparable(setting.AllowAutoMerge, github.UnavailablePrivateRepository)},
+		{name: "secret scanning not comparable for a reason other than a private repository panics", in: notComparable(setting.SecretScanningEnabled, github.UnavailablePublicRepository)},
 	}
 	for _, tc := range panics {
 		t.Run(tc.name, func(t *testing.T) {
@@ -232,6 +246,66 @@ func TestJudgeApplicability_DependabotSecurityUpdates(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			settings := slices.Concat(tc.alerts, []SettingPlan{tc.in})
+			got, reason := judgeApplicability(tc.in, settings, tc.observed)
+			if got != tc.want || reason != tc.wantReason {
+				t.Errorf("judgeApplicability() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)
+			}
+		})
+	}
+}
+
+//trace:checks FR-006 INV-001
+func TestJudgeApplicability_RepositoryPushProtection(t *testing.T) {
+	boolPlan := func(key setting.Key, observed, desired bool) SettingPlan {
+		return newSettingPlan(key, github.Observed(setting.BoolValue(observed)), setting.BoolValue(desired))
+	}
+	observation := func(enabled, pushProtection bool) github.ObservationResult {
+		return github.ObservationResult{SecretScanning: &github.SecretScanning{Enabled: github.Observed(enabled), PushProtection: github.Observed(pushProtection)}}
+	}
+	cases := []struct {
+		name           string
+		in             SettingPlan
+		secretScanning []SettingPlan
+		observed       github.ObservationResult
+		want           Applicability
+		wantReason     NotApplicableReason
+	}{
+		{
+			name:     "enabling with secret scanning enabled and undeclared is applicable",
+			in:       boolPlan(setting.RepositoryPushProtection, false, true),
+			observed: observation(true, false),
+			want:     Applicable,
+		},
+		{
+			name:           "enabling with secret scanning disabled and declared true is applicable",
+			in:             boolPlan(setting.RepositoryPushProtection, false, true),
+			secretScanning: []SettingPlan{boolPlan(setting.SecretScanningEnabled, false, true)},
+			observed:       observation(false, false),
+			want:           Applicable,
+		},
+		{
+			name:       "enabling with secret scanning disabled and undeclared is not applicable because GitHub does not apply it",
+			in:         boolPlan(setting.RepositoryPushProtection, false, true),
+			observed:   observation(false, false),
+			want:       NotApplicable,
+			wantReason: NotApplicableSecretScanningRemainsDisabled,
+		},
+		{
+			name:     "disabling with secret scanning disabled and undeclared is applicable because only enabling is not applied",
+			in:       boolPlan(setting.RepositoryPushProtection, true, false),
+			observed: observation(false, true),
+			want:     Applicable,
+		},
+		{
+			name:     "secret scanning mismatch is applicable",
+			in:       boolPlan(setting.SecretScanningEnabled, true, false),
+			observed: observation(true, true),
+			want:     Applicable,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := slices.Concat(tc.secretScanning, []SettingPlan{tc.in})
 			got, reason := judgeApplicability(tc.in, settings, tc.observed)
 			if got != tc.want || reason != tc.wantReason {
 				t.Errorf("judgeApplicability() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)

@@ -14,7 +14,7 @@ import (
 )
 
 // appliedRepositoryBody は、宣言の期待値 true に更新されたあとの観測結果。
-var appliedRepositoryBody = githubtest.RepositoryBody{ID: 1, AllowAutoMerge: true}.JSON()
+var appliedRepositoryBody = githubtest.RepositoryBody{ID: 1, AllowAutoMerge: true, Admin: true}.JSON()
 
 // streamWrite は、taggedWriter が記録した一回の書き込み。
 type streamWrite struct {
@@ -376,8 +376,8 @@ func TestApply_CanceledWhileWaitingForApproval(t *testing.T) {
 func TestApply_ApprovedMultipleRepositories(t *testing.T) {
 	workDir := t.TempDir()
 	writeConfig(t, workDir, "reco.yaml", declaredTwoRepositories)
-	mismatchedSecond := githubtest.RepositoryBody{ID: 2}.JSON()
-	appliedSecond := githubtest.RepositoryBody{ID: 2, AllowAutoMerge: true}.JSON()
+	mismatchedSecond := githubtest.RepositoryBody{ID: 2, Admin: true}.JSON()
+	appliedSecond := githubtest.RepositoryBody{ID: 2, AllowAutoMerge: true, Admin: true}.JSON()
 	server, opts := newGitHubServer(t, githubtest.Sequence(t,
 		githubtest.Response{Status: http.StatusOK, Body: mismatchedRepositoryBody}, githubtest.Response{Status: http.StatusOK, Body: mismatchedSecond},
 		githubtest.Response{Status: http.StatusOK, Body: mismatchedRepositoryBody}, githubtest.Response{Status: http.StatusOK, Body: appliedRepositoryBody}, githubtest.Response{Status: http.StatusOK, Body: appliedRepositoryBody},

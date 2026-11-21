@@ -172,7 +172,7 @@ Secret scanning の有効状態とリポジトリの push protection は、`GET 
 
 `private` が偽のときは、二つの `status` がそろい、どちらも `enabled` か `disabled` であることを取得契約とします。`security_and_analysis` が欠けた応答、`null` の応答、どちらかの `status` が欠けた応答、定義にない `status` の応答は、取得契約に適合しない応答です。公開リポジトリで `security_and_analysis` が欠けるのは権限の不足であり（第三者の公開リポジトリで確かめた。同 5章）、マージ関連フィールドの欠落と同じく、取得条件による観測不能にしません。片方の設定だけの観測結果も作りません。この判定は、ほかの設定の領域の読み取り要求を送る前に行います。失敗が決まった観測のために、要求を送らないためです。
 
-`security_and_analysis` を取得契約に含めるのは、Secret scanning の領域を読む観測だけです。この領域を読まない観測は `security_and_analysis` を解釈せず、欠けていても、`null` でも、型が合わなくても失敗しません。General だけを宣言したリポジトリの `plan` を、宣言していない設定の応答の形で失敗させないためです。
+`security_and_analysis` を取得契約に含めるのは、Secret scanning の領域を読む観測だけです。この領域を読まない観測は `security_and_analysis` を解釈せず、欠けていても、`null` でも、型が合わなくても失敗しません。General だけを宣言したリポジトリの `plan` を、宣言していない設定の応答の形で失敗させないためです。`apply` の更新直前と更新後の観測は、General か Secret scanning の2設定を変える更新操作では、Secret scanning の領域も読みます。同じ更新エンドポイントの設定として比べるためです（5.3節）。そのため、公開リポジトリの General の更新は、応答が `security_and_analysis` を含まなければ、更新要求を送らずに止まります。
 
 取得条件による観測不能として扱うのは次の四つです。
 
@@ -318,6 +318,7 @@ API へ送信するフィールドは、設定宣言の管理範囲とは異な�
 | 更新の対象 | 更新方式で守ること |
 |---|---|
 | General | 宣言された変更対象だけを送り、省略したフィールドの保持に依拠して部分更新する |
+| Secret scanning の有効状態、リポジトリの push protection | `security_and_analysis` の中の、変える1項目の `status` だけを送り、省略した中の項目とトップレベルのフィールドの保持に依拠して部分更新する |
 | Actions の有効状態 | `enabled` だけを送り、省略した `allowed_actions` と `sha_pinning_required` の保持に依拠して更新する |
 | Actions 許可ポリシー | 必須の `enabled` には `true` を送り、`sha_pinning_required` など送らない値を変えないことを確認できる方式で更新する |
 | 選択方式の Actions 許可条件 | 3項目を一体として扱い、Actions 許可ポリシーとの依存関係を考慮する |
@@ -331,9 +332,9 @@ API へ送信するフィールドは、設定宣言の管理範囲とは異な�
 
 API パラメータが任意であることは、省略した値の保持を保証しません。既存値を併送する場合も、その値を観測でき、更新直前の条件が成立する必要があります。省略・併送のどちらでも未管理値の保全を確認できないときは、更新を適用不能とします。保全の判断には、GitHub が公開する契約と確認できた実際の動作を区別して用い、実証されていない保持動作を前提にしません。
 
-更新後は、同じ更新エンドポイントで reco が観測する設定のうち、その論理的な設定変更が変えないものについて、更新直前に確認した値との一致も確認します。管理設定か未管理設定かは問いません（[ドメインモデル](domain.md) の変更対象外の設定）。期待状態だけが一致していても、変更対象外の設定の予期しない変化を検出した場合は変更全体を完了扱いせず、後続の更新を停止します。取得条件によって更新後に再確認できない設定は、値を推測して保全済みとせず、事前に確認した外部契約や実動作の根拠が保全を支持する範囲でのみ適用可能と判断します。再取得した値の変化は外部主体の同時変更による可能性もあるため、原因を断定しません。更新操作の影響が、その論理的な設定変更が変えない、別の更新エンドポイントの設定に及ぶ場合は、変更に伴う副作用として 5.4節で扱い、この比較の対象にしません。
+更新後は、同じ更新エンドポイントで reco が観測する設定のうち、その論理的な設定変更が変えないものについて、更新直前に確認した値との一致も確認します。管理設定か未管理設定かは問いません（[ドメインモデル](domain.md) の変更対象外の設定）。期待状態だけが一致していても、変更対象外の設定の予期しない変化を検出した場合は変更全体を完了扱いせず、後続の更新を停止します。取得条件によって更新後に再確認できない設定は、値を推測して保全済みとせず、事前に確認した外部契約や実動作の根拠が保全を支持する範囲でのみ適用可能と判断します。再取得した値の変化は外部主体の同時変更による可能性もあるため、原因を断定しません。更新操作の影響が、その論理的な設定変更が変えない、別の更新エンドポイントの設定に及ぶ場合は、変更に伴う副作用として 5.4節で扱い、この比較の対象にしません。同じ更新エンドポイントの設定に及ぶ影響も、変更に伴う副作用として示した設定（Secret scanning の無効化が無効にするリポジトリの push protection）は、比較の対象にしません。副作用を示さなかった設定は、計画時の値のままであることが予定のため、比較の対象に残します。
 
-General では、`PATCH /repos/{owner}/{repo}` で省略したフィールドが保持されることを実際の動作で確認しています（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）。これが、宣言された変更対象だけを送る方式の根拠です。更新後に再取得して更新直前の値と比べるのは、reco が観測する General のうち、その論理的な設定変更が変えない設定です（`delete_branch_on_merge` を変える論理的な設定変更では `allow_auto_merge`）。名前、説明など、reco が読まないフィールドと、取得条件の判定にだけ読む公開範囲は再確認せず、保持の確認結果を根拠に保全されるとみなします。
+General では、`PATCH /repos/{owner}/{repo}` で省略したフィールドが保持されることを実際の動作で確認しています（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）。これが、宣言された変更対象だけを送る方式の根拠です。更新後に再取得して更新直前の値と比べるのは、この更新エンドポイントで reco が観測する設定のうち、その論理的な設定変更が変えない設定です（`delete_branch_on_merge` を変える論理的な設定変更では、`allow_auto_merge` と Secret scanning の2設定）。Secret scanning の2設定は、非公開リポジトリでは観測不能のため比べません。トップレベルだけを送る `PATCH` が `security_and_analysis` の中の項目を変えなかったことを実際の動作で確認しており（GitHub リポジトリ API 仕様 5章）、これを非公開リポジトリでの保全の根拠とします。名前、説明など、reco が読まないフィールドと、取得条件の判定にだけ読む公開範囲は再確認せず、保持の確認結果を根拠に保全されるとみなします。
 
 Actions の有効状態では、`PUT /repos/{owner}/{repo}/actions/permissions` に `enabled` だけを送ります。省略した `allowed_actions` と `sha_pinning_required` が保持され、選択方式の Actions 許可条件も変わらないことを、無効にする更新と有効に戻す更新のどちらでも、公開・非公開のリポジトリで実際の動作により確認しています（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 3.2・4章）。これが、`enabled` だけを送る方式の根拠です。無効にする更新では、更新後に Actions 許可ポリシーと `sha_pinning_required` が取得条件により観測不能になり（GitHub Actions 権限 API 仕様 3.1）、更新直前の値と比べられません。有効にする更新では、更新直前に同じ理由で観測不能で、比べる基準がありません。どちらの場合も、この確認結果を根拠に保全されるとみなします。無効にする更新が反映されず有効のままだった場合は、どちらも観測できるため、更新直前の値と比べます。
 
@@ -360,6 +361,8 @@ Environment では、`PUT /repos/{owner}/{repo}/environments/{environment_name}`
 Environment の個別パターンは、`POST /repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies` に `name` と `type` を送って一つ加え、`DELETE .../deployment-branch-policies/{branch_policy_id}` で一つ取り除きます。`type` は GitHub が省略を `branch` と読むため（[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 4.1）、宣言した種類を必ず送ります。取り除く要求の宛先の ID は、その更新操作の更新直前の観測から、種類と名前で引きます。計画時の ID は使いません。承認のあとに同じ種類と名前で作り直されたパターンは ID が変わり（同 4.1）、計画時の ID では `404` になるためです。正常応答は、加える要求が `200` で本文は作ったパターン（本文が取得契約を満たさない `200` とほかの `2xx` は成否不明）、取り除く要求が本文のない `204`（ほかの `2xx` は成否不明）です。宛先の名前は Environment の `PUT` と同じくパスの一つの要素としてエスケープします。`..` と `/` を含む名前（`a/../b` など）でも、宣言した名前の Environment にだけ作用し、正規化した別の Environment には届かないことを実際の動作で確かめています（同 1章）。
 
 この二つの更新エンドポイントで reco が観測する設定は個別パターンの集合だけで、それはこの論理的な設定変更が変える設定のため、更新後に更新直前の値と比べる設定はありません。保護設定を更新後に比べるのは、Environment の `PUT`（作成と方式の変更）を送った場合だけです。個別パターンを加えても取り除いても、その Environment の `updated_at`、保護設定と保護ルールの `id` が変わらなかったことを、実際の動作で確かめています（同 4.2）。
+
+Secret scanning の有効状態とリポジトリの push protection は、General と同じ `PATCH /repos/{owner}/{repo}` に、`{"security_and_analysis":{"secret_scanning":{"status":"enabled"}}}` のように、変える1項目の `status` だけを送ります。値は有効なら `enabled`、無効なら `disabled` です。正常応答は `200` で、成功の判定は General と同じく本文が取得契約を満たすことです。`200` の本文が `security_and_analysis` を含まない場合を考え、本文でこの項目の値を確かめません（6.1節）。1項目だけを送る `PATCH` が、もう一方の項目、`security_and_analysis` のほかの項目、トップレベルの一般設定を変えなかったことを、公開リポジトリで実際の動作により確かめています（GitHub リポジトリ API 仕様 5章）。これが部分更新の根拠です。更新後に再取得して更新直前の値と比べるのは、General の2設定と、Secret scanning の2設定のうちもう一方です。副作用として示した設定の扱いは、上の比較の規則に従います。
 
 Dependabot alerts は `/repos/{owner}/{repo}/vulnerability-alerts`、Dependabot security updates は `/repos/{owner}/{repo}/automated-security-fixes` を更新エンドポイントとし、期待値が `true` なら本文のない `PUT`、`false` なら本文のない `DELETE` を送ります。正常応答はどれも本文のない `204` で、ほかの `2xx` は更新の契約の外として成否不明にします（6.1節）。すでに同じ状態でも `204` が返り、直後の取得が更新後の値を返すことは、実際の動作で確かめています（[GitHub リポジトリ API 仕様](../research/repositories.md) 6・7章）。それぞれの更新エンドポイントで reco が観測する設定はその設定だけのため、更新後に更新直前の値と比べる設定はありません。Dependabot alerts の `PUT` と、Dependabot security updates の `PUT` と `DELETE` が、もう一方の設定を変えないことは実際の動作で確かめており（同 6・7章）、これを保全の根拠とします。Dependabot alerts の `DELETE` が Dependabot security updates と Dependency graph を無効にする影響は、変更に伴う副作用として 5.4節で扱います。
 
@@ -484,7 +487,7 @@ Environment とその `deployment_branch_policy` の変更予定は、次の表�
 
 `selected` から `all` / `local_only` への切替によって、GitHub は選択方式の Actions 許可条件を残さず、`selected` に戻したときには上記の値に戻っています（GitHub Actions 権限 API 仕様 4章）。遷移先が `all` / `local_only` のとき選択方式の Actions 許可条件は宣言できないため（[YAML 設定仕様](../spec/configuration.md) 4.1）、その既存値は管理範囲外の設定であり、reco はこの消失を防げません。Change Planning は、この遷移を適用可能としたうえで、既存の選択方式の Actions 許可条件が失われることを観測した値とともに変更計画へ含めます（[CLI 仕様](../spec/cli.md) 4章）。消失を承認前に明示するのは、INV-001 が禁じる管理範囲外の設定の暗黙の削除に当たらないようにするためです。そのため、(1) の直前の変更前提に、変更計画に示した選択方式の Actions 許可条件の値を含めます。更新後は選択方式の Actions 許可条件を取得できないため、その値を保全済みとはみなさず、消失したものとして扱います。
 
-セキュリティ設定（Dependabot alerts、Dependabot security updates、Secret scanning の有効状態、リポジトリの push protection）にも、一つの設定の更新が別の設定を変える依存があります。次の表は、その依存の扱いを定めます。Dependabot の2設定はサポート対象で、Secret scanning の有効状態とリポジトリの push protection はまだサポート対象ではなく（[要求定義](../spec/requirements.md) 2章）、対応するときにこの表に従います。
+セキュリティ設定（Dependabot alerts、Dependabot security updates、Secret scanning の有効状態、リポジトリの push protection）にも、一つの設定の更新が別の設定を変える依存があります。次の表は、その依存の扱いを定めます。
 
 | 宣言した変更 | GitHub の動作（[GitHub リポジトリ API 仕様](../research/repositories.md) 5〜7章） | 扱い |
 |---|---|---|
@@ -536,6 +539,31 @@ Dependabot security updates の変更の変更前提に、Dependabot alerts が�
 | あり | なし | Dependabot alerts |
 
 Dependabot alerts を無効にする変更予定と、Dependabot security updates を有効にする変更予定が並ぶことはありません。入力検証で拒否する宣言の組み合わせだからです。二つの論理的な設定変更のあいだには更新要求の間隔（6.2節）が入ります。
+
+Secret scanning の有効状態とリポジトリの push protection も、それぞれ一つの更新操作からなる一つの論理的な設定変更です。非公開リポジトリでは、どちらの変更予定も比較不能で、常に適用不能です（3.2節の取得条件の表）。非公開リポジトリへの push protection の有効化は `200` を返して値を変えず（GitHub リポジトリ API 仕様 5章）、更新のあとに期待状態を確かめる手段もないためです。公開リポジトリでは、Secret scanning の変更予定はどちらの向きも適用可能です。push protection の変更予定の適用可能性は、向きで決まります。
+
+| Secret scanning の計画時の観測 | `secret_scanning` の宣言 | push protection を有効にする変更予定 | push protection を無効にする変更予定 |
+|---|---|---|---|
+| 有効 | 問わない | 適用可能 | 適用可能 |
+| 無効 | `true` | 適用可能。Secret scanning を有効にする変更のあとに更新する | 適用可能 |
+| 無効 | 省略 | 適用不能 | 適用可能 |
+
+`secret_scanning: false` と `secret_scanning_push_protection: true` の同時の宣言は、入力検証で拒否します（[YAML 設定仕様](../spec/configuration.md) 8.2）。push protection を有効にする向きを適用不能にする根拠は、Dependabot security updates と異なり、GitHub が拒否せず `200` を返して値を変えないことです。送っても更新後の観測で不一致になるだけで、期待状態に至る手段がありません。無効にする向きは、Secret scanning が無効のときに反映されない動作を確かめておらず、確かめていない条件で止めないため、適用可能とします。反映されなければ、更新後の観測が不一致として検出します。
+
+Secret scanning の変更予定に添える変更に伴う副作用と、副作用を生む更新操作の変更前提に含める設定は、次のとおりです。
+
+| Secret scanning の変更予定 | `secret_scanning_push_protection` の宣言 | push protection の計画時の観測 | 変更に伴う副作用 | 変更前提に含める push protection（計画時に無効なら、副作用を示さなかった設定） |
+|---|---|---|---|---|
+| 有効にする | 問わない | 問わない | なし | 含めない |
+| 無効にする | 省略 | 有効 | push protection が計画時の観測値から無効になる | 計画時の観測値 |
+| 無効にする | 省略 | 無効 | なし | 計画時の観測値（無効） |
+| 無効にする | 宣言する | 問わない | なし | 含めない |
+
+push protection は Secret scanning と同じ更新エンドポイントの設定で、更新後に比べるかは 5.3節の比較の規則に従います。
+
+push protection を有効にする変更の変更前提には、Secret scanning が有効であることを含めます。承認時に予定した値は有効で、計画時に無効だった場合は、先行する Secret scanning の変更が有効にすることが予定どおりの変化です。Dependabot security updates と扱いを変えるのは、承認のあとに Secret scanning が無効にされていたとき、GitHub が `200` を返して値を変えず、更新操作の結果からは反映されなかったことが分からないためです。push protection を無効にする変更の変更前提には含めません。
+
+実行順も Dependabot と同じ形です。YAML 設定仕様の表の並び（Secret scanning、push protection）を基本とし、Secret scanning を無効にする変更予定があるときだけ、同じ対象リポジトリの push protection の変更予定をその直前に実行します。Secret scanning を無効にする変更予定と、push protection を有効にする変更予定が並ぶことはありません。入力検証で拒否する宣言の組み合わせだからです。
 
 GitHub の複数の更新操作を原子的に実行する仕組みはありません。途中で更新が失敗・中断された場合は、先行操作の影響が残り得ます。最終状態の一致を確認できることと、中間状態の安全性を確認できることは別の条件です。
 

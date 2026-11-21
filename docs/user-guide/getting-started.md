@@ -41,7 +41,6 @@ repositories:
     security:
       dependabot_alerts: true
       dependabot_security_updates: true
-      # reco does not accept the secret scanning settings in the configuration file yet
       # secret_scanning: unavailable (the repository is private)
       # secret_scanning_push_protection: unavailable (the repository is private)
 ```

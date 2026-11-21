@@ -193,12 +193,18 @@ func deploymentPatternIDOf(name setting.EnvironmentName, pattern setting.Deploym
 var reobservationDelays = [...]time.Duration{1 * time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second}
 
 // observationAreas は、change の更新直前と更新後の観測で読む設定の領域を返す。
-// 変更前提で比べる設定と期待値と比べる設定の領域を読まないと、観測結果にその値がないため、
-// 更新操作の宛先と基準の設定、期待状態の設定から導く。
+// 変更前提で比べる設定、期待値と比べる設定、比べる変更対象外の設定の領域を読まないと、観測結果にその値がないため、
+// 更新操作の宛先とその更新エンドポイントで観測する設定、基準の設定、期待状態の設定から導く。
+// 一つの更新エンドポイントが複数の設定の領域の設定を受け付けることがある (General と Secret scanning)。
 func observationAreas(change changeplan.LogicalChange) []setting.Area {
 	var areas []setting.Area
 	for _, operation := range change.Operations {
 		areas = appendArea(areas, operation.Unit.Key.Area())
+		if operation.Kind == changeplan.SettingUpdate {
+			for _, key := range github.UpdateEndpointOf(operation.Unit.Key).ObservedSettings() {
+				areas = appendArea(areas, key.Area())
+			}
+		}
 		for _, relevant := range operation.RelevantSettings {
 			areas = appendArea(areas, relevant.Unit.Key.Area())
 		}

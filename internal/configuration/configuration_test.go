@@ -36,6 +36,10 @@ func TestDesiredState_Value(t *testing.T) {
 		{name: "declared dependabot_security_updates true returns enabled security updates", desired: DesiredState{Dependabot: Dependabot{SecurityUpdates: new(true)}}, key: setting.DependabotSecurityUpdates, want: setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesEnabled), wantOK: true},
 		{name: "omitted dependabot_alerts is outside the management scope", desired: DesiredState{Dependabot: Dependabot{SecurityUpdates: new(true)}}, key: setting.DependabotAlerts, wantOK: false},
 		{name: "omitted dependabot_security_updates is outside the management scope", desired: DesiredState{Dependabot: Dependabot{Alerts: new(true)}}, key: setting.DependabotSecurityUpdates, wantOK: false},
+		{name: "declared secret_scanning returns its desired value", desired: DesiredState{SecretScanning: SecretScanning{Enabled: new(false)}}, key: setting.SecretScanningEnabled, want: setting.BoolValue(false), wantOK: true},
+		{name: "declared push protection returns its desired value", desired: DesiredState{SecretScanning: SecretScanning{PushProtection: new(true)}}, key: setting.RepositoryPushProtection, want: setting.BoolValue(true), wantOK: true},
+		{name: "omitted secret_scanning is outside the management scope", desired: DesiredState{SecretScanning: SecretScanning{PushProtection: new(true)}}, key: setting.SecretScanningEnabled, wantOK: false},
+		{name: "omitted push protection is outside the management scope", desired: DesiredState{SecretScanning: SecretScanning{Enabled: new(true)}}, key: setting.RepositoryPushProtection, wantOK: false},
 		{name: "omitted can_approve_pull_request_reviews is outside the management scope", desired: DesiredState{WorkflowPermissions: WorkflowPermissions{DefaultWorkflowPermissions: new(setting.PermissionRead)}}, key: setting.CanApprovePullRequestReviews, wantOK: false},
 	}
 	for _, tc := range cases {

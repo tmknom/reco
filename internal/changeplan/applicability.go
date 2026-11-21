@@ -31,11 +31,15 @@ const (
 	NotApplicableEnvironmentNameUndetermined
 	// NotApplicableDependabotAlertsRemainDisabled は、Dependabot alerts が無効で、同じリポジトリの期待状態が Dependabot alerts の有効を含まないこと。
 	NotApplicableDependabotAlertsRemainDisabled
+	// NotApplicablePrivateRepository は、リポジトリが非公開で、その設定が非公開リポジトリでは利用できないこと。
+	NotApplicablePrivateRepository
+	// NotApplicableSecretScanningRemainsDisabled は、Secret scanning が無効で、同じリポジトリの期待状態が Secret scanning の有効を含まないこと。
+	NotApplicableSecretScanningRemainsDisabled
 )
 
 // judgeApplicability は、管理設定の計画 s の観測結果と、同じリポジトリの管理設定の計画 settings の期待値と、
 // 計画時の観測結果 observed (同じ設定の領域の未管理設定の値) から、変更予定を安全に適用できるかを判断し、適用不能ならその理由を返す。
-// 不一致は、アーキテクチャ設計の未管理設定を保全する更新方式で、Dependabot security updates を除いて追加の条件なしに適用できる。
+// 不一致は、アーキテクチャ設計の未管理設定を保全する更新方式で、前提の設定を持つ依存する設定を除いて追加の条件なしに適用できる。
 // 比較不能は、アーキテクチャ設計の遷移表に挙がる観測不能に限って判断する。
 // 遷移表にない観測不能を適用可能として黙って通さないよう、不変条件の破れとして panic する。
 func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.ObservationResult) (Applicability, NotApplicableReason) {
@@ -44,8 +48,12 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 		return ApplicabilityNotJudged, 0
 	case Mismatch:
 		// GitHub は Dependabot alerts が無効のあいだ、Dependabot security updates の更新を向きによらず拒否する
-		if s.Unit.Key == setting.DependabotSecurityUpdates && !dependabotAlertsAvailable(settings, observed) {
+		if s.Unit.Key == setting.DependabotSecurityUpdates && !prerequisiteAvailable(setting.DependabotAlerts, settings, observed) {
 			return NotApplicable, NotApplicableDependabotAlertsRemainDisabled
+		}
+		// GitHub は Secret scanning が無効のあいだ、push protection を有効にする更新に成功を応答して値を変えない
+		if s.Unit.Key == setting.RepositoryPushProtection && s.Desired.Bool() && !prerequisiteAvailable(setting.SecretScanningEnabled, settings, observed) {
+			return NotApplicable, NotApplicableSecretScanningRemainsDisabled
 		}
 		return Applicable, 0
 	case NotComparable:
@@ -73,6 +81,9 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 	case s.Unit.Key == setting.ActionsAccessLevel && reason == github.UnavailablePublicRepository:
 		// 公開範囲は reco が変える設定ではないため、同じリポジトリのほかの宣言では解消しない
 		return NotApplicable, NotApplicablePublicRepository
+	case s.Unit.Key.Area() == setting.AreaSecretScanning && reason == github.UnavailablePrivateRepository:
+		// 公開範囲は reco が変える設定ではないため、同じリポジトリのほかの宣言では解消しない
+		return NotApplicable, NotApplicablePrivateRepository
 	}
 	panic(fmt.Sprintf("changeplan: %s is not comparable for an unexpected reason %d", s.Unit.String(), int(reason)))
 }
@@ -92,11 +103,14 @@ func createsEnvironment(settings []SettingPlan, name setting.EnvironmentName) bo
 	})
 }
 
-// dependabotAlertsAvailable は、Dependabot security updates を更新する時点で Dependabot alerts が有効と見込めるかを返す。
-// 計画時に有効か、同じ変更計画が Dependabot alerts を有効にするときに限る。期待値どうしは互いの状態を含まないため、
-// Dependabot security updates の期待値からは決めない。
-func dependabotAlertsAvailable(settings []SettingPlan, observed github.ObservationResult) bool {
-	return observed.Dependabot.Alerts || slices.ContainsFunc(settings, func(s SettingPlan) bool {
-		return s.Unit.Key == setting.DependabotAlerts && s.Desired.Bool()
+// prerequisiteAvailable は、依存する設定を更新する時点で、前提の設定 prerequisite が有効と見込めるかを返す。
+// 計画時に有効か、同じ変更計画が前提の設定を有効にするときに限る。期待値どうしは互いの状態を含まないため、
+// 依存する設定の期待値からは決めない。
+func prerequisiteAvailable(prerequisite setting.Key, settings []SettingPlan, observed github.ObservationResult) bool {
+	if v, ok := observed.Setting(setting.Unit{Key: prerequisite}).Value(); ok && v.Bool() {
+		return true
+	}
+	return slices.ContainsFunc(settings, func(s SettingPlan) bool {
+		return s.Unit.Key == prerequisite && s.Desired.Bool()
 	})
 }

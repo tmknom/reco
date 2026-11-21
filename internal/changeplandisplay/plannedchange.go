@@ -71,7 +71,7 @@ func repositoryStateText(reason github.UnavailableReason) string {
 	case github.UnavailableEnvironmentNameUndetermined:
 		return "(existence unknown)"
 	case github.UnavailablePrivateRepository:
-		// この理由を持つ設定は宣言を受け付けず、変更計画に現れないため、状態の文言を持たない
+		return "(private repository)"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined unavailable reason %d", int(reason)))
 }
@@ -88,6 +88,10 @@ func notApplicableReasonText(reason changeplan.NotApplicableReason) string {
 		return "an environment on GitHub has a name reco cannot compare, such as one with non-ASCII characters; remove this environment from the configuration"
 	case changeplan.NotApplicableDependabotAlertsRemainDisabled:
 		return "Dependabot alerts is disabled; declare dependabot_alerts: true to enable it"
+	case changeplan.NotApplicablePrivateRepository:
+		return "the repository is private; remove secret_scanning and secret_scanning_push_protection, which reco manages only on public repositories"
+	case changeplan.NotApplicableSecretScanningRemainsDisabled:
+		return "Secret scanning is disabled; declare secret_scanning: true to enable it"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(reason)))
 }
@@ -130,6 +134,10 @@ func sideEffectText(effect changeplan.SideEffect) string {
 		// 計画時に有効と観測した値だけを副作用にするため、観測値は必ずある
 		current, _ := effect.Observed.Value()
 		return "GitHub also disables dependabot_security_updates, which is currently " + current.String()
+	case changeplan.SideEffectPushProtectionDisabled:
+		// 計画時に有効と観測した値だけを副作用にするため、観測値は必ずある
+		current, _ := effect.Observed.Value()
+		return "GitHub also disables secret_scanning_push_protection, which is currently " + current.String()
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined side effect kind %d", int(effect.Kind)))
 }

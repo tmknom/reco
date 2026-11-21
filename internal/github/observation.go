@@ -84,6 +84,10 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 		return Observed(setting.BoolValue(o.Dependabot.Alerts))
 	case setting.DependabotSecurityUpdates:
 		return Observed(setting.DependabotSecurityUpdatesValue(o.Dependabot.SecurityUpdates))
+	case setting.SecretScanningEnabled:
+		return valueObservation(o.SecretScanning.Enabled, setting.BoolValue)
+	case setting.RepositoryPushProtection:
+		return valueObservation(o.SecretScanning.PushProtection, setting.BoolValue)
 	case setting.EnvironmentDeploymentBranchPolicy:
 		return o.Environments.Lookup(unit.Environment).DeploymentBranchPolicy()
 	case setting.EnvironmentResource:
