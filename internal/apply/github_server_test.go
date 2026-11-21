@@ -50,8 +50,22 @@ func newSequenceServer(t *testing.T, responses ...response) (*url.URL, *githubte
 	return server.URL(), server
 }
 
+// okRepository は、トークンの所有者が admin のアクセスを持つ、公開のリポジトリの取得の正常応答。Secret scanning の2設定は無効である。
+// 設定を更新できるのは admin のアクセスを持つときだけのため、apply の観測は admin のアクセスを前提にする。
+// Dependabot alerts の取得の 404 を無効と読むにも、同じ観測でこのアクセスを確かめている必要がある。
 func okRepository(id int64, allowAutoMerge, deleteBranchOnMerge bool) response {
-	return response{status: http.StatusOK, body: githubtest.RepositoryBody{ID: id, AllowAutoMerge: allowAutoMerge, DeleteBranchOnMerge: deleteBranchOnMerge}.JSON()}
+	return response{status: http.StatusOK, body: githubtest.RepositoryBody{ID: id, AllowAutoMerge: allowAutoMerge, DeleteBranchOnMerge: deleteBranchOnMerge, Admin: true}.JSON()}
+}
+
+// okSecretScanningRepository は、okRepository の Secret scanning の2設定を enabled と pushProtection にした応答。
+func okSecretScanningRepository(id int64, enabled, pushProtection bool) response {
+	return okRepositoryBody(githubtest.RepositoryBody{ID: id, SecretScanning: enabled, SecretScanningPushProtection: pushProtection})
+}
+
+// okRepositoryBody は、admin のアクセスを持つ公開のリポジトリについて、body の値を返す取得と更新の正常応答。
+func okRepositoryBody(body githubtest.RepositoryBody) response {
+	body.Admin = true
+	return response{status: http.StatusOK, body: body.JSON()}
 }
 
 // okPrivateRepository は、非公開のリポジトリの取得の正常応答。okRepository は公開のリポジトリを返す。
@@ -118,12 +132,6 @@ func okDeploymentPatterns(patterns ...githubtest.DeploymentPatternBody) response
 // okDeploymentPattern は、個別パターンを加える要求の正常応答。
 func okDeploymentPattern(pattern githubtest.DeploymentPatternBody) response {
 	return response{status: http.StatusOK, body: pattern.JSON()}
-}
-
-// okAdminRepository は、トークンの所有者が admin のアクセスを持つ、公開のリポジトリの取得の正常応答。
-// Dependabot alerts の取得の 404 を無効と読むには、同じ観測でこのアクセスを確かめている必要がある。
-func okAdminRepository(id int64) response {
-	return response{status: http.StatusOK, body: githubtest.RepositoryBody{ID: id, Admin: true}.JSON()}
 }
 
 // dependabotAlerts は、Dependabot alerts の取得の応答。GitHub は有効を 204、無効を 404 で返す。

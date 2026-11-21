@@ -300,7 +300,7 @@ func unavailableReasonText(reason github.UnavailableReason) string {
 	case github.UnavailableEnvironmentNameUndetermined:
 		// confirmationText が not in effect と示さないため、理由の文言を持たない
 	case github.UnavailablePrivateRepository:
-		// この理由を持つ設定は宣言を受け付けず、期待状態の確認に現れないため、理由の文言を持たない
+		return "the repository is private"
 	}
 	panic(fmt.Sprintf("apply: undefined unavailable reason %d", int(reason)))
 }

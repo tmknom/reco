@@ -22,6 +22,7 @@ func TestUnavailableReasonText(t *testing.T) {
 		{reason: github.UnavailableNotSelected, want: `allowed_actions is not "selected"`},
 		{reason: github.UnavailablePublicRepository, want: "the repository is public"},
 		{reason: github.UnavailableEnvironmentAbsent, want: "the environment does not exist"},
+		{reason: github.UnavailablePrivateRepository, want: "the repository is private"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.want, func(t *testing.T) {

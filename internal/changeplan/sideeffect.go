@@ -29,6 +29,8 @@ const (
 	SideEffectDependencyGraphDisabled
 	// SideEffectSecurityUpdatesDisabled は、Dependabot security updates が無効になること。
 	SideEffectSecurityUpdatesDisabled
+	// SideEffectPushProtectionDisabled は、リポジトリの push protection が無効になること。
+	SideEffectPushProtectionDisabled
 )
 
 // SettingWithoutSideEffect は、副作用を示さなかった設定と、その計画時の設定の観測結果。
@@ -46,6 +48,8 @@ func (k SideEffectKind) ObservedSetting() (setting.Key, bool) {
 		return setting.SelectedActions, true
 	case SideEffectSecurityUpdatesDisabled:
 		return setting.DependabotSecurityUpdates, true
+	case SideEffectPushProtectionDisabled:
+		return setting.RepositoryPushProtection, true
 	case SideEffectDependencyGraphEnabled, SideEffectDependencyGraphDisabled:
 		return "", false
 	}
@@ -54,14 +58,20 @@ func (k SideEffectKind) ObservedSetting() (setting.Key, bool) {
 
 // sideEffects は、s の変更予定に伴う副作用と、副作用を示さなかった設定を、アーキテクチャ設計の遷移表と依存の表に従って返す。
 // settings は s と同じリポジトリの管理設定の計画で、宣言した設定の変化は管理設定の変更として扱い、どちらにも数えない。
+// 比較不能な変更予定は、前提の設定では適用不能 (非公開リポジトリの Secret scanning) に限られ、更新しないため副作用を添えない。
 func sideEffects(s SettingPlan, observed github.ObservationResult, settings []SettingPlan) ([]SideEffect, []SettingWithoutSideEffect) {
 	if s.Unit.Key == setting.AllowedActions {
 		return selectedActionsSideEffects(s, observed), nil
 	}
-	if s.Unit.Key == setting.DependabotAlerts {
-		return dependabotAlertsSideEffects(s, observed, settings)
+	if s.Result != Mismatch {
+		return nil, nil
 	}
-	return nil, nil
+	var effects []SideEffect
+	if s.Unit.Key == setting.DependabotAlerts {
+		effects = append(effects, dependencyGraphSideEffect(s))
+	}
+	dependentEffects, without := dependentSideEffects(s, observed, settings)
+	return append(effects, dependentEffects...), without
 }
 
 // selectedActionsSideEffects は、Actions 許可ポリシーの変更予定 s が選択方式の Actions 許可条件を失わせるときの副作用を返す。
@@ -76,27 +86,33 @@ func selectedActionsSideEffects(s SettingPlan, observed github.ObservationResult
 	return []SideEffect{{Kind: SideEffectSelectedActionsDiscarded, Observed: observed.Setting(setting.Unit{Key: setting.SelectedActions})}}
 }
 
-// dependabotAlertsSideEffects は、Dependabot alerts の変更予定 s に伴う副作用と、副作用を示さなかった設定を返す。
-// 無効にすると、GitHub は Dependency graph と、有効だった Dependabot security updates も無効にする。
+// dependencyGraphSideEffect は、Dependabot alerts の不一致 s に伴う Dependency graph の副作用を返す。
 // Dependency graph は観測しないため、計画時の値によらず起きる変化だけを示す。
-// 宣言していない Dependabot security updates は、有効なら副作用として示し、無効なら示さずに変更前提で無効のままであることを確かめる。
-// 承認のあとに外部主体が有効にした Dependabot security updates を、示さないまま無効にしないため。
-func dependabotAlertsSideEffects(s SettingPlan, observed github.ObservationResult, settings []SettingPlan) ([]SideEffect, []SettingWithoutSideEffect) {
-	if !s.IsPlannedChange() {
+func dependencyGraphSideEffect(s SettingPlan) SideEffect {
+	if s.Desired.Bool() {
+		return SideEffect{Kind: SideEffectDependencyGraphEnabled}
+	}
+	return SideEffect{Kind: SideEffectDependencyGraphDisabled}
+}
+
+// dependentSideEffects は、前提の設定を無効にする不一致 s に伴う、依存する設定の副作用と、副作用を示さなかった設定を返す。
+// 宣言していない依存する設定は、有効なら副作用として示し、無効なら示さずに変更前提で無効のままであることを確かめる。
+// 承認のあとに外部主体が有効にした依存する設定を、示さないまま無効にしないため。
+// 前提の設定を観測できて依存する設定を観測できない形は、同じ領域の取得から生じないため、不変条件の破れとして panic する。
+func dependentSideEffects(s SettingPlan, observed github.ObservationResult, settings []SettingPlan) ([]SideEffect, []SettingWithoutSideEffect) {
+	d, ok := dependencyOnPrerequisite(s.Unit.Key)
+	if !ok || s.Desired.Bool() || declares(settings, d.dependent) {
 		return nil, nil
 	}
-	if s.Desired.Bool() {
-		return []SideEffect{{Kind: SideEffectDependencyGraphEnabled}}, nil
+	dependent := observed.Setting(setting.Unit{Key: d.dependent})
+	current, ok := dependent.Value()
+	if !ok {
+		panic(fmt.Sprintf("changeplan: %s is observed without %s", s.Unit.Key, d.dependent))
 	}
-	effects := []SideEffect{{Kind: SideEffectDependencyGraphDisabled}}
-	if declares(settings, setting.DependabotSecurityUpdates) {
-		return effects, nil
+	if current.Equal(d.disabledDependent) {
+		return nil, []SettingWithoutSideEffect{{Key: d.dependent, Observed: dependent}}
 	}
-	updates := observed.Setting(setting.Unit{Key: setting.DependabotSecurityUpdates})
-	if observed.Dependabot.SecurityUpdates.Enabled() {
-		return append(effects, SideEffect{Kind: SideEffectSecurityUpdatesDisabled, Observed: updates}), nil
-	}
-	return effects, []SettingWithoutSideEffect{{Key: setting.DependabotSecurityUpdates, Observed: updates}}
+	return []SideEffect{{Kind: d.dependentDisabled, Observed: dependent}}, nil
 }
 
 // declares は、管理設定の計画 settings に key の計画があるかを返す。

@@ -10,12 +10,9 @@ import (
 
 //trace:checks FR-004 QR-002
 func TestWriteSecurity(t *testing.T) {
-	const (
-		header = "    security:\n"
-		notice = "      # reco does not accept the secret scanning settings in the configuration file yet\n"
-	)
+	const header = "    security:\n"
 	enabledSecretScanning := github.SecretScanning{Enabled: github.Observed(true), PushProtection: github.Observed(true)}
-	enabledSecretScanningLines := notice + "      # secret_scanning: true\n      # secret_scanning_push_protection: true\n"
+	enabledSecretScanningLines := "      secret_scanning: true\n      secret_scanning_push_protection: true\n"
 	cases := []struct {
 		name           string
 		dependabot     github.Dependabot
@@ -41,20 +38,20 @@ func TestWriteSecurity(t *testing.T) {
 			want:           header + "      dependabot_alerts: true\n      dependabot_security_updates: true # paused by GitHub (still enabled)\n" + enabledSecretScanningLines,
 		},
 		{
-			name:           "enabled secret scanning and disabled push protection are shown as comments after the notice",
+			name:           "enabled secret scanning and disabled push protection are shown as booleans",
 			dependabot:     github.Dependabot{Alerts: true, SecurityUpdates: setting.DependabotSecurityUpdatesEnabled},
 			secretScanning: github.SecretScanning{Enabled: github.Observed(true), PushProtection: github.Observed(false)},
 			want: header + "      dependabot_alerts: true\n      dependabot_security_updates: true\n" +
-				notice + "      # secret_scanning: true\n      # secret_scanning_push_protection: false\n",
+				"      secret_scanning: true\n      secret_scanning_push_protection: false\n",
 		},
 		{
-			name:       "secret scanning settings unavailable for the private repository are shown as unavailable",
+			name:       "secret scanning settings unavailable for the private repository are shown as unavailable in comments",
 			dependabot: github.Dependabot{Alerts: true, SecurityUpdates: setting.DependabotSecurityUpdatesEnabled},
 			secretScanning: github.SecretScanning{
 				Enabled:        github.Unavailable[bool](github.UnavailablePrivateRepository),
 				PushProtection: github.Unavailable[bool](github.UnavailablePrivateRepository),
 			},
-			want: header + "      dependabot_alerts: true\n      dependabot_security_updates: true\n" + notice +
+			want: header + "      dependabot_alerts: true\n      dependabot_security_updates: true\n" +
 				"      # secret_scanning: unavailable (the repository is private)\n" +
 				"      # secret_scanning_push_protection: unavailable (the repository is private)\n",
 		},

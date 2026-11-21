@@ -98,6 +98,30 @@ func TestClientUpdate(t *testing.T) {
 			value:       setting.AccessLevelValue(setting.AccessUser),
 			wantRequest: "PUT /repos/owner/repo/actions/permissions/access", wantBody: map[string]any{"access_level": "user"},
 		},
+		{
+			name: "secret_scanning true sends only the nested secret_scanning status enabled", key: setting.SecretScanningEnabled,
+			value:       setting.BoolValue(true),
+			wantRequest: "PATCH /repos/owner/repo",
+			wantBody:    map[string]any{"security_and_analysis": map[string]any{"secret_scanning": map[string]any{"status": "enabled"}}},
+		},
+		{
+			name: "secret_scanning false sends only the nested secret_scanning status disabled", key: setting.SecretScanningEnabled,
+			value:       setting.BoolValue(false),
+			wantRequest: "PATCH /repos/owner/repo",
+			wantBody:    map[string]any{"security_and_analysis": map[string]any{"secret_scanning": map[string]any{"status": "disabled"}}},
+		},
+		{
+			name: "push protection true sends only the nested push protection status enabled", key: setting.RepositoryPushProtection,
+			value:       setting.BoolValue(true),
+			wantRequest: "PATCH /repos/owner/repo",
+			wantBody:    map[string]any{"security_and_analysis": map[string]any{"secret_scanning_push_protection": map[string]any{"status": "enabled"}}},
+		},
+		{
+			name: "push protection false sends only the nested push protection status disabled", key: setting.RepositoryPushProtection,
+			value:       setting.BoolValue(false),
+			wantRequest: "PATCH /repos/owner/repo",
+			wantBody:    map[string]any{"security_and_analysis": map[string]any{"secret_scanning_push_protection": map[string]any{"status": "disabled"}}},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -143,6 +167,24 @@ func TestClientUpdate(t *testing.T) {
 		})
 		_, _ = c.Update(t.Context(), mustReference(t, "owner/repo"), undefined, setting.BoolValue(true))
 	})
+}
+
+// TestClientUpdateSecretScanningIgnoresSecurityAndAnalysisInResponse は、Secret scanning の更新の 200 の本文が
+// security_and_analysis を含まなくても成功とし、本文でこの項目を確かめないことを確かめる (アーキテクチャ設計の更新の契約)。
+//
+//trace:checks FR-011
+func TestClientUpdateSecretScanningIgnoresSecurityAndAnalysisInResponse(t *testing.T) {
+	const withoutSecurityAndAnalysis = `{"id": 1296269, "name": "repo", "owner": {"login": "owner"}, "private": false, "allow_auto_merge": true, "delete_branch_on_merge": false}`
+	for _, key := range []setting.Key{setting.SecretScanningEnabled, setting.RepositoryPushProtection} {
+		t.Run(string(key), func(t *testing.T) {
+			c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(withoutSecurityAndAnalysis))
+			})
+			if outcome, err := c.Update(t.Context(), mustReference(t, "owner/repo"), key, setting.BoolValue(true)); err != nil || outcome != UpdateSucceeded {
+				t.Errorf("Update() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+			}
+		})
+	}
 }
 
 // TestEnablementMethod は、有効にするときは PUT、無効にするときは DELETE を選ぶことを確かめる。

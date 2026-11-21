@@ -169,6 +169,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			relevant(setting.AllowedActions, github.Observed(policy(setting.AllowedActionsSelected))),
 			relevant(setting.SelectedActions, github.Observed(criteria)),
 		)}
+		want[0].SideEffectSettings = []setting.Unit{{Key: setting.SelectedActions}}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
 		}
@@ -184,6 +185,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
 		want := []LogicalChange{settingChange(setting.AllowedActions, policy(setting.AllowedActionsLocalOnly), relevant(setting.AllowedActions, disabled), relevant(setting.SelectedActions, disabled))}
+		want[0].SideEffectSettings = []setting.Unit{{Key: setting.SelectedActions}}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
 		}
@@ -672,6 +674,109 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 	})
 }
 
+// TestLogicalChange_ExcludedFromOutsideSettings は、変更対象外の設定から、変える設定に加えて副作用として提示した設定も除くことを確かめる。
+//
+//trace:checks INV-001 FR-012
+func TestLogicalChange_ExcludedFromOutsideSettings(t *testing.T) {
+	change := LogicalChange{
+		DesiredState:       []DesiredSetting{{Unit: setting.Unit{Key: setting.SecretScanningEnabled}}},
+		SideEffectSettings: []setting.Unit{{Key: setting.RepositoryPushProtection}},
+	}
+	want := []setting.Unit{{Key: setting.SecretScanningEnabled}, {Key: setting.RepositoryPushProtection}}
+	if got := change.ExcludedFromOutsideSettings(); !reflect.DeepEqual(got, want) {
+		t.Errorf("ExcludedFromOutsideSettings() = %v, want %v", got, want)
+	}
+}
+
+//trace:checks INV-001 INV-004 FR-010 FR-011
+func TestRepositoryPlan_LogicalChangesOfSecretScanning(t *testing.T) {
+	newRepositoryPlan := func(settings ...SettingPlan) RepositoryPlan {
+		return RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
+	}
+	mismatch := func(key setting.Key, observed, desired bool) SettingPlan {
+		return SettingPlan{
+			Unit: setting.Unit{Key: key}, Observed: github.Observed(setting.BoolValue(observed)), Desired: setting.BoolValue(desired),
+			Result: Mismatch, Applicability: Applicable,
+		}
+	}
+	keys := func(changes []LogicalChange) []setting.Key {
+		var got []setting.Key
+		for _, c := range changes {
+			got = append(got, c.DesiredState[0].Unit.Key)
+		}
+		return got
+	}
+	dependabotAlertsDisabled := SettingPlan{
+		Unit: setting.Unit{Key: setting.DependabotAlerts}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false),
+		Result: Mismatch, Applicability: Applicable,
+	}
+	dependabotUpdatesDisabled := SettingPlan{
+		Unit:     setting.Unit{Key: setting.DependabotSecurityUpdates},
+		Observed: github.Observed(setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesEnabled)),
+		Desired:  setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesDisabled), Result: Mismatch, Applicability: Applicable,
+	}
+	orders := []struct {
+		name     string
+		settings []SettingPlan
+		want     []setting.Key
+	}{
+		{
+			name: "disabling both pairs runs each dependent setting just before its prerequisite",
+			settings: []SettingPlan{
+				dependabotAlertsDisabled, dependabotUpdatesDisabled,
+				mismatch(setting.SecretScanningEnabled, true, false), mismatch(setting.RepositoryPushProtection, true, false),
+			},
+			want: []setting.Key{setting.DependabotSecurityUpdates, setting.DependabotAlerts, setting.RepositoryPushProtection, setting.SecretScanningEnabled},
+		},
+	}
+	for _, tc := range orders {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := newRepositoryPlan(tc.settings...).LogicalChanges()
+			if err != nil {
+				t.Fatalf("LogicalChanges() error = %v", err)
+			}
+			if !reflect.DeepEqual(keys(got), tc.want) {
+				t.Errorf("LogicalChanges() order = %v, want %v", keys(got), tc.want)
+			}
+		})
+	}
+
+	self := func(s SettingPlan) RelevantSetting { return RelevantSetting{Unit: s.Unit, ValueAtApproval: s.Observed} }
+	enabling := mismatch(setting.RepositoryPushProtection, false, true)
+	disabling := mismatch(setting.RepositoryPushProtection, true, false)
+	changes := []struct {
+		name         string
+		plan         SettingPlan
+		wantRelevant []RelevantSetting
+	}{
+		{
+			name:         "enabling push protection is relevant to secret scanning being enabled",
+			plan:         enabling,
+			wantRelevant: []RelevantSetting{self(enabling), {Unit: setting.Unit{Key: setting.SecretScanningEnabled}, ValueAtApproval: github.Observed(setting.BoolValue(true))}},
+		},
+		{
+			name:         "disabling push protection is relevant only to itself",
+			plan:         disabling,
+			wantRelevant: []RelevantSetting{self(disabling)},
+		},
+	}
+	for _, tc := range changes {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := newRepositoryPlan(tc.plan).LogicalChanges()
+			if err != nil {
+				t.Fatalf("LogicalChanges() error = %v", err)
+			}
+			want := []LogicalChange{{
+				DesiredState: []DesiredSetting{{Unit: tc.plan.Unit, Value: tc.plan.Desired}},
+				Operations:   []UpdateOperation{{Kind: SettingUpdate, Unit: tc.plan.Unit, Value: tc.plan.Desired, RelevantSettings: tc.wantRelevant}},
+			}}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-011 INV-001 INV-004
 func TestRepositoryPlan_LogicalChangesOfDependabot(t *testing.T) {
 	newRepositoryPlan := func(settings ...SettingPlan) RepositoryPlan {
@@ -704,6 +809,10 @@ func TestRepositoryPlan_LogicalChangesOfDependabot(t *testing.T) {
 			DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}},
 			Operations:   []UpdateOperation{{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, RelevantSettings: relevant}},
 		}
+	}
+	withSideEffectSettings := func(c LogicalChange, units ...setting.Unit) LogicalChange {
+		c.SideEffectSettings = units
+		return c
 	}
 	keys := func(changes []LogicalChange) []setting.Key {
 		var got []setting.Key
@@ -752,7 +861,7 @@ func TestRepositoryPlan_LogicalChangesOfDependabot(t *testing.T) {
 			plan SettingPlan
 			want LogicalChange
 		}{
-			{plan: withSideEffect, want: changeOf(withSideEffect, RelevantSetting{Unit: setting.Unit{Key: setting.DependabotSecurityUpdates}, ValueAtApproval: paused})},
+			{plan: withSideEffect, want: withSideEffectSettings(changeOf(withSideEffect, RelevantSetting{Unit: setting.Unit{Key: setting.DependabotSecurityUpdates}, ValueAtApproval: paused}), setting.Unit{Key: setting.DependabotSecurityUpdates})},
 			{plan: withoutSideEffect, want: changeOf(withoutSideEffect, disabledUpdates)},
 		} {
 			got, err := newRepositoryPlan(tc.plan).LogicalChanges()

@@ -32,7 +32,7 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.O
 			endpoint := github.UpdateEndpointOf(operation.Unit.Key)
 			if !slices.Contains(compared, endpoint) {
 				compared = append(compared, endpoint)
-				changes = append(changes, outsideChangesAt(endpoint, change.SettingsToChange(), b, after)...)
+				changes = append(changes, outsideChangesAt(endpoint, change.ExcludedFromOutsideSettings(), b, after)...)
 			}
 			continue
 		case changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate:
@@ -46,15 +46,15 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.O
 	return changes
 }
 
-// outsideChangesAt は、更新要求を送った endpoint で観測する設定のうち、論理的な設定変更が変える changed に含まれないものについて、
+// outsideChangesAt は、更新要求を送った endpoint で観測する設定のうち、変更対象外の設定から除く excluded に含まれないものについて、
 // 更新直前と更新後の観測値の差を返す。
 // 観測は設定の領域の単位で読むが、同じ設定の領域でも別の更新エンドポイントの設定は更新操作の影響を受けないため比べない。
 // 予期しない変化は観測値どうしの差のため、片方でも観測不能な設定は、比べる観測値がなく返さない。
-func outsideChangesAt(endpoint github.UpdateEndpoint, changed []setting.Unit, before, after github.ObservationResult) []unexpectedOutsideChange {
+func outsideChangesAt(endpoint github.UpdateEndpoint, excluded []setting.Unit, before, after github.ObservationResult) []unexpectedOutsideChange {
 	var changes []unexpectedOutsideChange
 	for _, key := range endpoint.ObservedSettings() {
 		unit := setting.Unit{Key: key}
-		if slices.Contains(changed, unit) {
+		if slices.Contains(excluded, unit) {
 			continue
 		}
 		b, beforeOK := before.Setting(unit).Value()

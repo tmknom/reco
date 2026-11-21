@@ -57,7 +57,6 @@ repositories:
     security:
       dependabot_alerts: true
       dependabot_security_updates: true
-      # reco does not accept the secret scanning settings in the configuration file yet
       # secret_scanning: unavailable (the repository is private)
       # secret_scanning_push_protection: unavailable (the repository is private)
 ```
@@ -71,11 +70,9 @@ repositories:
 | `# environments: none` | Environment が一つもない |
 | `# access:` と `#   access_level: unavailable (the repository is public)` | 公開リポジトリのため、`access_level` を読み取れない。この設定は非公開リポジトリにだけ書ける |
 | `dependabot_security_updates: true # paused by GitHub (still enabled)` | Dependabot security updates は有効だが、GitHub が一時停止している。設定ファイルでは `true` と書いたのと同じ |
-| `# reco does not accept the secret scanning settings in the configuration file yet` | 続く Secret scanning とリポジトリの push protection の設定は、まだ設定ファイルに書けない |
-| `# secret_scanning: true` / `# secret_scanning_push_protection: false` | Secret scanning とリポジトリの push protection が、それぞれ有効かどうかの現在の値。リポジトリの push protection は、利用者が自分のアカウントに設定する push protection とは別の設定である |
 | `# secret_scanning: unavailable (the repository is private)` / `# secret_scanning_push_protection: unavailable (the repository is private)` | 非公開リポジトリのため、Secret scanning とリポジトリの push protection の値を読み取れない |
 
-Environment の `wait_timer`、`required_reviewers`、`can_admins_bypass` のように、設定ファイルに書けない設定は表示しません。Secret scanning とリポジトリの push protection は例外で、値をコメントの行で表示します。
+Environment の `wait_timer`、`required_reviewers`、`can_admins_bypass` のように、設定ファイルに書けない設定は表示しません。
 
 ## `plan`
 

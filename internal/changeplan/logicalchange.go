@@ -15,6 +15,9 @@ type LogicalChange struct {
 	DesiredState []DesiredSetting
 	// Operations は構成する更新操作を実行順に並べたもの。一つ以上を持つ。
 	Operations []UpdateOperation
+	// SideEffectSettings は、変更に伴う副作用として提示した設定のうち reco が観測するもの。
+	// 承認した変化のため、同じ更新エンドポイントの設定でも変更対象外の設定に数えない。
+	SideEffectSettings []setting.Unit
 }
 
 // DesiredSetting は、期待状態を構成する一つの管理設定の期待値。
@@ -83,7 +86,7 @@ func (c LogicalChange) Units() []setting.Unit {
 	return units
 }
 
-// SettingsToChange は、ドメインモデルの「論理的な設定変更が変える設定」を返す。変更対象外の設定から除く範囲である。
+// SettingsToChange は、ドメインモデルの「論理的な設定変更が変える設定」を返す。変更対象外の設定から除く範囲の一つである (ExcludedFromOutsideSettings)。
 // Units の管理の単位に、その期待値が含む状態の設定を足したもの。
 func (c LogicalChange) SettingsToChange() []setting.Unit {
 	units := c.Units()
@@ -91,6 +94,12 @@ func (c LogicalChange) SettingsToChange() []setting.Unit {
 		units = append(units, setting.Unit{Key: setting.ActionsEnabled})
 	}
 	return units
+}
+
+// ExcludedFromOutsideSettings は、更新エンドポイントで reco が観測する設定のうち、変更対象外の設定から除くものを返す。
+// 論理的な設定変更が変える設定と、副作用として提示した設定である (ドメインモデルの変更対象外の設定)。
+func (c LogicalChange) ExcludedFromOutsideSettings() []setting.Unit {
+	return append(c.SettingsToChange(), c.SideEffectSettings...)
 }
 
 // CreatesEnvironment は、この更新操作が Environment の作成かを返す。
@@ -135,10 +144,19 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 			continue
 		}
 		operation := operationOf(s)
-		if s.Unit.Key == setting.SHAPinningRequired {
+		switch {
+		case s.Unit.Key == setting.SHAPinningRequired:
 			operation = shaPinningRequiredOperationOf(s)
+		case s.Unit.Key == setting.RepositoryPushProtection && s.Desired.Bool():
+			// GitHub は Secret scanning が無効のあいだ、有効にする更新に成功を応答して値を変えないため、更新直前に有効と確かめる。
+			// 計画時に無効だった場合は、先行する Secret scanning の変更が有効にすることが予定どおりの変化である
+			operation.RelevantSettings = append(operation.RelevantSettings, RelevantSetting{
+				Unit: setting.Unit{Key: setting.SecretScanningEnabled}, ValueAtApproval: github.Observed(setting.BoolValue(true)),
+			})
 		}
-		change := LogicalChange{DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}}, Operations: []UpdateOperation{operation}}
+		change := LogicalChange{
+			DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}}, Operations: []UpdateOperation{operation}, SideEffectSettings: sideEffectSettingsOf(s),
+		}
 		if targetsSelectedPolicy(s) {
 			if !paired {
 				panic(fmt.Sprintf("changeplan: %s to selected has no not-comparable %s to follow", s.Unit.Key, setting.SelectedActions))
@@ -156,17 +174,22 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 }
 
 // executionOrder は、管理設定の計画を論理的な設定変更の実行順に並べて返す。基本は計画の並び (変更予定の表示順) である。
-// Dependabot alerts の期待値が無効のときだけ、Dependabot security updates の計画をその直前に移す。
-// 先に Dependabot alerts を無効にすると、GitHub が Dependabot security updates も無効にし、その変更前提が成り立たなくなるため。
-// Dependabot alerts がすでに無効で一致しているなら、Dependabot security updates の変更予定は適用不能で、この並びまで届かない。
+// 前提の設定と依存する設定の組ごとに、前提の設定の期待値が無効のときだけ、依存する設定の計画をその直前に移す。
+// 先に前提の設定を無効にすると、GitHub が依存する設定も無効にし、その変更前提が成り立たなくなるため。
+// 前提の設定がすでに無効で一致しているなら、依存する設定の変更予定は、有効にする向きが適用不能でこの並びまで届かず、
+// 無効にする向きはすでに無効のため変更予定にならない。
 func (r RepositoryPlan) executionOrder() []SettingPlan {
-	alerts := slices.IndexFunc(r.Settings, func(s SettingPlan) bool { return s.Unit.Key == setting.DependabotAlerts })
-	updates := slices.IndexFunc(r.Settings, func(s SettingPlan) bool { return s.Unit.Key == setting.DependabotSecurityUpdates })
-	if alerts < 0 || updates < 0 || r.Settings[alerts].Desired.Bool() {
-		return r.Settings
+	ordered := r.Settings
+	for _, d := range settingDependencies() {
+		prerequisite := slices.IndexFunc(ordered, func(s SettingPlan) bool { return s.Unit.Key == d.prerequisite })
+		dependent := slices.IndexFunc(ordered, func(s SettingPlan) bool { return s.Unit.Key == d.dependent })
+		if prerequisite < 0 || dependent < 0 || ordered[prerequisite].Desired.Bool() {
+			continue
+		}
+		moved := ordered[dependent]
+		ordered = slices.Insert(slices.Delete(slices.Clone(ordered), dependent, dependent+1), prerequisite, moved)
 	}
-	ordered := slices.Delete(slices.Clone(r.Settings), updates, updates+1)
-	return slices.Insert(ordered, alerts, r.Settings[updates])
+	return ordered
 }
 
 // criteriaFollowingPolicy は、遷移先が selected のポリシーの変更予定に続けて更新する、選択方式の Actions 許可条件の比較不能な変更予定を返す。
@@ -216,6 +239,17 @@ func shaPinningRequiredOperationOf(s SettingPlan) UpdateOperation {
 	}
 	relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: setting.ActionsEnabled}, ValueAtApproval: github.Observed(setting.BoolValue(true))})
 	return UpdateOperation{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, RelevantSettings: relevant}
+}
+
+// sideEffectSettingsOf は、変更予定 s の副作用として提示した設定のうち reco が観測するものを返す。
+func sideEffectSettingsOf(s SettingPlan) []setting.Unit {
+	var units []setting.Unit
+	for _, effect := range s.SideEffects {
+		if key, ok := effect.Kind.ObservedSetting(); ok {
+			units = append(units, setting.Unit{Key: key})
+		}
+	}
+	return units
 }
 
 func targetsSelectedPolicy(s SettingPlan) bool {

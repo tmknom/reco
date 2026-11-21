@@ -475,6 +475,17 @@ func TestDocumentDeclaration(t *testing.T) {
 			}},
 		},
 		{
+			name: "repository with only secret scanning settings is accepted",
+			src:  minimal + "  - name: owner/second\n    security:\n      secret_scanning_push_protection: false\n",
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				{
+					Reference: mustReference(t, "owner/second"),
+					Desired:   DesiredState{SecretScanning: SecretScanning{PushProtection: new(false)}},
+				},
+			}},
+		},
+		{
 			name:       "invalid security is rejected at the path of the repository and security",
 			src:        second + "    security:\n      dependabot_alerts: false\n      dependabot_security_updates: true\n",
 			wantPath:   "repositories[1].security",
@@ -586,14 +597,15 @@ func TestDocumentDeclaration(t *testing.T) {
 	}
 }
 
-// TestDocumentSecurity は、2 つの設定がそれぞれ独立に宣言できることと、dependabot_security_updates を有効にできない組み合わせの拒否、判定の順序を確かめる。
+// TestDocumentSecurity は、4 つの設定がそれぞれ独立に宣言できることと、依存する設定を有効にできない組み合わせの拒否、判定の順序を確かめる。
 //
 //trace:checks FR-001
 func TestDocumentSecurity(t *testing.T) {
 	cases := []struct {
-		name string
-		src  string
-		want Dependabot
+		name               string
+		src                string
+		want               Dependabot
+		wantSecretScanning SecretScanning
 		// wantPath は error の先頭に付く、問題の箇所のパス。パスの直後の " (" まで照合する。
 		wantPath   string
 		wantReason string
@@ -614,9 +626,46 @@ func TestDocumentSecurity(t *testing.T) {
 		{name: "empty security is rejected", src: "{}\n", wantPath: "P", wantReason: "must not be empty"},
 		{
 			name:       "unknown key is rejected",
-			src:        "dependabot_alerts: true\nsecret_scanning: true\n",
+			src:        "dependabot_alerts: true\nsecret_scanning_validity_checks: true\n",
 			wantPath:   "P",
-			wantReason: `unknown key "secret_scanning"; expected dependabot_alerts, dependabot_security_updates`,
+			wantReason: `unknown key "secret_scanning_validity_checks"; expected dependabot_alerts, dependabot_security_updates, secret_scanning, secret_scanning_push_protection`,
+		},
+		{name: "secret_scanning true alone is read, leaving the push protection omitted", src: "secret_scanning: true\n", wantSecretScanning: SecretScanning{Enabled: new(true)}},
+		{name: "secret_scanning false alone is read, leaving the push protection omitted", src: "secret_scanning: false\n", wantSecretScanning: SecretScanning{Enabled: new(false)}},
+		{name: "push protection true alone is read, leaving secret_scanning omitted", src: "secret_scanning_push_protection: true\n", wantSecretScanning: SecretScanning{PushProtection: new(true)}},
+		{name: "push protection false alone is read, leaving secret_scanning omitted", src: "secret_scanning_push_protection: false\n", wantSecretScanning: SecretScanning{PushProtection: new(false)}},
+		{name: "secret_scanning true with push protection true is read into their own fields", src: "secret_scanning: true\nsecret_scanning_push_protection: true\n", wantSecretScanning: SecretScanning{Enabled: new(true), PushProtection: new(true)}},
+		{name: "secret_scanning true with push protection false is read into their own fields", src: "secret_scanning: true\nsecret_scanning_push_protection: false\n", wantSecretScanning: SecretScanning{Enabled: new(true), PushProtection: new(false)}},
+		{name: "secret_scanning false with push protection false is read into their own fields", src: "secret_scanning: false\nsecret_scanning_push_protection: false\n", wantSecretScanning: SecretScanning{Enabled: new(false), PushProtection: new(false)}},
+		{
+			name:       "secret_scanning false with push protection true is rejected at security",
+			src:        "secret_scanning: false\nsecret_scanning_push_protection: true\n",
+			wantPath:   "P",
+			wantReason: "secret_scanning false cannot be declared with secret_scanning_push_protection true",
+		},
+		{
+			name:               "dependabot and secret scanning settings are read together",
+			src:                "dependabot_alerts: true\nsecret_scanning: true\n",
+			want:               Dependabot{Alerts: new(true)},
+			wantSecretScanning: SecretScanning{Enabled: new(true)},
+		},
+		{
+			name:       "invalid secret_scanning value is rejected before the dependabot combination",
+			src:        "dependabot_alerts: false\ndependabot_security_updates: true\nsecret_scanning: yes\n",
+			wantPath:   "P.secret_scanning",
+			wantReason: "must be true or false",
+		},
+		{
+			name:       "invalid push protection value is rejected before the secret scanning combination",
+			src:        "secret_scanning: false\nsecret_scanning_push_protection: \"true\"\n",
+			wantPath:   "P.secret_scanning_push_protection",
+			wantReason: "must be true or false",
+		},
+		{
+			name:       "dependabot combination is rejected before the secret scanning combination",
+			src:        "dependabot_alerts: false\ndependabot_security_updates: true\nsecret_scanning: false\nsecret_scanning_push_protection: true\n",
+			wantPath:   "P",
+			wantReason: "dependabot_alerts false cannot be declared with dependabot_security_updates true",
 		},
 		{
 			name:       "quoted dependabot_alerts is rejected at the value before the combination",
@@ -634,10 +683,10 @@ func TestDocumentSecurity(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := decodeSnippet(t, tc.src)
-			got, err := doc.security(doc.root, "P")
+			got, gotSecretScanning, err := doc.security(doc.root, "P")
 			if tc.wantPath != "" {
 				if err == nil {
-					t.Fatalf("security() = %+v, want error", got)
+					t.Fatalf("security() = %+v, %+v, want error", got, gotSecretScanning)
 				}
 				if !strings.HasPrefix(err.Error(), tc.wantPath+" (") {
 					t.Errorf("security() error = %q, want it to start with %q", err, tc.wantPath+" (")
@@ -651,7 +700,10 @@ func TestDocumentSecurity(t *testing.T) {
 				t.Fatalf("security() error = %v", err)
 			}
 			if !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("security() = %+v, want %+v", got, tc.want)
+				t.Errorf("security() Dependabot = %+v, want %+v", got, tc.want)
+			}
+			if !reflect.DeepEqual(gotSecretScanning, tc.wantSecretScanning) {
+				t.Errorf("security() SecretScanning = %+v, want %+v", gotSecretScanning, tc.wantSecretScanning)
 			}
 		})
 	}

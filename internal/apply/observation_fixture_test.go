@@ -36,6 +36,11 @@ func actionsDisabled() *github.ActionsPermissions {
 	}
 }
 
+// publicSecretScanning は、公開リポジトリの Secret scanning の観測結果。
+func publicSecretScanning(enabled, pushProtection bool) *github.SecretScanning {
+	return &github.SecretScanning{Enabled: github.Observed(enabled), PushProtection: github.Observed(pushProtection)}
+}
+
 // environments は、existing を一覧の全体とする Environment の観測結果。
 func environments(existing ...github.Environment) *github.Environments {
 	return &github.Environments{Existing: existing}

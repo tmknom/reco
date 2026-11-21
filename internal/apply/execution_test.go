@@ -220,10 +220,17 @@ func TestObservationAreas(t *testing.T) {
 		notWant []setting.Area
 	}{
 		{
-			name:    "general change reads only the general area",
+			// General と Secret scanning は同じ更新エンドポイントのため、読まないと比べる変更対象外の設定の観測値がない
+			name:    "general change reads the general and secret scanning areas",
 			change:  allowAutoMergeChange(),
-			want:    []setting.Area{setting.AllowAutoMerge.Area()},
+			want:    []setting.Area{setting.AreaGeneral, setting.AreaSecretScanning},
 			notWant: []setting.Area{setting.AllowedActions.Area()},
+		},
+		{
+			name:    "workflow permissions change does not read the secret scanning area",
+			change:  defaultWorkflowPermissionsChange(),
+			want:    []setting.Area{setting.AreaWorkflowPermissions},
+			notWant: []setting.Area{setting.AreaSecretScanning},
 		},
 		{
 			name:   "change to selected reads the actions permissions area",
@@ -234,7 +241,7 @@ func TestObservationAreas(t *testing.T) {
 			name:    "environment change reads the environments area",
 			change:  creationChange(t, "production"),
 			want:    []setting.Area{setting.AreaEnvironments},
-			notWant: []setting.Area{setting.AllowedActions.Area()},
+			notWant: []setting.Area{setting.AllowedActions.Area(), setting.AreaSecretScanning},
 		},
 		{
 			// どの変更予定にも生じない組。基準の設定の領域を読まないと、観測結果にその値がないことを確かめる

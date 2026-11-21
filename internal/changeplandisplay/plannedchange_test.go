@@ -183,6 +183,34 @@ func TestPlannedChangeText(t *testing.T) {
 				"    Applicability: not applicable (Dependabot alerts is disabled; declare dependabot_alerts: true to enable it)\n",
 		},
 		{
+			name: "secret scanning of a private repository shows the repository state and the reason to remove the declarations",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.SecretScanningEnabled}, Observed: github.Unavailable[setting.Value](github.UnavailablePrivateRepository), Desired: setting.BoolValue(true),
+				Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicablePrivateRepository,
+			},
+			want: "  security.secret_scanning: (private repository) -> true\n" +
+				"    Applicability: not applicable (the repository is private; remove secret_scanning and secret_scanning_push_protection, which reco manages only on public repositories)\n",
+		},
+		{
+			name: "push protection with disabled secret scanning shows the reason to declare secret scanning",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.RepositoryPushProtection}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
+				Result: changeplan.Mismatch, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableSecretScanningRemainsDisabled,
+			},
+			want: "  security.secret_scanning_push_protection: false -> true\n" +
+				"    Applicability: not applicable (Secret scanning is disabled; declare secret_scanning: true to enable it)\n",
+		},
+		{
+			name: "disabling secret scanning shows the push protection as a side effect with its current value",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.SecretScanningEnabled}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false),
+				Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+				SideEffects: []changeplan.SideEffect{{Kind: changeplan.SideEffectPushProtectionDisabled, Observed: github.Observed(setting.BoolValue(true))}},
+			},
+			want: "  security.secret_scanning: true -> false\n" +
+				"    Side effect: GitHub also disables secret_scanning_push_protection, which is currently true\n",
+		},
+		{
 			name: "match is empty",
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true),
