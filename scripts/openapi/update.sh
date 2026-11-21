@@ -15,10 +15,13 @@ OPERATIONS='{
   "/repos/{owner}/{repo}/actions/permissions/access": ["get", "put"],
   "/repos/{owner}/{repo}/actions/permissions/selected-actions": ["get", "put"],
   "/repos/{owner}/{repo}/actions/permissions/workflow": ["get", "put"],
+  "/repos/{owner}/{repo}/automated-security-fixes": ["get", "put", "delete"],
   "/repos/{owner}/{repo}/environments": ["get"],
   "/repos/{owner}/{repo}/environments/{environment_name}": ["get", "put"],
   "/repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies": ["get", "post"],
-  "/repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies/{branch_policy_id}": ["get", "delete"]
+  "/repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies/{branch_policy_id}": ["get", "delete"],
+  "/repos/{owner}/{repo}/private-vulnerability-reporting": ["get", "put", "delete"],
+  "/repos/{owner}/{repo}/vulnerability-alerts": ["get", "put", "delete"]
 }'
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"

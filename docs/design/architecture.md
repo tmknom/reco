@@ -461,6 +461,25 @@ Environment とその `deployment_branch_policy` の変更予定は、次の表�
 
 `selected` から `all` / `local_only` への切替によって、GitHub は選択方式の Actions 許可条件を残さず、`selected` に戻したときには上記の値に戻っています（GitHub Actions 権限 API 仕様 4章）。遷移先が `all` / `local_only` のとき選択方式の Actions 許可条件は宣言できないため（[YAML 設定仕様](../spec/configuration.md) 4.1）、その既存値は管理範囲外の設定であり、reco はこの消失を防げません。Change Planning は、この遷移を適用可能としたうえで、既存の選択方式の Actions 許可条件が失われることを観測した値とともに変更計画へ含めます（[CLI 仕様](../spec/cli.md) 4章）。消失を承認前に明示するのは、INV-001 が禁じる管理範囲外の設定の暗黙の削除に当たらないようにするためです。そのため、(1) の直前の変更前提に、変更計画に示した選択方式の Actions 許可条件の値を含めます。更新後は選択方式の Actions 許可条件を取得できないため、その値を保全済みとはみなさず、消失したものとして扱います。
 
+セキュリティ設定（Dependabot alerts、Dependabot security updates、Secret scanning、push protection）にも、一つの設定の更新が別の設定を変える依存があります。セキュリティ設定はまだサポート対象ではなく（[要求定義](../spec/requirements.md) 2章）、次の表は、対応するときの依存の扱いを定めます。
+
+| 宣言した変更 | GitHub の動作（[GitHub リポジトリ API 仕様](../research/repositories.md) 5〜7章） | 扱い |
+|---|---|---|
+| Dependabot alerts を無効にする | `DELETE` が Dependency graph も無効にする（公式資料に記載がある）。有効だった Dependabot security updates も無効にする（公式資料に記載がなく、実際の動作で確かめた） | 適用可能。Dependency graph が無効になることと、Dependabot security updates を宣言していなければその計画時の観測値からの変化を、変更に伴う副作用として示す |
+| Dependabot security updates を有効にする | Dependabot alerts が無効なら `422` で拒否する | Dependabot alerts が無効で、有効にする宣言がなければ適用不能 |
+| push protection を有効にする | Secret scanning が無効なら `200` を返して値を変えない | Secret scanning が無効で、有効にする宣言がなければ適用不能 |
+| Secret scanning を無効にする | 有効だった push protection も無効にする | 適用可能。push protection を宣言していなければ、その計画時の観測値からの変化を変更に伴う副作用として示す |
+
+Dependabot alerts の無効化を適用可能にしたのは、実際の動作を確かめたうえで、人間が判断したためです。調査の段階では、Dependency graph への影響を伴う更新を、未管理設定を変えない保証と両立させる方法が決まるまで適用しない案でした。判断の理由は次のとおりです。
+
+- Dependency graph と Dependabot security updates の変化は、利用者が宣言した無効化に対して GitHub が起こす影響で、reco が宣言していない設定を自分で選んで変えるものではない。Actions 許可ポリシーを `selected` から変えて選択方式の Actions 許可条件が失われる遷移と同じ性質であり、同じく変更に伴う副作用として承認の前に示せば、INV-001 が禁じる暗黙の変更に当たらない
+- Dependabot alerts を無効のまま Dependency graph を残す手段は、確かめた範囲では設定画面の操作だけで、reco が影響を避ける更新方式はない。無効化を適用不能にすれば、利用者は reco で Dependabot alerts を無効にできなくなるだけで、影響を承認の前に知る手段は増えない
+- 逆に、Dependabot security updates の有効化と push protection の有効化で前提の設定が無効なときに適用不能とするのは、GitHub が前提の設定を自動では有効にしないため、reco が宣言されていない設定を変えなければ実行できないからである
+
+Dependency graph は、reco が観測しない設定です。有効・無効を値として返す取得の契約を確かめていないためです（実際の動作の確認では SBOM の取得の成否で代わりに確かめたが、これは設定の取得ではない）。そのため Dependency graph の副作用は観測値を伴わず、無効になることだけを示し、更新後にも確かめません（[ドメインモデル](domain.md) の変更に伴う副作用）。Dependabot security updates と push protection の副作用は、計画時の観測値とともに示し、副作用を生む更新操作の変更前提に含めます。
+
+依存する2つの設定をともに宣言した場合は、有効にするときは前提の設定（Dependabot alerts、Secret scanning）を先に、無効にするときは依存する設定（Dependabot security updates、push protection）を先に更新します。無効にするときに前提の設定を先に更新すると、依存する設定が GitHub によって先に無効になり、その変更予定の変更前提が成り立たなくなるためです。前提の設定を無効にし、依存する設定を有効にする宣言は、GitHub がその状態を受け付けないため実現できません。
+
 GitHub の複数の更新操作を原子的に実行する仕組みはありません。途中で更新が失敗・中断された場合は、先行操作の影響が残り得ます。最終状態の一致を確認できることと、中間状態の安全性を確認できることは別の条件です。
 
 | Relationship | Target | Target Type |
@@ -473,6 +492,7 @@ GitHub の複数の更新操作を原子的に実行する仕組みはありま�
 | `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
 | `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
 | `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Repository File |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
 
 ## 6. 更新結果と障害時の制御
 
