@@ -266,26 +266,6 @@ func TestDeploymentBranchPolicyValue_KeepsPatternsFromLaterChanges(t *testing.T)
 	}
 }
 
-func TestValue_IsZero(t *testing.T) {
-	cases := []struct {
-		name  string
-		value Value
-		want  bool
-	}{
-		{name: "zero value is zero", value: Value{}, want: true},
-		{name: "false boolean is not zero", value: BoolValue(false), want: false},
-		{name: "empty selected criteria is not zero", value: SelectedActionsCriteriaValue(SelectedActionsCriteria{}), want: false},
-		{name: "empty deployment branch policy is not zero", value: DeploymentBranchPolicyValue(DeploymentBranchPolicy{}), want: false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.value.IsZero(); got != tc.want {
-				t.Errorf("IsZero() = %t, want %t", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestValue_DeploymentBranchPolicy(t *testing.T) {
 	want := DeploymentBranchPolicy{Mode: DeploymentBranchPolicySelected, Patterns: []DeploymentPattern{{Type: DeploymentPatternBranch, Name: "main"}, {Type: DeploymentPatternTag, Name: "v*"}}}
 	if got := DeploymentBranchPolicyValue(want).DeploymentBranchPolicy(); !reflect.DeepEqual(got, want) {

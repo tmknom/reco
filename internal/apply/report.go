@@ -92,7 +92,7 @@ func changesError(records []changeRecord, target repository.Reference) error {
 	return nil
 }
 
-// changeLabel は、変更結果で論理的な設定変更を示す名前を返す。変える管理設定の名前を、更新操作の順に重複なく " + " でつなぐ。
+// changeLabel は、変更結果で論理的な設定変更を示す名前を返す。変える管理設定の名前を、期待状態の並びで " + " でつなぐ。
 func changeLabel(change changeplan.LogicalChange) string {
 	units := change.Units()
 	names := make([]string, len(units))
@@ -144,7 +144,7 @@ type updateRequestRow struct {
 // updateRequestLines は、開始した論理的な設定変更の更新操作の結果を表示の行で返す。
 // 更新操作が一つなら、どの更新操作かを示さずに 1 行で示す。
 // 二つ以上なら更新操作の結果を実行順に示し、開始しなかった更新操作は、変更前提を確かめていれば、それを含む行の次に不成立の理由の行を続ける。
-// 個別パターンの更新操作は数が多くなり得るため、向きと結果が同じで続けて並ぶものを 1 行にまとめる。
+// 個別パターンの更新操作は数が多くなり得るため、加えるか取り除くかと結果が同じで続けて並ぶものを 1 行にまとめる。
 func updateRequestLines(record changeRecord) []string {
 	if len(record.change.Operations) == 1 {
 		return []string{"Update request: " + updateOutcomeText(record.operation(0).update)}
@@ -156,15 +156,14 @@ func updateRequestLines(record changeRecord) []string {
 		if o.started() {
 			outcome = updateOutcomeText(o.update)
 		}
-		pattern := operation.DeploymentPatternChange
 		last := len(rows) - 1
 		switch {
-		case !operation.ChangesDeploymentPattern():
+		case !changesDeploymentPattern(operation):
 			rows = append(rows, updateRequestRow{operation: operation, outcome: outcome})
-		case last >= 0 && rows[last].operation.DeploymentPatternChange.Direction == pattern.Direction && rows[last].outcome == outcome:
-			rows[last].patterns = append(rows[last].patterns, pattern.Pattern)
+		case last >= 0 && rows[last].operation.Kind == operation.Kind && rows[last].outcome == outcome:
+			rows[last].patterns = append(rows[last].patterns, operation.Pattern)
 		default:
-			rows = append(rows, updateRequestRow{operation: operation, patterns: []setting.DeploymentPattern{pattern.Pattern}, outcome: outcome})
+			rows = append(rows, updateRequestRow{operation: operation, patterns: []setting.DeploymentPattern{operation.Pattern}, outcome: outcome})
 		}
 		if !o.started() && o.precondition != preconditionNotChecked {
 			rows[len(rows)-1].precondition = preconditionText(record.change, i, o)
@@ -181,22 +180,24 @@ func updateRequestLines(record changeRecord) []string {
 }
 
 // updateRequestLabel は、Update request の行の括弧の中に示す対象を返す。
-// 個別パターンの更新操作は、変える管理設定がまとまりの中で同じため、向きと要素 patterns で示す。要素は plan と同じ表記にする。
-// それ以外の更新操作は、変える管理設定の名前で示す。
-// 未定義の向きは不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+// 個別パターンの更新操作は、変える管理設定がまとまりの中で同じため、加えるか取り除くかと要素 patterns で示す。要素は plan と同じ表記にする。
+// それ以外の更新操作は、更新操作の管理の単位の名前で示す。
+// 未定義の種類は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func updateRequestLabel(operation changeplan.UpdateOperation, patterns []setting.DeploymentPattern) string {
-	if !operation.ChangesDeploymentPattern() {
+	switch operation.Kind {
+	case changeplan.SettingUpdate, changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate:
 		return operation.Unit.String()
+	case changeplan.DeploymentPatternAddition:
+		return "patterns to add " + setting.DeploymentBranchPolicy{Patterns: patterns}.PatternsString()
+	case changeplan.DeploymentPatternRemoval:
+		return "patterns to remove " + setting.DeploymentBranchPolicy{Patterns: patterns}.PatternsString()
 	}
-	direction := operation.DeploymentPatternChange.Direction
-	listed := setting.DeploymentBranchPolicy{Patterns: patterns}.PatternsString()
-	switch direction {
-	case changeplan.AddDeploymentPattern:
-		return "patterns to add " + listed
-	case changeplan.RemoveDeploymentPattern:
-		return "patterns to remove " + listed
-	}
-	panic(fmt.Sprintf("apply: undefined direction %d of a deployment pattern update", int(direction)))
+	panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))
+}
+
+// changesDeploymentPattern は、operation が個別パターンを一つ加えるか取り除く更新操作かを返す。
+func changesDeploymentPattern(operation changeplan.UpdateOperation) bool {
+	return operation.Kind == changeplan.DeploymentPatternAddition || operation.Kind == changeplan.DeploymentPatternRemoval
 }
 
 // possibleCause は、設定に既知の原因の候補を返す。候補がなければ空文字列を返す。

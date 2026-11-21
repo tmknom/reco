@@ -81,9 +81,9 @@ func TestConfirmDesiredState(t *testing.T) {
 		},
 		{
 			// 計画が作らない並び。観測不能の設定が先に並んでも、観測できた値の不一致が優先されることを確かめる
-			name: "mismatch after an unavailable desired value in the order of updates is still a mismatch",
-			change: changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{
-				toSelectedChange().Operations[1], toSelectedChange().Operations[0],
+			name: "mismatch after an unavailable desired value in the order of the desired state is still a mismatch",
+			change: changeplan.LogicalChange{DesiredState: []changeplan.DesiredSetting{
+				toSelectedChange().DesiredState[1], toSelectedChange().DesiredState[0],
 			}},
 			observed: actionsEnabled(setting.AllowedActionsAll, false),
 			want:     desiredStateMismatch,
@@ -104,6 +104,17 @@ func TestConfirmDesiredState(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("logical change without a desired state panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("confirmDesiredState() did not panic")
+			}
+		}()
+		change := allowAutoMergeChange()
+		change.DesiredState = nil
+		confirmDesiredState(1, change, github.ObservationResult{RepositoryID: 1})
+	})
 }
 
 // TestConfirmDesiredState_Environments は、Environment の作成と方式の変更の更新後の判定表を確かめる。
@@ -121,32 +132,32 @@ func TestConfirmDesiredState_Environments(t *testing.T) {
 	}{
 		{
 			name:         "creation without a mode matches when the environment exists under a spelling differing only in case",
-			change:       creationChange(t, "production", setting.Value{}),
+			change:       creationChange(t, "production"),
 			environments: environments(observedEnvironment(8, "Production", setting.DeploymentBranchPolicyAll)),
 			want:         desiredStateMatches,
 		},
 		{
 			name:         "creation is a mismatch when the environment is absent",
-			change:       creationChange(t, "production", setting.Value{}),
+			change:       creationChange(t, "production"),
 			environments: environments(approvedStaging),
 			want:         desiredStateMismatch,
 		},
 		{
 			name:         "creation is unavailable when the existence cannot be determined",
-			change:       creationChange(t, "production", setting.Value{}),
+			change:       creationChange(t, "production"),
 			environments: environments(undetermined),
 			want:         desiredStateUnavailable,
 			wantReason:   github.UnavailableEnvironmentNameUndetermined,
 		},
 		{
 			name:         "creation with a mode matches when the environment has the mode",
-			change:       creationChange(t, "production", modeValue(setting.DeploymentBranchPolicyProtectedBranches)),
+			change:       creationWithModeChange(t, "production", setting.DeploymentBranchPolicyProtectedBranches),
 			environments: environments(observedEnvironment(8, "production", setting.DeploymentBranchPolicyProtectedBranches)),
 			want:         desiredStateMatches,
 		},
 		{
 			name:         "creation with a mode is a mismatch when the environment has another mode",
-			change:       creationChange(t, "production", modeValue(setting.DeploymentBranchPolicyProtectedBranches)),
+			change:       creationWithModeChange(t, "production", setting.DeploymentBranchPolicyProtectedBranches),
 			environments: environments(observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll)),
 			want:         desiredStateMismatch,
 		},
@@ -177,7 +188,7 @@ func TestConfirmDesiredState_Environments(t *testing.T) {
 			wantReason:   github.UnavailableEnvironmentNameUndetermined,
 		},
 		{
-			// 方式の PUT を送らない変更でも、個別パターンの更新操作の期待値で期待状態を確かめる
+			// 方式を送らない変更でも、デプロイ元制限の値の全体を期待状態として確かめる
 			name: "pattern updates alone are a mismatch when one declared pattern is missing",
 			change: deploymentPatternsChange(t, "staging", selectedEnvironment(7, "Staging", []setting.DeploymentPattern{branchPattern("feature/*")}, 11),
 				selectedPolicy(branchPattern("main"), branchPattern("release/*"))),

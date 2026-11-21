@@ -149,27 +149,23 @@ func observeBeforeUpdate(ctx context.Context, client *github.Client, r changepla
 }
 
 // sendUpdate は、変更前提を確かめた更新操作の更新要求を一度だけ送る。observed は、その変更前提を確かめた更新直前の観測である。
-// 個別パターンの更新操作は、送る要素を承認の前に決めており、更新直前の観測から得るのは宛先 (綴りと取り除く個別パターンの ID) だけである。
-// 未定義の向きは不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+// 送る内容は承認の前に決めており、更新直前の観測から得るのは Environment の宛先 (綴りと取り除く個別パターンの ID) だけである。
+// 未定義の種類は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func sendUpdate(ctx context.Context, client *github.Client, target repository.Reference, operation changeplan.UpdateOperation, observed github.ObservationResult) (github.UpdateOutcome, error) {
-	if !operation.TargetsEnvironment() {
-		return client.Update(ctx, target, operation.Unit.Key, operation.Desired)
+	switch operation.Kind {
+	case changeplan.SettingUpdate:
+		return client.Update(ctx, target, operation.Unit.Key, operation.Value)
+	case changeplan.EnvironmentCreation:
+		return client.CreateEnvironment(ctx, target, environmentDestination(operation.Unit.Environment, observed))
+	case changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate:
+		return client.UpdateEnvironmentDeploymentBranchPolicy(ctx, target, environmentDestination(operation.Unit.Environment, observed), operation.Mode)
+	case changeplan.DeploymentPatternAddition:
+		return client.AddDeploymentPattern(ctx, target, environmentDestination(operation.Unit.Environment, observed), operation.Pattern)
+	case changeplan.DeploymentPatternRemoval:
+		id := deploymentPatternIDOf(operation.Unit.Environment, operation.Pattern, observed)
+		return client.RemoveDeploymentPattern(ctx, target, environmentDestination(operation.Unit.Environment, observed), operation.Pattern, id)
 	}
-	destination := environmentDestination(operation.Unit.Environment, observed)
-	if operation.ChangesDeploymentPattern() {
-		pattern := operation.DeploymentPatternChange
-		switch pattern.Direction {
-		case changeplan.AddDeploymentPattern:
-			return client.AddDeploymentPattern(ctx, target, destination, pattern.Pattern)
-		case changeplan.RemoveDeploymentPattern:
-			return client.RemoveDeploymentPattern(ctx, target, destination, pattern.Pattern, deploymentPatternIDOf(operation.Unit.Environment, pattern.Pattern, observed))
-		}
-		panic(fmt.Sprintf("apply: undefined direction %d of a deployment pattern update", int(pattern.Direction)))
-	}
-	if !operation.SetsDeploymentBranchPolicy() {
-		return client.CreateEnvironment(ctx, target, destination)
-	}
-	return client.UpdateEnvironmentDeploymentBranchPolicy(ctx, target, destination, operation.Desired.DeploymentBranchPolicy().Mode)
+	panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))
 }
 
 // environmentDestination は、宣言の名前 name の Environment の更新要求の宛先の綴りを返す（アーキテクチャ設計の未管理設定を保全する更新方式）。
@@ -197,7 +193,8 @@ func deploymentPatternIDOf(name setting.EnvironmentName, pattern setting.Deploym
 var reobservationDelays = [...]time.Duration{1 * time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second}
 
 // observationAreas は、change の更新直前と更新後の観測で読む設定の領域を返す。
-// 変更前提で比べる設定と期待値と比べる設定の領域を読まないと、観測結果にその値がないため、更新操作の設定と基準の設定から導く。
+// 変更前提で比べる設定と期待値と比べる設定の領域を読まないと、観測結果にその値がないため、
+// 更新操作の宛先と基準の設定、期待状態の設定から導く。
 func observationAreas(change changeplan.LogicalChange) []setting.Area {
 	var areas []setting.Area
 	for _, operation := range change.Operations {
@@ -205,6 +202,9 @@ func observationAreas(change changeplan.LogicalChange) []setting.Area {
 		for _, relevant := range operation.RelevantSettings {
 			areas = appendArea(areas, relevant.Unit.Key.Area())
 		}
+	}
+	for _, unit := range change.Units() {
+		areas = appendArea(areas, unit.Key.Area())
 	}
 	return areas
 }

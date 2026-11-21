@@ -147,7 +147,7 @@ func TestCheckPrecondition(t *testing.T) {
 				t.Error("checkPrecondition() did not panic")
 			}
 		}()
-		empty := changeplan.UpdateOperation{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Desired: setting.BoolValue(true)}
+		empty := changeplan.UpdateOperation{Kind: changeplan.SettingUpdate, Unit: setting.Unit{Key: setting.AllowAutoMerge}, Value: setting.BoolValue(true)}
 		checkPrecondition(1, empty, github.ObservationResult{RepositoryID: 1}, github.EnvironmentObservation{})
 	})
 }
@@ -340,34 +340,34 @@ func TestCheckPrecondition_Environments(t *testing.T) {
 	}{
 		{
 			name:     "creation holds when no environment of the same name exists",
-			change:   creationChange(t, "production", setting.Value{}),
+			change:   creationChange(t, "production"),
 			observed: github.ObservationResult{RepositoryID: 1, Environments: environments(approvedStaging)},
 			want:     preconditionHolds,
 		},
 		{
 			name:        "creation with the environment created since approval is a change of the environment",
-			change:      creationChange(t, "production", modeValue(setting.DeploymentBranchPolicyProtectedBranches)),
+			change:      creationWithModeChange(t, "production", setting.DeploymentBranchPolicyProtectedBranches),
 			observed:    github.ObservationResult{RepositoryID: 1, Environments: environments(observedEnvironment(8, "production", setting.DeploymentBranchPolicyProtectedBranches))},
 			want:        preconditionCurrentValueChanged,
 			wantChanged: existence(production),
 		},
 		{
 			name:        "creation with an environment of a name differing only in case is a change of the environment",
-			change:      creationChange(t, "production", setting.Value{}),
+			change:      creationChange(t, "production"),
 			observed:    github.ObservationResult{RepositoryID: 1, Environments: environments(observedEnvironment(8, "Production", setting.DeploymentBranchPolicyAll))},
 			want:        preconditionCurrentValueChanged,
 			wantChanged: existence(production),
 		},
 		{
 			name:        "creation with an undetermined name is a change of the environment",
-			change:      creationChange(t, "production", setting.Value{}),
+			change:      creationChange(t, "production"),
 			observed:    github.ObservationResult{RepositoryID: 1, Environments: environments(observedEnvironment(8, "prodüction", setting.DeploymentBranchPolicyAll))},
 			want:        preconditionCurrentValueChanged,
 			wantChanged: existence(production),
 		},
 		{
 			name:     "creation in another repository is an identity mismatch",
-			change:   creationChange(t, "production", setting.Value{}),
+			change:   creationChange(t, "production"),
 			observed: github.ObservationResult{RepositoryID: 2, Environments: environments()},
 			want:     preconditionIdentityMismatch,
 		},

@@ -1,6 +1,6 @@
 package github
 
-// UnavailableReason は、取得条件による観測不能の理由。
+// UnavailableReason は、観測不能の理由。
 type UnavailableReason int
 
 // ゼロ値を定義済みの理由と取り違えないよう 1 から始める。
@@ -31,7 +31,7 @@ func Observed[T any](value T) SettingObservation[T] {
 	return SettingObservation[T]{value: value, observed: true}
 }
 
-// Unavailable は、取得条件により観測不能だった設定の観測結果を作る。
+// Unavailable は、理由 reason により観測不能だった設定の観測結果を作る。
 func Unavailable[T any](reason UnavailableReason) SettingObservation[T] {
 	return SettingObservation[T]{reason: reason}
 }

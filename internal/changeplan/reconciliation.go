@@ -59,5 +59,5 @@ func newSettingPlan(key setting.Key, observed github.SettingObservation[setting.
 			result = Match
 		}
 	}
-	return SettingPlan{Key: key, Observed: observed, Desired: desired, Result: result}
+	return SettingPlan{Unit: setting.Unit{Key: key}, Observed: observed, Desired: desired, Result: result}
 }

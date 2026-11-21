@@ -11,14 +11,14 @@ import (
 //trace:checks FR-007
 func TestResumedSettings(t *testing.T) {
 	enabled := func(observed, desired bool, result ReconciliationResult) SettingPlan {
-		return SettingPlan{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(observed)), Desired: setting.BoolValue(desired), Result: result}
+		return SettingPlan{Unit: setting.Unit{Key: setting.ActionsEnabled}, Observed: github.Observed(setting.BoolValue(observed)), Desired: setting.BoolValue(desired), Result: result}
 	}
 	disabled := github.Unavailable[setting.Value](github.UnavailableActionsDisabled)
-	shaPinningRequired := SettingPlan{Key: setting.SHAPinningRequired, Observed: disabled, Desired: setting.BoolValue(true), Result: NotComparable}
+	shaPinningRequired := SettingPlan{Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: disabled, Desired: setting.BoolValue(true), Result: NotComparable}
 	localOnly := setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly)
-	enablingPolicy := SettingPlan{Key: setting.AllowedActions, Observed: disabled, Desired: localOnly, Result: NotComparable}
+	enablingPolicy := SettingPlan{Unit: setting.Unit{Key: setting.AllowedActions}, Observed: disabled, Desired: localOnly, Result: NotComparable}
 	policyMismatch := SettingPlan{
-		Key: setting.AllowedActions, Observed: github.Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsAll)), Desired: localOnly, Result: Mismatch,
+		Unit: setting.Unit{Key: setting.AllowedActions}, Observed: github.Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsAll)), Desired: localOnly, Result: Mismatch,
 	}
 	cases := []struct {
 		name     string
@@ -50,7 +50,7 @@ func TestResumedSettings(t *testing.T) {
 		{name: "enabled already true has no resumed settings", plan: enabled(true, true, Match), settings: []SettingPlan{enabled(true, true, Match)}},
 		{
 			name: "another setting from false to true has no resumed settings",
-			plan: SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch},
+			plan: SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch},
 		},
 	}
 	for _, tc := range cases {

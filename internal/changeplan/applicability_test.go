@@ -10,24 +10,24 @@ import (
 //trace:checks FR-006
 func TestJudgeApplicability(t *testing.T) {
 	notComparable := func(key setting.Key, reason github.UnavailableReason) SettingPlan {
-		return SettingPlan{Key: key, Observed: github.Unavailable[setting.Value](reason), Result: NotComparable}
+		return SettingPlan{Unit: setting.Unit{Key: key}, Observed: github.Unavailable[setting.Value](reason), Result: NotComparable}
 	}
 	shaPinningDisabled := notComparable(setting.SHAPinningRequired, github.UnavailableActionsDisabled)
-	generalMismatch := SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch}
-	enablesActions := SettingPlan{Key: setting.ActionsEnabled, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch}
+	generalMismatch := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch}
+	enablesActions := SettingPlan{Unit: setting.Unit{Key: setting.ActionsEnabled}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch}
 	accessLevelPublic := notComparable(setting.ActionsAccessLevel, github.UnavailablePublicRepository)
 	production, staging := mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging")
 	creation := func(name setting.EnvironmentName) SettingPlan {
-		return SettingPlan{Key: setting.EnvironmentResource, Environment: name, ObservedEnvironment: lookup(t, name.String()), Result: Mismatch}
+		return SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: name}, ObservedEnvironment: lookup(t, name.String()), Result: Mismatch}
 	}
 	environmentPolicy := func(name setting.EnvironmentName, reason github.UnavailableReason) SettingPlan {
 		return SettingPlan{
-			Key: setting.EnvironmentDeploymentBranchPolicy, Environment: name, Observed: github.Unavailable[setting.Value](reason),
+			Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: name}, Observed: github.Unavailable[setting.Value](reason),
 			Desired: setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}), Result: NotComparable,
 		}
 	}
 	undeterminedEnvironment := SettingPlan{
-		Key: setting.EnvironmentResource, Environment: production, ObservedEnvironment: lookup(t, "production", github.Environment{Name: "prodüction"}), Result: NotComparable,
+		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, ObservedEnvironment: lookup(t, "production", github.Environment{Name: "prodüction"}), Result: NotComparable,
 	}
 	cases := []struct {
 		name string
@@ -39,12 +39,12 @@ func TestJudgeApplicability(t *testing.T) {
 	}{
 		{
 			name: "match is not judged",
-			in:   SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: Match},
+			in:   SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: Match},
 			want: ApplicabilityNotJudged,
 		},
 		{
 			name: "mismatch is applicable",
-			in:   SettingPlan{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch},
+			in:   SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch},
 			want: Applicable,
 		},
 		{
@@ -64,7 +64,7 @@ func TestJudgeApplicability(t *testing.T) {
 		},
 		{
 			name: "sha_pinning_required mismatch is applicable without a declaration enabling actions",
-			in:   SettingPlan{Key: setting.SHAPinningRequired, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch},
+			in:   SettingPlan{Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch},
 			want: Applicable,
 		},
 		{
@@ -162,7 +162,7 @@ func TestJudgeApplicability(t *testing.T) {
 
 func TestExpectsActionsEnabled(t *testing.T) {
 	plan := func(key setting.Key, desired setting.Value, result ReconciliationResult) SettingPlan {
-		return SettingPlan{Key: key, Desired: desired, Result: result}
+		return SettingPlan{Unit: setting.Unit{Key: key}, Desired: desired, Result: result}
 	}
 	cases := []struct {
 		name     string

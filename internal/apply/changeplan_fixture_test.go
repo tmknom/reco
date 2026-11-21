@@ -83,16 +83,32 @@ func shaPinningRequiredAfterEnablingChange() changeplan.LogicalChange {
 	return singleUpdate(setting.SHAPinningRequired, setting.BoolValue(true), relevantTo(setting.ActionsEnabled, setting.BoolValue(true)))
 }
 
-// creationChange は、計画時に存在しなかった name の Environment を作成する論理的な設定変更。
-// desired がゼロ値でなければ、同じ更新要求で方式も設定する。
-func creationChange(t *testing.T, name string, desired setting.Value) changeplan.LogicalChange {
+// creationChange は、計画時に存在しなかった name の Environment を、デプロイ元制限を送らずに作成する論理的な設定変更。
+func creationChange(t *testing.T, name string) changeplan.LogicalChange {
 	t.Helper()
 	environment := mustEnvironmentName(t, name)
 	unit := setting.Unit{Key: setting.EnvironmentResource, Environment: environment}
-	return changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{{
-		Unit: unit, Desired: desired,
-		RelevantSettings: []changeplan.RelevantSetting{{Unit: unit, EnvironmentAtApproval: github.Environments{}.Lookup(environment)}},
-	}}}
+	return changeplan.LogicalChange{
+		DesiredState: []changeplan.DesiredSetting{{Unit: unit}},
+		Operations: []changeplan.UpdateOperation{{
+			Kind: changeplan.EnvironmentCreation, Unit: unit,
+			RelevantSettings: []changeplan.RelevantSetting{{Unit: unit, EnvironmentAtApproval: github.Environments{}.Lookup(environment)}},
+		}},
+	}
+}
+
+// creationWithModeChange は、計画時に存在しなかった name の Environment を、デプロイ元制限の方式を mode にして作成する論理的な設定変更。
+func creationWithModeChange(t *testing.T, name string, mode setting.DeploymentBranchPolicyMode) changeplan.LogicalChange {
+	t.Helper()
+	environment := mustEnvironmentName(t, name)
+	unit := setting.Unit{Key: setting.EnvironmentResource, Environment: environment}
+	return changeplan.LogicalChange{
+		DesiredState: []changeplan.DesiredSetting{{Unit: unit}, {Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}, Value: modeValue(mode)}},
+		Operations: []changeplan.UpdateOperation{{
+			Kind: changeplan.EnvironmentCreationWithMode, Unit: unit, Mode: mode,
+			RelevantSettings: []changeplan.RelevantSetting{{Unit: unit, EnvironmentAtApproval: github.Environments{}.Lookup(environment)}},
+		}},
+	}
 }
 
 // modeChange は、計画時に approved と観測した、宣言の名前 name の Environment の方式を desired にする論理的な設定変更。
@@ -100,8 +116,8 @@ func modeChange(t *testing.T, name string, approved github.Environment, desired 
 	t.Helper()
 	environment := mustEnvironmentName(t, name)
 	policy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}
-	return changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{{
-		Unit: policy, Desired: modeValue(desired),
+	return changeplan.LogicalChange{DesiredState: []changeplan.DesiredSetting{{Unit: policy, Value: modeValue(desired)}}, Operations: []changeplan.UpdateOperation{{
+		Kind: changeplan.DeploymentBranchPolicyModeUpdate, Unit: policy, Mode: desired,
 		RelevantSettings: []changeplan.RelevantSetting{
 			{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, EnvironmentAtApproval: github.Environments{Existing: []github.Environment{approved}}.Lookup(environment)},
 			{Unit: policy, ValueAtApproval: github.Observed(setting.DeploymentBranchPolicyValue(approved.DeploymentBranchPolicy))},
@@ -127,7 +143,11 @@ func relevantTo(key setting.Key, observed setting.Value) []changeplan.RelevantSe
 
 // singleUpdate は、key を desired にする更新操作一つからなる論理的な設定変更。
 func singleUpdate(key setting.Key, desired setting.Value, relevant []changeplan.RelevantSetting) changeplan.LogicalChange {
-	return changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{{Unit: setting.Unit{Key: key}, Desired: desired, RelevantSettings: relevant}}}
+	unit := setting.Unit{Key: key}
+	return changeplan.LogicalChange{
+		DesiredState: []changeplan.DesiredSetting{{Unit: unit, Value: desired}},
+		Operations:   []changeplan.UpdateOperation{{Kind: changeplan.SettingUpdate, Unit: unit, Value: desired, RelevantSettings: relevant}},
+	}
 }
 
 // deploymentPatternsChange は、計画時に approved と観測した、宣言の名前 name の Environment のデプロイ元制限を desired にする論理的な設定変更。
@@ -137,9 +157,9 @@ func deploymentPatternsChange(t *testing.T, name string, approved github.Environ
 	environment := mustEnvironmentName(t, name)
 	observed := github.Environments{Existing: []github.Environment{approved}}.Lookup(environment)
 	return onlyLogicalChange(t, newRepositoryPlan(t,
-		changeplan.SettingPlan{Key: setting.EnvironmentResource, Environment: environment, ObservedEnvironment: observed, Result: changeplan.Match, Applicability: changeplan.Applicable},
+		changeplan.SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, ObservedEnvironment: observed, Result: changeplan.Match, Applicability: changeplan.Applicable},
 		changeplan.SettingPlan{
-			Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment, Observed: observed.DeploymentBranchPolicy(),
+			Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}, Observed: observed.DeploymentBranchPolicy(),
 			Desired: setting.DeploymentBranchPolicyValue(desired), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 		},
 	))
@@ -152,9 +172,9 @@ func creationWithPatternsChange(t *testing.T, name string, desired setting.Deplo
 	environment := mustEnvironmentName(t, name)
 	observed := github.Environments{}.Lookup(environment)
 	return onlyLogicalChange(t, newRepositoryPlan(t,
-		changeplan.SettingPlan{Key: setting.EnvironmentResource, Environment: environment, ObservedEnvironment: observed, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+		changeplan.SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, ObservedEnvironment: observed, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 		changeplan.SettingPlan{
-			Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment, Observed: observed.DeploymentBranchPolicy(),
+			Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}, Observed: observed.DeploymentBranchPolicy(),
 			Desired: setting.DeploymentBranchPolicyValue(desired), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
 		},
 	))

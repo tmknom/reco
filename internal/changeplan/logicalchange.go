@@ -11,39 +11,53 @@ import (
 // LogicalChange は、承認の対象になる論理的な設定変更。
 // 実行は承認した変更内容だけを使い、設定宣言を読み直さずに変更前提と期待状態を確かめる。
 type LogicalChange struct {
+	// DesiredState は期待状態。まとめた管理設定の期待値を、管理設定ごとに一つずつ、計画の並びで持つ。一つ以上を持つ。
+	DesiredState []DesiredSetting
 	// Operations は構成する更新操作を実行順に並べたもの。一つ以上を持つ。
-	// 期待状態は、すべての更新操作の期待値の全体になる。
 	Operations []UpdateOperation
 }
 
+// DesiredSetting は、期待状態を構成する一つの管理設定の期待値。
+// Environment そのものの期待値は存在することで、値を持たないため Value をゼロ値にする。
+type DesiredSetting struct {
+	Unit  setting.Unit
+	Value setting.Value
+}
+
 // UpdateOperation は、論理的な設定変更を構成する更新操作について、承認の対象になる内容。
+// 送る内容のフィールドは Kind ごとに決まり、その種類が送らないフィールドはゼロ値にする。
 type UpdateOperation struct {
-	// Unit は、この更新操作が変える管理の単位。
+	Kind UpdateOperationKind
+	// Unit は、この更新操作が更新要求を送る先の管理の単位。
 	Unit setting.Unit
-	// Desired は、この更新操作が実現する管理設定の期待値。
-	// Environment の作成では、宣言した deployment_branch_policy の値の全体で、作成の要求が送るのはその方式だけ。方式を宣言していなければゼロ値（本文を送らない）。
-	// 個別パターンの更新操作では、宣言したデプロイ元制限の値の全体で、送る要素は DeploymentPatternChange が持つ。
-	Desired setting.Value
-	// DeploymentPatternChange は、個別パターンを一つ加えるか取り除く更新操作だけが持つ。ゼロ値なら Desired を送る更新操作。
-	DeploymentPatternChange DeploymentPatternChange
+	// Value は、SettingUpdate が送る設定の値。
+	Value setting.Value
+	// Mode は、EnvironmentCreationWithMode と DeploymentBranchPolicyModeUpdate が送るデプロイ元制限の方式。
+	Mode setting.DeploymentBranchPolicyMode
+	// Pattern は、DeploymentPatternAddition と DeploymentPatternRemoval が加えるか取り除く個別パターン。
+	Pattern setting.DeploymentPattern
 	// RelevantSettings は、この更新操作の変更前提の基準。変わっていたことを報告するときに優先する順に並べる。
 	RelevantSettings []RelevantSetting
 }
 
-// DeploymentPatternChange は、デプロイ元制限の個別パターンの集合の要素を一つ変える更新操作の、向きと要素。
-type DeploymentPatternChange struct {
-	Direction DeploymentPatternDirection
-	Pattern   setting.DeploymentPattern
-}
+// UpdateOperationKind は、更新操作の種類。送る更新要求の形と、Environment を作るかどうかで分ける。
+// EnvironmentCreationWithMode と DeploymentBranchPolicyModeUpdate は同じ形の要求を送るが、作成かどうかで変更前提の基準と表示が変わるため分ける。
+type UpdateOperationKind int
 
-// DeploymentPatternDirection は、個別パターンの更新操作の向き。ゼロ値は、個別パターンの更新操作でないことを表す。
-type DeploymentPatternDirection int
-
+// ゼロ値をいずれかの種類と取り違えないよう 1 から始める。
 const (
-	// AddDeploymentPattern は、個別パターンを一つ加える向き。
-	AddDeploymentPattern DeploymentPatternDirection = iota + 1
-	// RemoveDeploymentPattern は、個別パターンを一つ取り除く向き。
-	RemoveDeploymentPattern
+	// SettingUpdate は、リポジトリ設定の値をその更新エンドポイントへ送る。
+	SettingUpdate UpdateOperationKind = iota + 1
+	// EnvironmentCreation は、デプロイ元制限を送らずに Environment を作る。
+	EnvironmentCreation
+	// EnvironmentCreationWithMode は、デプロイ元制限の方式を送って Environment を作る。
+	EnvironmentCreationWithMode
+	// DeploymentBranchPolicyModeUpdate は、存在する Environment のデプロイ元制限の方式を送る。
+	DeploymentBranchPolicyModeUpdate
+	// DeploymentPatternAddition は、個別パターンを一つ加える。
+	DeploymentPatternAddition
+	// DeploymentPatternRemoval は、個別パターンを一つ取り除く。
+	DeploymentPatternRemoval
 )
 
 // RelevantSetting は、変更前提で比べる関係する現在値の設定と、その承認時に予定した値。
@@ -60,52 +74,13 @@ type RelevantSetting struct {
 	CreatedByPrecedingOperation bool
 }
 
-// Units は、c が変える管理の単位を、最初に現れた順に、重複を除いて返す。
-// 方式を送る Environment の作成は、一つの更新操作で Environment とその方式を変えるため、存在、方式の順に二つ返す。
+// Units は、c が変える管理設定の管理の単位を、期待状態の並びで返す。
 func (c LogicalChange) Units() []setting.Unit {
-	var units []setting.Unit
-	add := func(unit setting.Unit) {
-		if !slices.Contains(units, unit) {
-			units = append(units, unit)
-		}
-	}
-	for _, operation := range c.Operations {
-		add(operation.Unit)
-		if operation.CreatesEnvironment() && operation.SetsDeploymentBranchPolicy() {
-			add(setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: operation.Unit.Environment})
-		}
+	units := make([]setting.Unit, len(c.DesiredState))
+	for i, desired := range c.DesiredState {
+		units[i] = desired.Unit
 	}
 	return units
-}
-
-// TargetsEnvironment は、この更新操作が Environment を宛先とするかを返す。
-func (o UpdateOperation) TargetsEnvironment() bool {
-	return o.Unit.Key.Area() == setting.AreaEnvironments
-}
-
-// CreatesEnvironment は、この更新操作が Environment の作成かを返す。
-func (o UpdateOperation) CreatesEnvironment() bool {
-	return o.Unit.Key == setting.EnvironmentResource
-}
-
-// ChangesDeploymentPattern は、この更新操作が個別パターンを一つ加えるか取り除く更新操作かを返す。
-func (o UpdateOperation) ChangesDeploymentPattern() bool {
-	return o.DeploymentPatternChange.Direction != 0
-}
-
-// SetsDeploymentBranchPolicy は、この更新操作が Environment の deployment_branch_policy の方式を送るかを返す。
-func (o UpdateOperation) SetsDeploymentBranchPolicy() bool {
-	if o.ChangesDeploymentPattern() {
-		return false
-	}
-	switch o.Unit.Key {
-	case setting.EnvironmentDeploymentBranchPolicy:
-		return true
-	case setting.EnvironmentResource:
-		return !o.Desired.IsZero()
-	default:
-		return false
-	}
 }
 
 // SettingsToChange は、ドメインモデルの「論理的な設定変更が変える設定」を返す。変更対象外の設定から除く範囲である。
@@ -116,6 +91,11 @@ func (c LogicalChange) SettingsToChange() []setting.Unit {
 		units = append(units, setting.Unit{Key: setting.ActionsEnabled})
 	}
 	return units
+}
+
+// CreatesEnvironment は、この更新操作が Environment の作成かを返す。
+func (o UpdateOperation) CreatesEnvironment() bool {
+	return o.Kind == EnvironmentCreation || o.Kind == EnvironmentCreationWithMode
 }
 
 // LogicalChanges は、変更予定から論理的な設定変更を、計画の並びで導く。
@@ -130,7 +110,7 @@ func (c LogicalChange) SettingsToChange() []setting.Unit {
 func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 	for _, s := range r.Settings {
 		if s.IsPlannedChange() && s.Applicability != Applicable {
-			return nil, fmt.Errorf("%s: %s cannot be applied", r.Target, s.Unit().String())
+			return nil, fmt.Errorf("%s: %s cannot be applied", r.Target, s.Unit.String())
 		}
 	}
 	_, hasEnabled := r.settingPlanOf(setting.Unit{Key: setting.ActionsEnabled})
@@ -143,33 +123,34 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 		switch {
 		case !s.IsPlannedChange():
 			continue
-		case s.Key == setting.SelectedActions && s.Result == NotComparable:
+		case s.Unit.Key == setting.SelectedActions && s.Result == NotComparable:
 			if !paired {
-				panic(fmt.Sprintf("changeplan: %s is not comparable without a policy change to selected", s.Key))
+				panic(fmt.Sprintf("changeplan: %s is not comparable without a policy change to selected", s.Unit.Key))
 			}
 			continue
-		case s.Key.Area() == setting.AreaEnvironments:
-			if operations, ok := r.environmentOperationsOf(s); ok {
-				changes = append(changes, LogicalChange{Operations: operations})
+		case s.Unit.Key.Area() == setting.AreaEnvironments:
+			if change, ok := r.environmentChangeOf(s); ok {
+				changes = append(changes, change)
 			}
 			continue
 		}
 		operation := operationOf(s)
-		if s.Key == setting.SHAPinningRequired {
+		if s.Unit.Key == setting.SHAPinningRequired {
 			operation = shaPinningRequiredOperationOf(s)
 		}
-		operations := []UpdateOperation{operation}
+		change := LogicalChange{DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}}, Operations: []UpdateOperation{operation}}
 		if targetsSelectedPolicy(s) {
 			if !paired {
-				panic(fmt.Sprintf("changeplan: %s to selected has no not-comparable %s to follow", s.Key, setting.SelectedActions))
+				panic(fmt.Sprintf("changeplan: %s to selected has no not-comparable %s to follow", s.Unit.Key, setting.SelectedActions))
 			}
+			change.DesiredState = append(change.DesiredState, DesiredSetting{Unit: criteria.Unit, Value: criteria.Desired})
 			// 2つ目の承認時に予定した値は、1つ目による予定どおりの変化を反映したポリシーである
-			operations = append(operations, UpdateOperation{
-				Unit: criteria.Unit(), Desired: criteria.Desired,
-				RelevantSettings: []RelevantSetting{{Unit: s.Unit(), ValueAtApproval: github.Observed(s.Desired)}},
+			change.Operations = append(change.Operations, UpdateOperation{
+				Kind: SettingUpdate, Unit: criteria.Unit, Value: criteria.Desired,
+				RelevantSettings: []RelevantSetting{{Unit: s.Unit, ValueAtApproval: github.Observed(s.Desired)}},
 			})
 		}
-		changes = append(changes, LogicalChange{Operations: operations})
+		changes = append(changes, change)
 	}
 	return changes, nil
 }
@@ -189,21 +170,21 @@ func (r RepositoryPlan) criteriaFollowingPolicy() (SettingPlan, bool) {
 // Environment の名前は、GitHub が同じ Environment とみなす名前どうしを同じ単位にするため、EqualFold で比べる。
 func (r RepositoryPlan) settingPlanOf(unit setting.Unit) (SettingPlan, bool) {
 	for _, s := range r.Settings {
-		if s.Key == unit.Key && s.Environment.EqualFold(unit.Environment) {
+		if s.Unit.Key == unit.Key && s.Unit.Environment.EqualFold(unit.Environment) {
 			return s, true
 		}
 	}
 	return SettingPlan{}, false
 }
 
-// operationOf は、変更予定 s の設定を変える更新操作を返す。
+// operationOf は、変更予定 s の設定の値を送る更新操作を返す。
 // 基準は、s の計画時の観測結果と、副作用として提示した設定の計画時の観測結果である。
 func operationOf(s SettingPlan) UpdateOperation {
-	relevant := []RelevantSetting{{Unit: s.Unit(), ValueAtApproval: s.Observed}}
+	relevant := []RelevantSetting{{Unit: s.Unit, ValueAtApproval: s.Observed}}
 	for _, effect := range s.SideEffects {
 		relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: effect.Key}, ValueAtApproval: effect.Observed})
 	}
-	return UpdateOperation{Unit: s.Unit(), Desired: s.Desired, RelevantSettings: relevant}
+	return UpdateOperation{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, RelevantSettings: relevant}
 }
 
 // shaPinningRequiredOperationOf は、sha_pinning_required の変更予定 s の更新操作を返す。
@@ -212,12 +193,12 @@ func operationOf(s SettingPlan) UpdateOperation {
 func shaPinningRequiredOperationOf(s SettingPlan) UpdateOperation {
 	var relevant []RelevantSetting
 	if s.Result == Mismatch {
-		relevant = append(relevant, RelevantSetting{Unit: s.Unit(), ValueAtApproval: s.Observed})
+		relevant = append(relevant, RelevantSetting{Unit: s.Unit, ValueAtApproval: s.Observed})
 	}
 	relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: setting.ActionsEnabled}, ValueAtApproval: github.Observed(setting.BoolValue(true))})
-	return UpdateOperation{Unit: s.Unit(), Desired: s.Desired, RelevantSettings: relevant}
+	return UpdateOperation{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, RelevantSettings: relevant}
 }
 
 func targetsSelectedPolicy(s SettingPlan) bool {
-	return s.Key == setting.AllowedActions && s.Desired.AllowedActionsPolicy() == setting.AllowedActionsSelected
+	return s.Unit.Key == setting.AllowedActions && s.Desired.AllowedActionsPolicy() == setting.AllowedActionsSelected
 }

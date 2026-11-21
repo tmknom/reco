@@ -10,13 +10,13 @@ import (
 func resumedSettings(s SettingPlan, settings []SettingPlan) []setting.Key {
 	var resumed []setting.Key
 	switch {
-	case s.Key == setting.ActionsEnabled && s.Result == Mismatch && s.Desired.Bool():
+	case s.Unit.Key == setting.ActionsEnabled && s.Result == Mismatch && s.Desired.Bool():
 		resumed = []setting.Key{setting.AllowedActions, setting.SelectedActions, setting.SHAPinningRequired}
 	case s.EnablesActionsByPolicy():
 		resumed = []setting.Key{setting.SHAPinningRequired}
 	}
 	resumed = slices.DeleteFunc(resumed, func(key setting.Key) bool {
-		return slices.ContainsFunc(settings, func(other SettingPlan) bool { return other.Key == key })
+		return slices.ContainsFunc(settings, func(other SettingPlan) bool { return other.Unit.Key == key })
 	})
 	if len(resumed) == 0 {
 		return nil
