@@ -120,6 +120,12 @@ func TestJudgeApplicability(t *testing.T) {
 			wantReason: NotApplicablePrivateRepository,
 		},
 		{
+			name:       "private_vulnerability_reporting not comparable because the repository is private is not applicable",
+			in:         notComparable(setting.PrivateVulnerabilityReportingEnabled, github.UnavailablePrivateRepository),
+			want:       NotApplicable,
+			wantReason: NotApplicablePrivateRepository,
+		},
+		{
 			name:     "mode of an absent environment created in the same plan is applicable",
 			in:       environmentPolicy(production, github.UnavailableEnvironmentAbsent),
 			settings: []SettingPlan{creation(production), environmentPolicy(production, github.UnavailableEnvironmentAbsent)},
@@ -156,8 +162,9 @@ func TestJudgeApplicability(t *testing.T) {
 			settings: []SettingPlan{creation(staging), environmentPolicy(production, github.UnavailableEnvironmentAbsent)},
 		},
 		{name: "repository setting not comparable because an environment is absent panics", in: notComparable(setting.AllowAutoMerge, github.UnavailableEnvironmentAbsent)},
-		{name: "setting other than secret scanning not comparable because the repository is private panics", in: notComparable(setting.AllowAutoMerge, github.UnavailablePrivateRepository)},
+		{name: "setting other than those available only on public repositories not comparable because the repository is private panics", in: notComparable(setting.AllowAutoMerge, github.UnavailablePrivateRepository)},
 		{name: "secret scanning not comparable for a reason other than a private repository panics", in: notComparable(setting.SecretScanningEnabled, github.UnavailablePublicRepository)},
+		{name: "private_vulnerability_reporting not comparable for a reason other than a private repository panics", in: notComparable(setting.PrivateVulnerabilityReportingEnabled, github.UnavailablePublicRepository)},
 	}
 	for _, tc := range panics {
 		t.Run(tc.name, func(t *testing.T) {

@@ -126,7 +126,7 @@ API の成功応答を受け取ったことだけでは、必要な設定値を�
 
 リポジトリ ID を返す `GET /repos/{owner}/{repo}` は General の値も返すため、どの観測も General を含みます。Workflow permissions の応答はリポジトリ ID を含まないため（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 5.1）、Workflow permissions は別の読み取り要求で読み、その要求は `GET /repos/{owner}/{repo}` が成功したときだけ送ります。いずれかの要求が失敗すれば観測操作の失敗であり、取得できた値だけの観測結果は作りません。
 
-Actions の実行許可は、二つの読み取り要求で読みます。`GET /repos/{owner}/{repo}/actions/permissions` は `GET /repos/{owner}/{repo}` が成功したときだけ送ります。`GET /repos/{owner}/{repo}/actions/permissions/selected-actions` は、Actions 許可ポリシーを `selected` と観測したときだけ送ります。それ以外のときは GitHub が取得を拒否するためです（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 4章）。一回の観測で複数の設定の領域を読むときは、General、Actions の実行許可、Workflow permissions、リポジトリ外のワークフローからのアクセス、Environments、Dependabot の順に読み取り要求を送ります。
+Actions の実行許可は、二つの読み取り要求で読みます。`GET /repos/{owner}/{repo}/actions/permissions` は `GET /repos/{owner}/{repo}` が成功したときだけ送ります。`GET /repos/{owner}/{repo}/actions/permissions/selected-actions` は、Actions 許可ポリシーを `selected` と観測したときだけ送ります。それ以外のときは GitHub が取得を拒否するためです（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 4章）。一回の観測で複数の設定の領域を読むときは、General、Actions の実行許可、Workflow permissions、リポジトリ外のワークフローからのアクセス、Environments、Dependabot、Private vulnerability reporting の順に読み取り要求を送ります。
 
 リポジトリ外のワークフローからのアクセスは、`GET /repos/{owner}/{repo}/actions/permissions/access` で読みます。この要求は、`GET /repos/{owner}/{repo}` の応答の `private` が真のときだけ送ります。公開リポジトリには設定が適用されず、GitHub が取得を拒否するためです（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 6章）。送るかどうかは `private` の観測値で決め、取得の `422` から公開であることを推測しません。権限のない公開リポジトリには `403` が返り、`422` が公開範囲だけを理由に返るとは確かめられていないためです。個人アカウント所有のリポジトリは internal の公開範囲を持たないため、`private` の真偽で足ります（[GitHub リポジトリ API 仕様](../research/repositories.md) 3章）。`private` は、どの設定の領域を読む観測でも取得契約に含め、欠けた応答は取得契約に適合しない応答とします。欠けた `private` を公開とみなすと、取得条件による観測不能を根拠なく作るためです。
 
@@ -174,6 +174,8 @@ Secret scanning の有効状態とリポジトリの push protection は、`GET 
 
 `security_and_analysis` を取得契約に含めるのは、Secret scanning の領域を読む観測だけです。この領域を読まない観測は `security_and_analysis` を解釈せず、欠けていても、`null` でも、型が合わなくても失敗しません。General だけを宣言したリポジトリの `plan` を、宣言していない設定の応答の形で失敗させないためです。`apply` の更新直前と更新後の観測は、General か Secret scanning の2設定を変える更新操作では、Secret scanning の領域も読みます。同じ更新エンドポイントの設定として比べるためです（5.3節）。そのため、公開リポジトリの General の更新は、応答が `security_and_analysis` を含まなければ、更新要求を送らずに止まります。
 
+Private vulnerability reporting の有効状態は、`GET /repos/{owner}/{repo}/private-vulnerability-reporting` の本文の `enabled` で読みます。この要求は、`GET /repos/{owner}/{repo}` が成功し、応答の `private` が偽のときだけ送ります。`private` が真のときは送らず、リポジトリが非公開であることを理由とする観測不能とします。GitHub は非公開リポジトリへのこの取得に `404` を返し、その応答は存在しないリポジトリへの応答と区別できないためです（[GitHub リポジトリ API 仕様](../research/repositories.md) 8章）。応答から観測不能を根拠づけられず、送れば観測操作の失敗になって、同じ観測のほかの設定も確認できなくなります。公開と観測したあとの取得の失敗は、`404` と `422` を含めて観測操作の失敗とし、観測不能にも無効にも読み替えません。取得契約は、`enabled` が boolean であることです。この取得は admin のアクセスを求めず、権限のない第三者の公開リポジトリでも値を返しました（同 8章）。
+
 取得条件による観測不能として扱うのは次の四つです。
 
 | 取得条件 | 観測不能になる設定 | 根拠 |
@@ -181,7 +183,7 @@ Secret scanning の有効状態とリポジトリの push protection は、`GET 
 | Actions が無効（`enabled: false`） | Actions 許可ポリシー、`sha_pinning_required`、選択方式の Actions 許可条件 | 応答に `allowed_actions` が含まれず、`sha_pinning_required` は保存された値によらず `false` で返る（GitHub Actions 権限 API 仕様 3.1） |
 | Actions 許可ポリシーが `selected` でない | 選択方式の Actions 許可条件 | 取得が `409` を返し、値は返らない（GitHub Actions 権限 API 仕様 4章） |
 | リポジトリが公開（`private: false`） | `access_level` | 公式資料が非公開リポジトリにだけ適用されると記載し、公開リポジトリへの取得は `422` を返して値を返さない（GitHub Actions 権限 API 仕様 6章） |
-| リポジトリが非公開（`private: true`） | Secret scanning の有効状態、リポジトリの push protection | 公式資料が、ユーザーが所有するリポジトリの Secret scanning を Enterprise Managed Users と GitHub Enterprise Server に限り、非公開リポジトリの応答は `security_and_analysis` を含まない（GitHub リポジトリ API 仕様 5章） |
+| リポジトリが非公開（`private: true`） | Secret scanning の有効状態、リポジトリの push protection、Private vulnerability reporting の有効状態 | Secret scanning の2設定は、公式資料が、ユーザーが所有するリポジトリの Secret scanning を Enterprise Managed Users と GitHub Enterprise Server に限り、非公開リポジトリの応答は `security_and_analysis` を含まない（GitHub リポジトリ API 仕様 5章）。Private vulnerability reporting は、公式資料が公開リポジトリの設定として記載し、非公開リポジトリへの取得は存在しないリポジトリと区別できない `404` を返す（同 8章） |
 
 Actions の有効状態は取得条件を持たず、`GET /repos/{owner}/{repo}/actions/permissions` の応答が取得契約に適合すれば必ず観測値になります。Actions の有効状態だけを管理設定とするリポジトリでも、計画時の観測は Actions の実行許可を読み取ります。
 
@@ -329,6 +331,7 @@ API へ送信するフィールドは、設定宣言の管理範囲とは異な�
 | Environment の個別パターン | 加える要求は種類と名前だけを送り、取り除く要求は更新直前の観測の ID を宛先にする。どちらも要素一つずつで、一覧の全体を置き換えない |
 | Dependabot alerts | 有効にするときは本文のない `PUT`、無効にするときは本文のない `DELETE` を送る。この更新エンドポイントで reco が観測する設定はほかになく、保全を確かめる設定がない |
 | Dependabot security updates | Dependabot alerts と同じく、本文のない `PUT` と `DELETE` を送る。この更新エンドポイントで reco が観測する設定はほかになく、保全を確かめる設定がない |
+| Private vulnerability reporting の有効状態 | Dependabot alerts と同じく、本文のない `PUT` と `DELETE` を送る。この更新エンドポイントで reco が観測する設定はほかになく、保全を確かめる設定がない |
 
 API パラメータが任意であることは、省略した値の保持を保証しません。既存値を併送する場合も、その値を観測でき、更新直前の条件が成立する必要があります。省略・併送のどちらでも未管理値の保全を確認できないときは、更新を適用不能とします。保全の判断には、GitHub が公開する契約と確認できた実際の動作を区別して用い、実証されていない保持動作を前提にしません。
 
@@ -365,6 +368,8 @@ Environment の個別パターンは、`POST /repos/{owner}/{repo}/environments/
 Secret scanning の有効状態とリポジトリの push protection は、General と同じ `PATCH /repos/{owner}/{repo}` に、`{"security_and_analysis":{"secret_scanning":{"status":"enabled"}}}` のように、変える1項目の `status` だけを送ります。値は有効なら `enabled`、無効なら `disabled` です。正常応答は `200` で、成功の判定は General と同じく本文が取得契約を満たすことです。`200` の本文が `security_and_analysis` を含まない場合を考え、本文でこの項目の値を確かめません（6.1節）。1項目だけを送る `PATCH` が、もう一方の項目、`security_and_analysis` のほかの項目、トップレベルの一般設定を変えなかったことを、公開リポジトリで実際の動作により確かめています（GitHub リポジトリ API 仕様 5章）。これが部分更新の根拠です。更新後に再取得して更新直前の値と比べるのは、General の2設定と、Secret scanning の2設定のうちもう一方です。副作用として示した設定の扱いは、上の比較の規則に従います。
 
 Dependabot alerts は `/repos/{owner}/{repo}/vulnerability-alerts`、Dependabot security updates は `/repos/{owner}/{repo}/automated-security-fixes` を更新エンドポイントとし、期待値が `true` なら本文のない `PUT`、`false` なら本文のない `DELETE` を送ります。正常応答はどれも本文のない `204` で、ほかの `2xx` は更新の契約の外として成否不明にします（6.1節）。すでに同じ状態でも `204` が返り、直後の取得が更新後の値を返すことは、実際の動作で確かめています（[GitHub リポジトリ API 仕様](../research/repositories.md) 6・7章）。それぞれの更新エンドポイントで reco が観測する設定はその設定だけのため、更新後に更新直前の値と比べる設定はありません。Dependabot alerts の `PUT` と、Dependabot security updates の `PUT` と `DELETE` が、もう一方の設定を変えないことは実際の動作で確かめており（同 6・7章）、これを保全の根拠とします。Dependabot alerts の `DELETE` が Dependabot security updates と Dependency graph を無効にする影響は、変更に伴う副作用として 5.4節で扱います。
+
+Private vulnerability reporting の有効状態は、`/repos/{owner}/{repo}/private-vulnerability-reporting` を更新エンドポイントとし、Dependabot と同じく、期待値が `true` なら本文のない `PUT`、`false` なら本文のない `DELETE` を送ります。正常応答は本文のない `204` で、ほかの `2xx` は成否不明、`422` は GitHub が要求を拒否した応答として更新操作の失敗です（6.1節）。すでに同じ状態でも `204` が返り、直後の取得が更新後の値を返すことは、実際の動作で確かめています（[GitHub リポジトリ API 仕様](../research/repositories.md) 8章）。この更新エンドポイントで reco が観測する設定はこの設定だけのため、更新後に更新直前の値と比べる設定はありません。公開リポジトリで `PUT` と `DELETE` を送った前後で、reco が観測するほかの設定が変わらなかったことを実際の動作で確かめており（同 8章）、これを保全の根拠とします。
 
 更新直前の観測と更新要求のあいだに、外部主体が同じ名前の Environment を作った場合は防げません。本文のない作成の要求は、存在する名前の Environment を何も変えません。方式を本文に含む作成の要求は、その Environment の方式を変え、それが `selected` だった場合は個別パターンを失わせます。同じあいだに外部主体が、加えようとするパターンを先に加えた場合は `303` で成否不明に（5.2節）、取り除こうとするパターンを先に消した場合は `404` で更新操作の失敗になります。
 
@@ -487,7 +492,7 @@ Environment とその `deployment_branch_policy` の変更予定は、次の表�
 
 `selected` から `all` / `local_only` への切替によって、GitHub は選択方式の Actions 許可条件を残さず、`selected` に戻したときには上記の値に戻っています（GitHub Actions 権限 API 仕様 4章）。遷移先が `all` / `local_only` のとき選択方式の Actions 許可条件は宣言できないため（[YAML 設定仕様](../spec/configuration.md) 4.1）、その既存値は管理範囲外の設定であり、reco はこの消失を防げません。Change Planning は、この遷移を適用可能としたうえで、既存の選択方式の Actions 許可条件が失われることを観測した値とともに変更計画へ含めます（[CLI 仕様](../spec/cli.md) 4章）。消失を承認前に明示するのは、INV-001 が禁じる管理範囲外の設定の暗黙の削除に当たらないようにするためです。そのため、(1) の直前の変更前提に、変更計画に示した選択方式の Actions 許可条件の値を含めます。更新後は選択方式の Actions 許可条件を取得できないため、その値を保全済みとはみなさず、消失したものとして扱います。
 
-セキュリティ設定（Dependabot alerts、Dependabot security updates、Secret scanning の有効状態、リポジトリの push protection）にも、一つの設定の更新が別の設定を変える依存があります。次の表は、その依存の扱いを定めます。
+セキュリティ設定のうち、Dependabot alerts、Dependabot security updates、Secret scanning の有効状態、リポジトリの push protection には、一つの設定の更新が別の設定を変える依存があります。次の表は、その依存の扱いを定めます。
 
 | 宣言した変更 | GitHub の動作（[GitHub リポジトリ API 仕様](../research/repositories.md) 5〜7章） | 扱い |
 |---|---|---|
@@ -564,6 +569,8 @@ push protection は Secret scanning と同じ更新エンドポイントの設�
 push protection を有効にする変更の変更前提には、Secret scanning が有効であることを含めます。承認時に予定した値は有効で、計画時に無効だった場合は、先行する Secret scanning の変更が有効にすることが予定どおりの変化です。Dependabot security updates と扱いを変えるのは、承認のあとに Secret scanning が無効にされていたとき、GitHub が `200` を返して値を変えず、更新操作の結果からは反映されなかったことが分からないためです。push protection を無効にする変更の変更前提には含めません。
 
 実行順も Dependabot と同じ形です。YAML 設定仕様の表の並び（Secret scanning、push protection）を基本とし、Secret scanning を無効にする変更予定があるときだけ、同じ対象リポジトリの push protection の変更予定をその直前に実行します。Secret scanning を無効にする変更予定と、push protection を有効にする変更予定が並ぶことはありません。入力検証で拒否する宣言の組み合わせだからです。
+
+Private vulnerability reporting の有効状態は、一つの更新操作からなる一つの論理的な設定変更です。前提の設定も依存する設定も持たず、変更に伴う副作用もありません。非公開リポジトリでは変更予定が比較不能で、常に適用不能です（3.2節の取得条件の表）。GitHub は非公開リポジトリへの更新に `404` を返し、更新のあとに期待状態を確かめる手段もないためです（GitHub リポジトリ API 仕様 8章）。公開リポジトリでは、どちらの向きも、同じ対象リポジトリのほかの宣言と観測によらず適用可能です。
 
 GitHub の複数の更新操作を原子的に実行する仕組みはありません。途中で更新が失敗・中断された場合は、先行操作の影響が残り得ます。最終状態の一致を確認できることと、中間状態の安全性を確認できることは別の条件です。
 

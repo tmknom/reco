@@ -28,6 +28,8 @@ type ObservationResult struct {
 	Dependabot *Dependabot
 	// SecretScanning は、その設定の領域を選ばなかった観測では nil になる。非公開リポジトリの観測不能と取り違えさせないため、値型にしない。
 	SecretScanning *SecretScanning
+	// PrivateVulnerabilityReporting は、その設定の領域を選ばなかった観測では nil になる。非公開リポジトリの観測不能と取り違えさせないため、値型にしない。
+	PrivateVulnerabilityReporting *PrivateVulnerabilityReporting
 }
 
 // ActionsPermissions は Actions の実行許可のうち、reco が観測する設定である。
@@ -88,6 +90,8 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 		return valueObservation(o.SecretScanning.Enabled, setting.BoolValue)
 	case setting.RepositoryPushProtection:
 		return valueObservation(o.SecretScanning.PushProtection, setting.BoolValue)
+	case setting.PrivateVulnerabilityReportingEnabled:
+		return valueObservation(o.PrivateVulnerabilityReporting.Enabled, setting.BoolValue)
 	case setting.EnvironmentDeploymentBranchPolicy:
 		return o.Environments.Lookup(unit.Environment).DeploymentBranchPolicy()
 	case setting.EnvironmentResource:
@@ -155,6 +159,13 @@ func (c *Client) ObserveRepository(ctx context.Context, reference repository.Ref
 			return ObservationResult{}, fmt.Errorf("fetch dependabot security updates %s: %w", reference, err)
 		}
 		o.Dependabot = &Dependabot{Alerts: alerts, SecurityUpdates: updates}
+	}
+	if slices.Contains(areas, setting.AreaPrivateVulnerabilityReporting) {
+		privateVulnerabilityReporting, err := c.observePrivateVulnerabilityReporting(ctx, reference, attributes.private)
+		if err != nil {
+			return ObservationResult{}, fmt.Errorf("fetch private vulnerability reporting %s: %w", reference, err)
+		}
+		o.PrivateVulnerabilityReporting = &privateVulnerabilityReporting
 	}
 	return o, nil
 }

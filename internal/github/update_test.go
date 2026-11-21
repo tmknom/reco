@@ -208,10 +208,10 @@ func TestEnablementMethod(t *testing.T) {
 	}
 }
 
-// TestClientUpdateDependabot は、Dependabot の2設定の更新が、期待値でメソッドを変え、本文を送らないことを確かめる。
+// TestClientUpdateEnablement は、有効・無効をメソッドで受ける更新エンドポイントの設定の更新が、期待値でメソッドを変え、本文を送らないことを確かめる。
 //
 //trace:checks INV-001 FR-011
-func TestClientUpdateDependabot(t *testing.T) {
+func TestClientUpdateEnablement(t *testing.T) {
 	cases := []struct {
 		name       string
 		key        setting.Key
@@ -230,6 +230,14 @@ func TestClientUpdateDependabot(t *testing.T) {
 			name: "dependabot_security_updates disabled is DELETE", key: setting.DependabotSecurityUpdates,
 			value:      setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesDisabled),
 			wantMethod: http.MethodDelete, wantPath: automatedSecurityFixesPath,
+		},
+		{
+			name: "private_vulnerability_reporting true is PUT", key: setting.PrivateVulnerabilityReportingEnabled, value: setting.BoolValue(true),
+			wantMethod: http.MethodPut, wantPath: privateVulnerabilityReportingPath,
+		},
+		{
+			name: "private_vulnerability_reporting false is DELETE", key: setting.PrivateVulnerabilityReportingEnabled, value: setting.BoolValue(false),
+			wantMethod: http.MethodDelete, wantPath: privateVulnerabilityReportingPath,
 		},
 	}
 	for _, tc := range cases {
@@ -272,11 +280,11 @@ func TestClientUpdateDependabot(t *testing.T) {
 	}
 }
 
-// TestClientUpdateDependabotOutcome は、Dependabot の2設定の更新が、正常応答の 204 だけを成功とし、
-// ほかの 2xx を成否不明、4xx を拒否とすることを確かめる。2設定は同じ判定を通る。
+// TestClientUpdateEnablementOutcome は、有効・無効をメソッドで受ける更新エンドポイントの設定の更新が、正常応答の 204 だけを成功とし、
+// ほかの 2xx を成否不明、4xx を拒否とすることを確かめる。どの設定も同じ判定を通る。
 //
 //trace:checks FR-013 INV-005
-func TestClientUpdateDependabotOutcome(t *testing.T) {
+func TestClientUpdateEnablementOutcome(t *testing.T) {
 	keys := []struct {
 		key       setting.Key
 		value     setting.Value
@@ -284,6 +292,7 @@ func TestClientUpdateDependabotOutcome(t *testing.T) {
 	}{
 		{key: setting.DependabotAlerts, value: setting.BoolValue(true), operation: "update dependabot alerts owner/repo: "},
 		{key: setting.DependabotSecurityUpdates, value: setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesEnabled), operation: "update dependabot security updates owner/repo: "},
+		{key: setting.PrivateVulnerabilityReportingEnabled, value: setting.BoolValue(true), operation: "update private vulnerability reporting owner/repo: "},
 	}
 	cases := []struct {
 		name        string
@@ -293,6 +302,7 @@ func TestClientUpdateDependabotOutcome(t *testing.T) {
 	}{
 		{name: "204 is succeeded", status: http.StatusNoContent, wantOutcome: UpdateSucceeded},
 		{name: "200 is outcome unknown", status: http.StatusOK, wantOutcome: UpdateUnknown, wantErr: ErrUnexpectedResponse},
+		{name: "422 is rejected", status: http.StatusUnprocessableEntity, wantOutcome: UpdateRejected, wantErr: ErrUnprocessable},
 	}
 	for _, k := range keys {
 		for _, tc := range cases {

@@ -56,6 +56,11 @@ type AutomatedSecurityFixesBody struct {
 	Paused  bool
 }
 
+// PrivateVulnerabilityReportingBody は、Private vulnerability reporting の取得の応答本文である。
+type PrivateVulnerabilityReportingBody struct {
+	Enabled bool
+}
+
 // EnvironmentsBody は、Environment の一覧の1ページの応答本文である。
 // TotalCount は GitHub が返す全件数で、このページの要素数とは限らない。
 type EnvironmentsBody struct {
@@ -146,6 +151,11 @@ func (b ActionsAccessBody) JSON() string {
 // JSON は応答本文を返す。
 func (b AutomatedSecurityFixesBody) JSON() string {
 	return fmt.Sprintf(`{"enabled": %t, "paused": %t}`, b.Enabled, b.Paused)
+}
+
+// JSON は応答本文を返す。
+func (b PrivateVulnerabilityReportingBody) JSON() string {
+	return fmt.Sprintf(`{"enabled": %t}`, b.Enabled)
 }
 
 // JSON は応答本文を返す。

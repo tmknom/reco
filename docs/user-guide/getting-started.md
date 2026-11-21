@@ -43,6 +43,7 @@ repositories:
       dependabot_security_updates: true
       # secret_scanning: unavailable (the repository is private)
       # secret_scanning_push_protection: unavailable (the repository is private)
+      # private_vulnerability_reporting: unavailable (the repository is private)
 ```
 
 表示は、設定ファイルと同じ構造です。本ドキュメントでは、`general` の `delete_branch_on_merge`（Pull Request をマージしたあと、head ブランチを自動で削除するか）を変えます。以後は、`delete_branch_on_merge` の設定が `false` の場合に、`true` へ変更するシナリオで説明します。

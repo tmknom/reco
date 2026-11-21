@@ -92,3 +92,9 @@ func (c *Client) automatedSecurityFixesURL(reference repository.Reference) *url.
 	u.Path += "/automated-security-fixes"
 	return u
 }
+
+func (c *Client) privateVulnerabilityReportingURL(reference repository.Reference) *url.URL {
+	u := c.repositoryURL(reference)
+	u.Path += "/private-vulnerability-reporting"
+	return u
+}

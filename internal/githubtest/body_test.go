@@ -47,6 +47,11 @@ func TestBodies(t *testing.T) {
 			want: map[string]any{"enabled": true, "paused": true},
 		},
 		{
+			name: "private vulnerability reporting body has enabled",
+			body: PrivateVulnerabilityReportingBody{Enabled: true}.JSON(),
+			want: map[string]any{"enabled": true},
+		},
+		{
 			name: "actions permissions body is enabled with the policy and SHA pinning",
 			body: ActionsPermissionsBody{AllowedActions: "selected", SHAPinningRequired: true}.JSON(),
 			want: map[string]any{"enabled": true, "allowed_actions": "selected", "sha_pinning_required": true},

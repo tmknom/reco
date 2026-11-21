@@ -62,6 +62,8 @@ flowchart TB
 | Secret scanning | Secret Scanning | Secret scanning の有効状態とリポジトリの push protection からなる設定の領域。どちらもリポジトリの取得の応答に含まれ、この領域のための読み取り要求はない。一方の設定の変更がもう一方の値に左右される（[アーキテクチャ設計](architecture.md) 5.4節） |
 | Secret scanning の有効状態 | Secret Scanning Enabled | リポジトリに push されたシークレットを検出する Secret scanning を、リポジトリで有効にしているかを表す設定。有効か無効のいずれかである。非公開リポジトリでは観測不能で、理由はリポジトリが非公開であることである。無効にする更新に伴って、GitHub がリポジトリの push protection も無効にする |
 | リポジトリの push protection | Repository Push Protection | シークレットを含む push を拒否する push protection を、リポジトリで有効にしているかを表す設定。有効か無効のいずれかである。利用者が自分のアカウントに設定する push protection とは別の設定である。非公開リポジトリでは観測不能で、理由は Secret scanning の有効状態と同じである。Secret scanning の有効状態が無効のあいだ、GitHub は有効にする更新を反映しない |
+| Private vulnerability reporting | Private Vulnerability Reporting | Private vulnerability reporting の有効状態だけからなる設定の領域。この領域のための読み取り要求を一つ持つ。Dependabot の領域にも Secret scanning の領域にも含めないのは、この設定を宣言していないリポジトリの変更計画の確認で、この読み取り要求を送らないためである |
+| Private vulnerability reporting の有効状態 | Private Vulnerability Reporting Enabled | 見つけた脆弱性を、公開せずにメンテナーへ報告できる Private vulnerability reporting を、リポジトリで有効にしているかを表す設定。有効か無効のいずれかである。非公開リポジトリでは観測不能で、理由は Secret scanning の有効状態と同じである。ほかの設定を前提にせず、期待値はほかの設定の状態を含まない |
 | Dependency graph | Dependency Graph | リポジトリの依存関係を GitHub が解析する機能の有効状態。Dependabot alerts の有効状態を変える更新に伴って、GitHub が変える。reco は観測せず、設定の領域に含めず、表示も管理もしない。値を返す取得の契約を確かめていないためである |
 | リポジトリの公開範囲 | Visibility | リポジトリが公開か非公開か。reco は設定の領域に含めず、表示も管理もしない。取得条件の判定にだけ読み取る |
 | リポジトリへの admin のアクセス | Admin Access | 認証したトークンの所有者が、リポジトリの admin のアクセスを持つか。reco は設定の領域に含めず、表示も管理もしない。読み取り要求の応答の解釈にだけ読み取る |
@@ -226,7 +228,7 @@ GitHub の取得条件により値を確認できないことと、認証・権�
 
 たとえば、Selected Actions Criteria の取得は上位ポリシーの条件に制約されます。取得できないことから、詳細の値が存在しない、または空であるとは判断できません。
 
-観測不能は設定ごとに決まります。同じ設定の領域を読み取った一回の観測の中で、ある設定は観測値を持ち、別の設定は観測不能になります。Actions が無効のリポジトリでは、Actions の有効状態は「無効」という観測値を持ち、Actions 許可ポリシー、`sha_pinning_required`、選択方式の Actions 許可条件は観測不能です。一つの取得条件が複数の設定を観測不能にするとき、それらの設定は同じ理由を持ちます。GitHub が応答に値を含めていても、その値が設定の状態を示さないと分かっている場合は、観測値にしません。Actions が無効のときに返る `sha_pinning_required` がこれに当たります。
+観測不能は設定ごとに決まります。同じ設定の領域を読み取った一回の観測の中で、ある設定は観測値を持ち、別の設定は観測不能になります。Actions が無効のリポジトリでは、Actions の有効状態は「無効」という観測値を持ち、Actions 許可ポリシー、`sha_pinning_required`、選択方式の Actions 許可条件は観測不能です。一つの取得条件が複数の設定を観測不能にするとき、それらの設定は同じ理由を持ちます。設定の領域が異なっても、取得条件を根拠づける資料や応答が設定ごとに違っても同じです。理由が表すのは取得条件そのものだからです。GitHub が応答に値を含めていても、その値が設定の状態を示さないと分かっている場合は、観測値にしません。Actions が無効のときに返る `sha_pinning_required` がこれに当たります。
 
 取得条件は、上位の設定の状態とは限りません。`access_level` は非公開リポジトリにだけ適用され、公開リポジトリでは観測不能です。理由はリポジトリが公開であることで、Actions の有効状態には左右されません。公開と分かったとき、reco は `access_level` の読み取り要求を送りません。要求を送らない点は読み取らなかった設定の領域と同じですが、意味は異なります。読み取らなかった設定の領域は、観測結果を使う側が読み取らないと決めたもので、値を確認しようとしていません。公開リポジトリの `access_level` は、値を確認しようとして公開範囲を読み取り、取得条件により確認できなかったもので、理由を伴う観測不能として観測結果に含まれます。
 
@@ -234,11 +236,13 @@ Secret scanning の有効状態とリポジトリの push protection は、`acce
 
 公開リポジトリの応答が二つの設定の値を含まない場合は、観測不能ではなく観測操作の失敗です。公開リポジトリで値が返らない理由は権限の不足であり、GitHub の取得条件として根拠づけられないためです。二つの設定はリポジトリの取得の応答に含まれますが、Secret scanning の領域を読み取らない観測は、その値を確認しようとしません。応答に値がなくても、その観測は成り立ちます。
 
+Private vulnerability reporting の有効状態も、非公開リポジトリで観測不能です。理由は Secret scanning の2設定と同じく、リポジトリが非公開であることです。非公開と分かったとき、reco はこの設定の読み取り要求を送りません（理由は [アーキテクチャ設計](architecture.md) 3.2節）。要求を送らないことの意味は、公開リポジトリの `access_level` と同じです。
+
 GitHub が、設定の値を応答の本文ではなく、要求が成り立ったかどうかで返す取得があります。Dependabot alerts の取得は、有効なら成功を、無効なら「対象が見つからない」を返します。「対象が見つからない」は、権限の不足やリポジトリの不存在でも返る GitHub への要求の失敗であり、この応答だけでは無効と判断できません。reco がこの応答を「無効」という観測値として読むのは、同じ観測の中で、トークンの所有者がリポジトリへの admin のアクセスを持つと確かめたときに限ります。admin のアクセスを持てば取得そのものは成り立つはずで、残る解釈が無効だけになるためです。確かめられなかったときは、ほかの読み取りと同じく観測操作の失敗であり、観測不能にもしません。値を確認できない理由を、GitHub の取得条件として根拠づけられないためです。
 
 この読み方は、GitHub が値をこの形で返すと確かめた取得だけに当てます。ほかの読み取り要求の「対象が見つからない」は、admin のアクセスを確かめていても観測操作の失敗のままです。どの取得に当てるかと、確かめていない条件は [アーキテクチャ設計](architecture.md) が定めます。
 
-取得条件に当たらないと観測した直後に、GitHub がその設定の読み取りを拒否した場合は、観測不能ではなく観測操作の失敗です。Actions 許可ポリシーを `selected` と観測したあとで、選択方式の Actions 許可条件を取得できなかった場合と、非公開と観測したあとで、`access_level` の取得を GitHub が処理できない要求として拒否した場合がこれに当たります。二つの読み取りのあいだに現在状態が変わった可能性があり、どちらの時点の状態も一つの観測結果として確認できていないためです。
+取得条件に当たらないと観測した直後に、GitHub がその設定の読み取りを拒否した場合は、観測不能ではなく観測操作の失敗です。Actions 許可ポリシーを `selected` と観測したあとで、選択方式の Actions 許可条件を取得できなかった場合と、非公開と観測したあとで、`access_level` の取得を GitHub が処理できない要求として拒否した場合と、公開と観測したあとで、Private vulnerability reporting の有効状態の取得に GitHub が「対象が見つからない」と応答した場合がこれに当たります。二つの読み取りのあいだに現在状態が変わった可能性があり、どちらの時点の状態も一つの観測結果として確認できていないためです。
 
 観測操作の失敗は、読み取り要求が GitHub への要求の失敗に終わったことを指します。失敗の種類は「GitHub への要求の失敗と更新操作の結果」で定めます。
 
@@ -291,6 +295,8 @@ Actions が無効のために Not Comparable になった `sha_pinning_required`
 Mismatch でも適用不能になる変更予定があります。Dependabot security updates の Mismatch は、Dependabot alerts の計画時の観測値が有効か、同じ対象リポジトリで Dependabot alerts を有効と宣言したときに限り適用可能です。どちらでもなければ適用不能で、理由は Dependabot alerts が無効であることです。GitHub は Dependabot alerts が無効のあいだ Dependabot security updates の更新を拒否し（[アーキテクチャ設計](architecture.md) 5.4）、reco が Dependabot alerts を有効にすれば、利用者が宣言していない設定を変えることになるためです。有効にする向きも無効にする向きも同じです。Dependabot alerts の Mismatch は、どちらの向きも適用可能です。
 
 非公開リポジトリのために Not Comparable になった Secret scanning の有効状態とリポジトリの push protection は、常に適用不能で、理由はリポジトリが非公開であることです。更新のあとに期待状態を確かめる手段がなく、公開範囲は管理設定ではないため、同じ対象リポジトリのほかの宣言では解消しません。リポジトリの push protection を有効にする Mismatch は、Secret scanning の有効状態の計画時の観測値が有効か、同じ対象リポジトリで Secret scanning の有効状態を有効と宣言したときに限り適用可能です。どちらでもなければ適用不能で、理由は Secret scanning が無効であることです。GitHub は成功を応答しても値を変えず（[アーキテクチャ設計](architecture.md) 5.4）、更新のあとに期待状態を確かめられないためです。拒否を応答する Dependabot security updates とは、適用不能の根拠が異なります。リポジトリの push protection を無効にする Mismatch と、Secret scanning の有効状態の Mismatch は、どちらの向きも適用可能です。
+
+非公開リポジトリのために Not Comparable になった Private vulnerability reporting の有効状態も、同じ理由で常に適用不能です。Mismatch は、どちらの向きも、同じ対象リポジトリのほかの宣言と観測によらず適用可能です。値を変える前提になる設定を持たないためです。
 
 変更に伴う副作用があることは、適用不能の理由になりません。副作用は、利用者が宣言した変更を GitHub が処理した結果として生じるもので、reco が未管理設定を変更対象に選んだ結果ではないためです。どの変更にどの副作用が伴うかは [アーキテクチャ設計](architecture.md) で定めます。
 
@@ -755,6 +761,12 @@ CLI の表示区分（`updated`、`not attempted` など）は、これらの概
 | Secret scanning の有効状態とリポジトリの push protection の両方を無効にすると宣言し、どちらも有効だった | 二つの論理的な設定変更。リポジトリの push protection、Secret scanning の有効状態の順に実行する | 管理設定の並びのまま Secret scanning を先に無効にする |
 | General の設定だけを変える更新の前後で、Secret scanning の有効状態が変わった | 変更対象外の設定の予期しない変化で、変更結果は失敗 | Secret scanning を宣言していないので比べない |
 | リポジトリの push protection を有効にする変更を承認し、更新直前に Secret scanning が無効になっていた | 関係する現在値の変化で、変更前提は不成立。変更結果は未実行 | 変えるのはリポジトリの push protection だけなので、変更前提は成立する |
+| 非公開リポジトリで Private vulnerability reporting の領域を読み取った | 観測不能。理由はリポジトリが非公開であること。読み取り要求は送らない | 取得を送り、「対象が見つからない」を無効と読む。または観測操作の失敗として、ほかの設定の表示も止める |
+| 公開と観測した直後に、Private vulnerability reporting の有効状態の取得に GitHub が「対象が見つからない」と応答した | 観測操作の失敗。二つの読み取りのあいだに公開範囲が変わった可能性がある | 非公開と推測して観測不能とする。または、admin のアクセスを確かめて無効と読む |
+| Dependabot alerts だけを宣言したリポジトリの変更計画の確認 | Private vulnerability reporting の領域は読み取らなかった設定の領域で、読み取り要求を送らない | 同じ `security` の設定なので読み取る |
+| 非公開リポジトリで `private_vulnerability_reporting` を宣言した | Not Comparable で適用不能。理由はリポジトリが非公開であること。Secret scanning の2設定と同じ理由である | 値がないので無効とみなし、`false` の宣言と Match |
+| Private vulnerability reporting の有効状態の変更を承認し、更新直前の観測でリポジトリが非公開になっていた | 観測値だった設定が観測不能になっており、関係する現在値の変化。更新要求を送らず、変更結果は未実行 | 比べる値がないので、変更前提は成立する |
+| Private vulnerability reporting の有効状態の更新要求を、GitHub が処理できない要求として拒否した | 更新操作の結果は失敗で、変更結果も失敗 | 非公開と推測して、適用不能に読み替える |
 
 ## 6. References
 

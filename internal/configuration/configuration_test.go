@@ -40,6 +40,8 @@ func TestDesiredState_Value(t *testing.T) {
 		{name: "declared push protection returns its desired value", desired: DesiredState{SecretScanning: SecretScanning{PushProtection: new(true)}}, key: setting.RepositoryPushProtection, want: setting.BoolValue(true), wantOK: true},
 		{name: "omitted secret_scanning is outside the management scope", desired: DesiredState{SecretScanning: SecretScanning{PushProtection: new(true)}}, key: setting.SecretScanningEnabled, wantOK: false},
 		{name: "omitted push protection is outside the management scope", desired: DesiredState{SecretScanning: SecretScanning{Enabled: new(true)}}, key: setting.RepositoryPushProtection, wantOK: false},
+		{name: "declared private_vulnerability_reporting returns its desired value", desired: DesiredState{PrivateVulnerabilityReporting: PrivateVulnerabilityReporting{Enabled: new(false)}}, key: setting.PrivateVulnerabilityReportingEnabled, want: setting.BoolValue(false), wantOK: true},
+		{name: "omitted private_vulnerability_reporting is outside the management scope", desired: DesiredState{SecretScanning: SecretScanning{Enabled: new(true)}}, key: setting.PrivateVulnerabilityReportingEnabled, wantOK: false},
 		{name: "omitted can_approve_pull_request_reviews is outside the management scope", desired: DesiredState{WorkflowPermissions: WorkflowPermissions{DefaultWorkflowPermissions: new(setting.PermissionRead)}}, key: setting.CanApprovePullRequestReviews, wantOK: false},
 	}
 	for _, tc := range cases {

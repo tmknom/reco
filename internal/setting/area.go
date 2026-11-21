@@ -13,4 +13,5 @@ const (
 	AreaEnvironments
 	AreaDependabot
 	AreaSecretScanning
+	AreaPrivateVulnerabilityReporting
 )

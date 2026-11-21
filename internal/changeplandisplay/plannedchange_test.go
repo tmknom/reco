@@ -183,13 +183,22 @@ func TestPlannedChangeText(t *testing.T) {
 				"    Applicability: not applicable (Dependabot alerts is disabled; declare dependabot_alerts: true to enable it)\n",
 		},
 		{
-			name: "secret scanning of a private repository shows the repository state and the reason to remove the declarations",
+			name: "secret scanning of a private repository shows the repository state and the reason to remove its own key",
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.SecretScanningEnabled}, Observed: github.Unavailable[setting.Value](github.UnavailablePrivateRepository), Desired: setting.BoolValue(true),
 				Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicablePrivateRepository,
 			},
 			want: "  security.secret_scanning: (private repository) -> true\n" +
-				"    Applicability: not applicable (the repository is private; remove secret_scanning and secret_scanning_push_protection, which reco manages only on public repositories)\n",
+				"    Applicability: not applicable (the repository is private; remove secret_scanning, which reco manages only on public repositories)\n",
+		},
+		{
+			name: "private vulnerability reporting of a private repository names its own key to remove",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.PrivateVulnerabilityReportingEnabled}, Observed: github.Unavailable[setting.Value](github.UnavailablePrivateRepository), Desired: setting.BoolValue(true),
+				Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicablePrivateRepository,
+			},
+			want: "  security.private_vulnerability_reporting: (private repository) -> true\n" +
+				"    Applicability: not applicable (the repository is private; remove private_vulnerability_reporting, which reco manages only on public repositories)\n",
 		},
 		{
 			name: "push protection with disabled secret scanning shows the reason to declare secret scanning",
@@ -247,7 +256,7 @@ func TestNotApplicableReasonText_UndefinedReasonPanics(t *testing.T) {
 			t.Error("notApplicableReasonText() did not panic for an undefined not-applicable reason")
 		}
 	}()
-	_ = notApplicableReasonText(0)
+	_ = notApplicableReasonText(0, setting.AllowAutoMerge)
 }
 
 func TestRepositoryStateText_UndefinedReasonPanics(t *testing.T) {

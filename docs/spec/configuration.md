@@ -32,6 +32,7 @@ repositories:
       dependabot_security_updates: true
       secret_scanning: true
       secret_scanning_push_protection: true
+      private_vulnerability_reporting: true
 
   - name: example/project-b
     general:
@@ -290,10 +291,11 @@ environments:
 | `security.dependabot_security_updates` | 真偽値 | `true` / `false` | 脆弱性を直す Pull Request を Dependabot security updates が作るか | 独立 |
 | `security.secret_scanning` | 真偽値 | `true` / `false` | リポジトリに push されたシークレットを Secret scanning で検出するか | 独立 |
 | `security.secret_scanning_push_protection` | 真偽値 | `true` / `false` | シークレットを含む push を、リポジトリの push protection で拒否するか。利用者が自分のアカウントに設定する push protection とは別の設定 | 独立 |
+| `security.private_vulnerability_reporting` | 真偽値 | `true` / `false` | 見つけた脆弱性を、公開せずにメンテナーへ報告できる Private vulnerability reporting を有効にするか | 独立 |
 
-4つの設定は独立した管理の単位で、どれか一つだけを宣言できます。4つとも省略した `security` は、空のマッピングとして拒否します（9.1）。Dependabot の2設定のどちらの期待値も、もう一方の設定の状態を含みません。Secret scanning の2設定についても同じです。
+5つの設定は独立した管理の単位で、どれか一つだけを宣言できます。5つとも省略した `security` は、空のマッピングとして拒否します（9.1）。Dependabot の2設定のどちらの期待値も、もう一方の設定の状態を含みません。Secret scanning の2設定についても同じです。
 
-4つの設定のいずれかの値が真偽値でない誤りは、次に挙げる組み合わせの誤りより先に示します。Dependabot の2設定の組み合わせの誤りと、Secret scanning の2設定の組み合わせの誤りが両方あるときは、Dependabot の誤りを示します。
+5つの設定のいずれかの値が真偽値でない誤りは、次に挙げる組み合わせの誤りより先に示します。Dependabot の2設定の組み合わせの誤りと、Secret scanning の2設定の組み合わせの誤りが両方あるときは、Dependabot の誤りを示します。
 
 ### 8.1 Dependabot
 
@@ -330,6 +332,12 @@ Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を
 2つの設定は、非公開リポジトリでは利用できません。非公開リポジトリでどちらかを宣言すると、その変更予定は適用不能になります。Secret scanning が無効のリポジトリで、`secret_scanning: true` を宣言せずに `secret_scanning_push_protection: true` を宣言した場合も、その変更予定は適用不能になります（[アーキテクチャ設計](../design/architecture.md) 5.4）。どちらの判断も、入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。
 
 `secret_scanning: false` は、Secret scanning を無効にする宣言です。GitHub は、Secret scanning を無効にすると、有効だったリポジトリの push protection も無効にします。reco はこの変化を変更に伴う副作用として承認の前に示したうえで、宣言どおりに無効にします。あとで Secret scanning を有効に戻しても、リポジトリの push protection は有効に戻りません。
+
+### 8.3 Private vulnerability reporting
+
+`private_vulnerability_reporting` は、ほかの設定との組み合わせの規則を持ちません。
+
+reco は、この設定を公開リポジトリでだけ管理します。公式資料は公開リポジトリの設定として記載しており、非公開リポジトリへの取得と更新は、存在しないリポジトリと区別できない `404` を返したためです（GitHub リポジトリ API 仕様 8章）。非公開リポジトリで宣言すると、その変更予定は適用不能になります。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。
 
 | Relationship | Target | Target Type |
 |---|---|---|
