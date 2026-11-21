@@ -177,7 +177,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 	change := allowAutoMergeChange()
 	outside := []unexpectedOutsideChange{{Setting: string(setting.DeleteBranchOnMerge), Before: "false", After: "true"}}
-	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed.\n"
+	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.\n"
 
 	cases := []struct {
 		name   string
@@ -219,7 +219,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 			name:   "unknown outcome with a matching state",
 			record: changeRecord{change: change, operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateUnknown}}, confirmation: desiredStateMatches},
 			want: "  owner/repo: failed\n    Update request: unknown\n" +
-				"    Desired state: matches (update outcome still unknown)\n\nNote: No automatic retry was performed.\n",
+				"    Desired state: matches (update outcome still unknown)\n\nNote: No automatic retry was performed. Run reco plan to see the remaining changes.\n",
 		},
 		{
 			name:   "success with an unconfirmed state",
@@ -303,13 +303,13 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 			name:   "unknown first update has the retry note",
 			record: toSelectedRecord(desiredStateMismatch, started(github.UpdateUnknown)),
 			want: "  owner/repo: failed\n" + updateRequestRows("unknown", "not started") + "    Desired state: does not match\n\n" +
-				"Note: No automatic retry was performed.\n",
+				"Note: No automatic retry was performed. Run reco plan to see the remaining changes.\n",
 		},
 		{
 			name:   "unknown second update after the first succeeded has the retry note",
 			record: toSelectedRecord(desiredStateMatches, started(github.UpdateSucceeded), started(github.UpdateUnknown)),
 			want: "  owner/repo: failed\n" + updateRequestRows("succeeded", "unknown") +
-				"    Desired state: matches (update outcome still unknown)\n\nNote: No automatic retry was performed.\n",
+				"    Desired state: matches (update outcome still unknown)\n\nNote: No automatic retry was performed. Run reco plan to see the remaining changes.\n",
 		},
 		{
 			name:   "both updates succeeded with a mismatch shows both update requests",
@@ -348,7 +348,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 	target := mustReference(t, "owner/repo")
 	stopped := changeRecord{change: allowAutoMergeChange()}
-	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed.\n"
+	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.\n"
 
 	cases := []struct {
 		name    string
@@ -415,7 +415,7 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 				"    general.delete_branch_on_merge: updated\n" +
 				"    general.allow_auto_merge: failed\n      Update request: unknown\n" +
 				"      Desired state: matches (update outcome still unknown)\n\n" +
-				"Note: No automatic retry was performed.\n",
+				"Note: No automatic retry was performed. Run reco plan to see the remaining changes.\n",
 		},
 		{
 			// 変更結果を二つの管理設定の行に分けず、論理的な設定変更の全体について一つ示す
@@ -467,7 +467,7 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 //trace:checks FR-013 INV-005 QR-002
 func TestWriteChangeReport_Repositories(t *testing.T) {
 	a, b, c := mustReference(t, "example/project-a"), mustReference(t, "example/project-b"), mustReference(t, "example/project-c")
-	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed.\n"
+	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.\n"
 	const stoppedByRepository = "    Stopped: a preceding repository did not complete\n"
 	mismatched := changeRecord{change: deleteBranchOnMergeChange(), operations: []operationRecord{started(github.UpdateSucceeded)}, confirmation: desiredStateMismatch}
 	rejected := changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{started(github.UpdateRejected)}, cause: github.ErrForbidden}
@@ -647,7 +647,7 @@ func TestWriteChangeReport_Environments(t *testing.T) {
 	creation := creationWithModeChange(t, "production", setting.DeploymentBranchPolicyProtectedBranches)
 	staging := modeChange(t, "staging", observedEnvironment(7, "Staging", setting.DeploymentBranchPolicyAll), setting.DeploymentBranchPolicyProtectedBranches)
 	succeeded := []operationRecord{started(github.UpdateSucceeded)}
-	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed.\n"
+	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.\n"
 
 	cases := []struct {
 		name    string
@@ -728,7 +728,7 @@ func TestWriteChangeReport_DeploymentPatterns(t *testing.T) {
 	changed := func(unit setting.Unit) operationRecord {
 		return operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: unit}
 	}
-	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed.\n"
+	rollbackNote := "Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.\n"
 
 	cases := []struct {
 		name    string
@@ -796,7 +796,7 @@ func TestWriteChangeReport_DeploymentPatterns(t *testing.T) {
 				"      Update request (patterns to add [branch \"main\"]): unknown\n" +
 				"      Update request (patterns to add [tag \"v*\"]): not started\n" +
 				"      Desired state: does not match\n\n" +
-				"Note: No automatic retry was performed.\n",
+				"Note: No automatic retry was performed. Run reco plan to see the remaining changes.\n",
 		},
 		{
 			name: "environment not as expected before a later update after a creation names the environment",

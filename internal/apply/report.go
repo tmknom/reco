@@ -323,8 +323,9 @@ func changeNote(records []changeRecord) string {
 	if !started || allCompleted(records) {
 		return ""
 	}
+	const nextStep = " Run reco plan to see the remaining changes."
 	if unknown {
-		return "Note: No automatic retry was performed."
+		return "Note: No automatic retry was performed." + nextStep
 	}
-	return "Note: Some changes may already have been applied. No automatic rollback was performed."
+	return "Note: Some changes may already have been applied. No automatic rollback was performed." + nextStep
 }

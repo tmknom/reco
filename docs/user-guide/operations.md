@@ -66,7 +66,7 @@ reco で変えた設定を元の値に戻すには、設定ファイルにその
 
 元の値は、変更する前の変更計画で `->` の前に出ています。戻す可能性がある変更は、承認の前にこの値を控えておきます。
 
-`allowed_actions` を `selected` から変えたときに消えた `selected_actions` を戻す手順は、[Actions Policy](actions-policy.md) にあります。
+`allowed_actions` を `selected` から変えると GitHub が消す `selected_actions` の値は、`->` の前ではなく、変更計画の `Side effect:` の行に出ます。
 
 ## 管理をやめる
 

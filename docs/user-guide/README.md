@@ -21,4 +21,3 @@ reco は、GitHub リポジトリの設定を YAML で書き、現在の設定�
 |---|---|
 | reco が設定を変えるときにどう安全を保つかを知りたい | [Safety](safety.md) |
 | 取得したアーティファクトが reco のリリース用ワークフローで作られたものかを確かめたい | [Verification](verification.md) |
-| `allowed_actions` を `selected` とほかの値のあいだで変えるときに起きることを知りたい | [Actions Policy](actions-policy.md) |
