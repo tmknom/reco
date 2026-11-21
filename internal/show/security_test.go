@@ -10,26 +10,26 @@ import (
 
 //trace:checks FR-004 QR-002
 func TestWriteSecurity(t *testing.T) {
-	const header = "    # reco does not accept the security settings in the configuration file yet\n    # security:\n"
+	const header = "    security:\n"
 	cases := []struct {
 		name       string
 		dependabot github.Dependabot
 		want       string
 	}{
 		{
-			name:       "enabled alerts and disabled security updates are shown as commented booleans",
+			name:       "enabled alerts and disabled security updates are shown as booleans",
 			dependabot: github.Dependabot{Alerts: true, SecurityUpdates: setting.DependabotSecurityUpdatesDisabled},
-			want:       header + "    #   dependabot_alerts: true\n    #   dependabot_security_updates: false\n",
+			want:       header + "      dependabot_alerts: true\n      dependabot_security_updates: false\n",
 		},
 		{
 			name:       "disabled alerts and enabled security updates are shown without the paused comment",
 			dependabot: github.Dependabot{Alerts: false, SecurityUpdates: setting.DependabotSecurityUpdatesEnabled},
-			want:       header + "    #   dependabot_alerts: false\n    #   dependabot_security_updates: true\n",
+			want:       header + "      dependabot_alerts: false\n      dependabot_security_updates: true\n",
 		},
 		{
 			name:       "paused security updates are shown as true with the paused comment",
 			dependabot: github.Dependabot{Alerts: true, SecurityUpdates: setting.DependabotSecurityUpdatesPaused},
-			want:       header + "    #   dependabot_alerts: true\n    #   dependabot_security_updates: true # paused by GitHub (still enabled)\n",
+			want:       header + "      dependabot_alerts: true\n      dependabot_security_updates: true # paused by GitHub (still enabled)\n",
 		},
 	}
 	for _, tc := range cases {

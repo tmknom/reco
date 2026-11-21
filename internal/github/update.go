@@ -110,6 +110,29 @@ func (c *Client) updateSelectedActions(ctx context.Context, reference repository
 	return describeUpdateOutcome("update selected actions", reference, status, err)
 }
 
+// updateDependabotAlerts は reference のリポジトリの Dependabot alerts を enabled に更新する。
+// 正常応答の 204 は本文を持たず、成功の判定に本文を使わない。
+func (c *Client) updateDependabotAlerts(ctx context.Context, reference repository.Reference, enabled bool) (UpdateOutcome, error) {
+	status, _, err := c.send(ctx, enablementMethod(enabled), c.vulnerabilityAlertsURL(reference), nil, http.StatusNoContent)
+	return describeUpdateOutcome("update dependabot alerts", reference, status, err)
+}
+
+// updateDependabotSecurityUpdates は reference のリポジトリの Dependabot security updates を enabled に更新する。
+// 正常応答の 204 は本文を持たず、成功の判定に本文を使わない。
+func (c *Client) updateDependabotSecurityUpdates(ctx context.Context, reference repository.Reference, enabled bool) (UpdateOutcome, error) {
+	status, _, err := c.send(ctx, enablementMethod(enabled), c.automatedSecurityFixesURL(reference), nil, http.StatusNoContent)
+	return describeUpdateOutcome("update dependabot security updates", reference, status, err)
+}
+
+// enablementMethod は、有効にする要求と無効にする要求の HTTP メソッドを返す。
+// この更新エンドポイントは、設定の値を本文ではなくメソッドで受ける。
+func enablementMethod(enabled bool) string {
+	if enabled {
+		return http.MethodPut
+	}
+	return http.MethodDelete
+}
+
 // CreateEnvironment は、reference のリポジトリに name の Environment を作る PUT を、本文なしで一度だけ送る。再送はしない。
 // 同じ名前の Environment が存在すれば、この要求は何も変えずに成功を応答する。
 func (c *Client) CreateEnvironment(ctx context.Context, reference repository.Reference, name string) (UpdateOutcome, error) {
@@ -210,6 +233,12 @@ func updateRequestOf(key setting.Key) updateRequest {
 	case setting.ActionsAccessLevel:
 		return updateRequest{ActionsAccessEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
 			return c.updateAccessLevel(ctx, reference, value.AccessLevel())
+		}}
+	case setting.DependabotAlerts:
+		return updateRequest{DependabotAlertsEndpoint, boolUpdate((*Client).updateDependabotAlerts)}
+	case setting.DependabotSecurityUpdates:
+		return updateRequest{DependabotSecurityUpdatesEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+			return c.updateDependabotSecurityUpdates(ctx, reference, value.DependabotSecurityUpdates().Enabled())
 		}}
 	case setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy:
 		// Environment の更新要求は宛先に名前が要るため、設定の識別だけで引くこの関数では扱えない。

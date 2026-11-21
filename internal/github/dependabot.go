@@ -15,7 +15,7 @@ import (
 // Dependabot は Dependabot の領域のうち、reco が観測する設定である。どちらも取得条件を持たない。
 type Dependabot struct {
 	Alerts          bool
-	SecurityUpdates setting.DependabotSecurityUpdates
+	SecurityUpdates setting.DependabotSecurityUpdatesState
 }
 
 // observeDependabotAlerts は、ステータスで値を返す Dependabot alerts の取得を送る。
@@ -26,7 +26,7 @@ func (c *Client) observeDependabotAlerts(ctx context.Context, reference reposito
 }
 
 // observeDependabotSecurityUpdates は Dependabot security updates を読み取る。無効も 200 で返るため、404 は読み替えない。
-func (c *Client) observeDependabotSecurityUpdates(ctx context.Context, reference repository.Reference) (setting.DependabotSecurityUpdates, error) {
+func (c *Client) observeDependabotSecurityUpdates(ctx context.Context, reference repository.Reference) (setting.DependabotSecurityUpdatesState, error) {
 	_, body, err := c.send(ctx, http.MethodGet, c.automatedSecurityFixesURL(reference), nil, http.StatusOK)
 	if err != nil {
 		return 0, err
@@ -54,7 +54,7 @@ type automatedSecurityFixesPayload struct {
 
 // decodeAutomatedSecurityFixes は Dependabot security updates の応答本文を観測値に変換する。
 // 無効で一時停止中という組は観測しておらず意味を根拠づけられないため、契約外の応答とする。
-func decodeAutomatedSecurityFixes(data []byte) (setting.DependabotSecurityUpdates, error) {
+func decodeAutomatedSecurityFixes(data []byte) (setting.DependabotSecurityUpdatesState, error) {
 	var p automatedSecurityFixesPayload
 	if err := json.Unmarshal(data, &p); err != nil {
 		return 0, fmt.Errorf("%w: %w", ErrUnexpectedResponse, err)

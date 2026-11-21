@@ -6,7 +6,7 @@ import (
 )
 
 func TestManagementUnits_FollowsConfigurationOrder(t *testing.T) {
-	want := []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel}
+	want := []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, DependabotAlerts, DependabotSecurityUpdates}
 	if got := ManagementUnits(); !slices.Equal(got, want) {
 		t.Errorf("ManagementUnits() = %v, want %v", got, want)
 	}
@@ -28,6 +28,8 @@ func TestKeyArea(t *testing.T) {
 		{key: ActionsAccessLevel, want: AreaActionsAccess},
 		{key: EnvironmentResource, want: AreaEnvironments},
 		{key: EnvironmentDeploymentBranchPolicy, want: AreaEnvironments},
+		{key: DependabotAlerts, want: AreaDependabot},
+		{key: DependabotSecurityUpdates, want: AreaDependabot},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.key), func(t *testing.T) {

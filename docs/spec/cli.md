@@ -44,7 +44,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 ### 2.3 リポジトリ指定と対象選択
 
-`--repo` の値は、[YAML 設定仕様](configuration.md) の第8.2節で定めるリポジトリ指定です。
+`--repo` の値は、[YAML 設定仕様](configuration.md) の第9.2節で定めるリポジトリ指定です。
 
 `plan` / `apply` の `--repo` には、設定ファイルで宣言したリポジトリだけを指定できます。設定宣言全体は対象選択の有無にかかわらず検証します。
 
@@ -68,7 +68,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 環境変数の優先順位は [GitHub CLI の環境変数仕様](https://cli.github.com/manual/gh_help_environment) と同じですが、reco が GitHub CLI の認証機構を利用することは意味しません。
 
-reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章、[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。`show` が読み取る Environment と個別パターンの一覧には、GitHub App の権限の分類で Actions の read に当たる権限が要ります。ほかのトークンがこの権限を持たず、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。`show` が読み取る Dependabot alerts と Dependabot security updates の取得には、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。トークンの所有者が admin のアクセスを持たないリポジトリでは、`show` は観測操作の失敗としてエラー終了します。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合（Administration の read を持たない fine-grained personal access token など）の応答は確かめていません。この場合に GitHub が Dependabot alerts の取得へ `404` を返すなら、`show` は有効な Dependabot alerts を `false` と表示します（[アーキテクチャ設計](../design/architecture.md) 3.2節）。
+reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章、[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。`show` が読み取る Environment と個別パターンの一覧には、GitHub App の権限の分類で Actions の read に当たる権限が要ります。ほかのトークンがこの権限を持たず、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。`show` と、`security` を宣言したリポジトリの `plan` と `apply` が読み取る Dependabot alerts と Dependabot security updates の取得には、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。トークンの所有者が admin のアクセスを持たないリポジトリでは、どのコマンドも観測操作の失敗としてエラー終了します。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合（Administration の read を持たない fine-grained personal access token など）の応答は確かめていません。この場合に GitHub が Dependabot alerts の取得へ `404` を返すなら、`show` は有効な Dependabot alerts を `false` と表示し、`plan` と `apply` は `dependabot_alerts: false` の宣言を変更不要と判断します（[アーキテクチャ設計](../design/architecture.md) 3.2節）。
 
 ```text
 $ GH_TOKEN=$(gh auth token) reco plan
@@ -103,7 +103,7 @@ $ GH_TOKEN=$(gh auth token) reco plan
 
 一つのリポジトリに複数の変更予定があるときは、[YAML 設定仕様](configuration.md) の章と表の並びで表示します。設定宣言での記述順には従いません。
 
-関連リソースの変更予定は、YAML 設定仕様の章の並びのあと、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。
+関連リソースの変更予定も YAML 設定仕様の章の並びに従い、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。たとえば Environments（7章）の変更予定は、Security（8章）の変更予定より前に表示します。
 
 関連リソースの作成と削除は、確認済みの差分として示し、集計の変更予定数に数えます。存在しないと確認できたことは、比較できる事実だからです。作成と削除は、設定の値の変更と見分けられる形で示し、削除では失われる値を示します。宣言に名前のない関連リソースは、変更計画に示しません。
 
@@ -233,7 +233,7 @@ Plan: 1 repository to update, 2 changes
 Repositories checked: 1
 ```
 
-安全な変更に必要な条件を確認できない変更予定には、変更予定の行のすぐ下に `Applicability: not applicable (<理由>)` を添えます。理由は、セミコロンの前に何が成り立っていないかを、後ろに設定ファイルの直し方を示します。適用不能な変更予定が一つでもあれば、`Repositories checked:` の後に空行を挟んで `Plan cannot be applied.` を一度だけ表示します。集計は、適用不能な変更予定と、適用不能な変更予定だけを持つリポジトリも数えます。現在は、Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言した場合と、公開リポジトリで `access_level` を宣言した場合と、宣言した名前と同じかどうかを判定できない名前の Environment があり、宣言した名前の Environment が存在するかを確かめられない場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。
+安全な変更に必要な条件を確認できない変更予定には、変更予定の行のすぐ下に `Applicability: not applicable (<理由>)` を添えます。理由は、セミコロンの前に何が成り立っていないかを、後ろに設定ファイルの直し方を示します。適用不能な変更予定が一つでもあれば、`Repositories checked:` の後に空行を挟んで `Plan cannot be applied.` を一度だけ表示します。集計は、適用不能な変更予定と、適用不能な変更予定だけを持つリポジトリも数えます。現在は、Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言した場合と、公開リポジトリで `access_level` を宣言した場合と、宣言した名前と同じかどうかを判定できない名前の Environment があり、宣言した名前の Environment が存在するかを確かめられない場合と、Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を宣言せずに `dependabot_security_updates` を宣言し、その値を変える場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。
 
 ```text
 Repository: example/project-a
@@ -284,12 +284,31 @@ Repositories checked: 1
 Plan cannot be applied.
 ```
 
-宣言した変更に伴って GitHub が管理範囲外の設定を削除する場合は、変更予定に `Side effect:` として失われる設定と現在値を添えます。この変更は適用可能であり、利用者が承認すれば実行します。現在は、Actions 許可ポリシーを `selected` から `all` / `local_only` へ変え、既存の選択方式の Actions 許可条件が失われる場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。Actions が無効のリポジトリで `all` / `local_only` を宣言した場合は、無効にする前のポリシーが `selected` であれば同じく失われますが、無効の間は値もポリシーも取得できないため、失われる可能性があることと、値を示せない理由を示します。遷移先が `selected` の変更には添えません。3項目は宣言した値で上書きされ、管理範囲内の変更になるためです。`Side effect:` は、変更が完了したあとも残る影響だけを示します。一つの変更の更新操作のあいだだけ生じる中間状態（[アーキテクチャ設計](../design/architecture.md) 5.4）は示しません。完了すれば残らず、利用者が承認の前に避ける手段もないためです。中間状態が残るのは変更が完了しなかった場合で、そのときは変更結果が `failed` と注記で示します（5.2節）。`Side effect:` は、副作用を伴う変更予定の最後の行として示します。変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。
+宣言した変更に伴って GitHub が管理範囲外の設定を削除するか変える場合は、変更予定に `Side effect:` として、その設定と、reco が観測する設定なら現在値を添えます。この変更は適用可能であり、利用者が承認すれば実行します。該当するのは、Actions 許可ポリシーを `selected` から `all` / `local_only` へ変え、既存の選択方式の Actions 許可条件が失われる場合と、Dependabot alerts の有効状態を変える場合です（[アーキテクチャ設計](../design/architecture.md) 5.4）。Actions が無効のリポジトリで `all` / `local_only` を宣言した場合は、無効にする前のポリシーが `selected` であれば同じく失われますが、無効の間は値もポリシーも取得できないため、失われる可能性があることと、値を示せない理由を示します。遷移先が `selected` の変更には添えません。3項目は宣言した値で上書きされ、管理範囲内の変更になるためです。`Side effect:` は、変更が完了したあとも残る影響だけを示します。一つの変更の更新操作のあいだだけ生じる中間状態（[アーキテクチャ設計](../design/architecture.md) 5.4）は示しません。完了すれば残らず、利用者が承認の前に避ける手段もないためです。中間状態が残るのは変更が完了しなかった場合で、そのときは変更結果が `failed` と注記で示します（5.2節）。`Side effect:` は、副作用を伴う変更予定の最後の行として示します。変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。
 
 ```text
 Repository: example/project-a
   actions.permissions.allowed_actions: selected -> all
     Side effect: GitHub discards the current selected_actions (github_owned_allowed: true, verified_allowed: true, patterns_allowed: ["example/*"])
+```
+
+Dependabot alerts を無効にする変更予定には、GitHub が Dependency graph を無効にすることを `Side effect:` で示します。Dependency graph は reco が観測しない設定のため、現在値を示さず、「無効になる」とだけ示します。`dependabot_security_updates` を宣言しておらず、計画時に Dependabot security updates が有効（一時停止中を含む）なら、GitHub がそれも無効にすることを、現在値とともに続く行で示します（[GitHub リポジトリ API 仕様](../research/repositories.md) 6章）。`dependabot_security_updates` を宣言していれば示しません。宣言した値への変更として、同じ変更計画が扱うためです。Dependabot alerts を有効にする変更予定には、GitHub が Dependency graph を有効にすることを示します。Dependabot alerts をあとで有効に戻しても、無効になった Dependabot security updates は戻りません。
+
+```text
+Repository: example/project-a
+  security.dependabot_alerts: true -> false
+    Side effect: GitHub also disables the dependency graph
+    Side effect: GitHub also disables dependabot_security_updates, which is currently true (paused by GitHub)
+```
+
+Dependabot security updates の値は、一時停止中なら `true (paused by GitHub)` と示します。一時停止中も設定は有効のままのため、`dependabot_security_updates: true` と一致し、変更予定になりません（[YAML 設定仕様](configuration.md) 8章）。一致した設定は変更予定の行を持たないため、一時停止中であることは `show` で確かめます。
+
+Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を宣言せずに `dependabot_security_updates` の値を変える変更予定は、適用不能です。GitHub は、Dependabot alerts が無効のあいだ、Dependabot security updates の有効化も無効化も拒否するためです（GitHub リポジトリ API 仕様 7章）。
+
+```text
+Repository: example/project-a
+  security.dependabot_security_updates: false -> true
+    Applicability: not applicable (Dependabot alerts is disabled; declare dependabot_alerts: true to enable it)
 ```
 
 `plan` の終了コード `0` は、差分がないことも、後の `apply` が成功することも保証しません。
@@ -402,7 +421,7 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 一つの論理的な設定変更が複数の更新操作からなるときは、後続の更新操作の直前の確認にも同じ遅れが現れ得ます。先行する更新操作が成功したのに、その更新操作が変えた設定が更新前の値のままのときは、同じ間隔で確認し直します。合計約30秒が経っても変わらなければ、後続の更新操作を開始せずに `failed` とします。先行する更新操作の更新要求は再送しません。
 
-一つのリポジトリに複数の変更予定があるときは、承認の前に提示する順も、論理的な設定変更を実行する順も、4章が定める変更予定の表示順に従います。`allowed_actions` と `sha_pinning_required` の両方に変更予定があるときも、別々の論理的な設定変更として一つずつ更新します。
+一つのリポジトリに複数の変更予定があるときは、承認の前に提示する順も、論理的な設定変更を実行する順も、4章が定める変更予定の表示順に従います。ただし、Dependabot alerts を無効にする変更と Dependabot security updates の変更がともにあるときは、Dependabot security updates の変更を先に実行します。Dependabot alerts を先に無効にすると、GitHub が Dependabot security updates も無効にし、宣言した変更の変更前提が成り立たなくなるためです（[アーキテクチャ設計](../design/architecture.md) 5.4）。変更結果は実行した順に示します。`allowed_actions` と `sha_pinning_required` の両方に変更予定があるときも、別々の論理的な設定変更として一つずつ更新します。
 
 ### 5.2 結果の表示区分
 
@@ -439,7 +458,7 @@ Environment の作成も、完了すれば `updated` と示します。何を作
 
 更新を一度も開始していない変更は `not attempted` とし、変更前提の不成立と、先行する異常による停止のどちらに当たるかを区別して理由を示します。先行する異常による停止は、同じリポジトリの先行する論理的な設定変更が完了しなかった場合（`Stopped: a preceding change did not complete`）と、先行するリポジトリが完了しなかった場合（`Stopped: a preceding repository did not complete`）を文言で区別します。
 
-変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を示します（`Precondition: <設定> changed since approval`）。`Side effect:` で示した設定の値が承認の前に示した値から変わっていた場合は、その設定を示します。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。複数の設定が変わっていた場合は、論理的な設定変更が変える設定を優先して一つだけ示します。ただし、Actions が無効のリポジトリで、承認した変更が Actions を有効にしたあとに `sha_pinning_required` を確認できるようになったことは、予定どおりの変化で、示しません。`sha_pinning_required` の更新は `enabled: true` を送るため、その直前に Actions が無効だった場合は `Precondition: actions.permissions.enabled changed since approval` と示します。計画時に Actions が有効だった場合は、`sha_pinning_required` を確認できなくなったことを優先し、`actions.permissions.sha_pinning_required` を示します。`access_level` の更新の直前にリポジトリが公開になっていた場合も、`access_level` を確認できなくなったため、`Precondition: actions.access.access_level changed since approval` と示します。
+変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を示します（`Precondition: <設定> changed since approval`）。`Side effect:` で示した設定の値が承認の前に示した値から変わっていた場合は、その設定を示します。Dependabot alerts を無効にする変更で、`dependabot_security_updates` を宣言しておらず、計画時に無効だったため `Side effect:` に示さなかった Dependabot security updates が、承認のあとに有効になっていた場合も、`Precondition: security.dependabot_security_updates changed since approval` と示して更新しません。承認の前に示していない変化を GitHub に起こさせないためです。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。複数の設定が変わっていた場合は、論理的な設定変更が変える設定を優先して一つだけ示します。ただし、Actions が無効のリポジトリで、承認した変更が Actions を有効にしたあとに `sha_pinning_required` を確認できるようになったことは、予定どおりの変化で、示しません。`sha_pinning_required` の更新は `enabled: true` を送るため、その直前に Actions が無効だった場合は `Precondition: actions.permissions.enabled changed since approval` と示します。計画時に Actions が有効だった場合は、`sha_pinning_required` を確認できなくなったことを優先し、`actions.permissions.sha_pinning_required` を示します。`access_level` の更新の直前にリポジトリが公開になっていた場合も、`access_level` を確認できなくなったため、`Precondition: actions.access.access_level changed since approval` と示します。
 
 Environment では、Environment そのものの変化を `Precondition: environments.<名前> changed since approval` と示します。作成の承認のあとに同じ名前（ASCII の英字の大文字小文字だけが違う名前を含む）の Environment が作られた場合、宣言した名前と同じかどうかを判定できない名前の Environment が現れて存在を確かめられなくなった場合、方式の変更の承認のあとに Environment がなくなった場合、同じ名前で作り直されて ID が変わった場合が当たります。先頭の更新操作の直前の確認で見つかった場合は、更新要求を送らずに `not attempted` になります。Environment が変わらず方式（`selected` の個別パターンを含む）だけが変わっていた場合は、`Precondition: environments.<名前>.deployment_branch_policy changed since approval` と示します。両方が変わっていた場合は Environment そのものを優先します。作り直された Environment の方式を承認時の値と比べても、承認した変更が当てはまるかは分からないためです。
 
@@ -697,15 +716,12 @@ repositories:
       access:
         access_level: none
     # environments: none
-    # reco does not accept the security settings in the configuration file yet
-    # security:
-    #   dependabot_alerts: true
-    #   dependabot_security_updates: true
+    security:
+      dependabot_alerts: true
+      dependabot_security_updates: true
 ```
 
 表示するのは、設定宣言に書ける管理設定と Environment に限ります。Environment の保護設定（`wait_timer`、`required_reviewers`、`can_admins_bypass`）のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
-
-`security` の設定は、この規定の例外です。設定宣言はまだ `security` を受け付けませんが、受け付けるときと同じキーで値を示します。`security` とその下の行をすべて YAML のコメントとして示し、その前の行で、設定ファイルに書けないことを示します。コメントにするのは、表示を設定宣言として読めるままにし、書けない設定であることを利用者が行を見て分かるようにするためです。
 
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
@@ -734,14 +750,14 @@ Actions が無効のリポジトリでは、`allowed_actions`、`selected_action
         enabled: false
 ```
 
-`access_level` は非公開リポジトリにだけ適用される設定で、公開リポジトリでは取得できません（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 6章）。公開リポジトリでは、`access` とその下の行をコメントとして示します。`access` の下に設定のない空のマッピングは、設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 8.1節）。Actions が無効のリポジトリでも、非公開であれば値を示します。
+`access_level` は非公開リポジトリにだけ適用される設定で、公開リポジトリでは取得できません（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 6章）。公開リポジトリでは、`access` とその下の行をコメントとして示します。`access` の下に設定のない空のマッピングは、設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 9.1節）。Actions が無効のリポジトリでも、非公開であれば値を示します。
 
 ```text
       # access:
       #   access_level: unavailable (the repository is public)
 ```
 
-関連リソースは、種類ごとに、存在するものをすべて示します。並びは GitHub が一覧で返した順で、reco は並べ替えません。名前は二重引用符で囲み、制御文字をエスケープして示します。エスケープは YAML の二重引用符のスカラーとして読める表記です。一つもないときは、種類のキーを省かず、YAML のコメントとして `none` と示します。キーを省くと、存在しないと確かめたことと、reco がその種類を表示しないことを区別できないためです。コメントにするのは、空のシーケンスを設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 8.1節）。
+関連リソースは、種類ごとに、存在するものをすべて示します。並びは GitHub が一覧で返した順で、reco は並べ替えません。名前は二重引用符で囲み、制御文字をエスケープして示します。エスケープは YAML の二重引用符のスカラーとして読める表記です。一つもないときは、種類のキーを省かず、YAML のコメントとして `none` と示します。キーを省くと、存在しないと確かめたことと、reco がその種類を表示しないことを区別できないためです。コメントにするのは、空のシーケンスを設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 9.1節）。
 
 Environment は `environments` に示します。Environment ごとに、`name` と `deployment_branch_policy` を示します。`deployment_branch_policy` の `mode` には、デプロイ元制限の方式（`all`、`protected_branches`、`selected`）を示します。`selected` のときに限り、`patterns` に個別パターンを `type` と `name` の要素として、GitHub が返した順に並べます。`name` は Environment の名前と同じく二重引用符で囲んでエスケープして示します。空の集合は `[]` と示します。
 
@@ -765,13 +781,12 @@ Environment は `environments` に示します。Environment ごとに、`name` 
 `security` には、Dependabot alerts を `dependabot_alerts` に、Dependabot security updates を `dependabot_security_updates` に、有効なら `true`、無効なら `false` で示します。どちらも取得条件を持たないため、`unavailable` にはなりません。Dependabot security updates が一時停止中（GitHub が自動で更新を止めた状態）のときは、値を `true` とし、行末の YAML のコメントで一時停止中であることを示します。一時停止中も設定は有効のままであり、`false` と示すと無効と取り違え、値の位置に一時停止を書くと設定宣言の真偽値として読めないためです。
 
 ```text
-    # reco does not accept the security settings in the configuration file yet
-    # security:
-    #   dependabot_alerts: true
-    #   dependabot_security_updates: true # paused by GitHub (still enabled)
+    security:
+      dependabot_alerts: true
+      dependabot_security_updates: true # paused by GitHub (still enabled)
 ```
 
-表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。`organization` の `access_level`、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 8章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
+表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。`organization` の `access_level`、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 9章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
 
 権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。行を省かず、欠けた項目を示してエラーとします。
 

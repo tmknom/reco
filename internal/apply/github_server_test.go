@@ -120,7 +120,26 @@ func okDeploymentPattern(pattern githubtest.DeploymentPatternBody) response {
 	return response{status: http.StatusOK, body: pattern.JSON()}
 }
 
-// noContent は、個別パターンを取り除く要求の正常応答。
+// okAdminRepository は、トークンの所有者が admin のアクセスを持つ、公開のリポジトリの取得の正常応答。
+// Dependabot alerts の取得の 404 を無効と読むには、同じ観測でこのアクセスを確かめている必要がある。
+func okAdminRepository(id int64) response {
+	return response{status: http.StatusOK, body: githubtest.RepositoryBody{ID: id, Admin: true}.JSON()}
+}
+
+// dependabotAlerts は、Dependabot alerts の取得の応答。GitHub は有効を 204、無効を 404 で返す。
+func dependabotAlerts(enabled bool) response {
+	if enabled {
+		return noContent()
+	}
+	return response{status: http.StatusNotFound, body: `{"message": "Vulnerability alerts are disabled."}`}
+}
+
+// okSecurityUpdates は、Dependabot security updates の取得の正常応答。
+func okSecurityUpdates(enabled, paused bool) response {
+	return response{status: http.StatusOK, body: githubtest.AutomatedSecurityFixesBody{Enabled: enabled, Paused: paused}.JSON()}
+}
+
+// noContent は、本文のない正常応答。個別パターンを取り除く要求と、Dependabot の更新と、有効な Dependabot alerts の取得が返す。
 func noContent() response {
 	return response{status: http.StatusNoContent}
 }

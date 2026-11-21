@@ -1191,7 +1191,7 @@ func enableActionsNotComparable() changeplan.SettingPlan {
 	return changeplan.SettingPlan{
 		Unit: setting.Unit{Key: setting.AllowedActions}, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled),
 		Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
-		SideEffects: []changeplan.SideEffect{{Key: setting.SelectedActions, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)}},
+		SideEffects: []changeplan.SideEffect{{Kind: changeplan.SideEffectSelectedActionsDiscarded, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)}},
 	}
 }
 

@@ -159,7 +159,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	})
 
 	t.Run("mismatch with a side effect is also relevant to the lost value shown before approval", func(t *testing.T) {
-		lost := SideEffect{Key: setting.SelectedActions, Observed: github.Observed(criteria)}
+		lost := SideEffect{Kind: SideEffectSelectedActionsDiscarded, Observed: github.Observed(criteria)}
 		got, err := newRepositoryPlan(policyChange(setting.AllowedActionsSelected, setting.AllowedActionsAll, lost)).LogicalChanges()
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
@@ -177,7 +177,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	t.Run("policy not comparable because actions is disabled is relevant to the unavailable values", func(t *testing.T) {
 		enable := SettingPlan{
 			Unit: setting.Unit{Key: setting.AllowedActions}, Observed: disabled, Desired: policy(setting.AllowedActionsLocalOnly), Result: NotComparable, Applicability: Applicable,
-			SideEffects: []SideEffect{{Key: setting.SelectedActions, Observed: disabled}},
+			SideEffects: []SideEffect{{Kind: SideEffectSelectedActionsDiscarded, Observed: disabled}},
 		}
 		got, err := newRepositoryPlan(enable).LogicalChanges()
 		if err != nil {
@@ -668,6 +668,100 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 		_, err := newRepositoryPlan(undetermined).LogicalChanges()
 		if want := "owner/repo: environments.production cannot be applied"; err == nil || err.Error() != want {
 			t.Errorf("LogicalChanges() error = %v, want %q", err, want)
+		}
+	})
+}
+
+//trace:checks FR-011 INV-001 INV-004
+func TestRepositoryPlan_LogicalChangesOfDependabot(t *testing.T) {
+	newRepositoryPlan := func(settings ...SettingPlan) RepositoryPlan {
+		return RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
+	}
+	updatesValue := func(state setting.DependabotSecurityUpdatesState) setting.Value {
+		return setting.DependabotSecurityUpdatesValue(state)
+	}
+	alerts := func(observed, desired bool, without ...SettingWithoutSideEffect) SettingPlan {
+		return SettingPlan{
+			Unit: setting.Unit{Key: setting.DependabotAlerts}, Observed: github.Observed(setting.BoolValue(observed)), Desired: setting.BoolValue(desired),
+			Result: Mismatch, Applicability: Applicable, SettingsWithoutSideEffect: without,
+		}
+	}
+	updates := func(observed, desired setting.DependabotSecurityUpdatesState) SettingPlan {
+		result := Mismatch
+		if updatesValue(observed).Equal(updatesValue(desired)) {
+			result = Match
+		}
+		plan := SettingPlan{Unit: setting.Unit{Key: setting.DependabotSecurityUpdates}, Observed: github.Observed(updatesValue(observed)), Desired: updatesValue(desired), Result: result}
+		if result == Mismatch {
+			plan.Applicability = Applicable
+		}
+		return plan
+	}
+	// changeOf は、計画 s の期待値を送る更新操作一つからなる論理的な設定変更で、基準は s の計画時の観測値と extra である。
+	changeOf := func(s SettingPlan, extra ...RelevantSetting) LogicalChange {
+		relevant := append([]RelevantSetting{{Unit: s.Unit, ValueAtApproval: s.Observed}}, extra...)
+		return LogicalChange{
+			DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}},
+			Operations:   []UpdateOperation{{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, RelevantSettings: relevant}},
+		}
+	}
+	keys := func(changes []LogicalChange) []setting.Key {
+		var got []setting.Key
+		for _, c := range changes {
+			got = append(got, c.DesiredState[0].Unit.Key)
+		}
+		return got
+	}
+	cases := []struct {
+		name     string
+		settings []SettingPlan
+		want     []setting.Key
+	}{
+		{
+			name:     "disabling both runs security updates before alerts",
+			settings: []SettingPlan{alerts(true, false), updates(setting.DependabotSecurityUpdatesEnabled, setting.DependabotSecurityUpdatesDisabled)},
+			want:     []setting.Key{setting.DependabotSecurityUpdates, setting.DependabotAlerts},
+		},
+		{
+			name:     "enabling both runs alerts before security updates",
+			settings: []SettingPlan{alerts(false, true), updates(setting.DependabotSecurityUpdatesDisabled, setting.DependabotSecurityUpdatesEnabled)},
+			want:     []setting.Key{setting.DependabotAlerts, setting.DependabotSecurityUpdates},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := newRepositoryPlan(tc.settings...).LogicalChanges()
+			if err != nil {
+				t.Fatalf("LogicalChanges() error = %v", err)
+			}
+			if !reflect.DeepEqual(keys(got), tc.want) {
+				t.Errorf("LogicalChanges() order = %v, want %v", keys(got), tc.want)
+			}
+		})
+	}
+
+	t.Run("disabling alerts is relevant to the security updates shown as a side effect and to the ones not shown", func(t *testing.T) {
+		paused := github.Observed(updatesValue(setting.DependabotSecurityUpdatesPaused))
+		withSideEffect := alerts(true, false)
+		withSideEffect.SideEffects = []SideEffect{{Kind: SideEffectDependencyGraphDisabled}, {Kind: SideEffectSecurityUpdatesDisabled, Observed: paused}}
+		disabled := github.Observed(updatesValue(setting.DependabotSecurityUpdatesDisabled))
+		disabledUpdates := RelevantSetting{Unit: setting.Unit{Key: setting.DependabotSecurityUpdates}, ValueAtApproval: disabled}
+		withoutSideEffect := alerts(true, false, SettingWithoutSideEffect{Key: setting.DependabotSecurityUpdates, Observed: disabled})
+		withoutSideEffect.SideEffects = []SideEffect{{Kind: SideEffectDependencyGraphDisabled}}
+		for _, tc := range []struct {
+			plan SettingPlan
+			want LogicalChange
+		}{
+			{plan: withSideEffect, want: changeOf(withSideEffect, RelevantSetting{Unit: setting.Unit{Key: setting.DependabotSecurityUpdates}, ValueAtApproval: paused})},
+			{plan: withoutSideEffect, want: changeOf(withoutSideEffect, disabledUpdates)},
+		} {
+			got, err := newRepositoryPlan(tc.plan).LogicalChanges()
+			if err != nil {
+				t.Fatalf("LogicalChanges() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, []LogicalChange{tc.want}) {
+				t.Errorf("LogicalChanges() = %+v, want %+v", got, []LogicalChange{tc.want})
+			}
 		}
 	})
 }

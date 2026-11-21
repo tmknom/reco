@@ -41,8 +41,7 @@ func TestWriteObservationResult(t *testing.T) {
 		readOnlyWorkflow = "      workflow:\n        default_workflow_permissions: read\n        can_approve_pull_request_reviews: false\n"
 		notSharedAccess  = "      access:\n        access_level: none\n"
 		noEnvironment    = "    # environments: none\n"
-		enabledSecurity  = "    # reco does not accept the security settings in the configuration file yet\n" +
-			"    # security:\n    #   dependabot_alerts: true\n    #   dependabot_security_updates: true\n"
+		enabledSecurity  = "    security:\n      dependabot_alerts: true\n      dependabot_security_updates: true\n"
 	)
 	cases := []struct {
 		name     string

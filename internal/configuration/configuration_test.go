@@ -32,6 +32,10 @@ func TestDesiredState_Value(t *testing.T) {
 		{name: "omitted delete_branch_on_merge is outside the management scope", desired: DesiredState{General: General{AllowAutoMerge: new(true)}}, key: setting.DeleteBranchOnMerge, wantOK: false},
 		{name: "omitted allow_auto_merge is outside the management scope", desired: DesiredState{General: General{DeleteBranchOnMerge: new(true)}}, key: setting.AllowAutoMerge, wantOK: false},
 		{name: "omitted default_workflow_permissions is outside the management scope", desired: DesiredState{WorkflowPermissions: WorkflowPermissions{CanApprovePullRequestReviews: new(true)}}, key: setting.DefaultWorkflowPermissions, wantOK: false},
+		{name: "declared dependabot_alerts returns its desired value", desired: DesiredState{Dependabot: Dependabot{Alerts: new(false)}}, key: setting.DependabotAlerts, want: setting.BoolValue(false), wantOK: true},
+		{name: "declared dependabot_security_updates true returns enabled security updates", desired: DesiredState{Dependabot: Dependabot{SecurityUpdates: new(true)}}, key: setting.DependabotSecurityUpdates, want: setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesEnabled), wantOK: true},
+		{name: "omitted dependabot_alerts is outside the management scope", desired: DesiredState{Dependabot: Dependabot{SecurityUpdates: new(true)}}, key: setting.DependabotAlerts, wantOK: false},
+		{name: "omitted dependabot_security_updates is outside the management scope", desired: DesiredState{Dependabot: Dependabot{Alerts: new(true)}}, key: setting.DependabotSecurityUpdates, wantOK: false},
 		{name: "omitted can_approve_pull_request_reviews is outside the management scope", desired: DesiredState{WorkflowPermissions: WorkflowPermissions{DefaultWorkflowPermissions: new(setting.PermissionRead)}}, key: setting.CanApprovePullRequestReviews, wantOK: false},
 	}
 	for _, tc := range cases {

@@ -36,15 +36,16 @@ func (d document) declaration() (Declaration, error) {
 }
 
 func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDeclaration, error) {
-	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"general", "actions", "environments"})
+	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"general", "actions", "environments", "security"})
 	if err != nil {
 		return RepositoryDeclaration{}, err
 	}
 	generalNode, hasGeneral := entries["general"]
 	actionsNode, hasActions := entries["actions"]
 	environmentsNode, hasEnvironments := entries["environments"]
-	if !hasGeneral && !hasActions && !hasEnvironments {
-		return RepositoryDeclaration{}, invalid(n, path, "must have at least one of general, actions, environments")
+	securityNode, hasSecurity := entries["security"]
+	if !hasGeneral && !hasActions && !hasEnvironments && !hasSecurity {
+		return RepositoryDeclaration{}, invalid(n, path, "must have at least one of general, actions, environments, security")
 	}
 	namePath := path + ".name"
 	name, err := d.stringValue(entries["name"], namePath)
@@ -68,6 +69,11 @@ func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDe
 	}
 	if hasEnvironments {
 		if desired.Environments, err = d.environments(environmentsNode, path+".environments"); err != nil {
+			return RepositoryDeclaration{}, err
+		}
+	}
+	if hasSecurity {
+		if desired.Dependabot, err = d.security(securityNode, path+".security"); err != nil {
 			return RepositoryDeclaration{}, err
 		}
 	}
@@ -394,4 +400,32 @@ func (d document) general(n *yaml.Node, path string) (General, error) {
 		general.AllowAutoMerge = &v
 	}
 	return general, nil
+}
+
+// security は、Dependabot の 2 つの設定を読む。
+// 組み合わせの規則は 2 つの値で決まるため、値の誤りを先に示す。
+func (d document) security(n *yaml.Node, path string) (Dependabot, error) {
+	entries, err := d.mappingEntries(n, path, nil, []string{"dependabot_alerts", "dependabot_security_updates"})
+	if err != nil {
+		return Dependabot{}, err
+	}
+	var dependabot Dependabot
+	if value, ok := entries["dependabot_alerts"]; ok {
+		v, err := d.boolValue(value, path+".dependabot_alerts")
+		if err != nil {
+			return Dependabot{}, err
+		}
+		dependabot.Alerts = &v
+	}
+	if value, ok := entries["dependabot_security_updates"]; ok {
+		v, err := d.boolValue(value, path+".dependabot_security_updates")
+		if err != nil {
+			return Dependabot{}, err
+		}
+		dependabot.SecurityUpdates = &v
+	}
+	if dependabot.Alerts != nil && !*dependabot.Alerts && dependabot.SecurityUpdates != nil && *dependabot.SecurityUpdates {
+		return Dependabot{}, invalid(n, path, "dependabot_alerts false cannot be declared with dependabot_security_updates true")
+	}
+	return dependabot, nil
 }

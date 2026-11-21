@@ -98,9 +98,9 @@ func (o UpdateOperation) CreatesEnvironment() bool {
 	return o.Kind == EnvironmentCreation || o.Kind == EnvironmentCreationWithMode
 }
 
-// LogicalChanges は、変更予定から論理的な設定変更を、計画の並びで導く。
+// LogicalChanges は、変更予定から論理的な設定変更を、executionOrder の実行順で導く。
 // 適用可能でない変更予定があれば、承認の対象にしないため error にする。
-// 副作用を伴う変更予定の更新操作は、operationOf が副作用として提示した設定を必ず基準に載せる。載せずに受け付けると承認の前に示していない値を失わせ得るため。
+// 副作用を伴う変更予定の更新操作は、operationOf が副作用として提示した設定のうち reco が観測するものを必ず基準に載せる。載せずに受け付けると承認の前に示していない値を失わせ得るため。
 // 遷移先が selected のポリシーの変更予定と、選択方式の Actions 許可条件の比較不能な変更予定は、ポリシーの位置で一つの論理的な設定変更にまとめ、
 // ポリシー、許可条件の順に二つの更新操作で実現する。
 // 対にならない形は、設定宣言の組み合わせの規則と観測の取得条件のどちらかが破れたときにしか生じないため、不変条件の破れとして panic する。
@@ -119,7 +119,7 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 	}
 	criteria, paired := r.criteriaFollowingPolicy()
 	var changes []LogicalChange
-	for _, s := range r.Settings {
+	for _, s := range r.executionOrder() {
 		switch {
 		case !s.IsPlannedChange():
 			continue
@@ -155,6 +155,20 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 	return changes, nil
 }
 
+// executionOrder は、管理設定の計画を論理的な設定変更の実行順に並べて返す。基本は計画の並び (変更予定の表示順) である。
+// Dependabot alerts の期待値が無効のときだけ、Dependabot security updates の計画をその直前に移す。
+// 先に Dependabot alerts を無効にすると、GitHub が Dependabot security updates も無効にし、その変更前提が成り立たなくなるため。
+// Dependabot alerts がすでに無効で一致しているなら、Dependabot security updates の変更予定は適用不能で、この並びまで届かない。
+func (r RepositoryPlan) executionOrder() []SettingPlan {
+	alerts := slices.IndexFunc(r.Settings, func(s SettingPlan) bool { return s.Unit.Key == setting.DependabotAlerts })
+	updates := slices.IndexFunc(r.Settings, func(s SettingPlan) bool { return s.Unit.Key == setting.DependabotSecurityUpdates })
+	if alerts < 0 || updates < 0 || r.Settings[alerts].Desired.Bool() {
+		return r.Settings
+	}
+	ordered := slices.Delete(slices.Clone(r.Settings), updates, updates+1)
+	return slices.Insert(ordered, alerts, r.Settings[updates])
+}
+
 // criteriaFollowingPolicy は、遷移先が selected のポリシーの変更予定に続けて更新する、選択方式の Actions 許可条件の比較不能な変更予定を返す。
 // 二つが対で計画にあるときだけ真を返す。
 func (r RepositoryPlan) criteriaFollowingPolicy() (SettingPlan, bool) {
@@ -178,11 +192,16 @@ func (r RepositoryPlan) settingPlanOf(unit setting.Unit) (SettingPlan, bool) {
 }
 
 // operationOf は、変更予定 s の設定の値を送る更新操作を返す。
-// 基準は、s の計画時の観測結果と、副作用として提示した設定の計画時の観測結果である。
+// 基準は、s の計画時の観測結果、副作用として提示した設定のうち reco が観測するものの計画時の観測結果、副作用を示さなかった設定の計画時の観測結果である。
 func operationOf(s SettingPlan) UpdateOperation {
 	relevant := []RelevantSetting{{Unit: s.Unit, ValueAtApproval: s.Observed}}
 	for _, effect := range s.SideEffects {
-		relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: effect.Key}, ValueAtApproval: effect.Observed})
+		if key, ok := effect.Kind.ObservedSetting(); ok {
+			relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: key}, ValueAtApproval: effect.Observed})
+		}
+	}
+	for _, unshown := range s.SettingsWithoutSideEffect {
+		relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: unshown.Key}, ValueAtApproval: unshown.Observed})
 	}
 	return UpdateOperation{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, RelevantSettings: relevant}
 }

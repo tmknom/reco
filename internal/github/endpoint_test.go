@@ -32,6 +32,22 @@ func TestUpdateEndpointObservedSettings(t *testing.T) {
 		}
 	})
 
+	// 更新エンドポイントごとに本文なしの要求を送るため、ほかの設定を観測に含めると、更新後に比べる設定が増えて保全の確認が崩れる。
+	t.Run("each dependabot endpoint observes only its own setting", func(t *testing.T) {
+		cases := []struct {
+			endpoint UpdateEndpoint
+			want     []setting.Key
+		}{
+			{endpoint: DependabotAlertsEndpoint, want: []setting.Key{setting.DependabotAlerts}},
+			{endpoint: DependabotSecurityUpdatesEndpoint, want: []setting.Key{setting.DependabotSecurityUpdates}},
+		}
+		for _, tc := range cases {
+			if got := tc.endpoint.ObservedSettings(); !slices.Equal(got, tc.want) {
+				t.Errorf("ObservedSettings() of update endpoint %d = %v, want %v", tc.endpoint, got, tc.want)
+			}
+		}
+	})
+
 	t.Run("undefined update endpoint panics", func(t *testing.T) {
 		defer func() {
 			if recover() == nil {

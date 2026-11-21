@@ -26,7 +26,7 @@ reco [--log-level LEVEL] apply [--config PATH] [--repo OWNER/REPO]
 
 ## `show`
 
-`--repo` で指定したリポジトリの、設定ファイルに書ける設定と `security` の設定の現在の値を表示します。設定ファイルを書く前に、今の値を確かめるときに使います。
+`--repo` で指定したリポジトリの、設定ファイルに書ける設定の現在の値を表示します。設定ファイルを書く前に、今の値を確かめるときに使います。
 
 ```bash
 $ reco show --repo example/project-a
@@ -54,25 +54,22 @@ repositories:
               name: "main"
             - type: tag
               name: "v*"
-    # reco does not accept the security settings in the configuration file yet
-    # security:
-    #   dependabot_alerts: true
-    #   dependabot_security_updates: true
+    security:
+      dependabot_alerts: true
+      dependabot_security_updates: true
 ```
 
-表示は設定ファイルと同じ構造で、それぞれの値の位置が、設定ファイルにその設定を書く位置です。表示をそのまま設定ファイルにすると、コメントで示した設定を除く、表示したすべての設定を今の値のまま管理する設定ファイルになります。管理したい設定だけを残し、値を書き換えて使います。
+表示は設定ファイルと同じ構造で、それぞれの値の位置が、設定ファイルにその設定を書く位置です。表示をそのまま設定ファイルにすると、表示したすべての設定を今の値のまま管理する設定ファイルになります。管理したい設定だけを残し、値を書き換えて使います。
 
-表示には、次の行も出ます。どれも `#` で始まるコメントで、設定ファイルとしては読まれません。
+表示には、次の行も出ます。`#` から行末まではコメントで、設定ファイルとしては読まれません。
 
 | 行 | 意味 |
 |---|---|
 | `# environments: none` | Environment が一つもない |
 | `# access:` と `#   access_level: unavailable (the repository is public)` | 公開リポジトリのため、`access_level` を読み取れない。この設定は非公開リポジトリにだけ書ける |
-| `# reco does not accept the security settings in the configuration file yet` | 次の `security` の設定は、まだ設定ファイルに書けない |
-| `# security:` とその下の行 | Dependabot alerts（`dependabot_alerts`）と Dependabot security updates（`dependabot_security_updates`）の現在の値 |
-| `#   dependabot_security_updates: true # paused by GitHub (still enabled)` | Dependabot security updates は有効だが、GitHub が一時停止している |
+| `dependabot_security_updates: true # paused by GitHub (still enabled)` | Dependabot security updates は有効だが、GitHub が一時停止している。設定ファイルでは `true` と書いたのと同じ |
 
-Environment の `wait_timer`、`required_reviewers`、`can_admins_bypass` のように、`security` 以外で設定ファイルに書けない設定は表示しません。
+Environment の `wait_timer`、`required_reviewers`、`can_admins_bypass` のように、設定ファイルに書けない設定は表示しません。
 
 ## `plan`
 
@@ -99,7 +96,7 @@ Repositories checked: 1
 | `<設定>: (<今の状態>) -> <書いた値>` | 今は効いていない設定（Actions が無効、Environment がまだない、など）。承認すると右の値に変える |
 | `Applicability: not applicable (<理由>)` | 安全に変えるための条件が成り立たないため、reco はすぐ上の変更をしない。括弧の中は、何が成り立っていないかと、設定ファイルの直し方 |
 | `Patterns to remove:`、`Patterns to add:` | Environment のデプロイを許可するパターンのうち、設定ファイルにないものと、GitHub 上にないもの |
-| `Side effect:` | この変更に伴って GitHub が消す値 |
+| `Side effect:` | この変更に伴って GitHub が消すか変える値 |
 | `Previous settings:` | Actions を有効に戻すと、設定ファイルに書いていない設定は、無効にする前の値で再開すること |
 | `Plan:` | 変える予定のリポジトリの数と、変える設定の数 |
 | `Repositories checked:` | 読み取ったリポジトリの数 |

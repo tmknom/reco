@@ -74,7 +74,7 @@ func TestPlannedChangeText(t *testing.T) {
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.AllowedActions}, Observed: github.Observed(policy(setting.AllowedActionsSelected)), Desired: policy(setting.AllowedActionsAll),
 				Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
-				SideEffects: []changeplan.SideEffect{{Key: setting.SelectedActions, Observed: github.Observed(setting.SelectedActionsCriteriaValue(criteria))}},
+				SideEffects: []changeplan.SideEffect{{Kind: changeplan.SideEffectSelectedActionsDiscarded, Observed: github.Observed(setting.SelectedActionsCriteriaValue(criteria))}},
 			},
 			want: "  actions.permissions.allowed_actions: selected -> all\n" +
 				"    Side effect: GitHub discards the current selected_actions (github_owned_allowed: true, verified_allowed: true, patterns_allowed: [\"example/*\"])\n",
@@ -84,7 +84,7 @@ func TestPlannedChangeText(t *testing.T) {
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.AllowedActions}, Observed: disabled, Desired: policy(setting.AllowedActionsLocalOnly),
 				Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
-				SideEffects: []changeplan.SideEffect{{Key: setting.SelectedActions, Observed: disabled}},
+				SideEffects: []changeplan.SideEffect{{Kind: changeplan.SideEffectSelectedActionsDiscarded, Observed: disabled}},
 			},
 			want: "  actions.permissions.allowed_actions: (GitHub Actions disabled) -> local_only (enables GitHub Actions)\n" +
 				possibleLoss,
@@ -94,7 +94,7 @@ func TestPlannedChangeText(t *testing.T) {
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.AllowedActions}, Observed: disabled, Desired: policy(setting.AllowedActionsLocalOnly),
 				Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
-				SideEffects:     []changeplan.SideEffect{{Key: setting.SelectedActions, Observed: disabled}},
+				SideEffects:     []changeplan.SideEffect{{Kind: changeplan.SideEffectSelectedActionsDiscarded, Observed: disabled}},
 				ResumedSettings: []setting.Key{setting.SHAPinningRequired},
 			},
 			want: "  actions.permissions.allowed_actions: (GitHub Actions disabled) -> local_only (enables GitHub Actions)\n" +
@@ -148,6 +148,41 @@ func TestPlannedChangeText(t *testing.T) {
 			want: "  actions.permissions.sha_pinning_required: (GitHub Actions disabled) -> true\n",
 		},
 		{
+			name: "disabling dependabot alerts shows the dependency graph and the paused security updates as side effects in this order",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.DependabotAlerts}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false),
+				Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+				SideEffects: []changeplan.SideEffect{
+					{Kind: changeplan.SideEffectDependencyGraphDisabled},
+					{Kind: changeplan.SideEffectSecurityUpdatesDisabled, Observed: github.Observed(setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesPaused))},
+				},
+			},
+			want: "  security.dependabot_alerts: true -> false\n" +
+				"    Side effect: GitHub also disables the dependency graph\n" +
+				"    Side effect: GitHub also disables dependabot_security_updates, which is currently true (paused by GitHub)\n",
+		},
+		{
+			name: "enabling dependabot alerts shows that the dependency graph is enabled",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.DependabotAlerts}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
+				Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+				SideEffects: []changeplan.SideEffect{{Kind: changeplan.SideEffectDependencyGraphEnabled}},
+			},
+			want: "  security.dependabot_alerts: false -> true\n" +
+				"    Side effect: GitHub also enables the dependency graph\n",
+		},
+		{
+			name: "security updates with disabled alerts shows the reason to declare alerts",
+			s: changeplan.SettingPlan{
+				Unit:     setting.Unit{Key: setting.DependabotSecurityUpdates},
+				Observed: github.Observed(setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesDisabled)),
+				Desired:  setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesEnabled),
+				Result:   changeplan.Mismatch, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableDependabotAlertsRemainDisabled,
+			},
+			want: "  security.dependabot_security_updates: false -> true\n" +
+				"    Applicability: not applicable (Dependabot alerts is disabled; declare dependabot_alerts: true to enable it)\n",
+		},
+		{
 			name: "match is empty",
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true),
@@ -165,16 +200,16 @@ func TestPlannedChangeText(t *testing.T) {
 	}
 }
 
-func TestPlannedChangeText_SideEffectOnOtherSettingPanics(t *testing.T) {
+func TestPlannedChangeText_UndefinedSideEffectPanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {
-			t.Error("PlannedChangeText() did not panic for a side effect on another setting")
+			t.Error("PlannedChangeText() did not panic for an undefined side effect")
 		}
 	}()
 	_ = PlannedChangeText(changeplan.SettingPlan{
 		Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
 		Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
-		SideEffects: []changeplan.SideEffect{{Key: setting.AllowAutoMerge, Observed: github.Observed(setting.BoolValue(true))}},
+		SideEffects: []changeplan.SideEffect{{Observed: github.Observed(setting.BoolValue(true))}},
 	})
 }
 

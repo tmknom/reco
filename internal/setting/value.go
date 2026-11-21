@@ -11,13 +11,14 @@ import (
 // 種別ごとに使わないフィールドをゼロ値に保つため、フィールドを公開せず、コンストラクタでだけ作る。
 // 二つの値が同じかどうかは Equal で判定する。許可パターンのスライスを持つため、== はコンパイルエラーになる。
 type Value struct {
-	kind         valueKind
-	boolean      bool
-	level        PermissionLevel
-	policy       AllowedActionsPolicy
-	criteria     SelectedActionsCriteria
-	accessLevel  AccessLevel
-	branchPolicy DeploymentBranchPolicy
+	kind            valueKind
+	boolean         bool
+	level           PermissionLevel
+	policy          AllowedActionsPolicy
+	criteria        SelectedActionsCriteria
+	accessLevel     AccessLevel
+	branchPolicy    DeploymentBranchPolicy
+	securityUpdates DependabotSecurityUpdatesState
 }
 
 type valueKind int
@@ -30,6 +31,7 @@ const (
 	kindSelectedActionsCriteria
 	kindAccessLevel
 	kindDeploymentBranchPolicy
+	kindDependabotSecurityUpdates
 )
 
 // BoolValue は、真偽値の設定の値を作る。
@@ -66,6 +68,15 @@ func DeploymentBranchPolicyValue(policy DeploymentBranchPolicy) Value {
 	return Value{kind: kindDeploymentBranchPolicy, branchPolicy: policy}
 }
 
+// DependabotSecurityUpdatesValue は、Dependabot security updates の値を作る。
+// 未定義の値は Enabled が偽を返して無効と同じ値に見えるため、確かめていない値を無効として通さないよう、不変条件の破れとして panic する。
+func DependabotSecurityUpdatesValue(state DependabotSecurityUpdatesState) Value {
+	if !state.valid() {
+		panic("setting: undefined dependabot security updates value")
+	}
+	return Value{kind: kindDependabotSecurityUpdates, securityUpdates: state}
+}
+
 // Equal は、二つの値が設定の意味で同じ値かどうかを返す。
 // 値のないゼロ値は設定の値ではなく、比べようとするのは不変条件の破れのため panic する。
 // 同じ値として扱うと、確かめていない値が一致や変更前提の成立として黙って通るため。
@@ -80,7 +91,8 @@ func (v Value) Equal(other Value) bool {
 		v.policy == other.policy &&
 		v.criteria.equal(other.criteria) &&
 		v.accessLevel == other.accessLevel &&
-		v.branchPolicy.equal(other.branchPolicy)
+		v.branchPolicy.equal(other.branchPolicy) &&
+		v.securityUpdates.Enabled() == other.securityUpdates.Enabled()
 }
 
 // String は、表示に使う表記で値を返す。値のないゼロ値を表示しようとするのは不変条件の破れのため panic する。
@@ -104,6 +116,11 @@ func (v Value) String() string {
 			return string(v.branchPolicy.Mode) + " " + v.branchPolicy.PatternsString()
 		}
 		return string(v.branchPolicy.Mode)
+	case kindDependabotSecurityUpdates:
+		if v.securityUpdates == DependabotSecurityUpdatesPaused {
+			return "true (paused by GitHub)"
+		}
+		return strconv.FormatBool(v.securityUpdates.Enabled())
 	case kindNone:
 	}
 	panic("setting: no value to format")
@@ -161,4 +178,12 @@ func (v Value) DeploymentBranchPolicy() DeploymentBranchPolicy {
 	policy := v.branchPolicy
 	policy.Patterns = slices.Clone(policy.Patterns)
 	return policy
+}
+
+// DependabotSecurityUpdates は、Dependabot security updates の値を返す。それ以外の値は不変条件の破れのため panic する。
+func (v Value) DependabotSecurityUpdates() DependabotSecurityUpdatesState {
+	if v.kind != kindDependabotSecurityUpdates {
+		panic("setting: value is not dependabot security updates")
+	}
+	return v.securityUpdates
 }

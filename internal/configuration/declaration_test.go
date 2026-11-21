@@ -325,7 +325,7 @@ func TestDocumentDeclaration(t *testing.T) {
 			name:       "name alone is rejected for lacking both general and actions",
 			src:        strings.Replace(second, "    general:\n      allow_auto_merge: false\n", "", 1),
 			wantPath:   "repositories[1]",
-			wantReason: "must have at least one of general, actions, environments",
+			wantReason: "must have at least one of general, actions, environments, security",
 		},
 		{
 			name:       "missing name is rejected",
@@ -462,6 +462,24 @@ func TestDocumentDeclaration(t *testing.T) {
 			wantPath:   "repositories[1].environments[1].name",
 			wantReason: "must consist of printable ASCII characters",
 		},
+		// Security
+		{
+			name: "repository with only security is accepted",
+			src:  minimal + "  - name: owner/second\n    security:\n      dependabot_alerts: true\n",
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				{
+					Reference: mustReference(t, "owner/second"),
+					Desired:   DesiredState{Dependabot: Dependabot{Alerts: new(true)}},
+				},
+			}},
+		},
+		{
+			name:       "invalid security is rejected at the path of the repository and security",
+			src:        second + "    security:\n      dependabot_alerts: false\n      dependabot_security_updates: true\n",
+			wantPath:   "repositories[1].security",
+			wantReason: "dependabot_alerts false cannot be declared with dependabot_security_updates true",
+		},
 		// Actions access
 		{
 			name:       "unknown key in access is rejected",
@@ -563,6 +581,77 @@ func TestDocumentDeclaration(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("declaration() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDocumentSecurity は、2 つの設定がそれぞれ独立に宣言できることと、dependabot_security_updates を有効にできない組み合わせの拒否、判定の順序を確かめる。
+//
+//trace:checks FR-001
+func TestDocumentSecurity(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want Dependabot
+		// wantPath は error の先頭に付く、問題の箇所のパス。パスの直後の " (" まで照合する。
+		wantPath   string
+		wantReason string
+	}{
+		{name: "dependabot_alerts true alone is read, leaving dependabot_security_updates omitted", src: "dependabot_alerts: true\n", want: Dependabot{Alerts: new(true)}},
+		{name: "dependabot_alerts false alone is read, leaving dependabot_security_updates omitted", src: "dependabot_alerts: false\n", want: Dependabot{Alerts: new(false)}},
+		{name: "dependabot_security_updates true alone is read, leaving dependabot_alerts omitted", src: "dependabot_security_updates: true\n", want: Dependabot{SecurityUpdates: new(true)}},
+		{name: "dependabot_security_updates false alone is read, leaving dependabot_alerts omitted", src: "dependabot_security_updates: false\n", want: Dependabot{SecurityUpdates: new(false)}},
+		{name: "alerts true with updates true is read into their own fields", src: "dependabot_alerts: true\ndependabot_security_updates: true\n", want: Dependabot{Alerts: new(true), SecurityUpdates: new(true)}},
+		{name: "alerts true with updates false is read into their own fields", src: "dependabot_alerts: true\ndependabot_security_updates: false\n", want: Dependabot{Alerts: new(true), SecurityUpdates: new(false)}},
+		{name: "alerts false with updates false is read into their own fields", src: "dependabot_alerts: false\ndependabot_security_updates: false\n", want: Dependabot{Alerts: new(false), SecurityUpdates: new(false)}},
+		{
+			name:       "alerts false with updates true is rejected at security",
+			src:        "dependabot_alerts: false\ndependabot_security_updates: true\n",
+			wantPath:   "P",
+			wantReason: "dependabot_alerts false cannot be declared with dependabot_security_updates true",
+		},
+		{name: "empty security is rejected", src: "{}\n", wantPath: "P", wantReason: "must not be empty"},
+		{
+			name:       "unknown key is rejected",
+			src:        "dependabot_alerts: true\nsecret_scanning: true\n",
+			wantPath:   "P",
+			wantReason: `unknown key "secret_scanning"; expected dependabot_alerts, dependabot_security_updates`,
+		},
+		{
+			name:       "quoted dependabot_alerts is rejected at the value before the combination",
+			src:        "dependabot_alerts: \"false\"\ndependabot_security_updates: true\n",
+			wantPath:   "P.dependabot_alerts",
+			wantReason: "must be true or false",
+		},
+		{
+			name:       "quoted dependabot_security_updates is rejected at the value before the combination",
+			src:        "dependabot_alerts: false\ndependabot_security_updates: \"true\"\n",
+			wantPath:   "P.dependabot_security_updates",
+			wantReason: "must be true or false",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.security(doc.root, "P")
+			if tc.wantPath != "" {
+				if err == nil {
+					t.Fatalf("security() = %+v, want error", got)
+				}
+				if !strings.HasPrefix(err.Error(), tc.wantPath+" (") {
+					t.Errorf("security() error = %q, want it to start with %q", err, tc.wantPath+" (")
+				}
+				if !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("security() error = %q, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("security() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("security() = %+v, want %+v", got, tc.want)
 			}
 		})
 	}

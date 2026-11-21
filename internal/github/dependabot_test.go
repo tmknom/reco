@@ -59,7 +59,7 @@ func TestDecodeAutomatedSecurityFixes(t *testing.T) {
 	successes := []struct {
 		name string
 		body string
-		want setting.DependabotSecurityUpdates
+		want setting.DependabotSecurityUpdatesState
 	}{
 		{name: "enabled and not paused is enabled", body: `{"enabled": true, "paused": false}`, want: setting.DependabotSecurityUpdatesEnabled},
 		{name: "enabled and paused is paused", body: `{"enabled": true, "paused": true}`, want: setting.DependabotSecurityUpdatesPaused},
