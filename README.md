@@ -14,6 +14,7 @@ Only settings you declare are managed. Omitted settings are left untouched.
 - General: allow auto-merge, automatically delete head branches
 - GitHub Actions: enabling or disabling GitHub Actions, allowed actions and reusable workflows, requiring actions to be pinned to a full-length commit SHA, default `GITHUB_TOKEN` permissions, allowing GitHub Actions to create and approve pull requests, access to actions and reusable workflows from other repositories (private repositories only)
 - Environments: existence of declared environments and their deployment branch restriction (`all`, `protected_branches`, or `selected` with its branch and tag patterns); `apply` creates missing environments, changes the restriction, adds and removes `selected` patterns one at a time, and never touches environments that are not declared
+- Security: enabling or disabling Dependabot alerts and Dependabot security updates; `plan` shows that disabling Dependabot alerts also disables the dependency graph and Dependabot security updates on GitHub
 
 reco targets repositories owned by personal accounts on GitHub.com.
 Organization-owned repositories and GitHub Enterprise Server are not supported.

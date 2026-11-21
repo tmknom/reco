@@ -1,6 +1,7 @@
 package changeplan
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/tmknom/reco/internal/github"
@@ -119,7 +120,7 @@ func TestJudgeApplicability(t *testing.T) {
 			if settings == nil {
 				settings = []SettingPlan{tc.in}
 			}
-			got, reason := judgeApplicability(tc.in, settings)
+			got, reason := judgeApplicability(tc.in, settings, github.ObservationResult{})
 			if got != tc.want || reason != tc.wantReason {
 				t.Errorf("judgeApplicability() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)
 			}
@@ -155,7 +156,86 @@ func TestJudgeApplicability(t *testing.T) {
 					t.Error("judgeApplicability() did not panic")
 				}
 			}()
-			_, _ = judgeApplicability(tc.in, settings)
+			_, _ = judgeApplicability(tc.in, settings, github.ObservationResult{})
+		})
+	}
+}
+
+//trace:checks FR-006 INV-001
+func TestJudgeApplicability_DependabotSecurityUpdates(t *testing.T) {
+	updatesPlan := func(observed setting.DependabotSecurityUpdatesState, desired bool) SettingPlan {
+		return newSettingPlan(setting.DependabotSecurityUpdates, github.Observed(setting.DependabotSecurityUpdatesValue(observed)), setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesStateOf(desired)))
+	}
+	alertsPlan := func(observed, desired bool) SettingPlan {
+		return newSettingPlan(setting.DependabotAlerts, github.Observed(setting.BoolValue(observed)), setting.BoolValue(desired))
+	}
+	observation := func(alerts bool, updates setting.DependabotSecurityUpdatesState) github.ObservationResult {
+		return github.ObservationResult{Dependabot: &github.Dependabot{Alerts: alerts, SecurityUpdates: updates}}
+	}
+	cases := []struct {
+		name       string
+		in         SettingPlan
+		alerts     []SettingPlan
+		observed   github.ObservationResult
+		want       Applicability
+		wantReason NotApplicableReason
+	}{
+		{
+			name:     "enabling with alerts enabled and undeclared is applicable",
+			in:       updatesPlan(setting.DependabotSecurityUpdatesDisabled, true),
+			observed: observation(true, setting.DependabotSecurityUpdatesDisabled),
+			want:     Applicable,
+		},
+		{
+			name:     "disabling with alerts enabled and to be disabled is applicable",
+			in:       updatesPlan(setting.DependabotSecurityUpdatesEnabled, false),
+			alerts:   []SettingPlan{alertsPlan(true, false)},
+			observed: observation(true, setting.DependabotSecurityUpdatesEnabled),
+			want:     Applicable,
+		},
+		{
+			name:     "enabling with alerts disabled and declared true is applicable",
+			in:       updatesPlan(setting.DependabotSecurityUpdatesDisabled, true),
+			alerts:   []SettingPlan{alertsPlan(false, true)},
+			observed: observation(false, setting.DependabotSecurityUpdatesDisabled),
+			want:     Applicable,
+		},
+		{
+			name:       "enabling with alerts disabled and undeclared is not applicable because alerts remain disabled",
+			in:         updatesPlan(setting.DependabotSecurityUpdatesDisabled, true),
+			observed:   observation(false, setting.DependabotSecurityUpdatesDisabled),
+			want:       NotApplicable,
+			wantReason: NotApplicableDependabotAlertsRemainDisabled,
+		},
+		{
+			name:       "disabling with alerts disabled and undeclared is not applicable because GitHub rejects it too",
+			in:         updatesPlan(setting.DependabotSecurityUpdatesEnabled, false),
+			observed:   observation(false, setting.DependabotSecurityUpdatesEnabled),
+			want:       NotApplicable,
+			wantReason: NotApplicableDependabotAlertsRemainDisabled,
+		},
+		{
+			name:       "disabling with alerts disabled and declared false is not applicable",
+			in:         updatesPlan(setting.DependabotSecurityUpdatesEnabled, false),
+			alerts:     []SettingPlan{alertsPlan(false, false)},
+			observed:   observation(false, setting.DependabotSecurityUpdatesEnabled),
+			want:       NotApplicable,
+			wantReason: NotApplicableDependabotAlertsRemainDisabled,
+		},
+		{
+			name:     "alerts mismatch is applicable",
+			in:       alertsPlan(true, false),
+			observed: observation(true, setting.DependabotSecurityUpdatesEnabled),
+			want:     Applicable,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := slices.Concat(tc.alerts, []SettingPlan{tc.in})
+			got, reason := judgeApplicability(tc.in, settings, tc.observed)
+			if got != tc.want || reason != tc.wantReason {
+				t.Errorf("judgeApplicability() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)
+			}
 		})
 	}
 }

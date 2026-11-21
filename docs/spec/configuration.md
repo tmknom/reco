@@ -27,6 +27,9 @@ repositories:
         deployment_branch_policy:
           mode: protected_branches
       - name: staging
+    security:
+      dependabot_alerts: true
+      dependabot_security_updates: true
 
   - name: example/project-b
     general:
@@ -37,9 +40,9 @@ repositories:
 |---|---|---|
 | ルート | マッピング | `repositories` だけを持つ |
 | `repositories` | シーケンス | 1件以上のリポジトリごとの宣言を含む |
-| `repositories[]` | マッピング | `name` と、少なくとも一つの管理設定を含む `general`、`actions`、`environments` のいずれかを持つ |
+| `repositories[]` | マッピング | `name` と、少なくとも一つの管理設定を含む `general`、`actions`、`environments`、`security` のいずれかを持つ |
 | `repositories[].name` | 文字列 | 必須。空でない `OWNER/REPO` 形式 |
-| `general`、`actions`、`permissions`、`selected_actions`、`workflow`、`access` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions`、`workflow`、`access` のうち一つ以上を含めばよい |
+| `general`、`actions`、`permissions`、`selected_actions`、`workflow`、`access`、`security` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions`、`workflow`、`access` のうち一つ以上を含めばよい |
 | `environments` | シーケンス | 使用する場合は、1件以上の Environment の宣言を含む（7章） |
 
 定義していないフィールドは、どの階層でも受け付けません。どの位置でも、`null` を指定して省略を表現することはできません。
@@ -277,7 +280,42 @@ environments:
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Repository File |
 
-## 8. 入力検証と対象名
+## 8. Security
+
+| YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
+|---|---|---|---|---|
+| `security.dependabot_alerts` | 真偽値 | `true` / `false` | 依存関係の脆弱性を Dependabot alerts で知らせるか | 独立 |
+| `security.dependabot_security_updates` | 真偽値 | `true` / `false` | 脆弱性を直す Pull Request を Dependabot security updates が作るか | 独立 |
+
+2つの設定は独立した管理の単位で、どちらか一方だけを宣言できます。どちらの期待値も、もう一方の設定の状態を含みません。
+
+GitHub が Dependabot security updates を一時停止していても、設定としては有効のままです（[GitHub リポジトリ API 仕様](../research/repositories.md) 7章）。そのため、一時停止中の Dependabot security updates は `dependabot_security_updates: true` と一致します。一時停止は宣言できず、reco は一時停止を解除しません。
+
+2つの設定の組み合わせは次のとおりです。
+
+| `dependabot_alerts` | `dependabot_security_updates` | 判定 |
+|---|---|---|
+| `true` | 省略、`true`、`false` | 有効 |
+| `false` | 省略、`false` | 有効 |
+| `false` | `true` | エラー |
+| 省略 | `true`、`false` | 有効 |
+| 省略 | 省略（`security` 自体を宣言） | エラー（空のマッピング） |
+
+`dependabot_alerts: false` と `dependabot_security_updates: true` を同時に宣言できないのは、GitHub が、Dependabot alerts が無効のリポジトリで Dependabot security updates の有効化を拒否し（GitHub リポジトリ API 仕様 7章）、この状態を実現できないためです。どちらかの値が真偽値でない誤りは、この組み合わせの誤りより先に示します。組み合わせが2つの値で決まるためです。
+
+Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を宣言せずに `dependabot_security_updates` の値を変える宣言をすると、その変更予定は適用不能になります（[アーキテクチャ設計](../design/architecture.md) 5.4）。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。
+
+`dependabot_alerts: false` は、Dependabot alerts を無効にする宣言です。GitHub は、Dependabot alerts を無効にすると、Dependency graph と、有効だった Dependabot security updates も無効にします（GitHub リポジトリ API 仕様 6章）。reco はこの変化を変更に伴う副作用として承認の前に示したうえで、宣言どおりに無効にします。Dependency graph は reco が宣言を受け付けない設定です。
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `alignment` | `FR-001` | Functional Requirement |
+| `alignment` | `FR-005` | Functional Requirement |
+| `alignment` | `FR-006` | Functional Requirement |
+| `alignment` | `INV-001` | Invariant |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
+
+## 9. 入力検証と対象名
 
 入力検証では、YAML の構造・値の形式と、宣言されたリポジトリ名・重複の条件を確認します。不正な入力は、問題の箇所と理由を示して拒否します。
 
@@ -286,7 +324,7 @@ environments:
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `FR-002` | Functional Requirement |
 
-### 8.1 YAML の形式と値
+### 9.1 YAML の形式と値
 
 | 条件 | 判定 |
 |---|---|
@@ -318,7 +356,7 @@ environments:
 | `allowed_actions: "selected"` | 値の形式は有効。ただし `selected_actions` の3項目も必要 |
 | `access_level: organization` | エラー（宣言で受け付ける値ではない） |
 
-### 8.2 リポジトリ名と重複
+### 9.2 リポジトリ名と重複
 
 `name` は、`OWNER` と `REPO` を一つの `/` で区切った `OWNER/REPO` 形式の文字列です。`OWNER` と `REPO` はともに空ではなく、ASCII の英数字と `-`、`_`、`.` だけからなり、`.` と `..` ではありません。このため、空白、制御文字、ASCII 以外の文字を含む名前は受け付けません。URL や、末尾に `.git` を付けたクローン用の表記（`.GIT` のように大文字小文字が異なるものを含む）は受け付けません。この値は名前による **リポジトリ指定** であり、GitHub のリポジトリ ID や、実体の存在確認を表すものではありません。
 
@@ -332,7 +370,7 @@ GitHub は所有者名・リポジトリ名を大文字小文字非依存で扱�
 | `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Repository File |
 | `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
 
-## 9. References
+## 10. References
 
 - [要求定義](requirements.md)
 - [CLI 仕様](cli.md)

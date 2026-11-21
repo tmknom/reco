@@ -17,6 +17,8 @@ const (
 	DefaultWorkflowPermissions   Key = "actions.workflow.default_workflow_permissions"
 	CanApprovePullRequestReviews Key = "actions.workflow.can_approve_pull_request_reviews"
 	ActionsAccessLevel           Key = "actions.access.access_level"
+	DependabotAlerts             Key = "security.dependabot_alerts"
+	DependabotSecurityUpdates    Key = "security.dependabot_security_updates"
 	// EnvironmentResource は、Environment そのもの (期待値は存在すること) の形。
 	EnvironmentResource Key = "environments"
 	// EnvironmentDeploymentBranchPolicy は、Environment の中のデプロイ元制限の形。
@@ -27,7 +29,7 @@ const (
 // 設定グループは一つの Key で表す。Environment に関わる管理の単位は、宣言の名前ごとに決まるため含めない。
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
 func ManagementUnits() []Key {
-	return []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel}
+	return []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, DependabotAlerts, DependabotSecurityUpdates}
 }
 
 // Area は、k が属する設定の領域を返す。未知の設定は不変条件の破れとして panic する。
@@ -44,6 +46,8 @@ func (k Key) Area() Area {
 		return AreaActionsAccess
 	case EnvironmentResource, EnvironmentDeploymentBranchPolicy:
 		return AreaEnvironments
+	case DependabotAlerts, DependabotSecurityUpdates:
+		return AreaDependabot
 	}
 	panic(fmt.Sprintf("unknown setting %q", k))
 }

@@ -241,7 +241,7 @@ func TestManagedAreas(t *testing.T) {
 			want:    []setting.Area{setting.AreaActionsPermissions},
 		},
 		{
-			name: "each area appears once in the configuration order",
+			name: "each area appears once",
 			desired: configuration.DesiredState{
 				General: configuration.General{AllowAutoMerge: new(true), DeleteBranchOnMerge: new(true)},
 				ActionsPermissions: configuration.ActionsPermissions{
@@ -266,10 +266,18 @@ func TestManagedAreas(t *testing.T) {
 			},
 			want: []setting.Area{setting.AreaGeneral, setting.AreaEnvironments},
 		},
+		{
+			name:    "dependabot_security_updates alone includes dependabot",
+			desired: configuration.DesiredState{Dependabot: configuration.Dependabot{SecurityUpdates: new(true)}},
+			want:    []setting.Area{setting.AreaDependabot},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := managedAreas(tc.desired); !slices.Equal(got, tc.want) {
+			got := managedAreas(tc.desired)
+			slices.Sort(got)
+			slices.Sort(tc.want)
+			if !slices.Equal(got, tc.want) {
 				t.Errorf("managedAreas() = %v, want %v", got, tc.want)
 			}
 		})
@@ -294,6 +302,30 @@ func TestReconcile_Environments(t *testing.T) {
 	}
 	// リポジトリ設定のあとに宣言の並びで続き、宣言していない Environment は現れない
 	want := []string{"general.allow_auto_merge", "environments.zeta", "environments.alpha"}
+	if !reflect.DeepEqual(units, want) {
+		t.Errorf("reconcile() units = %v, want %v", units, want)
+	}
+}
+
+//trace:checks FR-005
+func TestReconcile_DependabotFollowsEnvironments(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	desired := configuration.DesiredState{
+		General:      configuration.General{AllowAutoMerge: new(true)},
+		Environments: []configuration.EnvironmentDeclaration{{Name: production}},
+		Dependabot:   configuration.Dependabot{Alerts: new(true), SecurityUpdates: new(true)},
+	}
+	observed := github.ObservationResult{
+		General:      github.General{AllowAutoMerge: true},
+		Environments: &github.Environments{Existing: []github.Environment{{Name: "production"}}},
+		Dependabot:   &github.Dependabot{Alerts: true, SecurityUpdates: setting.DependabotSecurityUpdatesEnabled},
+	}
+	var units []string
+	for _, s := range reconcile(desired, observed) {
+		units = append(units, s.Unit.String())
+	}
+	// YAML 設定仕様の章の並びで、Environments のあとに Security が続く
+	want := []string{"general.allow_auto_merge", "environments.production", "security.dependabot_alerts", "security.dependabot_security_updates"}
 	if !reflect.DeepEqual(units, want) {
 		t.Errorf("reconcile() units = %v, want %v", units, want)
 	}

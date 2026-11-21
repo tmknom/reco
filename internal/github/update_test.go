@@ -145,6 +145,146 @@ func TestClientUpdate(t *testing.T) {
 	})
 }
 
+// TestEnablementMethod は、有効にするときは PUT、無効にするときは DELETE を選ぶことを確かめる。
+//
+//trace:checks FR-011
+func TestEnablementMethod(t *testing.T) {
+	cases := []struct {
+		name    string
+		enabled bool
+		want    string
+	}{
+		{name: "enabling is PUT", enabled: true, want: http.MethodPut},
+		{name: "disabling is DELETE", enabled: false, want: http.MethodDelete},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := enablementMethod(tc.enabled); got != tc.want {
+				t.Errorf("enablementMethod(%t) = %s, want %s", tc.enabled, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestClientUpdateDependabot は、Dependabot の2設定の更新が、期待値でメソッドを変え、本文を送らないことを確かめる。
+//
+//trace:checks INV-001 FR-011
+func TestClientUpdateDependabot(t *testing.T) {
+	cases := []struct {
+		name       string
+		key        setting.Key
+		value      setting.Value
+		wantMethod string
+		wantPath   string
+	}{
+		{name: "dependabot_alerts true is PUT", key: setting.DependabotAlerts, value: setting.BoolValue(true), wantMethod: http.MethodPut, wantPath: vulnerabilityAlertsPath},
+		{name: "dependabot_alerts false is DELETE", key: setting.DependabotAlerts, value: setting.BoolValue(false), wantMethod: http.MethodDelete, wantPath: vulnerabilityAlertsPath},
+		{
+			name: "dependabot_security_updates enabled is PUT", key: setting.DependabotSecurityUpdates,
+			value:      setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesEnabled),
+			wantMethod: http.MethodPut, wantPath: automatedSecurityFixesPath,
+		},
+		{
+			name: "dependabot_security_updates disabled is DELETE", key: setting.DependabotSecurityUpdates,
+			value:      setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesDisabled),
+			wantMethod: http.MethodDelete, wantPath: automatedSecurityFixesPath,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var received atomic.Int32
+			var gotMethod, gotPath string
+			var gotHeader http.Header
+			var gotTransferEncoding []string
+			var gotContentLength int64
+			var gotBody []byte
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				received.Add(1)
+				gotMethod, gotPath = r.Method, r.URL.Path
+				gotHeader, gotTransferEncoding, gotContentLength = r.Header, r.TransferEncoding, r.ContentLength
+				gotBody, _ = io.ReadAll(r.Body)
+				w.WriteHeader(http.StatusNoContent)
+			})
+
+			outcome, err := c.Update(t.Context(), mustReference(t, "owner/repo"), tc.key, tc.value)
+			if err != nil || outcome != UpdateSucceeded {
+				t.Fatalf("Update() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+			}
+
+			if n := received.Load(); n != 1 {
+				t.Errorf("server received %d requests, want 1", n)
+			}
+			if gotMethod != tc.wantMethod || gotPath != tc.wantPath {
+				t.Errorf("request = %s %s, want %s %s", gotMethod, gotPath, tc.wantMethod, tc.wantPath)
+			}
+			if len(gotBody) != 0 {
+				t.Errorf("request body = %q, want none", gotBody)
+			}
+			if v, ok := gotHeader["Content-Type"]; ok {
+				t.Errorf("Content-Type = %q, want the header absent", v)
+			}
+			if gotContentLength != 0 || len(gotTransferEncoding) != 0 {
+				t.Errorf("Content-Length = %d, Transfer-Encoding = %v, want 0 and none", gotContentLength, gotTransferEncoding)
+			}
+		})
+	}
+}
+
+// TestClientUpdateDependabotOutcome は、Dependabot の2設定の更新が、正常応答の 204 だけを成功とし、
+// ほかの 2xx を成否不明、4xx を拒否とすることを確かめる。2設定は同じ判定を通る。
+//
+//trace:checks FR-013 INV-005
+func TestClientUpdateDependabotOutcome(t *testing.T) {
+	keys := []struct {
+		key       setting.Key
+		value     setting.Value
+		operation string
+	}{
+		{key: setting.DependabotAlerts, value: setting.BoolValue(true), operation: "update dependabot alerts owner/repo: "},
+		{key: setting.DependabotSecurityUpdates, value: setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesEnabled), operation: "update dependabot security updates owner/repo: "},
+	}
+	cases := []struct {
+		name        string
+		status      int
+		wantOutcome UpdateOutcome
+		wantErr     error
+	}{
+		{name: "204 is succeeded", status: http.StatusNoContent, wantOutcome: UpdateSucceeded},
+		{name: "200 is outcome unknown", status: http.StatusOK, wantOutcome: UpdateUnknown, wantErr: ErrUnexpectedResponse},
+	}
+	for _, k := range keys {
+		for _, tc := range cases {
+			t.Run(string(k.key)+" "+tc.name, func(t *testing.T) {
+				var received atomic.Int32
+				c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+					received.Add(1)
+					w.WriteHeader(tc.status)
+				})
+
+				outcome, err := c.Update(t.Context(), mustReference(t, "owner/repo"), k.key, k.value)
+				if outcome != tc.wantOutcome {
+					t.Fatalf("Update() outcome = %v, want %v (error %v)", outcome, tc.wantOutcome, err)
+				}
+				if n := received.Load(); n != 1 {
+					t.Errorf("server received %d requests, want 1", n)
+				}
+				if tc.wantOutcome == UpdateSucceeded {
+					if err != nil {
+						t.Errorf("Update() error = %v, want none", err)
+					}
+					return
+				}
+				if !errors.Is(err, tc.wantErr) {
+					t.Errorf("error = %v, want it to wrap %v", err, tc.wantErr)
+				}
+				if !strings.HasPrefix(err.Error(), k.operation) {
+					t.Errorf("error = %q, want it to name the operation %q", err, k.operation)
+				}
+			})
+		}
+	}
+}
+
 // TestUpdateAllowAutoMerge は、送信する要求と本文が変更対象の項目だけであることを確かめる。
 //
 //trace:checks FR-011 INV-001

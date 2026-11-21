@@ -38,10 +38,9 @@ repositories:
       access:
         access_level: none
     # environments: none
-    # reco does not accept the security settings in the configuration file yet
-    # security:
-    #   dependabot_alerts: true
-    #   dependabot_security_updates: true
+    security:
+      dependabot_alerts: true
+      dependabot_security_updates: true
 ```
 
 表示は、設定ファイルと同じ構造です。本ドキュメントでは、`general` の `delete_branch_on_merge`（Pull Request をマージしたあと、head ブランチを自動で削除するか）を変えます。以後は、`delete_branch_on_merge` の設定が `false` の場合に、`true` へ変更するシナリオで説明します。

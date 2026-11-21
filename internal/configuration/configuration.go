@@ -31,6 +31,7 @@ type DesiredState struct {
 	ActionsAccess       ActionsAccess
 	// Environments は宣言の並びのまま持ち、environments を省略したリポジトリでは nil。
 	Environments []EnvironmentDeclaration
+	Dependabot   Dependabot
 }
 
 // EnvironmentDeclaration は、一つの Environment の宣言。その名前の Environment が存在することの期待値を兼ねる。
@@ -68,6 +69,13 @@ type ActionsAccess struct {
 	AccessLevel *setting.AccessLevel
 }
 
+// Dependabot は、Dependabot の領域の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
+// 2つの期待値は互いの状態を含まない (YAML 設定仕様の Security)。
+type Dependabot struct {
+	Alerts          *bool
+	SecurityUpdates *bool
+}
+
 // Value は、key の設定の期待値を返す。期待値が省略されていれば ok は偽になる。
 // 未知の設定は不変条件の破れとして panic する。
 // 設定を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
@@ -101,6 +109,13 @@ func (d DesiredState) Value(key setting.Key) (value setting.Value, ok bool) {
 	case setting.ActionsAccessLevel:
 		if level := d.ActionsAccess.AccessLevel; level != nil {
 			return setting.AccessLevelValue(*level), true
+		}
+		return setting.Value{}, false
+	case setting.DependabotAlerts:
+		return optionalBoolValue(d.Dependabot.Alerts)
+	case setting.DependabotSecurityUpdates:
+		if enabled := d.Dependabot.SecurityUpdates; enabled != nil {
+			return setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesStateOf(*enabled)), true
 		}
 		return setting.Value{}, false
 	case setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy:

@@ -19,3 +19,5 @@ reco show --repo OWNER/REPO
 トークンでできることは、トークンの持ち主（`gh` にログインしたアカウント）が対象のリポジトリで持つロールを超えません。reco には、対象のリポジトリで Admin ロールを持つアカウントのトークンを渡します。
 
 Read など Write より下のロールでは、GitHub が一般設定（`general`）の値を応答に含めないため、`show`、`plan`、`apply` のどれもエラーで止まります。
+
+Admin より下のロールでは、Dependabot alerts と Dependabot security updates の値を読めないため、`show` と、`security` を設定ファイルに書いたリポジトリの `plan` と `apply` がエラーで止まります。

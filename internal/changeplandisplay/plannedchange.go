@@ -84,6 +84,8 @@ func notApplicableReasonText(reason changeplan.NotApplicableReason) string {
 		return "the repository is public; remove access_level, which applies only to private repositories"
 	case changeplan.NotApplicableEnvironmentNameUndetermined:
 		return "an environment on GitHub has a name reco cannot compare, such as one with non-ASCII characters; remove this environment from the configuration"
+	case changeplan.NotApplicableDependabotAlertsRemainDisabled:
+		return "Dependabot alerts is disabled; declare dependabot_alerts: true to enable it"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(reason)))
 }
@@ -108,17 +110,26 @@ func resumedSettingsText(keys []setting.Key) string {
 }
 
 // sideEffectText は、副作用を CLI 仕様の Side effect: の文言で返す。
-// 副作用は、Actions 許可ポリシーの変更で選択方式の Actions 許可条件が失われることだけのため、文言はその設定に限り、
-// ほかの設定の副作用は誤った文言で黙って示さないよう、不変条件の破れとして panic する。
 // 失われる値を観測できなかったときは、値を推測せずに失われる可能性だけを示す。
+// Dependency graph は reco が観測しない設定のため、現在値を示さない。
+// 未定義の種類は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func sideEffectText(effect changeplan.SideEffect) string {
-	if effect.Key != setting.SelectedActions {
-		panic("changeplandisplay: no side effect wording for " + string(effect.Key))
+	switch effect.Kind {
+	case changeplan.SideEffectSelectedActionsDiscarded:
+		if lost, ok := effect.Observed.Value(); ok {
+			return "GitHub discards the current selected_actions (" + lost.String() + ")"
+		}
+		return `GitHub may discard selected_actions if allowed_actions was "selected" before GitHub Actions was disabled (` + unreadWhileDisabled + `)`
+	case changeplan.SideEffectDependencyGraphEnabled:
+		return "GitHub also enables the dependency graph"
+	case changeplan.SideEffectDependencyGraphDisabled:
+		return "GitHub also disables the dependency graph"
+	case changeplan.SideEffectSecurityUpdatesDisabled:
+		// 計画時に有効と観測した値だけを副作用にするため、観測値は必ずある
+		current, _ := effect.Observed.Value()
+		return "GitHub also disables dependabot_security_updates, which is currently " + current.String()
 	}
-	if lost, ok := effect.Observed.Value(); ok {
-		return "GitHub discards the current selected_actions (" + lost.String() + ")"
-	}
-	return `GitHub may discard selected_actions if allowed_actions was "selected" before GitHub Actions was disabled (` + unreadWhileDisabled + `)`
+	panic(fmt.Sprintf("changeplandisplay: undefined side effect kind %d", int(effect.Kind)))
 }
 
 // showsValuesOnSeparateLines は、現在と期待値を別の行に書くかを返す。

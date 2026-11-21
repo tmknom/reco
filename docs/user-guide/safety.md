@@ -6,7 +6,7 @@ reco が変えるのは、設定ファイルに書いた設定だけです。た
 
 Environment も同じです。reco が作成するのも、`deployment_branch_policy` を変えるのも、設定ファイルに名前を書いた Environment だけです。Environment を削除することはありません。
 
-例外は、書いた設定を変えると GitHub の仕様でほかの値が消える場合です。たとえば、`allowed_actions` を `selected` から `all` や `local_only` に変えると、GitHub が `selected_actions` の値を消します。reco はこれを変更計画の `Side effect:` の行に示し、その内容も含めて承認を求めます。
+例外は、書いた設定を変えると GitHub の仕様でほかの値が消えるか変わる場合です。たとえば、`allowed_actions` を `selected` から `all` や `local_only` に変えると、GitHub が `selected_actions` の値を消します。`dependabot_alerts` を変えると、GitHub は Dependency graph も同じ値（有効か無効）に変えます。`dependabot_alerts` を無効にするときは、設定ファイルに書いていない Dependabot security updates も、有効だったなら無効にします。reco はこれらを変更計画の `Side effect:` の行に示し、その内容も含めて承認を求めます。
 
 ## すべてのリポジトリを読み取ってから更新を始める
 

@@ -29,18 +29,24 @@ const (
 	NotApplicablePublicRepository
 	// NotApplicableEnvironmentNameUndetermined は、宣言の名前と同じかどうかを判定できない名前の Environment があり、存在するかを確かめられないこと。
 	NotApplicableEnvironmentNameUndetermined
+	// NotApplicableDependabotAlertsRemainDisabled は、Dependabot alerts が無効で、同じリポジトリの期待状態が Dependabot alerts の有効を含まないこと。
+	NotApplicableDependabotAlertsRemainDisabled
 )
 
-// judgeApplicability は、管理設定の計画 s の観測結果と、同じリポジトリの管理設定の計画 settings の期待値から、
-// 変更予定を安全に適用できるかを判断し、適用不能ならその理由を返す。
-// 不一致は、アーキテクチャ設計の未管理設定を保全する更新方式で、追加の条件なしに適用できる。
+// judgeApplicability は、管理設定の計画 s の観測結果と、同じリポジトリの管理設定の計画 settings の期待値と、
+// 計画時の観測結果 observed (同じ設定の領域の未管理設定の値) から、変更予定を安全に適用できるかを判断し、適用不能ならその理由を返す。
+// 不一致は、アーキテクチャ設計の未管理設定を保全する更新方式で、Dependabot security updates を除いて追加の条件なしに適用できる。
 // 比較不能は、アーキテクチャ設計の遷移表に挙がる観測不能に限って判断する。
 // 遷移表にない観測不能を適用可能として黙って通さないよう、不変条件の破れとして panic する。
-func judgeApplicability(s SettingPlan, settings []SettingPlan) (Applicability, NotApplicableReason) {
+func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.ObservationResult) (Applicability, NotApplicableReason) {
 	switch s.Result {
 	case Match:
 		return ApplicabilityNotJudged, 0
 	case Mismatch:
+		// GitHub は Dependabot alerts が無効のあいだ、Dependabot security updates の更新を向きによらず拒否する
+		if s.Unit.Key == setting.DependabotSecurityUpdates && !dependabotAlertsAvailable(settings, observed) {
+			return NotApplicable, NotApplicableDependabotAlertsRemainDisabled
+		}
 		return Applicable, 0
 	case NotComparable:
 	}
@@ -83,5 +89,14 @@ func expectsActionsEnabled(settings []SettingPlan) bool {
 func createsEnvironment(settings []SettingPlan, name setting.EnvironmentName) bool {
 	return slices.ContainsFunc(settings, func(s SettingPlan) bool {
 		return s.IsCreation() && s.Unit.Environment.EqualFold(name)
+	})
+}
+
+// dependabotAlertsAvailable は、Dependabot security updates を更新する時点で Dependabot alerts が有効と見込めるかを返す。
+// 計画時に有効か、同じ変更計画が Dependabot alerts を有効にするときに限る。期待値どうしは互いの状態を含まないため、
+// Dependabot security updates の期待値からは決めない。
+func dependabotAlertsAvailable(settings []SettingPlan, observed github.ObservationResult) bool {
+	return observed.Dependabot.Alerts || slices.ContainsFunc(settings, func(s SettingPlan) bool {
+		return s.Unit.Key == setting.DependabotAlerts && s.Desired.Bool()
 	})
 }

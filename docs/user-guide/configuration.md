@@ -14,6 +14,7 @@ reco は、既定ではカレントディレクトリの `reco.yaml` を読み�
 | `general` | [リポジトリの一般設定](#リポジトリの一般設定) |
 | `actions` | [GitHub Actions の設定](#github-actions-の設定) |
 | `environments` | [Environment](#environment) |
+| `security` | [セキュリティの設定](#セキュリティの設定) |
 
 次は、一つのリポジトリでマージ後のブランチの自動削除だけを管理する、最小の例です。
 
@@ -49,6 +50,8 @@ repositories:
       - name: production
         deployment_branch_policy:
           mode: protected_branches
+    security:
+      dependabot_alerts: true
 ```
 
 ## リポジトリの一般設定
@@ -172,6 +175,32 @@ repositories:
 - `type` が違えば、名前が同じでも別のパターンになる。大文字と小文字だけが違う名前（`main` と `MAIN`）も別のパターンになる
 - `*` で始まる名前は、引用符で囲まないと設定ファイルを読めない。パターンの名前は引用符で囲んで書くとよい
 - `selected` の Environment を `all` などに変えると、GitHub は並んでいたパターンを残さない
+
+## セキュリティの設定
+
+`security` には、Dependabot の設定を書きます。
+
+```yaml
+repositories:
+  - name: example/project-a
+    security:
+      dependabot_alerts: true
+      dependabot_security_updates: true
+```
+
+| キー | 値 | 意味 |
+|---|---|---|
+| `dependabot_alerts` | `true` / `false` | 依存関係の脆弱性を Dependabot alerts で知らせるか |
+| `dependabot_security_updates` | `true` / `false` | 脆弱性を直す Pull Request を Dependabot security updates に作らせるか |
+
+- どちらか一方だけを書いてもよい
+- `dependabot_alerts: false` と `dependabot_security_updates: true` は一緒に書けない。GitHub は、Dependabot alerts が無効のリポジトリで Dependabot security updates を有効にできないため
+- Dependabot alerts が無効のリポジトリで `dependabot_security_updates` だけを書いて値を変えようとすると、`plan` に `Applicability: not applicable` と `Plan cannot be applied.` が出る。`dependabot_alerts: true` も書く
+- `dependabot_alerts: false` にすると、GitHub は Dependency graph と、有効だった Dependabot security updates も無効にする。`plan` は、この変化を `Side effect:` の行で示す
+- あとで `dependabot_alerts: true` に戻すと、Dependency graph は有効に戻るが、Dependabot security updates は戻らない。戻すには `dependabot_security_updates: true` も書く
+- Dependabot alerts を無効にしたまま Dependency graph だけを有効にすることは、reco ではできない。GitHub の設定画面で行う
+- Admin ロールが要る（[Authentication](authentication.md)）
+- GitHub が Dependabot security updates を一時停止していても、設定は有効のままで、`dependabot_security_updates: true` と一致する。reco は一時停止を解除しない
 
 ## 未記載の設定の扱い
 

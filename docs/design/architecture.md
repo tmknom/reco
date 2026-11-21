@@ -160,7 +160,7 @@ Dependabot は、二つの読み取り要求で読みます。`GET /repos/{owner
 
 Dependabot alerts の取得は、値を本文ではなくステータスで返します（[GitHub リポジトリ API 仕様](../research/repositories.md) 6章）。`204` を有効と読みます。`404` を無効と読むのは、同じ観測の `GET /repos/{owner}/{repo}` の応答の `permissions.admin` が `true` のときに限ります。公式資料がこの取得に admin read のアクセスを求めており、無効のときの `404` と、権限のない第三者のリポジトリや存在しないリポジトリへの `404` を、ステータスでは区別できないためです。本文の `message` は無効のときだけ違いましたが、公式資料の契約ではないため読みません。`permissions.admin` が `false` のときと、`permissions` か `admin` が欠けたときの `404` は、観測操作の失敗（対象が見つからない）のままです。`permissions` は取得契約に含めず、Dependabot の領域を読まない観測は、欠けていても `null` でも失敗しません。ただし、型の合わない `permissions`（オブジェクトでない、`admin` が boolean でない）は解釈できない本文であり、どの設定の領域を読む観測でも取得契約に適合しない応答とします。`204` と `404` のほかの応答は、`204` 以外の `2xx` を含めて観測操作の失敗です。`404` を無効と読む扱いは、この取得だけのものです。
 
-この条件には、確かめていない場合があります。`permissions.admin` が `true` でも、トークン自体の権限がこの取得に足りない場合です。Administration の read を持たない fine-grained personal access token や、`repo` の scope を持たない classic のトークンがこれに当たり得ます。GitHub が権限の不足として `404` を返すなら、reco は有効な Dependabot alerts を無効と読みます。この場合の `permissions.admin` の値と取得の応答は、どちらも確かめていません。確かめたのは、`repo` の scope を持つ `gh auth token` のトークンで、トークンの所有者が Admin ロールを持つ場合だけです（GitHub リポジトリ API 仕様 5章）。reco が必要な権限の確認と案内の前提にするのも、このトークンです（[CLI 仕様](../spec/cli.md) 3章）。
+この条件には、確かめていない場合があります。`permissions.admin` が `true` でも、トークン自体の権限がこの取得に足りない場合です。Administration の read を持たない fine-grained personal access token や、`repo` の scope を持たない classic のトークンがこれに当たり得ます。GitHub が権限の不足として `404` を返すなら、reco は有効な Dependabot alerts を無効と読みます。`plan` では `dependabot_alerts: false` の宣言を一致と照合して変更予定にせず、`dependabot_alerts: true` の宣言を不一致として有効にする変更を計画します。後者の更新要求は、有効な Dependabot alerts を有効にするだけで値を下げず、更新後の観測も無効と読むため、完了とは報告しません。この場合の `permissions.admin` の値と取得の応答は、どちらも確かめていません。確かめたのは、`repo` の scope を持つ `gh auth token` のトークンで、トークンの所有者が Admin ロールを持つ場合だけです（GitHub リポジトリ API 仕様 5章）。reco が必要な権限の確認と案内の前提にするのも、このトークンです（[CLI 仕様](../spec/cli.md) 3章）。
 
 Dependabot security updates の取得も admin read のアクセスを求め、その `404` は観測操作の失敗です。Dependabot alerts のあとに必ずこの取得を送るため、権限の足りないトークンや、二つの取得のあいだにリポジトリが消えるか admin のアクセスを失った場合は、観測の全体が失敗すると見込めます（権限の足りないトークンでの応答は確かめていません）。Dependabot alerts の `404` を無効と読む読み方は、この順序にも支えられています。
 
@@ -197,7 +197,7 @@ Change Planning は照合とは別に適用可能性（Applicability）を判断
 
 ### 3.3 変更計画と実行単位
 
-Change Planning は設定宣言、観測結果、照合結果、適用可能性を組み合わせ、変更計画（Change Plan）を生成します。計画は確認済み差分と比較不能な設定予定を区別し、適用可否と理由、承認する変更内容、実行に必要な前提条件・操作順序を保持します。更新によって影響を受け得る未管理設定がある場合は、その保全に必要な既存値や確認条件も実行時に利用できるようにします。変更に伴う副作用は、副作用を生む変更予定に、失われる設定と、その設定の計画時の観測結果（観測値か、理由を伴う観測不能）として持たせます。再開する設定（[ドメインモデル](domain.md) の照合結果と適用可能性）は、Actions を有効にする変更予定に、設定の並びとして持たせます。論理的な設定変更には、それを構成する更新操作ごとに、変更前提で比べる関係する現在値の設定と、その承認時に予定した値（設定の値か、理由を伴う観測不能）の並びを持たせます。並びは Change Planning が導き、Change Execution は並びを更新直前の観測と比べるだけで、何を比べるかを決めません。何が関係する現在値に当たるか（[ドメインモデル](domain.md) の承認と変更前提）は、変更計画の内容（どの遷移か、どの副作用を示したか）で決まるためです。適用不能な項目も表示のために残しますが、実行可能な操作にはしません。関連リソースの作成と削除は、変更予定にその種別を持たせ、設定の値の変更と区別して表示できるようにします。値を持たない Environment では、関連リソースそのものの管理設定の不一致が、そのまま作成に当たります。削除の変更予定には、失われる値として、計画時の観測値を持たせます。作成の更新操作には「存在しないこと」を、削除の更新操作には「存在し、値が計画時の観測値と同じこと」を、承認時に予定した値として持たせます。存在する関連リソースの中の設定を変える更新操作には、その関連リソースが「存在し、ID が計画時と同じこと」（ID を観測できる種類に限る）を、中の設定の計画時の観測値より先に並べます。同じ論理的な設定変更の先行する更新操作が作成する関連リソースでは、承認の時点で ID が定まらないため、「先行する更新操作が作成して存在すること」を並べます。要素ごとの更新操作には、計画時の観測値に、先行する要素の更新操作による予定どおりの変化（取り除いた要素と加えた要素）を反映した一覧を、承認時に予定した値として持たせます。一致を確認した設定には更新を予定しません。
+Change Planning は設定宣言、観測結果、照合結果、適用可能性を組み合わせ、変更計画（Change Plan）を生成します。計画は確認済み差分と比較不能な設定予定を区別し、適用可否と理由、承認する変更内容、実行に必要な前提条件・操作順序を保持します。更新によって影響を受け得る未管理設定がある場合は、その保全に必要な既存値や確認条件も実行時に利用できるようにします。変更に伴う副作用は、副作用を生む変更予定に、影響を受ける設定と起きる変化として持たせ、reco が観測する設定に及ぶときだけ、その設定の計画時の観測結果（観測値か、理由を伴う観測不能）を伴わせます。副作用を示さなかった設定（[ドメインモデル](domain.md) の計画）は、その計画時の観測結果とともに、同じ変更予定に持たせます。再開する設定（[ドメインモデル](domain.md) の照合結果と適用可能性）は、Actions を有効にする変更予定に、設定の並びとして持たせます。論理的な設定変更には、それを構成する更新操作ごとに、変更前提で比べる関係する現在値の設定と、その承認時に予定した値（設定の値か、理由を伴う観測不能）の並びを持たせます。並びは Change Planning が導き、Change Execution は並びを更新直前の観測と比べるだけで、何を比べるかを決めません。何が関係する現在値に当たるか（[ドメインモデル](domain.md) の承認と変更前提）は、変更計画の内容（どの遷移か、どの副作用を示したか、どの設定を副作用として示さなかったか）で決まるためです。適用不能な項目も表示のために残しますが、実行可能な操作にはしません。関連リソースの作成と削除は、変更予定にその種別を持たせ、設定の値の変更と区別して表示できるようにします。値を持たない Environment では、関連リソースそのものの管理設定の不一致が、そのまま作成に当たります。削除の変更予定には、失われる値として、計画時の観測値を持たせます。作成の更新操作には「存在しないこと」を、削除の更新操作には「存在し、値が計画時の観測値と同じこと」を、承認時に予定した値として持たせます。存在する関連リソースの中の設定を変える更新操作には、その関連リソースが「存在し、ID が計画時と同じこと」（ID を観測できる種類に限る）を、中の設定の計画時の観測値より先に並べます。同じ論理的な設定変更の先行する更新操作が作成する関連リソースでは、承認の時点で ID が定まらないため、「先行する更新操作が作成して存在すること」を並べます。要素ごとの更新操作には、計画時の観測値に、先行する要素の更新操作による予定どおりの変化（取り除いた要素と加えた要素）を反映した一覧を、承認時に予定した値として持たせます。一致を確認した設定には更新を予定しません。
 
 | 単位 | 設計上の意味 |
 |---|---|
@@ -317,6 +317,8 @@ API へ送信するフィールドは、設定宣言の管理範囲とは異な�
 | リポジトリ外のワークフローからのアクセス | `access_level` だけを送る。この更新エンドポイントで reco が観測する設定はほかになく、保全を確かめる設定がない |
 | Environment | `deployment_branch_policy` だけを送り、省略した保護設定の保持に依拠して更新する。方式を宣言していない作成は本文を送らない |
 | Environment の個別パターン | 加える要求は種類と名前だけを送り、取り除く要求は更新直前の観測の ID を宛先にする。どちらも要素一つずつで、一覧の全体を置き換えない |
+| Dependabot alerts | 有効にするときは本文のない `PUT`、無効にするときは本文のない `DELETE` を送る。この更新エンドポイントで reco が観測する設定はほかになく、保全を確かめる設定がない |
+| Dependabot security updates | Dependabot alerts と同じく、本文のない `PUT` と `DELETE` を送る。この更新エンドポイントで reco が観測する設定はほかになく、保全を確かめる設定がない |
 
 API パラメータが任意であることは、省略した値の保持を保証しません。既存値を併送する場合も、その値を観測でき、更新直前の条件が成立する必要があります。省略・併送のどちらでも未管理値の保全を確認できないときは、更新を適用不能とします。保全の判断には、GitHub が公開する契約と確認できた実際の動作を区別して用い、実証されていない保持動作を前提にしません。
 
@@ -349,6 +351,8 @@ Environment では、`PUT /repos/{owner}/{repo}/environments/{environment_name}`
 Environment の個別パターンは、`POST /repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies` に `name` と `type` を送って一つ加え、`DELETE .../deployment-branch-policies/{branch_policy_id}` で一つ取り除きます。`type` は GitHub が省略を `branch` と読むため（[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 4.1）、宣言した種類を必ず送ります。取り除く要求の宛先の ID は、その更新操作の更新直前の観測から、種類と名前で引きます。計画時の ID は使いません。承認のあとに同じ種類と名前で作り直されたパターンは ID が変わり（同 4.1）、計画時の ID では `404` になるためです。正常応答は、加える要求が `200` で本文は作ったパターン（本文が取得契約を満たさない `200` とほかの `2xx` は成否不明）、取り除く要求が本文のない `204`（ほかの `2xx` は成否不明）です。宛先の名前は Environment の `PUT` と同じくパスの一つの要素としてエスケープします。`..` と `/` を含む名前（`a/../b` など）でも、宣言した名前の Environment にだけ作用し、正規化した別の Environment には届かないことを実際の動作で確かめています（同 1章）。
 
 この二つの更新エンドポイントで reco が観測する設定は個別パターンの集合だけで、それはこの論理的な設定変更が変える設定のため、更新後に更新直前の値と比べる設定はありません。保護設定を更新後に比べるのは、Environment の `PUT`（作成と方式の変更）を送った場合だけです。個別パターンを加えても取り除いても、その Environment の `updated_at`、保護設定と保護ルールの `id` が変わらなかったことを、実際の動作で確かめています（同 4.2）。
+
+Dependabot alerts は `/repos/{owner}/{repo}/vulnerability-alerts`、Dependabot security updates は `/repos/{owner}/{repo}/automated-security-fixes` を更新エンドポイントとし、期待値が `true` なら本文のない `PUT`、`false` なら本文のない `DELETE` を送ります。正常応答はどれも本文のない `204` で、ほかの `2xx` は更新の契約の外として成否不明にします（6.1節）。すでに同じ状態でも `204` が返り、直後の取得が更新後の値を返すことは、実際の動作で確かめています（[GitHub リポジトリ API 仕様](../research/repositories.md) 6・7章）。それぞれの更新エンドポイントで reco が観測する設定はその設定だけのため、更新後に更新直前の値と比べる設定はありません。Dependabot alerts の `PUT` と、Dependabot security updates の `PUT` と `DELETE` が、もう一方の設定を変えないことは実際の動作で確かめており（同 6・7章）、これを保全の根拠とします。Dependabot alerts の `DELETE` が Dependabot security updates と Dependency graph を無効にする影響は、変更に伴う副作用として 5.4節で扱います。
 
 更新直前の観測と更新要求のあいだに、外部主体が同じ名前の Environment を作った場合は防げません。本文のない作成の要求は、存在する名前の Environment を何も変えません。方式を本文に含む作成の要求は、その Environment の方式を変え、それが `selected` だった場合は個別パターンを失わせます。同じあいだに外部主体が、加えようとするパターンを先に加えた場合は `303` で成否不明に（5.2節）、取り除こうとするパターンを先に消した場合は `404` で更新操作の失敗になります。
 
@@ -471,7 +475,7 @@ Environment とその `deployment_branch_policy` の変更予定は、次の表�
 
 `selected` から `all` / `local_only` への切替によって、GitHub は選択方式の Actions 許可条件を残さず、`selected` に戻したときには上記の値に戻っています（GitHub Actions 権限 API 仕様 4章）。遷移先が `all` / `local_only` のとき選択方式の Actions 許可条件は宣言できないため（[YAML 設定仕様](../spec/configuration.md) 4.1）、その既存値は管理範囲外の設定であり、reco はこの消失を防げません。Change Planning は、この遷移を適用可能としたうえで、既存の選択方式の Actions 許可条件が失われることを観測した値とともに変更計画へ含めます（[CLI 仕様](../spec/cli.md) 4章）。消失を承認前に明示するのは、INV-001 が禁じる管理範囲外の設定の暗黙の削除に当たらないようにするためです。そのため、(1) の直前の変更前提に、変更計画に示した選択方式の Actions 許可条件の値を含めます。更新後は選択方式の Actions 許可条件を取得できないため、その値を保全済みとはみなさず、消失したものとして扱います。
 
-セキュリティ設定（Dependabot alerts、Dependabot security updates、Secret scanning、push protection）にも、一つの設定の更新が別の設定を変える依存があります。セキュリティ設定はまだサポート対象ではなく（[要求定義](../spec/requirements.md) 2章）、次の表は、対応するときの依存の扱いを定めます。
+セキュリティ設定（Dependabot alerts、Dependabot security updates、Secret scanning、push protection）にも、一つの設定の更新が別の設定を変える依存があります。次の表は、その依存の扱いを定めます。Dependabot の2設定はサポート対象で、Secret scanning と push protection はまだサポート対象ではなく（[要求定義](../spec/requirements.md) 2章）、対応するときにこの表に従います。
 
 | 宣言した変更 | GitHub の動作（[GitHub リポジトリ API 仕様](../research/repositories.md) 5〜7章） | 扱い |
 |---|---|---|
@@ -489,6 +493,40 @@ Dependabot alerts の無効化を適用可能にしたのは、実際の動作�
 Dependency graph は、reco が観測しない設定です。有効・無効を値として返す取得の契約を確かめていないためです（実際の動作の確認では SBOM の取得の成否で代わりに確かめたが、これは設定の取得ではない）。そのため Dependency graph の副作用は観測値を伴わず、無効になることだけを示し、更新後にも確かめません（[ドメインモデル](domain.md) の変更に伴う副作用）。Dependabot security updates と push protection の副作用は、計画時の観測値とともに示し、副作用を生む更新操作の変更前提に含めます。
 
 依存する2つの設定をともに宣言した場合は、有効にするときは前提の設定（Dependabot alerts、Secret scanning）を先に、無効にするときは依存する設定（Dependabot security updates、push protection）を先に更新します。無効にするときに前提の設定を先に更新すると、依存する設定が GitHub によって先に無効になり、その変更予定の変更前提が成り立たなくなるためです。前提の設定を無効にし、依存する設定を有効にする宣言は、GitHub がその状態を受け付けないため実現できません。
+
+Dependabot の2設定は、それぞれ一つの更新操作からなる一つの論理的な設定変更です。二つをまとめないのは、片方の期待状態だけが一致しなかったときに、どちらの変更が完了したかを分けて報告できるようにするためです（`sha_pinning_required` と同じ理由）。Dependabot alerts の変更予定は、どちらの向きも適用可能です。Dependabot security updates の変更予定の適用可能性は、Dependabot alerts の計画時の観測と、同じ対象リポジトリの宣言で決まります。向きは問いません。GitHub は、Dependabot alerts が無効のあいだ、Dependabot security updates の `PUT` も `DELETE` も `422` で拒否するためです（GitHub リポジトリ API 仕様 7章）。
+
+| Dependabot alerts の計画時の観測 | `dependabot_alerts` の宣言 | Dependabot security updates の変更予定の適用可能性 |
+|---|---|---|
+| 有効 | 問わない | 適用可能 |
+| 無効 | `true` | 適用可能。Dependabot alerts を有効にする変更のあとに更新する |
+| 無効 | 省略か `false` | 適用不能 |
+
+`dependabot_alerts: false` と `dependabot_security_updates: true` の同時の宣言は、入力検証で拒否します（[YAML 設定仕様](../spec/configuration.md) 8章）。期待値どうしは互いの状態を含まないため、Dependabot security updates の `true` は Dependabot alerts を有効にすることを含みません。Dependabot alerts が無効で、有効にする宣言がなければ、利用者が宣言していない Dependabot alerts を reco が有効にしなければ実行できない遷移に当たります。
+
+Dependabot alerts の変更予定に添える変更に伴う副作用と、副作用を生む更新操作の変更前提に含める設定は、次のとおりです。
+
+| Dependabot alerts の変更予定 | `dependabot_security_updates` の宣言 | Dependabot security updates の計画時の観測 | 変更に伴う副作用 | 変更前提に含める Dependabot security updates（計画時に無効なら、副作用を示さなかった設定） |
+|---|---|---|---|---|
+| 有効にする | 問わない | 問わない | Dependency graph が有効になる | 含めない |
+| 無効にする | 省略 | 有効か一時停止中 | Dependency graph が無効になる。Dependabot security updates が計画時の観測値から無効になる | 計画時の観測値 |
+| 無効にする | 省略 | 無効 | Dependency graph が無効になる | 計画時の観測値（無効） |
+| 無効にする | 宣言する | 問わない | Dependency graph が無効になる | 含めない |
+
+Dependabot alerts の `PUT` が Dependency graph を有効にすることは、公式資料の記載を根拠にします（GitHub リポジトリ API 仕様 6章）。`dependabot_security_updates` を宣言していれば、その変化は宣言した値への変更として同じ変更計画が扱い、先行する Dependabot security updates の変更が無効にしているため、副作用として示さず、変更前提にも含めません。宣言しておらず計画時に無効だった場合も、変更前提には含めます。承認のあとに外部主体が有効にしていれば、Dependabot alerts の `DELETE` が承認の前に示していない変化を起こすためです。
+
+Dependabot security updates の変更の変更前提に、Dependabot alerts が有効であることは含めません。承認のあとに Dependabot alerts が無効にされていれば、GitHub が `422` で拒否し、Dependabot security updates の値は変わらないためです。
+
+論理的な設定変更の実行順は、YAML 設定仕様の表の並び（Dependabot alerts、Dependabot security updates）を基本とし、Dependabot alerts を無効にする変更予定があるときだけ、同じ対象リポジトリの Dependabot security updates の変更予定をその直前に実行します。変更計画の表示は表の並びのままです。
+
+| Dependabot alerts の変更予定 | Dependabot security updates の変更予定 | 実行順 |
+|---|---|---|
+| 有効にする | あり | Dependabot alerts、Dependabot security updates |
+| 無効にする | あり（無効にする） | Dependabot security updates、Dependabot alerts |
+| なし | あり | Dependabot security updates |
+| あり | なし | Dependabot alerts |
+
+Dependabot alerts を無効にする変更予定と、Dependabot security updates を有効にする変更予定が並ぶことはありません。入力検証で拒否する宣言の組み合わせだからです。二つの論理的な設定変更のあいだには更新要求の間隔（6.2節）が入ります。
 
 GitHub の複数の更新操作を原子的に実行する仕組みはありません。途中で更新が失敗・中断された場合は、先行操作の影響が残り得ます。最終状態の一致を確認できることと、中間状態の安全性を確認できることは別の条件です。
 

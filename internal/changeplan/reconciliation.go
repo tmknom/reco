@@ -1,6 +1,7 @@
 package changeplan
 
 import (
+	"cmp"
 	"slices"
 
 	"github.com/tmknom/reco/internal/configuration"
@@ -19,7 +20,7 @@ const (
 
 // reconcile は、期待値が明示された設定 (管理範囲内) だけを観測結果と照合する。
 // 期待値が省略された設定は管理範囲外のため、照合結果を作らず、観測値も読まない。
-// setting.ManagementUnits の並びのあとに、宣言した Environment の計画を宣言の並びで続ける。
+// 並びは設定の領域の並び (YAML 設定仕様の章の並び) で、同じ領域の中では setting.ManagementUnits の並び、Environment は宣言の並びである。
 // 宣言に名前のない Environment は、観測結果にあっても計画に現れない。
 func reconcile(desired configuration.DesiredState, observed github.ObservationResult) []SettingPlan {
 	var settings []SettingPlan
@@ -31,11 +32,12 @@ func reconcile(desired configuration.DesiredState, observed github.ObservationRe
 	for _, e := range desired.Environments {
 		settings = append(settings, environmentPlans(e, observed.Environments.Lookup(e.Name))...)
 	}
+	slices.SortStableFunc(settings, func(a, b SettingPlan) int { return cmp.Compare(a.Unit.Key.Area(), b.Unit.Key.Area()) })
 	return settings
 }
 
-// managedAreas は、管理範囲内の管理設定が属する設定の領域を、setting.ManagementUnits の並びで一度ずつ返し、
-// Environment を宣言していれば最後に Environments を足す。
+// managedAreas は、管理範囲内の管理設定が属する設定の領域を一度ずつ返す。Environment を宣言していれば Environments を含む。
+// 観測は領域の並びによらず決まった順に読むため、並びに意味はない。
 // reconcile と同じ宣言で管理設定を決めるため、照合する設定の領域は必ず観測される。
 func managedAreas(desired configuration.DesiredState) []setting.Area {
 	var areas []setting.Area

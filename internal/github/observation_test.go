@@ -865,6 +865,37 @@ func TestObservationResult_Setting(t *testing.T) {
 	}
 }
 
+//trace:checks FR-004 FR-005
+func TestObservationResult_SettingOfDependabot(t *testing.T) {
+	cases := []struct {
+		name     string
+		observed Dependabot
+		key      setting.Key
+		want     SettingObservation[setting.Value]
+	}{
+		{
+			name:     "dependabot_alerts returns the observed enablement as a boolean",
+			observed: Dependabot{Alerts: true, SecurityUpdates: setting.DependabotSecurityUpdatesDisabled},
+			key:      setting.DependabotAlerts,
+			want:     Observed(setting.BoolValue(true)),
+		},
+		{
+			name:     "dependabot_security_updates keeps the paused state",
+			observed: Dependabot{Alerts: true, SecurityUpdates: setting.DependabotSecurityUpdatesPaused},
+			key:      setting.DependabotSecurityUpdates,
+			want:     Observed(setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesPaused)),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := ObservationResult{Dependabot: &tc.observed}
+			if got := observed.Setting(setting.Unit{Key: tc.key}); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Setting(%q) = %v, want %v", tc.key, got, tc.want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-004 QR-002
 func TestObservationResult_SettingOfActionsPermissions(t *testing.T) {
 	// 観測値の設定グループの許可パターンは、応答の並びと重複のまま運ばれることを確かめるため、順不同で重複を含める。

@@ -541,7 +541,7 @@ func TestGenerate_ActionsPermissions(t *testing.T) {
 		want := []SettingPlan{{
 			Unit: setting.Unit{Key: setting.AllowedActions}, Observed: github.Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected)),
 			Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), Result: Mismatch, Applicability: Applicable,
-			SideEffects: []SideEffect{{Key: setting.SelectedActions, Observed: github.Observed(setting.SelectedActionsCriteriaValue(criteria))}},
+			SideEffects: []SideEffect{{Kind: SideEffectSelectedActionsDiscarded, Observed: github.Observed(setting.SelectedActionsCriteriaValue(criteria))}},
 		}}
 		if len(got.Repositories) != 1 {
 			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)

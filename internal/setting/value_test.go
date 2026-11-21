@@ -15,6 +15,9 @@ func TestValue_String(t *testing.T) {
 		{value: PermissionLevelValue(PermissionRead), want: "read"},
 		{value: AllowedActionsPolicyValue(AllowedActionsSelected), want: "selected"},
 		{value: AccessLevelValue(AccessUser), want: "user"},
+		{value: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesDisabled), want: "false"},
+		{value: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesEnabled), want: "true"},
+		{value: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesPaused), want: "true (paused by GitHub)"},
 		{
 			value: SelectedActionsCriteriaValue(SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: []string{"z/*", "a/*"}}),
 			want:  `github_owned_allowed: true, verified_allowed: false, patterns_allowed: ["z/*", "a/*"]`,
@@ -50,6 +53,10 @@ func TestValue_Equal(t *testing.T) {
 		{name: "criteria differing only in pattern order are equal", a: criteria("a/*", "b/*"), b: criteria("b/*", "a/*"), equal: true},
 		{name: "criteria with a different pattern differ", a: criteria("a/*"), b: criteria("b/*"), equal: false},
 		{name: "values of different kinds differ", a: BoolValue(false), b: SelectedActionsCriteriaValue(SelectedActionsCriteria{}), equal: false},
+		{name: "paused security updates equal enabled ones", a: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesPaused), b: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesEnabled), equal: true},
+		{name: "enabled security updates differ from disabled ones", a: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesEnabled), b: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesDisabled), equal: false},
+		{name: "paused security updates differ from disabled ones", a: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesPaused), b: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesDisabled), equal: false},
+		{name: "security updates differ from a boolean of the same enablement", a: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesDisabled), b: BoolValue(false), equal: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -163,6 +170,35 @@ func TestValue_AccessLevelOfBoolPanics(t *testing.T) {
 		}
 	}()
 	_ = BoolValue(true).AccessLevel()
+}
+
+func TestValue_DependabotSecurityUpdates(t *testing.T) {
+	v := DependabotSecurityUpdatesValue(DependabotSecurityUpdatesPaused)
+	if got := v.DependabotSecurityUpdates(); got != DependabotSecurityUpdatesPaused {
+		t.Errorf("DependabotSecurityUpdates() = %v, want %v", got, DependabotSecurityUpdatesPaused)
+	}
+}
+
+func TestDependabotSecurityUpdatesValue_UndefinedStatePanics(t *testing.T) {
+	for _, state := range []DependabotSecurityUpdatesState{0, DependabotSecurityUpdatesPaused + 1} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("DependabotSecurityUpdatesValue(%d) did not panic", state)
+				}
+			}()
+			DependabotSecurityUpdatesValue(state)
+		}()
+	}
+}
+
+func TestValue_DependabotSecurityUpdatesOfBoolPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("DependabotSecurityUpdates() did not panic for a boolean value")
+		}
+	}()
+	BoolValue(true).DependabotSecurityUpdates()
 }
 
 func TestValue_SelectedActionsCriteria(t *testing.T) {
