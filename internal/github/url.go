@@ -33,6 +33,12 @@ func (c *Client) selectedActionsURL(reference repository.Reference) *url.URL {
 	return u
 }
 
+func (c *Client) repositoryVariablesURL(reference repository.Reference) *url.URL {
+	u := c.repositoryURL(reference)
+	u.Path += "/actions/variables"
+	return u
+}
+
 func (c *Client) environmentsURL(reference repository.Reference) *url.URL {
 	u := c.repositoryURL(reference)
 	u.Path += "/environments"

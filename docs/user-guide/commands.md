@@ -45,6 +45,10 @@ repositories:
         can_approve_pull_request_reviews: false
       access:
         access_level: none
+      # reco does not accept the variables in the configuration file yet
+      # variables:
+      #   - name: "GO_VERSION"
+      #     value: "1.27"
     environments:
       - name: "production"
         deployment_branch_policy:
@@ -68,12 +72,16 @@ repositories:
 
 | 行 | 意味 |
 |---|---|
+| `# variables: none` | Repository Variables が一つもない |
+| `# reco does not accept the variables in the configuration file yet` に続く `# variables:` の行 | Repository Variables の名前と値。設定ファイルにはまだ書けないため、コメントで示す |
 | `# environments: none` | Environment が一つもない |
 | `# access:` と `#   access_level: unavailable (the repository is public)` | 公開リポジトリのため、`access_level` を読み取れない。この設定は非公開リポジトリにだけ書ける |
 | `dependabot_security_updates: true # paused by GitHub (still enabled)` | Dependabot security updates は有効だが、GitHub が一時停止している。設定ファイルでは `true` と書いたのと同じ |
 | `# secret_scanning: unavailable (the repository is private)` / `# secret_scanning_push_protection: unavailable (the repository is private)` / `# private_vulnerability_reporting: unavailable (the repository is private)` | 非公開リポジトリのため、Secret scanning、リポジトリの push protection、Private vulnerability reporting の値を読み取れない |
 
 Environment の `wait_timer`、`required_reviewers`、`can_admins_bypass` のように、設定ファイルに書けない設定は表示しません。
+
+Repository Variables は、名前と値をそのまま表示します。改行や制御文字を含む値は、`\n` のようなエスケープで1行に示し、長い値も省略しません。表示は stdout に出るため、CI で `show` を実行すると値がログに残ります。パスワードやトークンのような秘密情報は、Variables ではなく Secrets に入れてください。
 
 ## `plan`
 

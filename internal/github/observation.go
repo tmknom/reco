@@ -22,6 +22,8 @@ type ObservationResult struct {
 	ActionsPermissions  *ActionsPermissions
 	WorkflowPermissions *WorkflowPermissions
 	ActionsAccess       *ActionsAccess
+	// RepositoryVariables は、その設定の領域を選ばなかった観測では nil になる。Variable が一つもないことと取り違えさせないため、値型にしない。
+	RepositoryVariables *Variables
 	// Environments は、その設定の領域を選ばなかった観測では nil になる。Environment が一つもないことと取り違えさせないため、値型にしない。
 	Environments *Environments
 	// Dependabot は、その設定の領域を選ばなかった観測では nil になる。
@@ -140,6 +142,13 @@ func (c *Client) ObserveRepository(ctx context.Context, reference repository.Ref
 			return ObservationResult{}, fmt.Errorf("fetch actions access %s: %w", reference, err)
 		}
 		o.ActionsAccess = &aa
+	}
+	if slices.Contains(areas, setting.AreaRepositoryVariables) {
+		variables, err := c.observeRepositoryVariables(ctx, reference)
+		if err != nil {
+			return ObservationResult{}, fmt.Errorf("fetch repository variables %s: %w", reference, err)
+		}
+		o.RepositoryVariables = &variables
 	}
 	if slices.Contains(areas, setting.AreaEnvironments) {
 		environments, err := c.observeEnvironments(ctx, reference)

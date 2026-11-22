@@ -10,6 +10,7 @@ const (
 	AreaActionsPermissions
 	AreaWorkflowPermissions
 	AreaActionsAccess
+	AreaRepositoryVariables
 	AreaEnvironments
 	AreaDependabot
 	AreaSecretScanning

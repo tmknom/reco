@@ -127,6 +127,13 @@ func TestBodies(t *testing.T) {
 			}},
 		},
 		{
+			name: "variables body has the names and values as sent, including control and non-ASCII characters",
+			body: VariablesBody{TotalCount: 2, Variables: []VariableBody{{Name: "A", Value: "x\x00\x01\r\n \u3000\"\\"}}}.JSON(),
+			want: map[string]any{"total_count": float64(2), "variables": []any{
+				map[string]any{"name": "A", "value": "x\x00\x01\r\n \u3000\"\\"},
+			}},
+		},
+		{
 			name: "single deployment pattern body is the element object itself",
 			body: DeploymentPatternBody{ID: 5, Name: "release/*", Type: "branch"}.JSON(),
 			want: map[string]any{"id": float64(5), "name": "release/*", "type": "branch"},

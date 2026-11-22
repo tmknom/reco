@@ -31,3 +31,17 @@ func TestQuote(t *testing.T) {
 		})
 	}
 }
+
+// quote の出力を端末に書いても、制御文字として働く文字や見た目を偽る文字が生のまま届かないことを確かめる。
+//
+//trace:checks QR-002
+func TestQuoteWritesNoTerminalControl(t *testing.T) {
+	// C0、DEL、C1 の制御文字と、行区切り、書字方向の制御、ゼロ幅の文字
+	input := "\x00\x07\x1b[2J\r\n\x7f\u0085\u009b\u2028\u2029\u202e\u2066\u200b\ufeff"
+	got := quote(input)
+	for _, r := range got {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) || r == '\u2028' || r == '\u2029' || r == '\u202e' || r == '\u2066' || r == '\u200b' || r == '\ufeff' {
+			t.Errorf("quote(%q) = %q, want no raw %U", input, got, r)
+		}
+	}
+}

@@ -12,6 +12,8 @@
 | 選択方式の Actions 許可条件 | Selected Actions Criteria | 上位の許可ポリシーが `selected` のときに適用される詳細な許可条件 |
 | ワークフロー権限 | Workflow Permissions | ワークフローの `GITHUB_TOKEN` の既定権限と、GitHub Actions による Pull Request の作成と承認の許可からなる設定の領域 |
 | リポジトリ外のワークフローからのアクセス | Actions Access | リポジトリの外のワークフローが、このリポジトリの Actions と再利用可能なワークフローを使える範囲を定める設定の領域。設定は `access_level` の一つで、非公開リポジトリにだけ適用される |
+| Repository Variables | Repository Variables | リポジトリに属する Repository Variable からなる設定の領域 |
+| Repository Variable | Repository Variable | リポジトリに属し、名前と値を持つ関連リソース。値を持つ種類で、GitHub は ID を付けない |
 
 Selected Actions Criteria は、詳細な許可条件をまとめて指す呼称で、GitHub 公式の用語ではありません。
 
@@ -45,11 +47,19 @@ Actions の実行許可は、二つの読み取り要求で読みます。`GET /
 | Actions 許可ポリシーが `selected` でない | 選択方式の Actions 許可条件 | 取得が `409` を返し、値は返らない（GitHub Actions 権限 API 仕様 4章） |
 | リポジトリが公開（`private: false`） | `access_level` | 公式資料が非公開リポジトリにだけ適用されると記載し、公開リポジトリへの取得は `422` を返して値を返さない（GitHub Actions 権限 API 仕様 6章） |
 
+Repository Variables は取得条件を持たず、非公開リポジトリでも一覧を読めます（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 1.1）。
+
 Actions の有効状態は取得条件を持たず、`GET /repos/{owner}/{repo}/actions/permissions` の応答が取得契約に適合すれば必ず観測値になります。Actions の有効状態だけを管理設定とするリポジトリでも、計画時の観測は Actions の実行許可を読み取ります。
 
 Actions が有効のときに `allowed_actions` または `sha_pinning_required` が欠けた応答と、3項目のいずれかが欠けた Selected actions の応答は、取得契約に適合しない応答です。`sha_pinning_required` と Selected actions の3項目は公式ドキュメント上は任意のフィールドですが、欠落の理由を確認できないため、既定値で補いません。`selected` と観測したあとの Selected actions の取得が `409` を返した場合も、観測不能にせず観測操作の失敗とします（[ドメインモデル](../domain.md) の現在状態・観測結果・観測失敗）。
 
 `access_level` の取得条件は公開範囲だけです。Actions が無効のリポジトリでも取得は値を返すため（GitHub Actions 権限 API 仕様 6章）、Actions の有効状態は取得条件になりません。定義にない `access_level` の値と、`access_level` の欠けた応答は、取得契約に適合しない応答です。非公開と観測したあとの取得が `422` を返した場合も、観測不能にせず観測操作の失敗とします。
+
+Repository Variables は、`GET /repos/{owner}/{repo}/actions/variables` の一覧で読みます。読み取りの順は、リポジトリ外のワークフローからのアクセスのあと、Environments の前です。一覧の要素は個別取得と全フィールドが一致するため（GitHub Actions 変数 API 仕様 4.1）、変数ごとの個別取得は送りません。個別取得は名前の末尾に空白をつけても `200` を返すため、存在の確認にも使えません。一覧の `404` と `403` は観測操作の失敗で、`404` を変数が一つもないことと読みません。
+
+この一覧は `per_page` に GitHub の上限の `30` を送り、1ページの本文の上限を 9 MiB にします。GitHub は `30` を超える `per_page` を `30` に丸めますが（GitHub Actions 変数 API 仕様 4.1）、本文の上限の導出が1ページ30件を前提にするため、丸めに頼りません。上限は GitHub の制限から次のとおり導きます。値の1バイトは JSON の文字列で最長6バイト（`\uXXXX`）になり、値は 48,000 バイト、名前は300文字までのため（GitHub Actions 変数 API 仕様 2章、3章）、1要素は値の 288,000 バイトと名前の 1,800 バイトにフィールド名と日時を加えて約 290,000 バイト、30件で約 8,700,000 バイトです。9 MiB はこれに、要素のあいだの空白などの余裕を加えた大きさです。ページ数の上限は、GitHub がリポジトリに保存できる500件（GitHub Actions 変数 API 仕様 3章）を1ページ30件で読み切る17ページとし、異常な応答で読み続ける総量を抑えます。1 MiB の上限では、48,000 バイトの値を28件含むページ（1,347,400 バイト）を読めません（GitHub Actions 変数 API 仕様 4.1）。代償として、全ページを読み終えるまで要素を持つため、最大で17ページ分（約 153 MiB）をメモリに持ち、30秒の要求の時間切れは本文の読み取りを含むため、大きな値を持つリポジトリを遅い回線で読むと通信の失敗で止まり得ます。どちらも観測操作の失敗で止まる側であり、受け入れます。
+
+一覧の要素は、`name` と `value` が文字列のときだけ取得契約に適合します。`value` の空文字列は値であり、存在する変数として観測します。空の `name`、`name` か `value` の欠落と `null` は、取得契約に適合しない応答です。`value` の欠落を空文字列で補いません。値は GitHub が返したとおりに持ち、前後の空白や改行を変えません。一覧に、ASCII の英字の大文字小文字だけが違う名前を含め、同じ名前が二つ以上あれば、取得契約に適合しない応答とします。GitHub は名前を大文字小文字を区別せずに比べるため（GitHub Actions 変数 API 仕様 2章）、二つは同じ変数を指すはずです（[ドメインモデル](../domain.md) の存在の観測）。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -58,6 +68,7 @@ Actions が有効のときに `allowed_actions` または `sha_pinning_required`
 | `alignment` | `QR-002` | Quality Requirement |
 | `grounding` | [GitHub Actions 権限 API 仕様](../../research/actions-permissions.md) | Repository File |
 | `grounding` | [GitHub リポジトリ API 仕様](../../research/repositories.md) | Repository File |
+| `grounding` | [GitHub Actions 変数 API 仕様](../../research/actions-variables.md) | Repository File |
 
 ## 適用可能性と副作用
 

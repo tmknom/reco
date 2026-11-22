@@ -37,6 +37,7 @@ repositories:
         can_approve_pull_request_reviews: false
       access:
         access_level: none
+      # variables: none
     # environments: none
     security:
       dependabot_alerts: true
