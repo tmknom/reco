@@ -25,6 +25,8 @@ type Environment struct {
 	// DeploymentPatternIDs は個別パターンごとの GitHub の ID。方式が selected でなければ nil。
 	DeploymentPatternIDs map[setting.DeploymentPattern]DeploymentPatternID
 	Protection           setting.EnvironmentProtection
+	// Variables は、Environment Variables の領域を選ばなかった観測では nil になる。Variable が一つもないことと取り違えさせないため、値型にしない。
+	Variables *Variables
 }
 
 // EnvironmentID は、GitHub が Environment の実体に付ける ID。同じ名前で作り直すと変わる。

@@ -68,7 +68,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 環境変数の優先順位は [GitHub CLI の環境変数仕様](https://cli.github.com/manual/gh_help_environment) と同じですが、reco が GitHub CLI の認証機構を利用することは意味しません。
 
-reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章、[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章、[GitHub Actions 変数 API 仕様](../research/actions-variables.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。`show` が読み取る Environment と個別パターンの一覧には、GitHub App の権限の分類で Actions の read に当たる権限が要ります。ほかのトークンがこの権限を持たず、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。`show` と、`actions.variables` を宣言したリポジトリの `plan` と `apply` が読み取る Repository Variables の一覧には、GitHub App の権限の分類で Variables の read に当たる権限が要り、GitHub が一覧の取得を拒んだときは、どのコマンドも観測操作の失敗としてエラー終了します。一覧を読めなければ、宣言した変数が存在しないとはみなさず、作成を計画しません。`apply` が変数を作成し値を変えるには、Variables の write に当たる権限が要ります。GitHub が更新要求を拒んだときは、その変数の更新操作の失敗になります。`show` と、`security` を宣言したリポジトリの `plan` と `apply` が読み取る Dependabot alerts と Dependabot security updates の取得には、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。トークンの所有者が admin のアクセスを持たないリポジトリでは、どのコマンドも観測操作の失敗としてエラー終了します。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合（Administration の read を持たない fine-grained personal access token など）の応答は確かめていません。この場合に GitHub が Dependabot alerts の取得へ `404` を返すなら、`show` は有効な Dependabot alerts を `false` と表示し、`plan` と `apply` は `dependabot_alerts: false` の宣言を変更不要と判断します（[Security の設計](../design/settings/security.md) の観測）。`show` と、`secret_scanning` か `secret_scanning_push_protection` を宣言したリポジトリの `plan` と `apply` が読み取る Secret scanning の有効状態とリポジトリの push protection も、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 5章）。`apply` は、`general` の設定を更新する前後にもこの二つを読み取ります。同じ更新エンドポイント（`PATCH /repos/{owner}/{repo}`）で変わり得る設定として比べるためです（5.2節）。公開リポジトリの応答がこれらの値を含まないときは、どのコマンドも観測操作の失敗としてエラー終了します。`general` の設定の更新にも admin のアクセスが要るため（GitHub リポジトリ API 仕様 1章）、確かめた範囲では、この読み取りが `general` だけを宣言したリポジトリの `apply` を新たに止めることはありません。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合の応答は確かめていません。`show` と、`private_vulnerability_reporting` を宣言したリポジトリの `plan` と `apply` が読み取る Private vulnerability reporting の有効状態は、admin のアクセスを要しませんが、その更新には admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。非公開リポジトリでは、この設定を読み取りません。
+reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章、[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章、[GitHub Actions 変数 API 仕様](../research/actions-variables.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。`show` が読み取る Environment と個別パターンの一覧には、GitHub App の権限の分類で Actions の read に当たる権限が要ります。ほかのトークンがこの権限を持たず、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。`show` と、`actions.variables` を宣言したリポジトリの `plan` と `apply` が読み取る Repository Variables の一覧には、GitHub App の権限の分類で Variables の read に当たる権限が要り、GitHub が一覧の取得を拒んだときは、どのコマンドも観測操作の失敗としてエラー終了します。一覧を読めなければ、宣言した変数が存在しないとはみなさず、作成を計画しません。`apply` が変数を作成し値を変えるには、Variables の write に当たる権限が要ります。GitHub が更新要求を拒んだときは、その変数の更新操作の失敗になります。`show` が読み取る Environment Variables の一覧には、GitHub App の権限の分類で Environments の read に当たる権限が要り、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。`show` と、`security` を宣言したリポジトリの `plan` と `apply` が読み取る Dependabot alerts と Dependabot security updates の取得には、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。トークンの所有者が admin のアクセスを持たないリポジトリでは、どのコマンドも観測操作の失敗としてエラー終了します。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合（Administration の read を持たない fine-grained personal access token など）の応答は確かめていません。この場合に GitHub が Dependabot alerts の取得へ `404` を返すなら、`show` は有効な Dependabot alerts を `false` と表示し、`plan` と `apply` は `dependabot_alerts: false` の宣言を変更不要と判断します（[Security の設計](../design/settings/security.md) の観測）。`show` と、`secret_scanning` か `secret_scanning_push_protection` を宣言したリポジトリの `plan` と `apply` が読み取る Secret scanning の有効状態とリポジトリの push protection も、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 5章）。`apply` は、`general` の設定を更新する前後にもこの二つを読み取ります。同じ更新エンドポイント（`PATCH /repos/{owner}/{repo}`）で変わり得る設定として比べるためです（5.2節）。公開リポジトリの応答がこれらの値を含まないときは、どのコマンドも観測操作の失敗としてエラー終了します。`general` の設定の更新にも admin のアクセスが要るため（GitHub リポジトリ API 仕様 1章）、確かめた範囲では、この読み取りが `general` だけを宣言したリポジトリの `apply` を新たに止めることはありません。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合の応答は確かめていません。`show` と、`private_vulnerability_reporting` を宣言したリポジトリの `plan` と `apply` が読み取る Private vulnerability reporting の有効状態は、admin のアクセスを要しませんが、その更新には admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。非公開リポジトリでは、この設定を読み取りません。
 
 ```text
 $ GH_TOKEN=$(gh auth token) reco plan
@@ -849,9 +849,30 @@ Environment は `environments` に示します。Environment ごとに、`name` 
               name: "release/*"
             - type: tag
               name: "v*"
+        # variables: none
       - name: "staging"
         deployment_branch_policy:
           mode: protected_branches
+        # variables: none
+```
+
+Environment ごとに、`deployment_branch_policy` のあとに、その Environment の Environment Variables を `variables` に示します。名前と値の示し方は Repository Variables と同じです。Repository Variable と同じ名前の変数や、別の Environment と同じ名前の変数も、それぞれの Environment の下に示します。一つもないときは `# variables: none` と示します。
+
+Environment Variables は、表示をそのまま設定宣言の出発点にできるという規定と、表示するのは設定宣言に書ける設定に限るという規定の例外です。設定宣言が `environments[].variables` をまだ受け付けないため、`variables` とその下の行を YAML のコメントとして示し、その前の行に `# reco does not accept the environment variables in the configuration file yet` と示します。実のキーで示すと、表示を設定宣言として読めなくなるためです。一つもないときの `# variables: none` には、この行を添えません。
+
+```text
+    environments:
+      - name: "production"
+        deployment_branch_policy:
+          mode: protected_branches
+        # reco does not accept the environment variables in the configuration file yet
+        # variables:
+        #   - name: "REGION"
+        #     value: "ap-northeast-1"
+      - name: "staging"
+        deployment_branch_policy:
+          mode: all
+        # variables: none
 ```
 
 `security` には、Dependabot alerts を `dependabot_alerts` に、Dependabot security updates を `dependabot_security_updates` に、有効なら `true`、無効なら `false` で示します。Dependabot の二つの設定は取得条件を持たないため、`unavailable` にはなりません。Dependabot security updates が一時停止中（GitHub が自動で更新を止めた状態）のときは、値を `true` とし、行末の YAML のコメントで一時停止中であることを示します。一時停止中も設定は有効のままであり、`false` と示すと無効と取り違え、値の位置に一時停止を書くと設定宣言の真偽値として読めないためです。

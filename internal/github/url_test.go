@@ -73,6 +73,27 @@ func TestDeploymentBranchPoliciesURL(t *testing.T) {
 	}
 }
 
+// TestEnvironmentVariablesURL は、Environment の URL に接尾を足し、組めない名前を伝えることだけを確かめる。名前のエスケープは TestEnvironmentURL が確かめる。
+//
+//trace:checks FR-004
+func TestEnvironmentVariablesURL(t *testing.T) {
+	c := New(testToken)
+	u, ok := c.environmentVariablesURL(mustReference(t, "owner/repo"), "a/b")
+	if !ok {
+		t.Fatal("environmentVariablesURL(\"a/b\") ok = false, want true")
+	}
+	if got, want := u.EscapedPath(), "/repos/owner/repo/environments/a%2Fb/variables"; got != want {
+		t.Errorf("escaped path = %q, want %q", got, want)
+	}
+	if got, want := u.Path, "/repos/owner/repo/environments/a/b/variables"; got != want {
+		t.Errorf("path = %q, want %q", got, want)
+	}
+
+	if u, ok := c.environmentVariablesURL(mustReference(t, "owner/repo"), ".."); ok {
+		t.Errorf("environmentVariablesURL(\"..\") = %q, true, want false", u)
+	}
+}
+
 // TestDeploymentBranchPolicyURL は、一覧の URL に ID を足し、Path と RawPath の両方が同じ要素を指すことと、組めない名前を伝えることを確かめる。
 //
 //trace:checks FR-004

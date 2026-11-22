@@ -21,6 +21,7 @@ func writeEnvironments(b *strings.Builder, e github.Environments) {
 		if environment.DeploymentBranchPolicy.Mode == setting.DeploymentBranchPolicySelected {
 			writeDeploymentPatterns(b, environment.DeploymentBranchPolicy.Patterns)
 		}
+		writeEnvironmentVariables(b, *environment.Variables)
 	}
 }
 

@@ -57,6 +57,10 @@ repositories:
               name: "main"
             - type: tag
               name: "v*"
+        # reco does not accept the environment variables in the configuration file yet
+        # variables:
+        #   - name: "REGION"
+        #     value: "ap-northeast-1"
     security:
       dependabot_alerts: true
       dependabot_security_updates: true
@@ -65,21 +69,22 @@ repositories:
       # private_vulnerability_reporting: unavailable (the repository is private)
 ```
 
-表示は設定ファイルと同じ構造で、それぞれの値の位置が、設定ファイルにその設定を書く位置です。表示をそのまま設定ファイルにすると、表示したすべての設定を今の値のまま管理する設定ファイルになります。管理したい設定だけを残し、値を書き換えて使います。
+表示は設定ファイルと同じ構造で、それぞれの値の位置が、設定ファイルにその設定を書く位置です。表示をそのまま設定ファイルにすると、`#` で始まる行で示した設定を除き、表示した設定を今の値のまま管理する設定ファイルになります。管理したい設定だけを残し、値を書き換えて使います。
 
 表示には、次の行も出ます。`#` から行末まではコメントで、設定ファイルとしては読まれません。
 
 | 行 | 意味 |
 |---|---|
-| `# variables: none` | Repository Variables が一つもない |
+| `# variables: none` | `actions` の下では Repository Variables が、Environment の下ではその Environment の変数（Environment Variables）が一つもない |
+| `# reco does not accept the environment variables in the configuration file yet` に続く `# variables:` とその下の行 | Environment Variables の名前と値。reco はまだ設定ファイルで Environment Variables を受け付けないため、コメントで示す |
 | `# environments: none` | Environment が一つもない |
 | `# access:` と `#   access_level: unavailable (the repository is public)` | 公開リポジトリのため、`access_level` を読み取れない。この設定は非公開リポジトリにだけ書ける |
 | `dependabot_security_updates: true # paused by GitHub (still enabled)` | Dependabot security updates は有効だが、GitHub が一時停止している。設定ファイルでは `true` と書いたのと同じ |
 | `# secret_scanning: unavailable (the repository is private)` / `# secret_scanning_push_protection: unavailable (the repository is private)` / `# private_vulnerability_reporting: unavailable (the repository is private)` | 非公開リポジトリのため、Secret scanning、リポジトリの push protection、Private vulnerability reporting の値を読み取れない |
 
-Environment の `wait_timer`、`required_reviewers`、`can_admins_bypass` のように、設定ファイルに書けない設定は表示しません。
+Environment の `wait_timer`、`required_reviewers`、`can_admins_bypass` のように、設定ファイルに書けない設定は、Environment Variables を除き表示しません。
 
-Repository Variables は、名前と値をそのまま表示します。改行や制御文字を含む値は、`\n` のようなエスケープで1行に示し、長い値も省略しません。表示は stdout に出るため、CI で `show` を実行すると値がログに残ります。`plan` と `apply` が表示する変更計画にも、設定ファイルに書いた変数のうち、GitHub 上にないものは書いた値が、値が違うものは今の値と書いた値が出ます。パスワードやトークンのような秘密情報は、Variables ではなく Secrets に入れてください。
+Repository Variables と Environment Variables は、名前と値をそのまま表示します。改行や制御文字を含む値は、`\n` のようなエスケープで1行に示し、長い値も省略しません。表示は stdout に出るため、CI で `show` を実行すると値がログに残ります。`plan` と `apply` が表示する変更計画にも、設定ファイルに書いた Repository Variables のうち、GitHub 上にないものは書いた値が、値が違うものは今の値と書いた値が出ます。パスワードやトークンのような秘密情報は、Variables ではなく Secrets に入れてください。
 
 ## `plan`
 

@@ -4,7 +4,7 @@ package setting
 type Area int
 
 // ゼロ値を定義済みの領域と取り違えないよう 1 から始める。
-// 定数の並びは YAML 設定仕様の章の並びで、変更計画の表示順はこの並びで決まる。
+// 定数の並びは YAML 設定仕様の章の並びで、同じ章の領域は章の中の並びとする。変更計画の表示順はこの並びで決まる。
 const (
 	AreaGeneral Area = iota + 1
 	AreaActionsPermissions
@@ -12,6 +12,7 @@ const (
 	AreaActionsAccess
 	AreaRepositoryVariables
 	AreaEnvironments
+	AreaEnvironmentVariables
 	AreaDependabot
 	AreaSecretScanning
 	AreaPrivateVulnerabilityReporting

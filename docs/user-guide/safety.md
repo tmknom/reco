@@ -34,7 +34,7 @@ GitHub が更新を受け付けただけでは、reco は完了（`updated`）�
 
 reco は、渡されたトークンを GitHub へのアクセスにだけ使います。トークンをファイルに保存せず、出力やエラーにも表示しません。
 
-Repository Variables の値は秘密情報として扱わず、`show` がそのまま表示し、変更計画も、設定ファイルに書いた変数の今の値と書いた値を表示します。GitHub も Variables を機密でない設定値の保存先としているためです。秘密情報は Variables ではなく Secrets に入れます。
+`show` は Repository Variables と Environment Variables の値をそのまま表示し、変更計画は、設定ファイルに書いた Repository Variables の今の値と書いた値を表示します。reco はこれらの値を秘密情報として扱いません。GitHub も Variables を機密でない設定値の保存先としているためです。秘密情報は Variables ではなく Secrets に入れます。
 
 ## reco がしないこと
 
@@ -47,5 +47,5 @@ Repository Variables の値は秘密情報として扱わず、`show` がその�
 ## References
 
 - [要求定義](../spec/requirements.md)：この文書に書いた動作の全条件（不変条件 INV-001〜INV-005、適用できない変更をまとめて報告すること FR-008、変更後の確認 FR-012、変更結果の報告 FR-013、認証情報の秘匿 QR-001）
-- [CLI 仕様](../spec/cli.md)：認証情報の扱い（3章）、副作用と適用できない変更の表示（4章）、適用できない変更があるときに `apply` が止まること（5章）、承認と、承認のあとに対象と変更内容を差し替えないこと（5.1節）、Repository Variables の値を表示すること（4章、6章）、リダイレクトに従わないこと（7章）
+- [CLI 仕様](../spec/cli.md)：認証情報の扱い（3章）、副作用と適用できない変更の表示（4章）、適用できない変更があるときに `apply` が止まること（5章）、承認と、承認のあとに対象と変更内容を差し替えないこと（5.1節）、Repository Variables の値を表示すること（4章、6章）、Environment Variables の値を表示すること（6章）、リダイレクトに従わないこと（7章）
 - [アーキテクチャ設計](../design/architecture.md)：リダイレクトに従わない理由（5.2節）、書いていない設定を変えない更新方式（5.3節）

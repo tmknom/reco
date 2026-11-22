@@ -109,7 +109,14 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 					{ID: 6, Name: `v"\*`, Type: "tag"},
 				}}.JSON()),
 				"GET /repos/owner/repo/environments/empty/deployment-branch-policies": githubtest.OK(githubtest.DeploymentBranchPoliciesBody{}.JSON()),
-				"GET /repos/owner/repo/vulnerability-alerts":                          {Status: http.StatusNoContent},
+				// コメントにした変数の行は、改行に続けてキーを模した値でもコメントの外に出ず、設定宣言の構造を変えない
+				"GET /repos/owner/repo/environments/" + environmentName + "/variables": githubtest.OK(githubtest.VariablesBody{TotalCount: 2, Variables: []githubtest.VariableBody{
+					{Name: "GO_VERSION", Value: "1.26"},
+					{Name: "NOTE", Value: "x\n        deployment_branch_policy:\n          mode: all"},
+				}}.JSON()),
+				"GET /repos/owner/repo/environments/empty/variables":   githubtest.OK(githubtest.VariablesBody{}.JSON()),
+				"GET /repos/owner/repo/environments/staging/variables": githubtest.OK(githubtest.VariablesBody{TotalCount: 1, Variables: []githubtest.VariableBody{{Name: "REGION", Value: "eu"}}}.JSON()),
+				"GET /repos/owner/repo/vulnerability-alerts":           {Status: http.StatusNoContent},
 				// 一時停止中の行末のコメントも、設定宣言として読むことを妨げない
 				"GET /repos/owner/repo/automated-security-fixes": githubtest.OK(githubtest.AutomatedSecurityFixesBody{Enabled: true, Paused: true}.JSON()),
 			},
@@ -138,8 +145,9 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 				"GET /repos/owner/repo/environments": githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 1, Environments: []githubtest.EnvironmentBody{
 					{ID: 2, Name: "production"},
 				}}.JSON()),
-				"GET /repos/owner/repo/vulnerability-alerts":     {Status: http.StatusNotFound},
-				"GET /repos/owner/repo/automated-security-fixes": githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),
+				"GET /repos/owner/repo/environments/production/variables": githubtest.OK(githubtest.VariablesBody{}.JSON()),
+				"GET /repos/owner/repo/vulnerability-alerts":              {Status: http.StatusNotFound},
+				"GET /repos/owner/repo/automated-security-fixes":          githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),
 			},
 		},
 		{

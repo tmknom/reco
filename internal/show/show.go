@@ -24,7 +24,7 @@ type Config struct {
 func Run(ctx context.Context, cfg Config) error {
 	client := github.New(cfg.Token, cfg.GitHubOptions...)
 	// 失敗の文言は対象名を含むため、ここでは包み直さない
-	observed, err := client.ObserveRepository(ctx, cfg.Target, setting.AreaActionsPermissions, setting.AreaWorkflowPermissions, setting.AreaActionsAccess, setting.AreaRepositoryVariables, setting.AreaEnvironments, setting.AreaDependabot, setting.AreaSecretScanning, setting.AreaPrivateVulnerabilityReporting)
+	observed, err := client.ObserveRepository(ctx, cfg.Target, setting.AreaActionsPermissions, setting.AreaWorkflowPermissions, setting.AreaActionsAccess, setting.AreaRepositoryVariables, setting.AreaEnvironments, setting.AreaEnvironmentVariables, setting.AreaDependabot, setting.AreaSecretScanning, setting.AreaPrivateVulnerabilityReporting)
 	if err != nil {
 		return err
 	}
