@@ -35,7 +35,7 @@ type EnvironmentID int64
 // DeploymentPatternID は、GitHub が個別パターンに付ける ID。値の一部ではなく、個別パターンを取り除く要求の宛先に使う。
 type DeploymentPatternID int64
 
-// Lookup は、宣言の名前 name の Environment を、一覧の全体と突き合わせて引く。
+// Lookup は、同一性を判定できる名前 name の Environment を、一覧の全体と突き合わせて引く。
 // 呼び出し側が Existing を綴りで探すと、存在する Environment を存在しないと判断し得るため、ここでだけ引く。
 // 同じ名前の要素が二つ以上ないことは、observeEnvironments が取得契約として確かめている。
 func (e Environments) Lookup(name setting.EnvironmentName) EnvironmentObservation {

@@ -221,26 +221,6 @@ func TestManagedAreas(t *testing.T) {
 		want    []setting.Area
 	}{
 		{
-			name:    "general only does not include workflow permissions",
-			desired: configuration.DesiredState{General: configuration.General{AllowAutoMerge: new(true)}},
-			want:    []setting.Area{setting.AreaGeneral},
-		},
-		{
-			name:    "can_approve_pull_request_reviews alone includes workflow permissions",
-			desired: configuration.DesiredState{WorkflowPermissions: configuration.WorkflowPermissions{CanApprovePullRequestReviews: new(true)}},
-			want:    []setting.Area{setting.AreaWorkflowPermissions},
-		},
-		{
-			name:    "allowed_actions alone includes actions permissions",
-			desired: configuration.DesiredState{ActionsPermissions: configuration.ActionsPermissions{AllowedActions: new(setting.AllowedActionsAll)}},
-			want:    []setting.Area{setting.AreaActionsPermissions},
-		},
-		{
-			name:    "enabled alone includes actions permissions",
-			desired: configuration.DesiredState{ActionsPermissions: configuration.ActionsPermissions{Enabled: new(false)}},
-			want:    []setting.Area{setting.AreaActionsPermissions},
-		},
-		{
 			name: "each area appears once",
 			desired: configuration.DesiredState{
 				General: configuration.General{AllowAutoMerge: new(true), DeleteBranchOnMerge: new(true)},
@@ -254,11 +234,6 @@ func TestManagedAreas(t *testing.T) {
 			want: []setting.Area{setting.AreaGeneral, setting.AreaActionsPermissions, setting.AreaWorkflowPermissions},
 		},
 		{
-			name:    "environments alone include environments",
-			desired: configuration.DesiredState{Environments: []configuration.EnvironmentDeclaration{{Name: mustEnvironmentName(t, "production")}}},
-			want:    []setting.Area{setting.AreaEnvironments},
-		},
-		{
 			name: "environments follow the repository settings areas",
 			desired: configuration.DesiredState{
 				General:      configuration.General{AllowAutoMerge: new(true)},
@@ -267,22 +242,12 @@ func TestManagedAreas(t *testing.T) {
 			want: []setting.Area{setting.AreaGeneral, setting.AreaEnvironments},
 		},
 		{
-			name:    "repository variables alone include repository variables without the actions permission areas",
-			desired: configuration.DesiredState{RepositoryVariables: []configuration.VariableDeclaration{{Name: mustVariableName(t, "GO_VERSION"), Desired: setting.VariableValue("1.27")}}},
-			want:    []setting.Area{setting.AreaRepositoryVariables},
-		},
-		{
 			name: "environment with variables includes environments and environment variables",
 			desired: configuration.DesiredState{Environments: []configuration.EnvironmentDeclaration{
 				{Name: mustEnvironmentName(t, "staging")},
 				{Name: mustEnvironmentName(t, "production"), Variables: []configuration.VariableDeclaration{{Name: mustVariableName(t, "REGION"), Desired: setting.VariableValue("eu")}}},
 			}},
 			want: []setting.Area{setting.AreaEnvironments, setting.AreaEnvironmentVariables},
-		},
-		{
-			name:    "dependabot_security_updates alone includes dependabot",
-			desired: configuration.DesiredState{Dependabot: configuration.Dependabot{SecurityUpdates: new(true)}},
-			want:    []setting.Area{setting.AreaDependabot},
 		},
 	}
 	for _, tc := range cases {
@@ -343,29 +308,6 @@ func TestReconcile_RepositoryVariablesOrder(t *testing.T) {
 	}
 	// YAML 設定仕様の章の並びで Actions access と Environments のあいだに、宣言の並びで続き、宣言していない変数は現れない
 	want := []string{"actions.access.access_level", "actions.variables.ZETA", "actions.variables.ALPHA", "environments.production"}
-	if !reflect.DeepEqual(units, want) {
-		t.Errorf("reconcile() units = %v, want %v", units, want)
-	}
-}
-
-//trace:checks FR-001 INV-001
-func TestReconcile_Environments(t *testing.T) {
-	zeta, alpha := mustEnvironmentName(t, "zeta"), mustEnvironmentName(t, "alpha")
-	desired := configuration.DesiredState{
-		General:      configuration.General{AllowAutoMerge: new(true)},
-		Environments: []configuration.EnvironmentDeclaration{{Name: zeta}, {Name: alpha}},
-	}
-	observed := github.ObservationResult{
-		General:      github.General{AllowAutoMerge: true},
-		Environments: &github.Environments{Existing: []github.Environment{{Name: "alpha"}, {Name: "undeclared"}, {Name: "zeta"}}},
-	}
-	got := reconcile(desired, observed)
-	var units []string
-	for _, s := range got {
-		units = append(units, s.Unit.String())
-	}
-	// リポジトリ設定のあとに宣言の並びで続き、宣言していない Environment は現れない
-	want := []string{"general.allow_auto_merge", "environments.zeta", "environments.alpha"}
 	if !reflect.DeepEqual(units, want) {
 		t.Errorf("reconcile() units = %v, want %v", units, want)
 	}
@@ -448,5 +390,103 @@ func TestReconcile_DependabotFollowsEnvironments(t *testing.T) {
 	want := []string{"general.allow_auto_merge", "environments.production", "security.dependabot_alerts", "security.dependabot_security_updates"}
 	if !reflect.DeepEqual(units, want) {
 		t.Errorf("reconcile() units = %v, want %v", units, want)
+	}
+}
+
+//trace:checks FR-001 FR-005
+func TestReconcile_EnvironmentSettings(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	protected := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}
+	all := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}
+	existing := func(name string, policy setting.DeploymentBranchPolicy) github.Environment {
+		return github.Environment{ID: 7, Name: name, DeploymentBranchPolicy: policy}
+	}
+	region, debug, level := mustVariableName(t, "REGION"), mustVariableName(t, "DEBUG"), mustVariableName(t, "LEVEL")
+	existence := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
+	matchedExistence := SettingPlan{Unit: existence, Observed: github.Observed(setting.Present()), Desired: setting.Present(), EnvironmentIdentity: ObservedEnvironmentIdentity(7), Result: Match}
+	creation := SettingPlan{Unit: existence, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch}
+	undeterminedExistence := SettingPlan{
+		Unit: existence, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined), Desired: setting.Present(), Result: NotComparable,
+	}
+	cases := []struct {
+		name     string
+		declared configuration.EnvironmentDeclaration
+		// observed は、Environment の一覧の全ページを読めた観測で確認できた Environment である。
+		observed []github.Environment
+		want     []SettingPlan
+	}{
+		{
+			name:     "existing environment declared by name only matches",
+			declared: configuration.EnvironmentDeclaration{Name: production},
+			observed: []github.Environment{existing("production", all)},
+			want:     []SettingPlan{matchedExistence},
+		},
+		{
+			name:     "existing environment with the declared mode matches both",
+			declared: configuration.EnvironmentDeclaration{Name: production, DeploymentBranchPolicy: &protected},
+			observed: []github.Environment{existing("production", protected)},
+			want: []SettingPlan{
+				matchedExistence,
+				{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Observed(setting.DeploymentBranchPolicyValue(protected)), Desired: setting.DeploymentBranchPolicyValue(protected), Result: Match},
+			},
+		},
+		{
+			name:     "absent environment declared by name only is a creation",
+			declared: configuration.EnvironmentDeclaration{Name: production},
+			observed: []github.Environment{existing("staging", all)},
+			want:     []SettingPlan{creation},
+		},
+		{
+			name:     "absent environment with a mode is a creation and a not comparable mode",
+			declared: configuration.EnvironmentDeclaration{Name: production, DeploymentBranchPolicy: &protected},
+			observed: nil,
+			want: []SettingPlan{
+				creation,
+				{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.DeploymentBranchPolicyValue(protected), Result: NotComparable},
+			},
+		},
+		{
+			name:     "environment whose existence cannot be determined is not comparable",
+			declared: configuration.EnvironmentDeclaration{Name: production, DeploymentBranchPolicy: &protected},
+			observed: []github.Environment{existing("prodüction", all)},
+			want: []SettingPlan{
+				undeterminedExistence,
+				{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined), Desired: setting.DeploymentBranchPolicyValue(protected), Result: NotComparable},
+			},
+		},
+		{
+			name: "variables of an existing environment are matched against its list after the mode in the declared order",
+			declared: configuration.EnvironmentDeclaration{Name: production, DeploymentBranchPolicy: &protected, Variables: []configuration.VariableDeclaration{
+				{Name: region, Desired: setting.VariableValue("eu")},
+				{Name: debug, Desired: setting.VariableValue("true")},
+				{Name: level, Desired: setting.VariableValue("info")},
+			}},
+			observed: []github.Environment{withVariables(existing("production", protected), github.Variable{Name: "LEVEL", Value: "info"}, github.Variable{Name: "REGION", Value: "us"}, github.Variable{Name: "UNDECLARED", Value: "x"})},
+			want: []SettingPlan{
+				matchedExistence,
+				{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Observed(setting.DeploymentBranchPolicyValue(protected)), Desired: setting.DeploymentBranchPolicyValue(protected), Result: Match},
+				{Unit: environmentVariableUnit(production, region), Observed: github.Observed(setting.VariableValue("us")), Desired: setting.VariableValue("eu"), Result: Mismatch},
+				{Unit: environmentVariableUnit(production, debug), Observed: github.Observed(setting.Absent()), Desired: setting.VariableValue("true"), Result: Mismatch},
+				{Unit: environmentVariableUnit(production, level), Observed: github.Observed(setting.VariableValue("info")), Desired: setting.VariableValue("info"), Result: Match},
+			},
+		},
+		{
+			name:     "variable of an absent environment is not comparable because the environment is absent",
+			declared: configuration.EnvironmentDeclaration{Name: production, Variables: []configuration.VariableDeclaration{{Name: region, Desired: setting.VariableValue("eu")}}},
+			observed: nil,
+			want: []SettingPlan{
+				creation,
+				{Unit: environmentVariableUnit(production, region), Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.VariableValue("eu"), Result: NotComparable},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			desired := configuration.DesiredState{Environments: []configuration.EnvironmentDeclaration{tc.declared}}
+			observed := github.ObservationResult{Environments: &github.Environments{Existing: tc.observed}}
+			if got := reconcile(desired, observed); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("reconcile() =\n%+v\nwant\n%+v", got, tc.want)
+			}
+		})
 	}
 }

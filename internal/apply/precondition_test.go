@@ -2,7 +2,6 @@ package apply
 
 import (
 	"reflect"
-	"slices"
 	"testing"
 
 	"github.com/tmknom/reco/internal/changeplan"
@@ -242,65 +241,86 @@ func TestPrecedingUpdateNotReflected(t *testing.T) {
 	}
 }
 
-// TestMatchesAnticipatedEnvironment は、承認時に予定した Environment の存在と ID が、更新直前の観測と同じかの規則を確かめる。
+// TestMatchesRelevantSetting_EnvironmentExistence は、承認時に予定した Environment の存在と同一性の基準が、更新直前の観測と同じかの規則を確かめる。
 //
 //trace:checks INV-001 INV-004 FR-010
-func TestMatchesAnticipatedEnvironment(t *testing.T) {
+func TestMatchesRelevantSetting_EnvironmentExistence(t *testing.T) {
 	name := mustEnvironmentName(t, "production")
+	unit := setting.Unit{Key: setting.EnvironmentResource, Environment: name}
 	lookup := func(existing ...github.Environment) github.EnvironmentObservation {
 		return github.Environments{Existing: existing}.Lookup(name)
 	}
-	absent := lookup(observedEnvironment(9, "staging", setting.DeploymentBranchPolicyAll))
-	undetermined := lookup(observedEnvironment(9, "prodüction", setting.DeploymentBranchPolicyAll))
-	approved := lookup(observedEnvironment(7, "production", setting.DeploymentBranchPolicyAll))
+	absentBasis := changeplan.RelevantSetting{Unit: unit, AnticipatedValue: github.Observed(setting.Absent())}
+	approvedBasis := changeplan.RelevantSetting{Unit: unit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedIdentity: changeplan.ObservedEnvironmentIdentity(7)}
+	createdBasis := changeplan.RelevantSetting{Unit: unit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedIdentity: changeplan.CreatedByPrecedingOperation()}
+	approved := observedEnvironment(7, "production", setting.DeploymentBranchPolicyAll)
+	undetermined := observedEnvironment(9, "prodüction", setting.DeploymentBranchPolicyAll)
+	createdBase := lookup(observedEnvironment(8, "production", setting.DeploymentBranchPolicySelected))
 	cases := []struct {
-		name        string
-		anticipated github.EnvironmentObservation
-		current     github.EnvironmentObservation
-		want        bool
+		name     string
+		relevant changeplan.RelevantSetting
+		current  []github.Environment
+		// created は、同じ論理的な設定変更が作成した Environment の ID の基準。基準がないことはゼロ値で表す。
+		created github.EnvironmentObservation
+		want    bool
 	}{
-		{name: "absent at approval and still absent is the same", anticipated: absent, current: lookup(), want: true},
-		{name: "absent at approval and existing now differs", anticipated: absent, current: approved, want: false},
-		{name: "absent at approval and existing under a name differing only in case differs", anticipated: absent, current: lookup(observedEnvironment(8, "Production", setting.DeploymentBranchPolicyAll)), want: false},
-		{name: "absent at approval and undetermined now differs", anticipated: absent, current: undetermined, want: false},
+		{name: "absent at approval and still absent is the same", relevant: absentBasis, current: []github.Environment{observedEnvironment(9, "staging", setting.DeploymentBranchPolicyAll)}, want: true},
+		{name: "absent at approval and existing now differs", relevant: absentBasis, current: []github.Environment{approved}, want: false},
+		{name: "absent at approval and undetermined now differs", relevant: absentBasis, current: []github.Environment{undetermined}, want: false},
 		{
-			name: "existing with the same ID is the same even if the spelling and the mode differ", anticipated: approved,
-			current: lookup(observedEnvironment(7, "PRODUCTION", setting.DeploymentBranchPolicyProtectedBranches)), want: true,
+			name: "existing with the same ID is the same even if the spelling and the mode differ", relevant: approvedBasis,
+			current: []github.Environment{observedEnvironment(7, "PRODUCTION", setting.DeploymentBranchPolicyProtectedBranches)}, want: true,
 		},
-		{name: "existing with another ID differs", anticipated: approved, current: lookup(observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll)), want: false},
-		{name: "existing at approval and absent now differs", anticipated: approved, current: absent, want: false},
-		{name: "existing at approval and undetermined now differs", anticipated: approved, current: undetermined, want: false},
+		{name: "existing with another ID differs", relevant: approvedBasis, current: []github.Environment{observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll)}, want: false},
+		{name: "existing at approval and absent now differs", relevant: approvedBasis, want: false},
+		{name: "created without a base ID yet is as expected when it exists", relevant: createdBasis, current: []github.Environment{observedEnvironment(8, "production", setting.DeploymentBranchPolicySelected)}, want: true},
+		{
+			name: "created with an ID other than the base is not as expected", relevant: createdBasis, created: createdBase,
+			current: []github.Environment{observedEnvironment(9, "production", setting.DeploymentBranchPolicySelected)}, want: false,
+		},
+		{
+			name: "created with the base ID is as expected", relevant: createdBasis, created: createdBase,
+			current: []github.Environment{observedEnvironment(8, "Production", setting.DeploymentBranchPolicyAll)}, want: true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := matchesAnticipatedEnvironment(tc.anticipated, tc.current); got != tc.want {
-				t.Errorf("matchesAnticipatedEnvironment() = %v, want %v", got, tc.want)
+			observed := github.ObservationResult{RepositoryID: 1, Environments: environments(tc.current...)}
+			if got := matchesRelevantSetting(tc.relevant, observed, tc.created); got != tc.want {
+				t.Errorf("matchesRelevantSetting() = %v, want %v", got, tc.want)
 			}
 		})
 	}
 
-	// 承認の前に適用不能として止めるため、承認時に予定した値にならない観測結果
+	// changeplan が作らない基準。承認の前に適用不能として止める観測不能と、同一性の基準のない存在は、更新直前の観測によらず不変条件の破れとして止める。
+	// 更新直前の観測を、基準を受け付けたときに成立する側の形にして、比べた結果で隠れないことを確かめる
 	panicCases := []struct {
-		name        string
-		anticipated github.EnvironmentObservation
+		name     string
+		relevant changeplan.RelevantSetting
+		current  []github.Environment
 	}{
-		{name: "undetermined at approval panics", anticipated: undetermined},
-		{name: "zero value at approval panics", anticipated: github.EnvironmentObservation{}},
+		{
+			name:     "undetermined at approval panics even if still undetermined",
+			relevant: changeplan.RelevantSetting{Unit: unit, AnticipatedValue: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined)},
+			current:  []github.Environment{undetermined},
+		},
+		{name: "zero value at approval panics even if the environment exists", relevant: changeplan.RelevantSetting{Unit: unit}, current: []github.Environment{approved}},
+		{name: "existing at approval without an identity panics even if absent now", relevant: changeplan.RelevantSetting{Unit: unit, AnticipatedValue: github.Observed(setting.Present())}},
 	}
 	for _, tc := range panicCases {
 		t.Run(tc.name, func(t *testing.T) {
 			defer func() {
 				if recover() == nil {
-					t.Error("matchesAnticipatedEnvironment() did not panic")
+					t.Error("matchesRelevantSetting() did not panic")
 				}
 			}()
-			matchesAnticipatedEnvironment(tc.anticipated, absent)
+			matchesRelevantSetting(tc.relevant, github.ObservationResult{RepositoryID: 1, Environments: environments(tc.current...)}, github.EnvironmentObservation{})
 		})
 	}
 }
 
 // TestCheckPrecondition_Environments は、Environment の作成と方式の変更の更新直前の判定表を確かめる。
-// 存在の比べ方は TestMatchesAnticipatedEnvironment、方式の値の比べ方は TestMatchesAnticipatedValue が確かめる。
+// 存在の比べ方は TestMatchesRelevantSetting_EnvironmentExistence、方式の値の比べ方は TestMatchesAnticipatedValue が確かめる。
 //
 //trace:checks INV-001 INV-004 FR-010
 func TestCheckPrecondition_Environments(t *testing.T) {
@@ -324,10 +344,7 @@ func TestCheckPrecondition_Environments(t *testing.T) {
 	main, feature := branchPattern("main"), branchPattern("feature/*")
 	// 外す DELETE feature/*（基準 [main, feature/*]）、足す POST release/*（基準 [main]）の順
 	replacement := deploymentPatternsChange(t, "staging", selectedEnvironment(7, "Staging", []setting.DeploymentPattern{main, feature}, 10, 11), selectedPolicy(main, branchPattern("release/*")))
-	// 作成に続く POST の Environment の基準に、計画時の「存在しない」の観測結果も入れた、changeplan が作らない並び
 	creation := creationWithPatternsChange(t, "production", selectedPolicy(main))
-	creation.Operations[1].RelevantSettings = slices.Clone(creation.Operations[1].RelevantSettings)
-	creation.Operations[1].RelevantSettings[0].AnticipatedEnvironment = github.Environments{}.Lookup(production)
 
 	cases := []struct {
 		name   string
@@ -603,36 +620,6 @@ func TestCheckPrecondition_EnvironmentVariables(t *testing.T) {
 	}
 }
 
-// TestMatchesCreatedEnvironment は、同じ論理的な設定変更が作成した Environment について、後続の更新操作の直前の観測が予定どおりかの規則を確かめる。
-//
-//trace:checks INV-004 FR-010
-func TestMatchesCreatedEnvironment(t *testing.T) {
-	name := mustEnvironmentName(t, "production")
-	lookup := func(existing ...github.Environment) github.EnvironmentObservation {
-		return github.Environments{Existing: existing}.Lookup(name)
-	}
-	created := lookup(observedEnvironment(8, "production", setting.DeploymentBranchPolicySelected))
-	cases := []struct {
-		name    string
-		created github.EnvironmentObservation
-		current github.EnvironmentObservation
-		want    bool
-	}{
-		{name: "existing without a base ID yet is as expected", created: github.EnvironmentObservation{}, current: created, want: true},
-		{name: "absent is not as expected", created: github.EnvironmentObservation{}, current: lookup(), want: false},
-		{name: "undetermined is not as expected", created: github.EnvironmentObservation{}, current: lookup(observedEnvironment(9, "prodüction", setting.DeploymentBranchPolicySelected)), want: false},
-		{name: "existing with an ID other than the base is not as expected", created: created, current: lookup(observedEnvironment(9, "production", setting.DeploymentBranchPolicySelected)), want: false},
-		{name: "existing with the base ID is as expected", created: created, current: lookup(observedEnvironment(8, "Production", setting.DeploymentBranchPolicyAll)), want: true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := matchesCreatedEnvironment(tc.created, tc.current); got != tc.want {
-				t.Errorf("matchesCreatedEnvironment() = %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
-
 // TestEnvironmentCreatedIn は、同じ論理的な設定変更が作成した Environment の ID の基準を、作成に続く最初の更新操作の直前の観測から引く規則を確かめる。
 //
 //trace:checks INV-004 FR-010
@@ -672,7 +659,9 @@ func TestEnvironmentCreatedIn(t *testing.T) {
 	})
 	t.Run("change without a creation expecting a created environment panics", func(t *testing.T) {
 		change := deploymentPatternsChange(t, "production", observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll), selectedPolicy(branchPattern("main")))
-		change.Operations[1].RelevantSettings[0] = changeplan.RelevantSetting{Unit: change.Operations[1].RelevantSettings[0].Unit, CreatedByPrecedingOperation: true}
+		change.Operations[1].RelevantSettings[0] = changeplan.RelevantSetting{
+			Unit: change.Operations[1].RelevantSettings[0].Unit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedIdentity: changeplan.CreatedByPrecedingOperation(),
+		}
 		defer func() {
 			if recover() == nil {
 				t.Error("environmentCreatedIn() did not panic")

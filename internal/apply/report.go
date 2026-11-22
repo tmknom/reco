@@ -225,7 +225,7 @@ func notAttemptedReason(record changeRecord) string {
 // その変更は完了を確かめていて観測し直しの対象にしないため、原因を断定せずに関係する現在値の変化として示す。
 // ただし、後続の更新操作でも、承認時に観測した Environment そのものを基準にした変化は、先行する更新操作が変えるものではないため、承認のあとの変化として示す。
 // 先頭の更新操作が作成の変更では、後続の Environment の基準は先行する作成で、
-// Environment は値を持たないため、予定どおりの値ではなく、予定どおりの Environment でないことを示す。
+// その基準は値ではなく作成した Environment の存在と同一性のため、予定どおりの値ではなく、予定どおりの Environment でないことを示す。
 // 不成立の記録だけを受け取るため、変更前提が成立した記録と確かめていない記録は不変条件の破れとして panic する。
 func preconditionText(change changeplan.LogicalChange, index int, o operationRecord) string {
 	switch o.precondition {

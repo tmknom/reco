@@ -13,7 +13,7 @@ const (
 	UnavailablePublicRepository
 	// UnavailableEnvironmentAbsent は、属する先の Environment が存在しないことを表す。
 	UnavailableEnvironmentAbsent
-	// UnavailableEnvironmentNameUndetermined は、宣言の名前と同じかどうかを判定できない名前の Environment があることを表す。
+	// UnavailableEnvironmentNameUndetermined は、引いた名前と同じかどうかを判定できない名前の Environment があることを表す。
 	UnavailableEnvironmentNameUndetermined
 	// UnavailablePrivateRepository は、リポジトリが非公開であることを表す。
 	UnavailablePrivateRepository

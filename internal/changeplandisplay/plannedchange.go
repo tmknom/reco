@@ -21,20 +21,12 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 	case changeplan.Match:
 		return ""
 	case changeplan.Mismatch:
-		if s.IsEnvironmentCreation() {
-			// 存在しないことは確かめた事実のため、比較不能の印の括弧に入れない
-			current = "absent"
-			break
-		}
 		observed, _ := s.Observed.Value()
 		current = observed.String()
 	case changeplan.NotComparable:
-		current = repositoryStateText(s.UnavailableReason())
+		current = repositoryStateText(s.Observed.UnavailableReason())
 	}
-	desired := "present"
-	if s.Unit.Key != setting.EnvironmentResource {
-		desired = s.Desired.String()
-	}
+	desired := s.Desired.String()
 	if s.EnablesActionsByPolicy() {
 		desired += " (enables GitHub Actions)"
 	}

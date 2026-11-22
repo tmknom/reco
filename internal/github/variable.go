@@ -36,7 +36,7 @@ const (
 	maxEnvironmentVariablesPages = 4
 )
 
-// Lookup は、宣言の名前 name の Variable の観測結果を、一覧の全体と突き合わせて返す。
+// Lookup は、名前 name の Variable の観測結果を、一覧の全体と突き合わせて返す。
 // 一覧は全ページを読めているため、名前のない Variable は存在しないと確かめたことになる。
 func (v Variables) Lookup(name setting.VariableName) SettingObservation[setting.Value] {
 	for _, variable := range v.Existing {
@@ -44,7 +44,7 @@ func (v Variables) Lookup(name setting.VariableName) SettingObservation[setting.
 			return Observed(setting.VariableValue(variable.Value))
 		}
 	}
-	return Observed(setting.AbsentVariable())
+	return Observed(setting.Absent())
 }
 
 // observeRepositoryVariables は Repository Variables の一覧の全ページを読む。

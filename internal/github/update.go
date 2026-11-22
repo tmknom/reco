@@ -2,23 +2,11 @@ package github
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
-)
-
-// UpdateOutcome は、一つの更新操作について、GitHub の応答から判断した結果である。
-// ゼロ値を UpdateUnknown にするのは、結果を設定し損ねた値を成功や拒否と取り違えないため。
-type UpdateOutcome int
-
-const (
-	UpdateUnknown UpdateOutcome = iota
-	UpdateSucceeded
-	UpdateRejected
 )
 
 // updateRequestFunc は、reference のリポジトリの設定を value にする更新要求を一度送る。
@@ -153,115 +141,6 @@ func enablementMethod(enabled bool) string {
 	return http.MethodDelete
 }
 
-// CreateEnvironment は、reference のリポジトリに name の Environment を作る PUT を、本文なしで一度だけ送る。再送はしない。
-// 同じ名前の Environment が存在すれば、この要求は何も変えずに成功を応答する。
-func (c *Client) CreateEnvironment(ctx context.Context, reference repository.Reference, name string) (UpdateOutcome, error) {
-	return c.putEnvironment(ctx, "create environment", reference, name, nil)
-}
-
-// UpdateEnvironmentDeploymentBranchPolicy は、reference のリポジトリの name の Environment のデプロイ元制限の方式を mode にする PUT を一度だけ送る。再送はしない。
-// name の Environment が存在しなければ、この要求は方式が mode の Environment を作る。
-// 本文は deployment_branch_policy だけで、保護設定を併送しない。
-// selected は方式だけを送り、個別パターンは登録しない。登録は AddDeploymentPattern で一つずつ送る。
-// 未定義の方式は、本文を組めない不変条件の破れとして panic する。
-func (c *Client) UpdateEnvironmentDeploymentBranchPolicy(ctx context.Context, reference repository.Reference, name string, mode setting.DeploymentBranchPolicyMode) (UpdateOutcome, error) {
-	return c.putEnvironment(ctx, "set deployment branch policy of environment", reference, name, encodeDeploymentBranchPolicyMode(mode))
-}
-
-// AddDeploymentPattern は、reference のリポジトリの environment の Environment に、個別パターン pattern を加える POST を一度だけ送る。再送はしない。
-// 応答の扱いはアーキテクチャ設計の HTTP 通信とリダイレクトの信頼境界と、Environments の設計の更新方式に従う。
-// 呼び出し元は宛先にできる名前だけを渡すため、URL を組めないときは不変条件の破れとして panic する。
-func (c *Client) AddDeploymentPattern(ctx context.Context, reference repository.Reference, environment string, pattern setting.DeploymentPattern) (UpdateOutcome, error) {
-	u, ok := c.deploymentBranchPoliciesURL(reference, environment)
-	if !ok {
-		panic(fmt.Sprintf("github: environment name %q cannot be addressed", environment))
-	}
-	status, data, err := c.send(ctx, http.MethodPost, u, encodeDeploymentPattern(pattern), http.StatusOK)
-	if err == nil {
-		_, _, err = decodeDeploymentPattern(data)
-	}
-	if status == http.StatusSeeOther {
-		// classifyFailure のリポジトリの名前の変更の案内は、この応答の原因と異なり、利用者を誤らせる
-		err = fmt.Errorf("%w (HTTP %d): GitHub returns this when the pattern already exists", ErrRedirect, status)
-	}
-	return describeUpdateOutcome(fmt.Sprintf("add deployment pattern %s %q to environment %q", pattern.Type, pattern.Name, environment), reference, status, err)
-}
-
-// RemoveDeploymentPattern は、reference のリポジトリの environment の Environment から、ID が id の個別パターン pattern を取り除く DELETE を、本文なしで一度だけ送る。再送はしない。
-// pattern は error で取り除く要素を示すためだけに使う。ID だけでは、どの種類と名前の要素かが分からないため。
-// 呼び出し元は宛先にできる名前だけを渡すため、URL を組めないときは不変条件の破れとして panic する。
-func (c *Client) RemoveDeploymentPattern(ctx context.Context, reference repository.Reference, environment string, pattern setting.DeploymentPattern, id DeploymentPatternID) (UpdateOutcome, error) {
-	u, ok := c.deploymentBranchPolicyURL(reference, environment, id)
-	if !ok {
-		panic(fmt.Sprintf("github: environment name %q cannot be addressed", environment))
-	}
-	status, _, err := c.send(ctx, http.MethodDelete, u, nil, http.StatusNoContent)
-	return describeUpdateOutcome(fmt.Sprintf("remove deployment pattern %s %q (id %d) from environment %q", pattern.Type, pattern.Name, id, environment), reference, status, err)
-}
-
-// CreateRepositoryVariable は、reference のリポジトリに、名前が name で値が value の Repository Variable を作る POST を一度だけ送る。再送はしない。
-// 正常応答の 201 の本文は変数を含まないため、解釈しない。
-// value は error に含めない。
-func (c *Client) CreateRepositoryVariable(ctx context.Context, reference repository.Reference, name setting.VariableName, value string) (UpdateOutcome, error) {
-	return c.createVariable(ctx, fmt.Sprintf("create repository variable %q", name.String()), reference, c.repositoryVariablesURL(reference), name, value)
-}
-
-// UpdateRepositoryVariableValue は、reference のリポジトリの name の Repository Variable の値を value にする PATCH を一度だけ送る。再送はしない。
-// 本文は value だけで、name を送らない。reco は変数の名前を変えないため。
-// value は error に含めない。
-func (c *Client) UpdateRepositoryVariableValue(ctx context.Context, reference repository.Reference, name setting.VariableName, value string) (UpdateOutcome, error) {
-	return c.updateVariableValue(ctx, fmt.Sprintf("update repository variable %q", name.String()), reference, c.repositoryVariableURL(reference, name.String()), value)
-}
-
-// CreateEnvironmentVariable は、reference のリポジトリの environment の Environment に、名前が name で値が value の Environment Variable を作る POST を一度だけ送る。
-// 本文と応答の扱いは CreateRepositoryVariable と同じ。
-// 呼び出し元は宛先にできる名前だけを渡すため、URL を組めないときは不変条件の破れとして panic する。
-func (c *Client) CreateEnvironmentVariable(ctx context.Context, reference repository.Reference, environment string, name setting.VariableName, value string) (UpdateOutcome, error) {
-	u, ok := c.environmentVariablesURL(reference, environment)
-	if !ok {
-		panic(fmt.Sprintf("github: environment name %q cannot be addressed", environment))
-	}
-	return c.createVariable(ctx, fmt.Sprintf("create environment variable %q in environment %q", name.String(), environment), reference, u, name, value)
-}
-
-// UpdateEnvironmentVariableValue は、reference のリポジトリの environment の Environment の name の Environment Variable の値を value にする PATCH を一度だけ送る。
-// 本文と応答の扱いは UpdateRepositoryVariableValue と同じ。
-// 呼び出し元は宛先にできる名前だけを渡すため、URL を組めないときは不変条件の破れとして panic する。
-func (c *Client) UpdateEnvironmentVariableValue(ctx context.Context, reference repository.Reference, environment string, name setting.VariableName, value string) (UpdateOutcome, error) {
-	u, ok := c.environmentVariableURL(reference, environment, name.String())
-	if !ok {
-		panic(fmt.Sprintf("github: environment name %q cannot be addressed", environment))
-	}
-	return c.updateVariableValue(ctx, fmt.Sprintf("update environment variable %q in environment %q", name.String(), environment), reference, u, value)
-}
-
-// createVariable は、変数の一覧の u へ、名前が name で値が value の変数を作る POST を送る。Repository Variable と Environment Variable で、本文と応答の扱いは同じ。
-func (c *Client) createVariable(ctx context.Context, operation string, reference repository.Reference, u *url.URL, name setting.VariableName, value string) (UpdateOutcome, error) {
-	status, _, err := c.send(ctx, http.MethodPost, u, encodeVariableCreation(name, value), http.StatusCreated)
-	return describeUpdateOutcome(operation, reference, status, err)
-}
-
-// updateVariableValue は、変数の u へ、値を value にする PATCH を送る。Repository Variable と Environment Variable で、本文と応答の扱いは同じ。
-func (c *Client) updateVariableValue(ctx context.Context, operation string, reference repository.Reference, u *url.URL, value string) (UpdateOutcome, error) {
-	status, _, err := c.send(ctx, http.MethodPatch, u, encodeVariableValue(value), http.StatusNoContent)
-	return describeUpdateOutcome(operation, reference, status, err)
-}
-
-// putEnvironment は name の Environment へ body を本文とする PUT を送る。body が nil なら本文を送らない。
-// 成功応答の本文は、Environment の取得の契約に適合するかを確かめるためだけに解釈する。
-// 呼び出し元は宛先にできる名前だけを渡すため、URL を組めないときは不変条件の破れとして panic する。
-func (c *Client) putEnvironment(ctx context.Context, operation string, reference repository.Reference, name string, body []byte) (UpdateOutcome, error) {
-	u, ok := c.environmentURL(reference, name)
-	if !ok {
-		panic(fmt.Sprintf("github: environment name %q cannot be addressed", name))
-	}
-	status, data, err := c.send(ctx, http.MethodPut, u, body, http.StatusOK)
-	if err == nil {
-		_, err = decodeEnvironment(data)
-	}
-	return describeUpdateOutcome(fmt.Sprintf("%s %q", operation, name), reference, status, err)
-}
-
 // updateRequest は、一つの設定を変える更新要求の、送り先の更新エンドポイントと送り方の組。
 // 送る更新要求と比べる設定の範囲を別々の場所で足し忘れないよう、同じ switch から返す。
 type updateRequest struct {
@@ -327,20 +206,6 @@ func boolUpdate(update func(*Client, context.Context, repository.Reference, bool
 	}
 }
 
-// encodeDeploymentBranchPolicyMode は mode を Environment の PUT の本文にする。
-// 定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
-func encodeDeploymentBranchPolicyMode(mode setting.DeploymentBranchPolicyMode) []byte {
-	switch mode {
-	case setting.DeploymentBranchPolicyAll:
-		return []byte(`{"deployment_branch_policy":null}`)
-	case setting.DeploymentBranchPolicyProtectedBranches:
-		return []byte(`{"deployment_branch_policy":{"protected_branches":true,"custom_branch_policies":false}}`)
-	case setting.DeploymentBranchPolicySelected:
-		return []byte(`{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}`)
-	}
-	panic(fmt.Sprintf("github: no request body for deployment branch policy %q", mode))
-}
-
 // encodeSelectedActions は criteria を Selected actions の更新要求の本文にする。
 // 許可パターンは任意の文字列のため、Go の %q ではなく JSON の規則でエスケープする。
 func encodeSelectedActions(criteria setting.SelectedActionsCriteria) []byte {
@@ -361,65 +226,4 @@ func encodeSecurityAndAnalysis(item string, enabled bool) []byte {
 	return mustMarshalJSON(map[string]map[string]map[string]string{
 		"security_and_analysis": {item: {"status": securityStatus(enabled)}},
 	})
-}
-
-// encodeDeploymentPattern は pattern を個別パターンを加える POST の本文にする。
-// type は省略すると GitHub が branch として作るため、種類によらず必ず送る。名前は任意の文字列のため、JSON の規則でエスケープする。
-func encodeDeploymentPattern(pattern setting.DeploymentPattern) []byte {
-	return mustMarshalJSON(struct {
-		Name string `json:"name"`
-		Type string `json:"type"`
-	}{pattern.Name, string(pattern.Type)})
-}
-
-// encodeVariableCreation は、変数を作る POST の本文にする。値は任意の文字列のため、JSON の規則でエスケープする。
-func encodeVariableCreation(name setting.VariableName, value string) []byte {
-	return mustMarshalJSON(struct {
-		Name  string `json:"name"`
-		Value string `json:"value"`
-	}{name.String(), value})
-}
-
-// encodeVariableValue は、変数の値だけを送る PATCH の本文にする。
-func encodeVariableValue(value string) []byte {
-	return mustMarshalJSON(struct {
-		Value string `json:"value"`
-	}{value})
-}
-
-// mustMarshalJSON は v を JSON にする。
-// 本文の型は bool、string、[]string と、string を値に持つ map だけを持ち、json.Marshal がどの値でも失敗しないため、失敗を不変条件の破れとして panic する。
-// encoding/json に Must の関数がないため、この包みを置く。
-func mustMarshalJSON(v any) []byte {
-	data, err := json.Marshal(v)
-	if err != nil {
-		panic(fmt.Sprintf("github: marshal request body: %v", err))
-	}
-	return data
-}
-
-// describeUpdateOutcome は更新操作の結果を判定し、失敗と成否不明の error に operation と対象を添える。
-func describeUpdateOutcome(operation string, reference repository.Reference, status int, err error) (UpdateOutcome, error) {
-	outcome := updateOutcomeOf(status, err)
-	if outcome == UpdateSucceeded {
-		return outcome, nil
-	}
-	if outcome == UpdateUnknown {
-		err = fmt.Errorf("update outcome unknown: %w", err)
-	}
-	return outcome, fmt.Errorf("%s %s: %w", operation, reference, err)
-}
-
-// updateOutcomeOf は、更新要求の応答のステータスと失敗から更新操作の結果を判定する。
-// 拒否とみなすのは 4xx に限る。応答を受け取れなかったときや 2xx・3xx・5xx の失敗は、
-// GitHub が更新要求を処理したかを確かめられないため成否不明とする。
-func updateOutcomeOf(status int, err error) UpdateOutcome {
-	switch {
-	case err == nil:
-		return UpdateSucceeded
-	case http.StatusBadRequest <= status && status < http.StatusInternalServerError:
-		return UpdateRejected
-	default:
-		return UpdateUnknown
-	}
 }

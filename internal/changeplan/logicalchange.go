@@ -21,7 +21,6 @@ type LogicalChange struct {
 }
 
 // DesiredSetting は、期待状態を構成する一つの管理設定の期待値。
-// Environment そのものの期待値は存在することで、値を持たないため Value をゼロ値にする。
 type DesiredSetting struct {
 	Unit  setting.Unit
 	Value setting.Value
@@ -72,17 +71,12 @@ const (
 )
 
 // RelevantSetting は、変更前提で比べる関係する現在値の設定と、その承認時に予定した値。
-// AnticipatedValue と AnticipatedEnvironment は、Unit.Key の形に応じてどちらか一方だけを持つ。
 type RelevantSetting struct {
 	Unit setting.Unit
-	// AnticipatedValue は、承認時に予定した値。
+	// AnticipatedValue は、承認時に予定した値。関連リソースそのものでは、存在すること (値を伴う) か存在しないことである。
 	AnticipatedValue github.SettingObservation[setting.Value]
-	// AnticipatedEnvironment は、承認時に予定した存在と ID。
-	// Environment そのものは値を持たないため、存在の観測結果を承認時に予定した値にする。
-	AnticipatedEnvironment github.EnvironmentObservation
-	// CreatedByPrecedingOperation は、承認時に予定した存在が、同じ論理的な設定変更の先行する更新操作による作成であること。
-	// 真のとき AnticipatedEnvironment は持たない。承認の時点で ID が定まらないため。
-	CreatedByPrecedingOperation bool
+	// AnticipatedIdentity は、Environment が存在すると予定したときに、存在に加えて確かめる同一性の基準。ほかではゼロ値。
+	AnticipatedIdentity EnvironmentIdentity
 }
 
 // Units は、c が変える管理設定の管理の単位を、期待状態の並びで返す。

@@ -58,7 +58,7 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 		return Applicable, 0
 	case NotComparable:
 	}
-	reason := s.UnavailableReason()
+	reason := s.Observed.UnavailableReason()
 	switch {
 	case s.Unit.Key.HasEnvironmentName() && reason == github.UnavailableEnvironmentNameUndetermined:
 		// 作成すれば、GitHub が同じとみなす既存の Environment を変え得る。同じリポジトリのほかの宣言では解消しない

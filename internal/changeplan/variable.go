@@ -22,7 +22,7 @@ func variableOperationOf(s SettingPlan, anticipated github.SettingObservation[se
 	}
 	value, _ := anticipated.Value()
 	kind := valueUpdate
-	if value.Equal(setting.AbsentVariable()) {
+	if value.Equal(setting.Absent()) {
 		kind = creation
 	}
 	return UpdateOperation{Kind: kind, Unit: s.Unit, Value: s.Desired, RelevantSettings: []RelevantSetting{{Unit: s.Unit, AnticipatedValue: anticipated}}}

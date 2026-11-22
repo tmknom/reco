@@ -282,7 +282,7 @@ func TestPlannedChangeText_RepositoryVariables(t *testing.T) {
 		want string
 	}{
 		{name: "value update shows the quoted current and desired values on one line", s: variable(setting.VariableValue("1.26"), "1.27"), want: "  actions.variables.GO_VERSION: \"1.26\" -> \"1.27\"\n"},
-		{name: "creation shows absent without parentheses as the current value", s: variable(setting.AbsentVariable(), "1.27"), want: "  actions.variables.GO_VERSION: absent -> \"1.27\"\n"},
+		{name: "creation shows absent without parentheses as the current value", s: variable(setting.Absent(), "1.27"), want: "  actions.variables.GO_VERSION: absent -> \"1.27\"\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -315,7 +315,7 @@ func TestPlannedChangeText_EnvironmentVariables(t *testing.T) {
 		},
 		{
 			name: "creation in an existing environment shows absent without parentheses",
-			s:    variable(github.Observed(setting.AbsentVariable()), "ap-northeast-1", changeplan.Mismatch, changeplan.Applicable),
+			s:    variable(github.Observed(setting.Absent()), "ap-northeast-1", changeplan.Mismatch, changeplan.Applicable),
 			want: "  environments.production.variables.REGION: absent -> \"ap-northeast-1\"\n",
 		},
 		{
@@ -358,7 +358,6 @@ func TestPlannedChangeText_Environments(t *testing.T) {
 	tag := func(name string) setting.DeploymentPattern {
 		return setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: name}
 	}
-	undetermined := github.Environments{Existing: []github.Environment{{Name: "café"}}}.Lookup(production)
 	const notApplicable = "    Applicability: not applicable (an environment on GitHub has a name reco cannot compare, such as one with non-ASCII characters; remove this environment from the configuration)\n"
 	cases := []struct {
 		name string
@@ -372,7 +371,7 @@ func TestPlannedChangeText_Environments(t *testing.T) {
 		},
 		{
 			name: "creation shows absent -> present",
-			s:    changeplan.SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+			s:    changeplan.SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 			want: "  environments.production: absent -> present\n",
 		},
 		{
@@ -436,7 +435,7 @@ func TestPlannedChangeText_Environments(t *testing.T) {
 		{
 			name: "environment whose existence is unknown shows the state and why it is not applicable",
 			s: changeplan.SettingPlan{
-				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, ObservedEnvironment: undetermined, Result: changeplan.NotComparable,
+				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined), Desired: setting.Present(), Result: changeplan.NotComparable,
 				Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableEnvironmentNameUndetermined,
 			},
 			want: "  environments.production: (existence unknown) -> present\n" + notApplicable,

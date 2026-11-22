@@ -95,7 +95,7 @@ func TestExecutableChanges(t *testing.T) {
 	t.Run("environment changes are executable without looking up an update endpoint", func(t *testing.T) {
 		production := mustEnvironmentName(t, "production")
 		creation := changeplan.SettingPlan{
-			Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, ObservedEnvironment: github.Environments{}.Lookup(production),
+			Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Observed(setting.Absent()), Desired: setting.Present(),
 			Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 		}
 		p := plans(t, []changeplan.SettingPlan{creation})
@@ -111,7 +111,7 @@ func TestExecutableChanges(t *testing.T) {
 
 	// Repository Variable の更新操作は UpdateEndpointOf で引けないため、引くと panic で失敗する
 	t.Run("variable changes are executable without looking up an update endpoint", func(t *testing.T) {
-		p := plans(t, []changeplan.SettingPlan{variableMismatch(t, "GO_VERSION", setting.AbsentVariable(), "1.27"), variableMismatch(t, "NODE_VERSION", setting.VariableValue("20"), "22")})
+		p := plans(t, []changeplan.SettingPlan{variableMismatch(t, "GO_VERSION", setting.Absent(), "1.27"), variableMismatch(t, "NODE_VERSION", setting.VariableValue("20"), "22")})
 		got, err := executableChanges(p)
 		if err != nil {
 			t.Fatalf("executableChanges() error = %v", err)

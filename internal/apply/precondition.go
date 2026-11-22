@@ -42,17 +42,12 @@ func checkPrecondition(approvedID repository.ID, operation changeplan.UpdateOper
 }
 
 // matchesRelevantSetting は、関係する現在値の設定 relevant が、更新直前の観測 observed で承認時に予定した値と同じかを返す。
-// Environment そのものは値を持たないため、宣言の名前で一覧から引いた存在と ID を比べる。
-// 先行する更新操作が作成する Environment は AnticipatedEnvironment を持たないため、真偽値を先に読み、作成した Environment の基準 created と比べる。
+// Environment そのものは、存在に加えて同一性を確かめるため、一覧から一度だけ引いた観測結果で両方を比べる。
 func matchesRelevantSetting(relevant changeplan.RelevantSetting, observed github.ObservationResult, created github.EnvironmentObservation) bool {
-	if relevant.Unit.Key == setting.EnvironmentResource {
-		current := observed.Environments.Lookup(relevant.Unit.Environment)
-		if relevant.CreatedByPrecedingOperation {
-			return matchesCreatedEnvironment(created, current)
-		}
-		return matchesAnticipatedEnvironment(relevant.AnticipatedEnvironment, current)
+	if relevant.Unit.Key != setting.EnvironmentResource {
+		return matchesAnticipatedValue(relevant.AnticipatedValue, observed.Setting(relevant.Unit))
 	}
-	return matchesAnticipatedValue(relevant.AnticipatedValue, observed.Setting(relevant.Unit))
+	return matchesAnticipatedEnvironment(relevant, observed.Environments.Lookup(relevant.Unit.Environment), created)
 }
 
 // matchesAnticipatedValue は、関係する現在値 current が承認時に予定した値 anticipated と、ドメインモデルの承認と変更前提の意味で同じかを返す。
@@ -70,30 +65,32 @@ func matchesAnticipatedValue(anticipated, current github.SettingObservation[sett
 	}
 }
 
-// matchesAnticipatedEnvironment は、Environment の現在の観測結果 current が、承認時に予定した存在 anticipated と同じかを返す。
-// 承認時に存在しなかったなら、現在も存在しないと確かめたときだけ同じとする。判定できない名前が現れた観測は、存在しないことを意味しないため。
-// 承認時に存在したなら、現在も存在し ID が同じときだけ同じとする。同じ名前で作り直された Environment は、承認した変更の相手ではないため。
+// matchesAnticipatedEnvironment は、Environment そのものの基準 relevant が、更新直前に引いた観測結果 current と同じかを返す。
+// 存在はリポジトリ設定と同じ判定で比べる。判定できない名前が現れた観測は、存在しないことを意味しないため、存在しないと予定した基準と同じにならない。
+// 存在すると予定したときは、さらに同じ実体かを確かめる。同じ名前で作り直された Environment は、承認した変更の相手ではないため、ID が違えば同じとしない。
 // 綴りと中の設定は比べない。
-// 承認時に観測不能かゼロ値の存在は、承認の前に適用不能として止めるため、不変条件の破れとして panic する。
-func matchesAnticipatedEnvironment(anticipated, current github.EnvironmentObservation) bool {
-	if anticipated.Absent() {
-		return current.Absent()
-	}
-	anticipatedEnvironment, ok := anticipated.Existing()
+// 同じ論理的な設定変更が作成した Environment は、作成に続く最初の更新操作では ID の基準がまだなく (created がゼロ値)、存在だけで足りる。
+// 承認の時点で ID が定まらないため。それより後の更新操作では、created の ID と比べる。
+// 存在するか存在しないかのどちらでもない基準 (観測不能、ゼロ値) は承認の前に適用不能として止め、存在すると予定した基準には changeplan が同一性の基準を必ず添える。
+// どちらかが破れた形を受け付けると、確かめていない Environment を更新し得るため、更新直前の観測によらず不変条件の破れとして panic する。
+func matchesAnticipatedEnvironment(relevant changeplan.RelevantSetting, current github.EnvironmentObservation, created github.EnvironmentObservation) bool {
+	anticipated, ok := relevant.AnticipatedValue.Value()
 	if !ok {
-		panic("apply: anticipated environment is neither existing nor absent")
+		panic("apply: " + relevant.Unit.String() + " is anticipated to be neither present nor absent")
 	}
-	existing, ok := current.Existing()
-	return ok && existing.ID == anticipatedEnvironment.ID
-}
-
-// matchesCreatedEnvironment は、同じ論理的な設定変更が作成した Environment の現在の観測結果 current が、予定どおりかを返す。
-// 作成に続く最初の更新操作では ID の基準がまだなく (created がゼロ値)、存在することだけを確かめる。承認の時点で ID が定まらないため。
-// それより後の更新操作では、存在し、ID が created と同じときだけ予定どおりとする。作成のあとに作り直された Environment は、承認した変更の相手ではないため。
-func matchesCreatedEnvironment(created, current github.EnvironmentObservation) bool {
-	existing, ok := current.Existing()
-	if !ok {
+	_, hasID := relevant.AnticipatedIdentity.ID()
+	if anticipated.Equal(setting.Present()) && !hasID && !relevant.AnticipatedIdentity.IsCreatedByPrecedingOperation() {
+		panic("apply: " + relevant.Unit.String() + " is anticipated to exist without an identity to check")
+	}
+	if !matchesAnticipatedValue(relevant.AnticipatedValue, current.Existence()) {
 		return false
+	}
+	existing, exists := current.Existing()
+	if !exists {
+		return true
+	}
+	if id, ok := relevant.AnticipatedIdentity.ID(); ok {
+		return existing.ID == id
 	}
 	base, hasBase := created.Existing()
 	return !hasBase || existing.ID == base.ID
@@ -109,7 +106,7 @@ func environmentCreatedIn(change changeplan.LogicalChange, before []github.Obser
 	if !creation.CreatesEnvironment() {
 		for _, operation := range change.Operations {
 			for _, relevant := range operation.RelevantSettings {
-				if relevant.CreatedByPrecedingOperation {
+				if relevant.AnticipatedIdentity.IsCreatedByPrecedingOperation() {
 					panic("apply: " + operation.Unit.String() + " expects an environment created by a preceding update in a change without a creation")
 				}
 			}

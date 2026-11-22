@@ -19,7 +19,7 @@ func TestJudgeApplicability(t *testing.T) {
 	accessLevelPublic := notComparable(setting.ActionsAccessLevel, github.UnavailablePublicRepository)
 	production, staging := mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging")
 	creation := func(name setting.EnvironmentName) SettingPlan {
-		return SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: name}, ObservedEnvironment: lookup(t, name.String()), Result: Mismatch}
+		return SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: name}, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch}
 	}
 	environmentPolicy := func(name setting.EnvironmentName, reason github.UnavailableReason) SettingPlan {
 		return SettingPlan{
@@ -34,7 +34,7 @@ func TestJudgeApplicability(t *testing.T) {
 		}
 	}
 	undeterminedEnvironment := SettingPlan{
-		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, ObservedEnvironment: lookup(t, "production", github.Environment{Name: "prodüction"}), Result: NotComparable,
+		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined), Desired: setting.Present(), Result: NotComparable,
 	}
 	cases := []struct {
 		name string
