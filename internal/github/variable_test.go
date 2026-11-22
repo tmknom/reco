@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -122,7 +123,7 @@ func TestObserveRepositoryVariables(t *testing.T) {
 	})
 
 	t.Run("no variables is an empty list rather than an unread area", func(t *testing.T) {
-		observed := observeVariablesList(t, githubtest.OK(githubtest.VariablesBody{}.JSON()))
+		observed := observeRepositoryVariablesList(t, githubtest.OK(githubtest.VariablesBody{}.JSON()))
 		if observed.RepositoryVariables == nil || len(observed.RepositoryVariables.Existing) != 0 {
 			t.Errorf("ObserveRepository().RepositoryVariables = %+v, want an empty list", observed.RepositoryVariables)
 		}
@@ -169,7 +170,7 @@ func TestObserveRepositoryVariables(t *testing.T) {
 	})
 
 	t.Run("names that only Unicode folding makes equal are different variables", func(t *testing.T) {
-		observed := observeVariablesList(t, githubtest.OK(githubtest.VariablesBody{TotalCount: 2, Variables: []githubtest.VariableBody{
+		observed := observeRepositoryVariablesList(t, githubtest.OK(githubtest.VariablesBody{TotalCount: 2, Variables: []githubtest.VariableBody{
 			{Name: "\u017f", Value: "1"}, {Name: "S", Value: "2"},
 		}}.JSON()))
 		if observed.RepositoryVariables == nil || len(observed.RepositoryVariables.Existing) != 2 {
@@ -186,7 +187,7 @@ func TestObserveRepositoryVariables(t *testing.T) {
 		if len(body) <= maxResponseBytes {
 			t.Fatalf("test body is %d bytes, want more than %d", len(body), maxResponseBytes)
 		}
-		observed := observeVariablesList(t, githubtest.OK(body))
+		observed := observeRepositoryVariablesList(t, githubtest.OK(body))
 		if observed.RepositoryVariables == nil || len(observed.RepositoryVariables.Existing) != 30 {
 			t.Errorf("ObserveRepository().RepositoryVariables has %v, want 30 variables", observed.RepositoryVariables)
 		}
@@ -268,6 +269,235 @@ func TestObserveRepositoryVariables(t *testing.T) {
 	}
 }
 
+//trace:checks FR-004 QR-002
+func TestObserveEnvironmentVariables(t *testing.T) {
+	t.Run("every environment whatever its mode gets its own variables in the list order", func(t *testing.T) {
+		environments := []Environment{
+			{ID: 1, Name: "open", DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}},
+			{ID: 2, Name: "main-only", DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected}},
+			{ID: 3, Name: "Prod/Eu 100%", DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}},
+		}
+		routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{
+			environmentsPath + "/open/variables":      githubtest.OK(githubtest.VariablesBody{TotalCount: 1, Variables: []githubtest.VariableBody{{Name: "REGION", Value: "us"}}}.JSON()),
+			environmentsPath + "/main-only/variables": githubtest.OK(githubtest.VariablesBody{}.JSON()),
+			environmentsPath + "/Prod%2FEu%20100%25/variables": githubtest.OK(githubtest.VariablesBody{TotalCount: 2, Variables: []githubtest.VariableBody{
+				{Name: "REGION", Value: "eu"}, {Name: "EMPTY", Value: ""},
+			}}.JSON()),
+		}}
+		c := newTestClient(t, routes.ServeHTTP)
+
+		if err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), environments); err != nil {
+			t.Fatalf("observeEnvironmentVariables() error = %v", err)
+		}
+		wantRequests := []string{
+			environmentsPath + "/open/variables" + variablesFirstPage,
+			environmentsPath + "/main-only/variables" + variablesFirstPage,
+			environmentsPath + "/Prod%2FEu%20100%25/variables" + variablesFirstPage,
+		}
+		if got := routes.Requests(); !reflect.DeepEqual(got, wantRequests) {
+			t.Errorf("requests = %q, want %q", got, wantRequests)
+		}
+		want := []*Variables{
+			{Existing: []Variable{{Name: "REGION", Value: "us"}}},
+			{Existing: []Variable{}},
+			{Existing: []Variable{{Name: "REGION", Value: "eu"}, {Name: "EMPTY", Value: ""}}},
+		}
+		for i, e := range environments {
+			if !reflect.DeepEqual(e.Variables, want[i]) {
+				t.Errorf("environments[%d].Variables = %+v, want %+v", i, e.Variables, want[i])
+			}
+		}
+	})
+
+	t.Run("a list that never reaches the total stops after the pages that hold GitHub's maximum of 100 variables per environment", func(t *testing.T) {
+		var pages int
+		c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			pages++
+			variables := make([]githubtest.VariableBody, 30)
+			for i := range variables {
+				variables[i] = githubtest.VariableBody{Name: fmt.Sprintf("P%s_%02d", r.URL.Query().Get("page"), i), Value: "v"}
+			}
+			_, _ = w.Write([]byte(githubtest.VariablesBody{TotalCount: 3000, Variables: variables}.JSON()))
+		})
+
+		err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), []Environment{{ID: 1, Name: "production"}})
+		if !errors.Is(err, ErrUnexpectedResponse) {
+			t.Fatalf("observeEnvironmentVariables() error = %v, want %v", err, ErrUnexpectedResponse)
+		}
+		if pages != 4 {
+			t.Errorf("observeEnvironmentVariables() read %d pages, want 4", pages)
+		}
+	})
+
+	t.Run("404 for an environment in the list is not found naming that environment and stops before the next environment", func(t *testing.T) {
+		const marker = "RESPONSE_BODY_MARKER"
+		routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{
+			environmentsPath + "/a/variables": githubtest.OK(githubtest.VariablesBody{}.JSON()),
+			environmentsPath + "/b/variables": {Status: http.StatusNotFound, Body: `{"message": "` + marker + `"}`},
+		}}
+		c := newTestClient(t, routes.ServeHTTP)
+
+		err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), []Environment{{ID: 1, Name: "a"}, {ID: 2, Name: "b"}, {ID: 3, Name: "c"}})
+		if !errors.Is(err, ErrNotFound) {
+			t.Fatalf("observeEnvironmentVariables() error = %v, want %v", err, ErrNotFound)
+		}
+		if !strings.Contains(err.Error(), `variables of environment "b"`) {
+			t.Errorf("observeEnvironmentVariables() error = %q, want it to name the environment", err)
+		}
+		if strings.Contains(err.Error(), marker) {
+			t.Errorf("observeEnvironmentVariables() error = %q, want it not to contain the response body", err)
+		}
+		want := []string{environmentsPath + "/a/variables" + variablesFirstPage, environmentsPath + "/b/variables" + variablesFirstPage}
+		if got := routes.Requests(); !reflect.DeepEqual(got, want) {
+			t.Errorf("requests = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("an environment named as a dot segment is unexpected response without a request", func(t *testing.T) {
+		routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{}}
+		c := newTestClient(t, routes.ServeHTTP)
+
+		err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), []Environment{{ID: 1, Name: "."}})
+		if !errors.Is(err, ErrUnexpectedResponse) {
+			t.Fatalf("observeEnvironmentVariables() error = %v, want %v", err, ErrUnexpectedResponse)
+		}
+		if got := routes.Requests(); len(got) != 0 {
+			t.Errorf("requests = %q, want none", got)
+		}
+	})
+
+}
+
+//trace:checks FR-004 QR-002
+func TestObserveRepositoryEnvironmentVariables(t *testing.T) {
+	selected := &githubtest.DeploymentBranchPolicyBody{CustomBranchPolicies: true}
+	twoEnvironments := githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 2, Environments: []githubtest.EnvironmentBody{
+		{ID: 1, Name: "production", DeploymentBranchPolicy: selected},
+		{ID: 2, Name: "staging"},
+	}}.JSON())
+	noPatterns := githubtest.OK(githubtest.DeploymentBranchPoliciesBody{}.JSON())
+	noVariables := githubtest.OK(githubtest.VariablesBody{}.JSON())
+
+	t.Run("an observation of the environments area alone sends no variables request and has no variables", func(t *testing.T) {
+		routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{
+			repositoryPath:   githubtest.OK(repositoryBody),
+			environmentsPath: twoEnvironments,
+			environmentsPath + "/production/deployment-branch-policies": noPatterns,
+		}}
+		c := newTestClient(t, routes.ServeHTTP)
+
+		observed, err := c.ObserveRepository(t.Context(), mustReference(t, "owner/repo"), setting.AreaEnvironments)
+		if err != nil {
+			t.Fatalf("ObserveRepository() error = %v", err)
+		}
+		for _, e := range observed.Environments.Existing {
+			if e.Variables != nil {
+				t.Errorf("environment %q Variables = %+v, want nil", e.Name, e.Variables)
+			}
+		}
+	})
+
+	t.Run("variables are read after every deployment pattern list and before dependabot whatever the order of the areas", func(t *testing.T) {
+		routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{
+			repositoryPath:   githubtest.OK(repositoryBody),
+			environmentsPath: twoEnvironments,
+			environmentsPath + "/production/deployment-branch-policies": noPatterns,
+			environmentsPath + "/production/variables":                  noVariables,
+			environmentsPath + "/staging/variables":                     noVariables,
+			vulnerabilityAlertsPath:                                     {Status: http.StatusNoContent},
+			automatedSecurityFixesPath:                                  githubtest.OK(githubtest.AutomatedSecurityFixesBody{Enabled: true}.JSON()),
+		}}
+		c := newTestClient(t, routes.ServeHTTP)
+
+		_, err := c.ObserveRepository(t.Context(), mustReference(t, "owner/repo"), setting.AreaDependabot, setting.AreaEnvironmentVariables, setting.AreaEnvironments)
+		if err != nil {
+			t.Fatalf("ObserveRepository() error = %v", err)
+		}
+		want := []string{
+			repositoryPath + "?",
+			environmentsPath + firstPage,
+			environmentsPath + "/production/deployment-branch-policies" + firstPage,
+			environmentsPath + "/production/variables" + variablesFirstPage,
+			environmentsPath + "/staging/variables" + variablesFirstPage,
+			vulnerabilityAlertsPath + "?",
+			automatedSecurityFixesPath + "?",
+		}
+		if got := routes.Requests(); !reflect.DeepEqual(got, want) {
+			t.Errorf("requests = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("the environment variables area alone also reads the environments and their deployment patterns", func(t *testing.T) {
+		routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{
+			repositoryPath:   githubtest.OK(repositoryBody),
+			environmentsPath: twoEnvironments,
+			environmentsPath + "/production/deployment-branch-policies": noPatterns,
+			environmentsPath + "/production/variables":                  noVariables,
+			environmentsPath + "/staging/variables":                     noVariables,
+		}}
+		c := newTestClient(t, routes.ServeHTTP)
+
+		observed, err := c.ObserveRepository(t.Context(), mustReference(t, "owner/repo"), setting.AreaEnvironmentVariables)
+		if err != nil {
+			t.Fatalf("ObserveRepository() error = %v", err)
+		}
+		if observed.Environments == nil || len(observed.Environments.Existing) != 2 {
+			t.Fatalf("ObserveRepository().Environments = %+v, want the two environments", observed.Environments)
+		}
+		if patterns := environmentsPath + "/production/deployment-branch-policies" + firstPage; !slices.Contains(routes.Requests(), patterns) {
+			t.Errorf("requests = %q, want them to contain %q", routes.Requests(), patterns)
+		}
+		for _, e := range observed.Environments.Existing {
+			if !reflect.DeepEqual(e.Variables, &Variables{Existing: []Variable{}}) {
+				t.Errorf("environment %q Variables = %+v, want an empty list", e.Name, e.Variables)
+			}
+		}
+	})
+
+	t.Run("a failed variables list fails the whole observation as the environment variables", func(t *testing.T) {
+		routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{
+			repositoryPath:   githubtest.OK(repositoryBody),
+			environmentsPath: twoEnvironments,
+			environmentsPath + "/production/deployment-branch-policies": noPatterns,
+			environmentsPath + "/production/variables":                  noVariables,
+			environmentsPath + "/staging/variables":                     {Status: http.StatusForbidden},
+		}}
+		c := newTestClient(t, routes.ServeHTTP)
+
+		observed, err := c.ObserveRepository(t.Context(), mustReference(t, "owner/repo"), setting.AreaEnvironmentVariables)
+		if err == nil {
+			t.Fatal("ObserveRepository() error = nil, want an error")
+		}
+		if !strings.Contains(err.Error(), "fetch environment variables owner/repo") {
+			t.Errorf("ObserveRepository() error = %q, want it to name the environment variables", err)
+		}
+		if !reflect.DeepEqual(observed, ObservationResult{}) {
+			t.Errorf("ObserveRepository() = %+v, want the zero observation", observed)
+		}
+	})
+
+	t.Run("a repository variable and an environment variable of the same name are observed separately", func(t *testing.T) {
+		routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{
+			repositoryPath:                          githubtest.OK(repositoryBody),
+			repositoryVariablesPath:                 githubtest.OK(githubtest.VariablesBody{TotalCount: 1, Variables: []githubtest.VariableBody{{Name: "REGION", Value: "repository"}}}.JSON()),
+			environmentsPath:                        githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 1, Environments: []githubtest.EnvironmentBody{{ID: 2, Name: "staging"}}}.JSON()),
+			environmentsPath + "/staging/variables": githubtest.OK(githubtest.VariablesBody{TotalCount: 1, Variables: []githubtest.VariableBody{{Name: "REGION", Value: "environment"}}}.JSON()),
+		}}
+		c := newTestClient(t, routes.ServeHTTP)
+
+		observed, err := c.ObserveRepository(t.Context(), mustReference(t, "owner/repo"), setting.AreaRepositoryVariables, setting.AreaEnvironmentVariables)
+		if err != nil {
+			t.Fatalf("ObserveRepository() error = %v", err)
+		}
+		if want := (&Variables{Existing: []Variable{{Name: "REGION", Value: "repository"}}}); !reflect.DeepEqual(observed.RepositoryVariables, want) {
+			t.Errorf("ObserveRepository().RepositoryVariables = %+v, want %+v", observed.RepositoryVariables, want)
+		}
+		if want := (&Variables{Existing: []Variable{{Name: "REGION", Value: "environment"}}}); !reflect.DeepEqual(observed.Environments.Existing[0].Variables, want) {
+			t.Errorf("environment Variables = %+v, want %+v", observed.Environments.Existing[0].Variables, want)
+		}
+	})
+}
+
 //trace:checks FR-004
 func TestVariables_Lookup(t *testing.T) {
 	observed := Variables{Existing: []Variable{{Name: "GO_ARCH", Value: "amd64"}, {Name: "go_version", Value: "1.27"}, {Name: "EMPTY", Value: ""}}}
@@ -290,8 +520,8 @@ func TestVariables_Lookup(t *testing.T) {
 	}
 }
 
-// observeVariablesList は、変数の一覧が response を返すリポジトリを、Repository Variables の領域だけで観測する。
-func observeVariablesList(t *testing.T, response githubtest.Response) ObservationResult {
+// observeRepositoryVariablesList は、変数の一覧が response を返すリポジトリを、Repository Variables の領域だけで観測する。
+func observeRepositoryVariablesList(t *testing.T, response githubtest.Response) ObservationResult {
 	t.Helper()
 	routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{
 		repositoryPath:          githubtest.OK(repositoryBody),

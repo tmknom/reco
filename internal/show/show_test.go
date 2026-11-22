@@ -270,6 +270,9 @@ func TestRun(t *testing.T) {
 			"GET " + environmentsPath: githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 1, Environments: []githubtest.EnvironmentBody{
 				{ID: 2, Name: "staging"},
 			}}.JSON()),
+			"GET " + environmentsPath + "/staging/variables": githubtest.OK(githubtest.VariablesBody{TotalCount: 1, Variables: []githubtest.VariableBody{
+				{Name: "REGION", Value: "eu"},
+			}}.JSON()),
 			"GET " + vulnerabilityAlertsPath: {Status: http.StatusNoContent},
 			"GET " + securityFixesPath:       githubtest.OK(githubtest.AutomatedSecurityFixesBody{Enabled: true, Paused: true}.JSON()),
 		}))
@@ -280,7 +283,7 @@ func TestRun(t *testing.T) {
 			t.Fatalf("Run() error = %v", err)
 		}
 		want := []string{"GET " + repositoryPath, "GET " + actionsPermissionsPath, "GET " + workflowPermissionsPath, "GET " + actionsAccessPath, "GET " + variablesPath, "GET " + environmentsPath,
-			"GET " + vulnerabilityAlertsPath, "GET " + securityFixesPath}
+			"GET " + environmentsPath + "/staging/variables", "GET " + vulnerabilityAlertsPath, "GET " + securityFixesPath}
 		if got := server.RequestLines(); !slices.Equal(got, want) {
 			t.Errorf("got requests %v, want %v", got, want)
 		}
@@ -290,7 +293,7 @@ func TestRun(t *testing.T) {
 			}
 		}
 		for _, observed := range []string{
-			"default_workflow_permissions: write", `        - name: "GO_VERSION"`, `- name: "staging"`, "dependabot_security_updates: true # paused",
+			"default_workflow_permissions: write", `        - name: "GO_VERSION"`, `- name: "staging"`, `        #   - name: "REGION"`, "dependabot_security_updates: true # paused",
 			"# secret_scanning: unavailable (the repository is private)",
 			"# private_vulnerability_reporting: unavailable (the repository is private)",
 		} {

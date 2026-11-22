@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/tmknom/reco/internal/repository"
@@ -29,8 +30,10 @@ const (
 	variablesPerPage = 30
 	// maxVariablesPageBytes は変数の一覧の1ページの応答本文を読む上限。導出は Actions の設計の「観測」にある。
 	maxVariablesPageBytes = 9 << 20
-	// maxVariablesPages は変数の一覧で読むページ数の上限。導出は Actions の設計の「観測」にある。
-	maxVariablesPages = 17
+	// maxRepositoryVariablesPages は Repository Variables の一覧で読むページ数の上限。導出は Actions の設計の「観測」にある。
+	maxRepositoryVariablesPages = 17
+	// maxEnvironmentVariablesPages は一つの Environment の Environment Variables の一覧で読むページ数の上限。導出は Environments の設計の「観測」にある。
+	maxEnvironmentVariablesPages = 4
 )
 
 // Lookup は、宣言の名前 name の Variable の観測結果を、一覧の全体と突き合わせて返す。
@@ -46,7 +49,32 @@ func (v Variables) Lookup(name setting.VariableName) SettingObservation[setting.
 
 // observeRepositoryVariables は Repository Variables の一覧の全ページを読む。
 func (c *Client) observeRepositoryVariables(ctx context.Context, reference repository.Reference) (Variables, error) {
-	items, err := c.listAll(ctx, c.repositoryVariablesURL(reference), listPaging{itemsField: "variables", perPage: variablesPerPage, maxPageBytes: maxVariablesPageBytes, maxPages: maxVariablesPages})
+	return c.observeVariables(ctx, c.repositoryVariablesURL(reference), maxRepositoryVariablesPages)
+}
+
+// observeEnvironmentVariables は、environments の並びで、どの Environment にも Environment Variables の一覧の全ページを読み、その Environment の Variables に入れる。
+// environments は同じ観測で一覧から読んだ Environment に限る。一覧にあった Environment の 404 は、二つの要求のあいだになくなった可能性があるため、観測不能にせず error として返す。
+// パスに組み込めない名前の Environment は、要求を送らずに失敗する。
+// 失敗の文言に Environment の名前を入れるのは、どの Environment で失敗したかを示す対象の識別子で、秘密情報ではないため。%q で制御文字をエスケープする。
+func (c *Client) observeEnvironmentVariables(ctx context.Context, reference repository.Reference, environments []Environment) error {
+	for i := range environments {
+		e := &environments[i]
+		u, ok := c.environmentVariablesURL(reference, e.Name)
+		if !ok {
+			return fmt.Errorf("variables of environment %q: %w: the name cannot be sent as a path element", e.Name, ErrUnexpectedResponse)
+		}
+		variables, err := c.observeVariables(ctx, u, maxEnvironmentVariablesPages)
+		if err != nil {
+			return fmt.Errorf("variables of environment %q: %w", e.Name, err)
+		}
+		e.Variables = &variables
+	}
+	return nil
+}
+
+// observeVariables は、u の変数の一覧の全ページを読む。一覧ごとに違うのはページ数の上限だけで、1ページの件数と本文の上限は導出の前提として対で固定する。
+func (c *Client) observeVariables(ctx context.Context, u *url.URL, maxPages int) (Variables, error) {
+	items, err := c.listAll(ctx, u, listPaging{itemsField: "variables", perPage: variablesPerPage, maxPageBytes: maxVariablesPageBytes, maxPages: maxPages})
 	if err != nil {
 		return Variables{}, err
 	}

@@ -11,6 +11,8 @@
 | デプロイ元制限 | Deployment Branch Policy | Environment にデプロイできるブランチとタグを限る設定グループ。方式（`all`、`protected_branches`、`selected`）と、個別パターンで選ぶ方式（`selected`）のときに限って持つ個別パターンの集合からなる |
 | 個別パターン | Deployment Pattern | デプロイ元制限の値の要素。種類（ブランチかタグか）と名前の組 |
 | Environment の保護設定 | Environment Protection | デプロイを待たせる分数（`wait_timer`）、承認を求めるレビュアーと自己承認の禁止（`required_reviewers`）、管理者による迂回の可否（`can_admins_bypass`）。reco は観測するが、宣言を受け付けない |
+| Environment Variables | Environment Variables | Environment に属する Environment Variable からなる設定の領域。Environments とは別の設定の領域 |
+| Environment Variable | Environment Variable | Environment に属し、名前と値を持つ関連リソース。GitHub は ID を付けない。属する先が違うため、同じ名前の Repository Variable や、別の Environment の同じ名前の変数とは別の関連リソースである。reco は観測するが、宣言を受け付けない |
 
 Environment は値を持たない種類の関連リソースです。存在することの期待値は、存在することだけを表します。
 
@@ -26,6 +28,7 @@ Environment は、一覧と個別取得の応答が ID を含み、同じ名前�
 | `alignment` | `FR-005` | Functional Requirement |
 | `alignment` | `FR-010` | Functional Requirement |
 | `grounding` | [GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) | Repository File |
+| `grounding` | [GitHub Actions 変数 API 仕様](../../research/actions-variables.md) | Repository File |
 
 ## 観測
 
@@ -43,6 +46,12 @@ Environments に、取得条件による観測不能はありません。非公�
 
 Environment の取得契約は、`id`、`name`、`deployment_branch_policy`、`protection_rules`、`can_admins_bypass` がそろうことです。`can_admins_bypass` は公式のスキーマにありませんが、常に返ることを確かめています（GitHub デプロイ環境 API 仕様 3.2）。保護ルールは `type` で読み分け、`wait_timer` と `required_reviewers` の値を読みます。それ以外の `type` の要素は読みません。個別パターンの取得契約は、`id`、`name`、`type` がそろい、`type` が `branch` か `tag` であることです。
 
+Environment Variables は、`GET /repos/{owner}/{repo}/environments/{environment_name}/variables` の全ページで読みます。この要求は、同じ観測の一覧にあったすべての Environment に、方式によらず、すべての個別パターンを読んだあと、一覧の並びで送ります。Environment Variables の領域を読み取る観測は、Environments の領域も読み取ります（[ドメインモデル](../domain.md) の存在の観測）。Environment の名前は、個別パターンと同じくパスの一つの要素としてエスケープして送り、`.` と `..` の名前の Environment があれば観測操作の失敗とします。一覧にあった Environment への一覧の `404` は、二つの読み取りのあいだに Environment がなくなった可能性があるため、変数が一つもないこととも Environment が存在しないこととも読まず、観測操作の失敗とします。一つの Environment の一覧の失敗で、観測全体が観測操作の失敗になります。
+
+`per_page`、1ページの本文の上限、要素の取得契約、名前の重複の扱いは、[Actions の設計](actions.md) の観測の Repository Variables と同じです。名前の重複は、一つの Environment の一覧の中で判定します。ページ数の上限は、GitHub が一つの Environment に保存できる100件（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 3章）を1ページ30件で読み切る4ページです。Environment Variables に、取得条件による観測不能はありません。非公開リポジトリでも一覧を取得できたためです（GitHub Actions 変数 API 仕様 1.1）。
+
+`plan` と `apply` は、Environment Variables の領域を読み取りません。宣言を受け付けず、管理の単位がないためです。
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-004` | Functional Requirement |
@@ -50,6 +59,7 @@ Environment の取得契約は、`id`、`name`、`deployment_branch_policy`、`p
 | `alignment` | `QR-002` | Quality Requirement |
 | `grounding` | [GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) | Repository File |
 | `grounding` | [GitHub デプロイ元パターン API 仕様](../../research/deployment-branch-policies.md) | Repository File |
+| `grounding` | [GitHub Actions 変数 API 仕様](../../research/actions-variables.md) | Repository File |
 
 ## 適用可能性と副作用
 
@@ -167,6 +177,9 @@ Environment の個別パターンは、`POST /repos/{owner}/{repo}/environments/
 | Environment の方式の変更のあと、方式は期待値と同じで、その Environment の `wait_timer` が変わっていた | 変更対象外の設定の予期しない変化で、変更結果は失敗。原因は断定しない | 期待状態が一致したので完了 |
 | 方式を `selected` に変えたあと、最初の個別パターンを加える直前の一覧が空でなかった | 承認時に予定した値（パターンが一つもない）と違い、関係する現在値の変化 | 宣言に含まれるパターンなら、予定どおりの変化 |
 | 個別パターンを加える要求に `303` が返った | 更新操作の成否不明。再送せず、後続を開始しない | 同じパターンがすでにあるので成功、または変更なし |
+| Repository Variable `REGION` と、Environment `production` の Environment Variable `REGION` がある | 別の関連リソース。それぞれの一覧に、それぞれの値で観測する | 名前が同じなので重複、または一方の値で他方を上書きして示す |
+| Environment `production` と `staging` の両方に Environment Variable `REGION` がある | 別の関連リソース。重複は一つの Environment の一覧の中で判定する | 名前が同じなので取得契約に適合しない応答 |
+| 一覧にあった Environment の Environment Variables の一覧を、GitHub が見つからないと応答した | 観測操作の失敗。二つの読み取りのあいだに Environment がなくなった可能性がある | 変数が一つもない、または Environment が存在しない |
 | 個別パターンだけを変える変更のあと、その Environment の `wait_timer` が変わっていた | 変更対象外の設定ではなく、予期しない変化として扱わない。個別パターンの更新エンドポイントで reco が観測するのは個別パターンの集合だけである | Environment の保護設定なので、変更対象外の設定の予期しない変化 |
 
 ## References
@@ -178,3 +191,4 @@ Environment の個別パターンは、`POST /repos/{owner}/{repo}/environments/
 - [CLI 仕様](../../spec/cli.md)
 - [GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md)
 - [GitHub デプロイ元パターン API 仕様](../../research/deployment-branch-policies.md)
+- [GitHub Actions 変数 API 仕様](../../research/actions-variables.md)

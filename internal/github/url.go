@@ -79,6 +79,17 @@ func (c *Client) deploymentBranchPoliciesURL(reference repository.Reference, nam
 	return u, true
 }
 
+// environmentVariablesURL は、name の Environment の Environment Variables の一覧の URL を返す。name が environmentURL で組めなければ偽を返す。
+func (c *Client) environmentVariablesURL(reference repository.Reference, name string) (*url.URL, bool) {
+	u, ok := c.environmentURL(reference, name)
+	if !ok {
+		return nil, false
+	}
+	u.RawPath += "/variables"
+	u.Path += "/variables"
+	return u, true
+}
+
 // deploymentBranchPolicyURL は、name の Environment の ID が id の個別パターンの URL を返す。name が environmentURL で組めなければ偽を返す。
 func (c *Client) deploymentBranchPolicyURL(reference repository.Reference, name string, id DeploymentPatternID) (*url.URL, bool) {
 	u, ok := c.deploymentBranchPoliciesURL(reference, name)

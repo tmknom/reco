@@ -24,7 +24,7 @@ type ObservationResult struct {
 	ActionsAccess       *ActionsAccess
 	// RepositoryVariables は、その設定の領域を選ばなかった観測では nil になる。Variable が一つもないことと取り違えさせないため、値型にしない。
 	RepositoryVariables *Variables
-	// Environments は、その設定の領域を選ばなかった観測では nil になる。Environment が一つもないことと取り違えさせないため、値型にしない。
+	// Environments は、Environments と Environment Variables のどちらの設定の領域も選ばなかった観測では nil になる。Environment が一つもないことと取り違えさせないため、値型にしない。
 	Environments *Environments
 	// Dependabot は、その設定の領域を選ばなかった観測では nil になる。
 	Dependabot *Dependabot
@@ -152,12 +152,18 @@ func (c *Client) ObserveRepository(ctx context.Context, reference repository.Ref
 		}
 		o.RepositoryVariables = &variables
 	}
-	if slices.Contains(areas, setting.AreaEnvironments) {
+	// Environment Variables は属する先の Environment を同じ観測で確かめてから読むため、Environments の領域も読む
+	if slices.Contains(areas, setting.AreaEnvironments) || slices.Contains(areas, setting.AreaEnvironmentVariables) {
 		environments, err := c.observeEnvironments(ctx, reference)
 		if err != nil {
 			return ObservationResult{}, fmt.Errorf("fetch environments %s: %w", reference, err)
 		}
 		o.Environments = &environments
+	}
+	if slices.Contains(areas, setting.AreaEnvironmentVariables) {
+		if err := c.observeEnvironmentVariables(ctx, reference, o.Environments.Existing); err != nil {
+			return ObservationResult{}, fmt.Errorf("fetch environment variables %s: %w", reference, err)
+		}
 	}
 	// Dependabot の二つの設定は、片方だけの観測結果を作らない
 	if slices.Contains(areas, setting.AreaDependabot) {
