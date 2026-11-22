@@ -155,6 +155,31 @@ func TestCheckUpdateEndpoint_UndefinedKindPanics(t *testing.T) {
 	checkUpdateEndpoint(changeplan.UpdateOperation{Unit: setting.Unit{Key: setting.AllowAutoMerge}})
 }
 
+// TestCheckUpdateEndpoint_EnvironmentVariables は、Environment Variable の更新操作を、更新エンドポイントを引かずに通すことを確かめる。
+// 設定の識別だけでは引けないため、引くと panic で失敗する。
+//
+//trace:checks INV-002
+func TestCheckUpdateEndpoint_EnvironmentVariables(t *testing.T) {
+	approved := withVariables(observedEnvironment(7, "production", setting.DeploymentBranchPolicyAll), github.Variable{Name: "REGION", Value: "a"})
+	cases := []struct {
+		name      string
+		operation changeplan.UpdateOperation
+	}{
+		{name: "creation passes", operation: createdEnvironmentVariableChange(t, "production", "REGION", "a").Operations[0]},
+		{name: "value change passes", operation: environmentVariableValueChange(t, "production", approved, "REGION", "a", "b").Operations[0]},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("checkUpdateEndpoint() panicked: %v", r)
+				}
+			}()
+			checkUpdateEndpoint(tc.operation)
+		})
+	}
+}
+
 // failAfterWriter は、n 回の書き込みに成功したあとの書き込みを失敗させる。
 type failAfterWriter struct {
 	n   int
@@ -1080,6 +1105,42 @@ func TestRun(t *testing.T) {
 		want := slices.Concat(reads,
 			reads, []string{"POST /repos/owner/repo/actions/variables"}, reads,
 			reads, []string{"PATCH /repos/owner/repo/actions/variables/ALPHA"}, reads)
+		if !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		if calls != 1 || !strings.Contains(out.String(), "owner/repo: updated") || !strings.Contains(out.String(), "Apply complete.") {
+			t.Errorf("approve calls = %d, Out = %q, want one approval and the repository updated", calls, out.String())
+		}
+	})
+
+	// Environment の作成と変数の作成は別の論理的な設定変更で、作成が完了してから変数を作成することを、計画の生成から確かめる
+	t.Run("variable of an absent environment is created after the environment in two update requests after a single approval", func(t *testing.T) {
+		production := githubtest.EnvironmentBody{ID: 8, Name: "production"}
+		baseURL, server := newSequenceServer(t,
+			okRepository(1, false, false), okEnvironments(),
+			okRepository(1, false, false), okEnvironments(), okEnvironment(production),
+			okRepository(1, false, false), okEnvironments(production),
+			okRepository(1, false, false), okEnvironments(production), okVariables(), createdVariable(),
+			okRepository(1, false, false), okEnvironments(production), okVariables(githubtest.VariableBody{Name: "REGION", Value: "ap-northeast-1"}))
+		var out bytes.Buffer
+		calls := 0
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(`repositories:
+  - name: owner/repo
+    environments:
+      - name: production
+        variables:
+          - name: REGION
+            value: ap-northeast-1
+`)}}
+
+		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		reads := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/environments"}
+		readVariables := append(slices.Clone(reads), "GET /repos/owner/repo/environments/production/variables")
+		want := slices.Concat(reads,
+			reads, []string{"PUT /repos/owner/repo/environments/production"}, reads,
+			readVariables, []string{"POST /repos/owner/repo/environments/production/variables"}, readVariables)
 		if !slices.Equal(server.RequestLines(), want) {
 			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}

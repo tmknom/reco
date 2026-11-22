@@ -212,3 +212,41 @@ func variableValueChange(t *testing.T, name, observed, desired string) changepla
 	t.Helper()
 	return onlyLogicalChange(t, newRepositoryPlan(t, variableMismatch(t, name, setting.VariableValue(observed), desired)))
 }
+
+// environmentVariablePlan は、宣言の名前 environment の Environment の、宣言の名前 name の Environment Variable を、
+// 計画時の観測結果 observed から値 desired にする変更予定。result は observed から決まる照合結果である。
+func environmentVariablePlan(t *testing.T, environment, name string, observed github.SettingObservation[setting.Value], desired string, result changeplan.ReconciliationResult) changeplan.SettingPlan {
+	t.Helper()
+	return changeplan.SettingPlan{
+		Unit:     setting.Unit{Key: setting.EnvironmentVariable, Environment: mustEnvironmentName(t, environment), Variable: mustVariableName(t, name)},
+		Observed: observed, Desired: setting.VariableValue(desired), Result: result, Applicability: changeplan.Applicable,
+	}
+}
+
+// environmentVariableValueChange は、計画時に approved と観測した、宣言の名前 environment の Environment の Environment Variable name の値を、
+// 計画時の値 observed から desired にする論理的な設定変更。approved は name を値 observed で持つ。
+// 変更前提の基準を手で写さず、changeplan が導いた論理的な設定変更を使う。
+func environmentVariableValueChange(t *testing.T, environment string, approved github.Environment, name, observed, desired string) changeplan.LogicalChange {
+	t.Helper()
+	existence := github.Environments{Existing: []github.Environment{approved}}.Lookup(mustEnvironmentName(t, environment))
+	return onlyLogicalChange(t, newRepositoryPlan(t,
+		changeplan.SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, environment)}, ObservedEnvironment: existence, Result: changeplan.Match, Applicability: changeplan.Applicable},
+		environmentVariablePlan(t, environment, name, github.Observed(setting.VariableValue(observed)), desired, changeplan.Mismatch),
+	))
+}
+
+// createdEnvironmentVariableChange は、計画時に存在しなかった environment の Environment に、同じ変更計画がその Environment を作成したあとで、
+// Environment Variable name を値 desired で作成する論理的な設定変更。Environment の作成とは別の論理的な設定変更になる。
+// 変更前提の基準を手で写さず、changeplan が導いた論理的な設定変更を使う。
+func createdEnvironmentVariableChange(t *testing.T, environment, name, desired string) changeplan.LogicalChange {
+	t.Helper()
+	environmentName := mustEnvironmentName(t, environment)
+	changes, err := newRepositoryPlan(t,
+		changeplan.SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environmentName}, ObservedEnvironment: github.Environments{}.Lookup(environmentName), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+		environmentVariablePlan(t, environment, name, github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), desired, changeplan.NotComparable),
+	).LogicalChanges()
+	if err != nil || len(changes) != 2 {
+		t.Fatalf("LogicalChanges() = %+v, %v, want the creation of the environment and the creation of the variable", changes, err)
+	}
+	return changes[1]
+}

@@ -74,7 +74,7 @@ func TestDesiredState_ValueCoversEveryDesiredValue(t *testing.T) {
 
 // 関連リソースに関わる管理の単位は名前との組で識別するため、Value では引けない。
 func TestDesiredState_ValueOfRelatedResourceSettingPanics(t *testing.T) {
-	for _, key := range []setting.Key{setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy} {
+	for _, key := range []setting.Key{setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentVariable} {
 		t.Run(string(key), func(t *testing.T) {
 			defer func() {
 				if recover() == nil {

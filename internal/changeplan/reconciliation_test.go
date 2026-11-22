@@ -272,6 +272,14 @@ func TestManagedAreas(t *testing.T) {
 			want:    []setting.Area{setting.AreaRepositoryVariables},
 		},
 		{
+			name: "environment with variables includes environments and environment variables",
+			desired: configuration.DesiredState{Environments: []configuration.EnvironmentDeclaration{
+				{Name: mustEnvironmentName(t, "staging")},
+				{Name: mustEnvironmentName(t, "production"), Variables: []configuration.VariableDeclaration{{Name: mustVariableName(t, "REGION"), Desired: setting.VariableValue("eu")}}},
+			}},
+			want: []setting.Area{setting.AreaEnvironments, setting.AreaEnvironmentVariables},
+		},
+		{
 			name:    "dependabot_security_updates alone includes dependabot",
 			desired: configuration.DesiredState{Dependabot: configuration.Dependabot{SecurityUpdates: new(true)}},
 			want:    []setting.Area{setting.AreaDependabot},
@@ -358,6 +366,41 @@ func TestReconcile_Environments(t *testing.T) {
 	}
 	// リポジトリ設定のあとに宣言の並びで続き、宣言していない Environment は現れない
 	want := []string{"general.allow_auto_merge", "environments.zeta", "environments.alpha"}
+	if !reflect.DeepEqual(units, want) {
+		t.Errorf("reconcile() units = %v, want %v", units, want)
+	}
+}
+
+// TestReconcile_EnvironmentVariablesOrder は、Environment Variable の計画が、設定の領域の順ではなく、属する Environment の計画の直後に並ぶことを確かめる。
+//
+//trace:checks FR-005 FR-007
+func TestReconcile_EnvironmentVariablesOrder(t *testing.T) {
+	production, staging := mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging")
+	protected := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}
+	region := mustVariableName(t, "REGION")
+	desired := configuration.DesiredState{
+		RepositoryVariables: []configuration.VariableDeclaration{{Name: mustVariableName(t, "GO_VERSION"), Desired: setting.VariableValue("1.27")}},
+		Environments: []configuration.EnvironmentDeclaration{
+			{Name: production, DeploymentBranchPolicy: &protected, Variables: []configuration.VariableDeclaration{{Name: region, Desired: setting.VariableValue("eu")}}},
+			{Name: staging, Variables: []configuration.VariableDeclaration{{Name: region, Desired: setting.VariableValue("us")}}},
+		},
+		Dependabot: configuration.Dependabot{Alerts: new(true)},
+	}
+	observed := github.ObservationResult{
+		RepositoryVariables: &github.Variables{},
+		Environments:        &github.Environments{Existing: []github.Environment{withVariables(github.Environment{Name: "production", DeploymentBranchPolicy: protected})}},
+		Dependabot:          &github.Dependabot{Alerts: true},
+	}
+	var units []string
+	for _, s := range reconcile(desired, observed) {
+		units = append(units, s.Unit.String())
+	}
+	want := []string{
+		"actions.variables.GO_VERSION",
+		"environments.production", "environments.production.deployment_branch_policy", "environments.production.variables.REGION",
+		"environments.staging", "environments.staging.variables.REGION",
+		"security.dependabot_alerts",
+	}
 	if !reflect.DeepEqual(units, want) {
 		t.Errorf("reconcile() units = %v, want %v", units, want)
 	}

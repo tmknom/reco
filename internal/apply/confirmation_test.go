@@ -244,3 +244,31 @@ func TestConfirmDesiredState_RepositoryVariables(t *testing.T) {
 		})
 	}
 }
+
+// TestConfirmDesiredState_EnvironmentVariables は、Environment Variable の期待状態を、宣言の名前で引いた Environment の変数の値で確かめ、
+// Environment がなければ存在しないことを理由に確認失敗にすることを確かめる。
+//
+//trace:checks FR-012
+func TestConfirmDesiredState_EnvironmentVariables(t *testing.T) {
+	staging := func(existing ...github.Variable) []github.Environment {
+		return []github.Environment{withVariables(observedEnvironment(7, "Staging", setting.DeploymentBranchPolicyAll), existing...)}
+	}
+	change := environmentVariableValueChange(t, "staging", staging(github.Variable{Name: "REGION", Value: "us-east-1"})[0], "REGION", "us-east-1", "ap-northeast-1")
+	cases := []struct {
+		name       string
+		existing   []github.Environment
+		want       desiredStateConfirmation
+		wantReason github.UnavailableReason
+	}{
+		{name: "variable with the declared value matches", existing: staging(github.Variable{Name: "REGION", Value: "ap-northeast-1"}), want: desiredStateMatches},
+		{name: "absent environment is unavailable by its absence", existing: nil, want: desiredStateUnavailable, wantReason: github.UnavailableEnvironmentAbsent},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := github.ObservationResult{RepositoryID: 1, Environments: environments(tc.existing...)}
+			if got, reason := confirmDesiredState(1, change, observed); got != tc.want || reason != tc.wantReason {
+				t.Errorf("confirmDesiredState() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)
+			}
+		})
+	}
+}

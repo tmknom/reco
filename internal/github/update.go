@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
@@ -202,16 +203,48 @@ func (c *Client) RemoveDeploymentPattern(ctx context.Context, reference reposito
 // 正常応答の 201 の本文は変数を含まないため、解釈しない。
 // value は error に含めない。
 func (c *Client) CreateRepositoryVariable(ctx context.Context, reference repository.Reference, name setting.VariableName, value string) (UpdateOutcome, error) {
-	status, _, err := c.send(ctx, http.MethodPost, c.repositoryVariablesURL(reference), encodeVariableCreation(name, value), http.StatusCreated)
-	return describeUpdateOutcome(fmt.Sprintf("create repository variable %q", name.String()), reference, status, err)
+	return c.createVariable(ctx, fmt.Sprintf("create repository variable %q", name.String()), reference, c.repositoryVariablesURL(reference), name, value)
 }
 
 // UpdateRepositoryVariableValue は、reference のリポジトリの name の Repository Variable の値を value にする PATCH を一度だけ送る。再送はしない。
 // 本文は value だけで、name を送らない。reco は変数の名前を変えないため。
 // value は error に含めない。
 func (c *Client) UpdateRepositoryVariableValue(ctx context.Context, reference repository.Reference, name setting.VariableName, value string) (UpdateOutcome, error) {
-	status, _, err := c.send(ctx, http.MethodPatch, c.repositoryVariableURL(reference, name.String()), encodeVariableValue(value), http.StatusNoContent)
-	return describeUpdateOutcome(fmt.Sprintf("update repository variable %q", name.String()), reference, status, err)
+	return c.updateVariableValue(ctx, fmt.Sprintf("update repository variable %q", name.String()), reference, c.repositoryVariableURL(reference, name.String()), value)
+}
+
+// CreateEnvironmentVariable は、reference のリポジトリの environment の Environment に、名前が name で値が value の Environment Variable を作る POST を一度だけ送る。
+// 本文と応答の扱いは CreateRepositoryVariable と同じ。
+// 呼び出し元は宛先にできる名前だけを渡すため、URL を組めないときは不変条件の破れとして panic する。
+func (c *Client) CreateEnvironmentVariable(ctx context.Context, reference repository.Reference, environment string, name setting.VariableName, value string) (UpdateOutcome, error) {
+	u, ok := c.environmentVariablesURL(reference, environment)
+	if !ok {
+		panic(fmt.Sprintf("github: environment name %q cannot be addressed", environment))
+	}
+	return c.createVariable(ctx, fmt.Sprintf("create environment variable %q in environment %q", name.String(), environment), reference, u, name, value)
+}
+
+// UpdateEnvironmentVariableValue は、reference のリポジトリの environment の Environment の name の Environment Variable の値を value にする PATCH を一度だけ送る。
+// 本文と応答の扱いは UpdateRepositoryVariableValue と同じ。
+// 呼び出し元は宛先にできる名前だけを渡すため、URL を組めないときは不変条件の破れとして panic する。
+func (c *Client) UpdateEnvironmentVariableValue(ctx context.Context, reference repository.Reference, environment string, name setting.VariableName, value string) (UpdateOutcome, error) {
+	u, ok := c.environmentVariableURL(reference, environment, name.String())
+	if !ok {
+		panic(fmt.Sprintf("github: environment name %q cannot be addressed", environment))
+	}
+	return c.updateVariableValue(ctx, fmt.Sprintf("update environment variable %q in environment %q", name.String(), environment), reference, u, value)
+}
+
+// createVariable は、変数の一覧の u へ、名前が name で値が value の変数を作る POST を送る。Repository Variable と Environment Variable で、本文と応答の扱いは同じ。
+func (c *Client) createVariable(ctx context.Context, operation string, reference repository.Reference, u *url.URL, name setting.VariableName, value string) (UpdateOutcome, error) {
+	status, _, err := c.send(ctx, http.MethodPost, u, encodeVariableCreation(name, value), http.StatusCreated)
+	return describeUpdateOutcome(operation, reference, status, err)
+}
+
+// updateVariableValue は、変数の u へ、値を value にする PATCH を送る。Repository Variable と Environment Variable で、本文と応答の扱いは同じ。
+func (c *Client) updateVariableValue(ctx context.Context, operation string, reference repository.Reference, u *url.URL, value string) (UpdateOutcome, error) {
+	status, _, err := c.send(ctx, http.MethodPatch, u, encodeVariableValue(value), http.StatusNoContent)
+	return describeUpdateOutcome(operation, reference, status, err)
 }
 
 // putEnvironment は name の Environment へ body を本文とする PUT を送る。body が nil なら本文を送らない。
@@ -281,7 +314,7 @@ func updateRequestOf(key setting.Key) updateRequest {
 		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateRepositoryPushProtection)}
 	case setting.PrivateVulnerabilityReportingEnabled:
 		return updateRequest{PrivateVulnerabilityReportingEndpoint, boolUpdate((*Client).updatePrivateVulnerabilityReporting)}
-	case setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy:
+	case setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentVariable:
 		// 関連リソースの更新要求は宛先に名前が要るため、設定の識別だけで引くこの関数では扱えない。
 	}
 	panic("github: no update request for " + string(key))

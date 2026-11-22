@@ -476,6 +476,50 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 		}
 	})
 
+	t.Run("declared environment variables are read only from listed environments and planned after each environment", func(t *testing.T) {
+		const src = "repositories:\n  - name: owner/repo\n    environments:\n" +
+			"      - name: production\n        variables:\n          - name: REGION\n            value: eu\n" +
+			"      - name: staging\n        variables:\n          - name: REGION\n            value: us\n"
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo": githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/environments": githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 1, Environments: []githubtest.EnvironmentBody{
+				{ID: 2, Name: "production"},
+			}}.JSON()),
+			"GET /repos/owner/repo/environments/production/variables": githubtest.OK(githubtest.VariablesBody{TotalCount: 1, Variables: []githubtest.VariableBody{
+				{Name: "REGION", Value: "us"},
+			}}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+		got, err := Generate(context.Background(), client, file(src), nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		// 存在しない staging には変数の一覧を送らない
+		want := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/environments", "GET /repos/owner/repo/environments/production/variables"}
+		if !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		type planned struct {
+			unit          string
+			result        ReconciliationResult
+			applicability Applicability
+		}
+		var plans []planned
+		for _, s := range got.Repositories[0].Settings {
+			plans = append(plans, planned{s.Unit.String(), s.Result, s.Applicability})
+		}
+		wantPlans := []planned{
+			{"environments.production", Match, ApplicabilityNotJudged},
+			{"environments.production.variables.REGION", Mismatch, Applicable},
+			{"environments.staging", Mismatch, Applicable},
+			{"environments.staging.variables.REGION", NotComparable, Applicable},
+		}
+		if !reflect.DeepEqual(plans, wantPlans) {
+			t.Errorf("plans = %+v, want %+v", plans, wantPlans)
+		}
+	})
+
 	t.Run("environments observation failure is returned without planning a creation", func(t *testing.T) {
 		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
 			"GET /repos/owner/repo":              githubtest.OK(repositoryBody),

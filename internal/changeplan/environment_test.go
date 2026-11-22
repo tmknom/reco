@@ -22,6 +22,7 @@ func TestEnvironmentPlans(t *testing.T) {
 	existing := func(name string, policy setting.DeploymentBranchPolicy) github.Environment {
 		return github.Environment{ID: 7, Name: name, DeploymentBranchPolicy: policy}
 	}
+	region, debug, level := mustVariableName(t, "REGION"), mustVariableName(t, "DEBUG"), mustVariableName(t, "LEVEL")
 	cases := []struct {
 		name     string
 		declared configuration.EnvironmentDeclaration
@@ -84,6 +85,40 @@ func TestEnvironmentPlans(t *testing.T) {
 			want: []SettingPlan{
 				{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Result: NotComparable},
 				{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined), Desired: setting.DeploymentBranchPolicyValue(protected), Result: NotComparable},
+			},
+		},
+		{
+			name: "variables of an existing environment are matched against its list after the mode in the declared order",
+			declared: configuration.EnvironmentDeclaration{Name: production, DeploymentBranchPolicy: &protected, Variables: []configuration.VariableDeclaration{
+				{Name: region, Desired: setting.VariableValue("eu")},
+				{Name: debug, Desired: setting.VariableValue("true")},
+				{Name: level, Desired: setting.VariableValue("info")},
+			}},
+			observed: lookup(t, "production", withVariables(existing("production", protected), github.Variable{Name: "LEVEL", Value: "info"}, github.Variable{Name: "REGION", Value: "us"}, github.Variable{Name: "UNDECLARED", Value: "x"})),
+			want: []SettingPlan{
+				{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Result: Match},
+				{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Observed(setting.DeploymentBranchPolicyValue(protected)), Desired: setting.DeploymentBranchPolicyValue(protected), Result: Match},
+				{Unit: environmentVariableUnit(production, region), Observed: github.Observed(setting.VariableValue("us")), Desired: setting.VariableValue("eu"), Result: Mismatch},
+				{Unit: environmentVariableUnit(production, debug), Observed: github.Observed(setting.AbsentVariable()), Desired: setting.VariableValue("true"), Result: Mismatch},
+				{Unit: environmentVariableUnit(production, level), Observed: github.Observed(setting.VariableValue("info")), Desired: setting.VariableValue("info"), Result: Match},
+			},
+		},
+		{
+			name:     "variable of an absent environment is not comparable because the environment is absent",
+			declared: configuration.EnvironmentDeclaration{Name: production, Variables: []configuration.VariableDeclaration{{Name: region, Desired: setting.VariableValue("eu")}}},
+			observed: lookup(t, "production"),
+			want: []SettingPlan{
+				{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Result: Mismatch},
+				{Unit: environmentVariableUnit(production, region), Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.VariableValue("eu"), Result: NotComparable},
+			},
+		},
+		{
+			name:     "variable of an environment whose existence cannot be determined is not comparable for the same reason",
+			declared: configuration.EnvironmentDeclaration{Name: production, Variables: []configuration.VariableDeclaration{{Name: region, Desired: setting.VariableValue("eu")}}},
+			observed: lookup(t, "production", existing("prodüction", all)),
+			want: []SettingPlan{
+				{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Result: NotComparable},
+				{Unit: environmentVariableUnit(production, region), Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined), Desired: setting.VariableValue("eu"), Result: NotComparable},
 			},
 		},
 	}

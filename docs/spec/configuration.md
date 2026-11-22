@@ -29,6 +29,9 @@ repositories:
       - name: production
         deployment_branch_policy:
           mode: protected_branches
+        variables:
+          - name: REGION
+            value: ap-northeast-1
       - name: staging
     security:
       dependabot_alerts: true
@@ -51,6 +54,7 @@ repositories:
 | `general`、`actions`、`permissions`、`selected_actions`、`workflow`、`access`、`security` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions`、`workflow`、`access`、`variables` のうち一つ以上を含めばよい |
 | `variables`（`actions` 配下） | シーケンス | 使用する場合は、1件以上の変数の宣言を含む（7章） |
 | `environments` | シーケンス | 使用する場合は、1件以上の Environment の宣言を含む（8章） |
+| `variables`（`environments[]` 配下） | シーケンス | 使用する場合は、1件以上の変数の宣言を含む（8.3節） |
 
 定義していないフィールドは、どの階層でも受け付けません。どの位置でも、`null` を指定して省略を表現することはできません。
 
@@ -238,7 +242,7 @@ Repository Variable の変更予定は、`actions.variables` に書いた順に�
 
 名前の長さは入力検証で確かめません。公式資料が上限を記載しておらず、GitHub の上限が変わり得るためです。
 
-二つの名前が同じかどうかは、ASCII の英字の大文字小文字を区別せずに比べます。GitHub が名前を大文字小文字を区別せずに扱うためです（同 2章）。同じリポジトリの宣言に同じ名前が複数あれば、入力不正として拒否します。宣言の名前と GitHub 上の変数の名前の突き合わせも、同じ規則で行います。
+二つの名前が同じかどうかは、ASCII の英字の大文字小文字を区別せずに比べます。GitHub が名前を大文字小文字を区別せずに扱うためです（同 2章）。同じリポジトリの `actions.variables` に同じ名前が複数あれば、入力不正として拒否します。宣言の名前と GitHub 上の変数の名前の突き合わせも、同じ規則で行います。
 
 ### 7.2 変数の値
 
@@ -262,13 +266,16 @@ Repository Variable の変更予定は、`actions.variables` に書いた順に�
 | `environments[].deployment_branch_policy.patterns` | シーケンス | 個別パターンの要素を0件以上（`[]` 可）。`mode` が `selected` のときだけ必須で、ほかの方式では指定できない（8.2節） | デプロイを許可するブランチとタグのパターンの一覧の全体 | デプロイ元制限（設定グループ） |
 | `environments[].deployment_branch_policy.patterns[].type` | 文字列 | `branch` / `tag` | パターンがブランチとタグのどちらに一致するか | デプロイ元制限（設定グループ） |
 | `environments[].deployment_branch_policy.patterns[].name` | 文字列 | 8.2節の名前 | ブランチ名またはタグ名のパターン | デプロイ元制限（設定グループ） |
+| `environments[].variables` | シーケンス | 変数の宣言を1件以上（8.3節） | その Environment で管理する Environment Variable の一覧 | なし（要素ごとに定まる） |
+| `environments[].variables[].name` | 文字列 | 7.1節の名前 | その Environment に、その名前の Environment Variable が存在すること | Environment Variable（関連リソースそのもの） |
+| `environments[].variables[].value` | 文字列 | 7.2節の値 | その Environment Variable の値 | Environment Variable（関連リソースそのもの） |
 
-- **`name` は必須である**：`name` のない要素は、ほかのキーを書いていても入力不正として拒否する。どの Environment の宣言かを補わない
-- **要素は存在の宣言を兼ねる**：`environments[]` に書いた名前の Environment が存在しなければ、作成を計画する。`deployment_branch_policy` を省略した Environment は、存在だけを管理する
+- **`name` は必須である**：`name` のない要素は、`deployment_branch_policy` や `variables` を書いていても入力不正として拒否する。どの Environment の宣言かを補わない
+- **要素は存在の宣言を兼ねる**：`environments[]` に書いた名前の Environment が存在しなければ、作成を計画する。`variables` だけを書いた Environment も同じである。`deployment_branch_policy` と `variables` を省略した Environment は、存在だけを管理する
 - **存在しないことの宣言は受け付けない**：reco は Environment を削除しない
 - **`deployment_branch_policy` は `mode` を必須とする**：`all` はすべてのブランチとタグからのデプロイを許可する。`protected_branches` は、保護ルールのあるブランチからのデプロイだけを許可する。`protected_branches` の宣言は、Branch protection を管理することを意味しない。`selected` は、`patterns` に書いたパターンに一致するブランチとタグからのデプロイだけを許可する
 
-同じ Environment の変更予定は、存在、`deployment_branch_policy` の順に表示し、実行します。存在しない Environment の中の設定は、Environment を作成してからでないと変えられないためです。
+同じ Environment の変更予定は、存在、`deployment_branch_policy`、`variables` の順に表示し、実行します。`variables` の中は書いた順です。存在しない Environment の中の設定と変数は、Environment を作成してからでないと変えられないためです。Environment をまたいでは、`environments` に書いた Environment の順に、Environment ごとにまとめて並べます。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -331,6 +338,31 @@ environments:
 | `alignment` | `FR-005` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Repository File |
+
+### 8.3 Environment Variables
+
+`environments[].variables` は、その Environment に属する Environment Variable を名前ごとに宣言するシーケンスです。Environment Variable は関連リソースであり、2.1節の規則に従います。2.1節の2つ目の規則（書いた関連リソースが存在しなければ作成する）は、変数にも、属する先の Environment にも当てはまります。変数を書くことは、属する先の Environment が存在することの宣言を兼ねるためです。
+
+```yaml
+environments:
+  - name: production
+    variables:
+      - name: REGION
+        value: ap-northeast-1
+```
+
+- **要素の形は `actions.variables` と同じである**：要素は `name` と `value` の2つのキーだけを持ち、どちらも必須である。名前は 7.1節、値は 7.2節の規則に従う
+- **要素は存在と値の宣言を兼ねる**：書いた名前の Environment Variable が存在しなければ作成を計画し、存在して値が違えば値の変更を計画する
+- **重複は一つの Environment の中で判定する**：同じ Environment の `variables` に同じ名前（7.1節の判定）が複数あれば、入力不正として拒否する。別の Environment の同じ名前と、`actions.variables` の同じ名前は、重複ではない
+- **同じ名前の Repository Variable とは別の管理設定である**：`actions.variables` と `environments[].variables` に同じ名前を書いても、値を同期しない。それぞれを別々に照合し、更新する
+- **存在しないことの宣言は受け付けない**
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `alignment` | `FR-001` | Functional Requirement |
+| `alignment` | `FR-005` | Functional Requirement |
+| `alignment` | `INV-001` | Invariant |
+| `grounding` | [GitHub Actions 変数 API 仕様](../research/actions-variables.md) | Repository File |
 
 ## 9. Security
 

@@ -293,6 +293,52 @@ func TestPlannedChangeText_RepositoryVariables(t *testing.T) {
 	}
 }
 
+// 期待値は CLI 仕様 4章の Environment Variable の表示例から導く。
+//
+//trace:checks FR-005 FR-006 FR-007
+func TestPlannedChangeText_EnvironmentVariables(t *testing.T) {
+	unit := setting.Unit{Key: setting.EnvironmentVariable, Environment: mustEnvironmentName(t, "production"), Variable: mustVariableName(t, "REGION")}
+	variable := func(observed github.SettingObservation[setting.Value], desired string, result changeplan.ReconciliationResult, applicability changeplan.Applicability) changeplan.SettingPlan {
+		return changeplan.SettingPlan{Unit: unit, Observed: observed, Desired: setting.VariableValue(desired), Result: result, Applicability: applicability}
+	}
+	undetermined := variable(github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined), "ap-northeast-1", changeplan.NotComparable, changeplan.NotApplicable)
+	undetermined.NotApplicableReason = changeplan.NotApplicableEnvironmentNameUndetermined
+	cases := []struct {
+		name string
+		s    changeplan.SettingPlan
+		want string
+	}{
+		{
+			name: "value update of an existing environment shows the quoted values under the environment path",
+			s:    variable(github.Observed(setting.VariableValue("ap-northeast-1")), "ap-northeast-3", changeplan.Mismatch, changeplan.Applicable),
+			want: "  environments.production.variables.REGION: \"ap-northeast-1\" -> \"ap-northeast-3\"\n",
+		},
+		{
+			name: "creation in an existing environment shows absent without parentheses",
+			s:    variable(github.Observed(setting.AbsentVariable()), "ap-northeast-1", changeplan.Mismatch, changeplan.Applicable),
+			want: "  environments.production.variables.REGION: absent -> \"ap-northeast-1\"\n",
+		},
+		{
+			name: "variable of an environment to create shows environment absent as the state",
+			s:    variable(github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), "ap-northeast-1", changeplan.NotComparable, changeplan.Applicable),
+			want: "  environments.production.variables.REGION: (environment absent) -> \"ap-northeast-1\"\n",
+		},
+		{
+			name: "variable of an environment whose existence is unknown shows the state and why it is not applicable",
+			s:    undetermined,
+			want: "  environments.production.variables.REGION: (existence unknown) -> \"ap-northeast-1\"\n" +
+				"    Applicability: not applicable (an environment on GitHub has a name reco cannot compare, such as one with non-ASCII characters; remove this environment from the configuration)\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := PlannedChangeText(tc.s); got != tc.want {
+				t.Errorf("PlannedChangeText() =\n%q\nwant\n%q", got, tc.want)
+			}
+		})
+	}
+}
+
 // 期待値は CLI 仕様 4章の Environment の表示例から導く。
 //
 //trace:checks FR-005 FR-006 FR-007

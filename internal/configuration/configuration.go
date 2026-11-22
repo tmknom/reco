@@ -50,6 +50,8 @@ type EnvironmentDeclaration struct {
 	Name setting.EnvironmentName
 	// DeploymentBranchPolicy は nil なら期待値の省略で、デプロイ元制限は管理範囲に含まれない。宣言したときは、方式が selected のときだけ、宣言の順の Patterns を持つ。
 	DeploymentBranchPolicy *setting.DeploymentBranchPolicy
+	// Variables は宣言の並びのまま持ち、variables を省略した Environment では nil。
+	Variables []VariableDeclaration
 }
 
 // General はリポジトリ一般設定の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
@@ -147,7 +149,7 @@ func (d DesiredState) Value(key setting.Key) (value setting.Value, ok bool) {
 		return optionalBoolValue(d.SecretScanning.PushProtection)
 	case setting.PrivateVulnerabilityReportingEnabled:
 		return optionalBoolValue(d.PrivateVulnerabilityReporting.Enabled)
-	case setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy:
+	case setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentVariable:
 		// 関連リソースに関わる管理の単位は名前との組で識別するため、この関数では引けない。
 	}
 	panic(fmt.Sprintf("unknown setting %q", key))

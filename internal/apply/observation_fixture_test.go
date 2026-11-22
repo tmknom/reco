@@ -85,7 +85,13 @@ func selectedPolicy(patterns ...setting.DeploymentPattern) setting.DeploymentBra
 	return setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: append([]setting.DeploymentPattern{}, patterns...)}
 }
 
-// variables は、existing を一覧の全体とする Repository Variables の観測結果。
+// variables は、existing を一覧の全体とする変数の一覧の観測結果。Repository Variables と Environment Variables で同じ形である。
 func variables(existing ...github.Variable) *github.Variables {
 	return &github.Variables{Existing: existing}
+}
+
+// withVariables は、e に Environment Variables の観測結果 existing を一覧の全体として持たせた Environment の観測結果。
+func withVariables(e github.Environment, existing ...github.Variable) github.Environment {
+	e.Variables = variables(existing...)
+	return e
 }

@@ -1095,6 +1095,24 @@ func TestObservationResult_SettingOfRepositoryVariable(t *testing.T) {
 	}
 }
 
+// 同じ名前の Repository Variable を引く誤りと、Environment の名前を使わずに最初の Environment を引く誤りを検出するため、
+// 同じ名前で値の異なる変数を、Repository と二つの Environment に置く。
+//
+//trace:checks FR-004
+func TestObservationResult_SettingOfEnvironmentVariable(t *testing.T) {
+	observed := ObservationResult{
+		RepositoryVariables: &Variables{Existing: []Variable{{Name: "REGION", Value: "repository"}}},
+		Environments: &Environments{Existing: []Environment{
+			{ID: 1, Name: "staging", Variables: &Variables{Existing: []Variable{{Name: "REGION", Value: "staging"}}}},
+			{ID: 2, Name: "production", Variables: &Variables{Existing: []Variable{{Name: "REGION", Value: "production"}}}},
+		}},
+	}
+	unit := setting.Unit{Key: setting.EnvironmentVariable, Environment: mustEnvironmentName(t, "production"), Variable: mustVariableName(t, "REGION")}
+	if got, want := observed.Setting(unit), Observed(setting.VariableValue("production")); !reflect.DeepEqual(got, want) {
+		t.Errorf("Setting(%v) = %+v, want %+v", unit.String(), got, want)
+	}
+}
+
 func TestObservationResult_SettingOfEnvironmentResourcePanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {

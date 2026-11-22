@@ -27,6 +27,12 @@ func TestJudgeApplicability(t *testing.T) {
 			Desired: setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}), Result: NotComparable,
 		}
 	}
+	environmentVariable := func(name setting.EnvironmentName, reason github.UnavailableReason) SettingPlan {
+		return SettingPlan{
+			Unit: environmentVariableUnit(name, mustVariableName(t, "REGION")), Observed: github.Unavailable[setting.Value](reason),
+			Desired: setting.VariableValue("eu"), Result: NotComparable,
+		}
+	}
 	undeterminedEnvironment := SettingPlan{
 		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, ObservedEnvironment: lookup(t, "production", github.Environment{Name: "prodüction"}), Result: NotComparable,
 	}
@@ -131,6 +137,19 @@ func TestJudgeApplicability(t *testing.T) {
 			settings: []SettingPlan{creation(production), environmentPolicy(production, github.UnavailableEnvironmentAbsent)},
 			want:     Applicable,
 		},
+		{
+			name:     "variable of an absent environment created in the same plan is applicable",
+			in:       environmentVariable(production, github.UnavailableEnvironmentAbsent),
+			settings: []SettingPlan{creation(production), environmentVariable(production, github.UnavailableEnvironmentAbsent)},
+			want:     Applicable,
+		},
+		{
+			name:       "variable of an environment whose existence cannot be determined is not applicable",
+			in:         environmentVariable(production, github.UnavailableEnvironmentNameUndetermined),
+			settings:   []SettingPlan{undeterminedEnvironment, environmentVariable(production, github.UnavailableEnvironmentNameUndetermined)},
+			want:       NotApplicable,
+			wantReason: NotApplicableEnvironmentNameUndetermined,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -160,6 +179,11 @@ func TestJudgeApplicability(t *testing.T) {
 			name:     "mode of an absent environment without its creation in the plan panics",
 			in:       environmentPolicy(production, github.UnavailableEnvironmentAbsent),
 			settings: []SettingPlan{creation(staging), environmentPolicy(production, github.UnavailableEnvironmentAbsent)},
+		},
+		{
+			name:     "variable of an absent environment without its creation in the plan panics",
+			in:       environmentVariable(production, github.UnavailableEnvironmentAbsent),
+			settings: []SettingPlan{creation(staging), environmentVariable(production, github.UnavailableEnvironmentAbsent)},
 		},
 		{name: "repository setting not comparable because an environment is absent panics", in: notComparable(setting.AllowAutoMerge, github.UnavailableEnvironmentAbsent)},
 		{name: "setting other than those available only on public repositories not comparable because the repository is private panics", in: notComparable(setting.AllowAutoMerge, github.UnavailablePrivateRepository)},

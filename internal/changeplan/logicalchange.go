@@ -33,7 +33,7 @@ type UpdateOperation struct {
 	Kind UpdateOperationKind
 	// Unit は、この更新操作が更新要求を送る先の管理の単位。
 	Unit setting.Unit
-	// Value は、SettingUpdate が送る設定の値と、RepositoryVariableCreation と RepositoryVariableValueUpdate が送る変数の値。
+	// Value は、SettingUpdate が送る設定の値と、Repository Variable と Environment Variable の作成と値の変更が送る変数の値。
 	Value setting.Value
 	// Mode は、EnvironmentCreationWithMode と DeploymentBranchPolicyModeUpdate が送るデプロイ元制限の方式。
 	Mode setting.DeploymentBranchPolicyMode
@@ -65,6 +65,10 @@ const (
 	RepositoryVariableCreation
 	// RepositoryVariableValueUpdate は、存在する Repository Variable の値だけを変える。
 	RepositoryVariableValueUpdate
+	// EnvironmentVariableCreation は、Environment Variable を名前と値で作る。宛先が Environment の名前を含むため Repository Variable と分ける。
+	EnvironmentVariableCreation
+	// EnvironmentVariableValueUpdate は、存在する Environment Variable の値だけを変える。
+	EnvironmentVariableValueUpdate
 )
 
 // RelevantSetting は、変更前提で比べる関係する現在値の設定と、その承認時に予定した値。
@@ -146,13 +150,17 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 				changes = append(changes, change)
 			}
 			continue
+		case s.Unit.Key == setting.EnvironmentVariable:
+			// Environment の作成とまとめず、変数ごとに一つの論理的な設定変更にする (Environments の設計の論理的な設定変更と更新操作)
+			changes = append(changes, LogicalChange{DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}}, Operations: []UpdateOperation{r.environmentVariableOperationOf(s)}})
+			continue
 		}
 		operation := operationOf(s)
 		switch {
 		case s.Unit.Key == setting.SHAPinningRequired:
 			operation = shaPinningRequiredOperationOf(s)
 		case s.Unit.Key == setting.RepositoryVariable:
-			operation = repositoryVariableOperationOf(s)
+			operation = variableOperationOf(s, s.Observed)
 		case s.Unit.Key == setting.RepositoryPushProtection && s.Desired.Bool():
 			// GitHub は Secret scanning が無効のあいだ、有効にする更新に成功を応答して値を変えないため、更新直前に有効と確かめる。
 			// 計画時に無効だった場合は、先行する Secret scanning の変更が有効にすることが予定どおりの変化である
@@ -246,17 +254,6 @@ func shaPinningRequiredOperationOf(s SettingPlan) UpdateOperation {
 	}
 	relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: setting.ActionsEnabled}, AnticipatedValue: github.Observed(setting.BoolValue(true))})
 	return UpdateOperation{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, RelevantSettings: relevant}
-}
-
-// repositoryVariableOperationOf は、Repository Variable の変更予定 s の更新操作を返す。
-// 変数は取得条件を持たず観測不能にならない。観測不能の計画では観測値がゼロ値になり、Equal が不変条件の破れとして panic する。
-func repositoryVariableOperationOf(s SettingPlan) UpdateOperation {
-	observed, _ := s.Observed.Value()
-	kind := RepositoryVariableValueUpdate
-	if observed.Equal(setting.AbsentVariable()) {
-		kind = RepositoryVariableCreation
-	}
-	return UpdateOperation{Kind: kind, Unit: s.Unit, Value: s.Desired, RelevantSettings: []RelevantSetting{{Unit: s.Unit, AnticipatedValue: s.Observed}}}
 }
 
 // sideEffectSettingsOf は、変更予定 s の副作用として提示した設定のうち reco が観測するものを返す。

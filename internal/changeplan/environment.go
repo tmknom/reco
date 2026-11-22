@@ -9,9 +9,9 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// environmentPlans は、一つの Environment の宣言 e を、宣言の名前で引いた観測結果 observed と照合し、存在、デプロイ元制限の順に計画を返す。
+// environmentPlans は、一つの Environment の宣言 e を、宣言の名前で引いた観測結果 observed と照合し、存在、デプロイ元制限、変数 (宣言の順) の順に計画を返す。
 // 宣言は存在することの期待値を兼ねるため、存在の計画は必ず返す。
-// デプロイ元制限は宣言したときだけ返し、存在しない Environment では属する先が存在しないことを理由とする比較不能になる。
+// デプロイ元制限と変数は宣言したときだけ返し、存在しない Environment では属する先が存在しないことを理由とする比較不能になる。
 func environmentPlans(e configuration.EnvironmentDeclaration, observed github.EnvironmentObservation) []SettingPlan {
 	result := NotComparable
 	if _, ok := observed.Existing(); ok {
@@ -23,6 +23,10 @@ func environmentPlans(e configuration.EnvironmentDeclaration, observed github.En
 	if e.DeploymentBranchPolicy != nil {
 		unit := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: e.Name}
 		plans = append(plans, newSettingPlan(unit, observed.DeploymentBranchPolicy(), setting.DeploymentBranchPolicyValue(*e.DeploymentBranchPolicy)))
+	}
+	for _, v := range e.Variables {
+		unit := setting.Unit{Key: setting.EnvironmentVariable, Environment: e.Name, Variable: v.Name}
+		plans = append(plans, newSettingPlan(unit, observed.Variable(v.Name), v.Desired))
 	}
 	return plans
 }
@@ -38,7 +42,7 @@ func (r RepositoryPlan) environmentChangeOf(s SettingPlan) (LogicalChange, bool)
 	}
 	existence, ok := r.settingPlanOf(setting.Unit{Key: setting.EnvironmentResource, Environment: s.Unit.Environment})
 	switch {
-	case isPolicyOfAbsentEnvironment(s) && ok && existence.IsEnvironmentCreation():
+	case isOfAbsentEnvironment(s) && ok && existence.IsEnvironmentCreation():
 		return LogicalChange{}, false
 	case s.Result == Mismatch && ok && existence.Result == Match:
 		environment := RelevantSetting{Unit: existence.Unit, AnticipatedEnvironment: existence.ObservedEnvironment}
@@ -62,7 +66,7 @@ func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
 		change.Operations = []UpdateOperation{{Kind: EnvironmentCreation, Unit: s.Unit, RelevantSettings: existence}}
 		return change
 	}
-	if !isPolicyOfAbsentEnvironment(policy) {
+	if !isOfAbsentEnvironment(policy) {
 		panic(fmt.Sprintf("changeplan: creation of %s is paired with %s that is not of an absent environment", s.Unit.String(), policy.Unit.String()))
 	}
 	// 方式の単位は作成の綴りで作り、期待状態と更新操作が作成と同じ綴りの名前を示すようにする
@@ -76,6 +80,25 @@ func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
 	created := RelevantSetting{Unit: s.Unit, CreatedByPrecedingOperation: true}
 	change.Operations = append(change.Operations, deploymentPatternOperations(policyUnit, created, emptySelected(), nil, desired.Patterns)...)
 	return change
+}
+
+// environmentVariableOperationOf は、Environment Variable の変更予定 s の更新操作を、同じ名前の Environment の存在の計画と組んで返す。
+// 基準は Environments の設計の論理的な設定変更と更新操作に従い、計画時に存在した Environment では Environment、変数の順、
+// 同じ変更計画が作成する Environment では変数が存在しないことだけである。
+// 対にならない形 (存在の計画のない変数、存在が一致なのに比較不能な変数、作成なのに不一致の変数) は、
+// environmentPlans と judgeApplicability が作らないため、不変条件の破れとして panic する。
+func (r RepositoryPlan) environmentVariableOperationOf(s SettingPlan) UpdateOperation {
+	existence, ok := r.settingPlanOf(setting.Unit{Key: setting.EnvironmentResource, Environment: s.Unit.Environment})
+	switch {
+	case ok && existence.Result == Match && s.Result == Mismatch:
+		operation := variableOperationOf(s, s.Observed)
+		environment := RelevantSetting{Unit: existence.Unit, AnticipatedEnvironment: existence.ObservedEnvironment}
+		operation.RelevantSettings = append([]RelevantSetting{environment}, operation.RelevantSettings...)
+		return operation
+	case ok && existence.IsEnvironmentCreation() && isOfAbsentEnvironment(s):
+		return variableOperationOf(s, github.Observed(setting.AbsentVariable()))
+	}
+	panic(fmt.Sprintf("changeplan: %s has no environment plan to pair with", s.Unit.String()))
 }
 
 // deploymentBranchPolicyOperations は、存在する Environment のデプロイ元制限の不一致 s を実現する更新操作を、実行順に返す。
@@ -125,7 +148,7 @@ func deploymentPatternOperations(unit setting.Unit, environment RelevantSetting,
 	return operations
 }
 
-// isPolicyOfAbsentEnvironment は、s が、属する Environment が存在しないことを理由に比較不能な方式の計画かを返す。
-func isPolicyOfAbsentEnvironment(s SettingPlan) bool {
+// isOfAbsentEnvironment は、s が、属する Environment が存在しないことを理由に比較不能な、方式か変数の計画かを返す。
+func isOfAbsentEnvironment(s SettingPlan) bool {
 	return s.Result == NotComparable && s.Observed.UnavailableReason() == github.UnavailableEnvironmentAbsent
 }

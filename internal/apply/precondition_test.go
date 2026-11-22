@@ -523,6 +523,86 @@ func TestCheckPrecondition_RepositoryVariables(t *testing.T) {
 	}
 }
 
+// TestCheckPrecondition_EnvironmentVariables は、Environment Variable の作成と値の変更の変更前提を、
+// 計画時に存在した Environment では Environment の存在と ID、変数の順に、同じ変更計画が作成した Environment では変数が存在しないことだけで確かめることを確かめる。
+//
+//trace:checks INV-001 INV-004 FR-010
+func TestCheckPrecondition_EnvironmentVariables(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	existence := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
+	region := setting.Unit{Key: setting.EnvironmentVariable, Environment: production, Variable: mustVariableName(t, "REGION")}
+	planned := github.Variable{Name: "REGION", Value: "ap-northeast-1"}
+	approved := withVariables(observedEnvironment(7, "Production", setting.DeploymentBranchPolicyAll), planned)
+	valueChange := environmentVariableValueChange(t, "production", approved, "REGION", "ap-northeast-1", "ap-northeast-3")
+	creation := createdEnvironmentVariableChange(t, "production", "REGION", "ap-northeast-1")
+	cases := []struct {
+		name        string
+		change      changeplan.LogicalChange
+		existing    []github.Environment
+		want        preconditionCheck
+		wantChanged setting.Unit
+	}{
+		{
+			name:     "value change holds when the environment and the value are as planned",
+			change:   valueChange,
+			existing: []github.Environment{approved},
+			want:     preconditionHolds,
+		},
+		{
+			name:        "value change of an environment that no longer exists is a change of the environment",
+			change:      valueChange,
+			existing:    nil,
+			want:        preconditionCurrentValueChanged,
+			wantChanged: existence,
+		},
+		{
+			// 作り直された Environment の変数は、計画時と同じ値でも承認した変更の相手ではない
+			name:        "value change of an environment recreated with another ID is a change of the environment even if the value is as planned",
+			change:      valueChange,
+			existing:    []github.Environment{withVariables(observedEnvironment(8, "Production", setting.DeploymentBranchPolicyAll), planned)},
+			want:        preconditionCurrentValueChanged,
+			wantChanged: existence,
+		},
+		{
+			name:        "value change with another value since approval is a change of the variable",
+			change:      valueChange,
+			existing:    []github.Environment{withVariables(observedEnvironment(7, "Production", setting.DeploymentBranchPolicyAll), github.Variable{Name: "REGION", Value: "us-east-1"})},
+			want:        preconditionCurrentValueChanged,
+			wantChanged: region,
+		},
+		{
+			name:     "creation in a created environment holds when the environment exists without the variable",
+			change:   creation,
+			existing: []github.Environment{withVariables(observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll), github.Variable{Name: "OTHER", Value: "x"})},
+			want:     preconditionHolds,
+		},
+		{
+			// 変数は観測不能になり、存在しないことと同じには扱わない
+			name:        "creation in a created environment that does not exist is a change of the variable",
+			change:      creation,
+			existing:    nil,
+			want:        preconditionCurrentValueChanged,
+			wantChanged: region,
+		},
+		{
+			name:        "creation in a created environment with the variable created with the declared value is a change of the variable",
+			change:      creation,
+			existing:    []github.Environment{withVariables(observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll), planned)},
+			want:        preconditionCurrentValueChanged,
+			wantChanged: region,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := github.ObservationResult{RepositoryID: 1, Environments: environments(tc.existing...)}
+			got, changed := checkPrecondition(1, tc.change.Operations[0], observed, github.EnvironmentObservation{})
+			if got != tc.want || changed != tc.wantChanged {
+				t.Errorf("checkPrecondition() = %v, %+v, want %v, %+v", got, changed, tc.want, tc.wantChanged)
+			}
+		})
+	}
+}
+
 // TestMatchesCreatedEnvironment は、同じ論理的な設定変更が作成した Environment について、後続の更新操作の直前の観測が予定どおりかの規則を確かめる。
 //
 //trace:checks INV-004 FR-010

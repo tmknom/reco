@@ -60,11 +60,11 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 	}
 	reason := s.UnavailableReason()
 	switch {
-	case s.Unit.Key.Area() == setting.AreaEnvironments && reason == github.UnavailableEnvironmentNameUndetermined:
+	case s.Unit.Key.HasEnvironmentName() && reason == github.UnavailableEnvironmentNameUndetermined:
 		// 作成すれば、GitHub が同じとみなす既存の Environment を変え得る。同じリポジトリのほかの宣言では解消しない
 		return NotApplicable, NotApplicableEnvironmentNameUndetermined
-	case s.Unit.Key == setting.EnvironmentDeploymentBranchPolicy && reason == github.UnavailableEnvironmentAbsent:
-		// Environment の宣言は存在の宣言を兼ねるため、同じ変更計画が先にその Environment を作成する
+	case s.Unit.Key.HasEnvironmentName() && s.Unit.Key != setting.EnvironmentResource && reason == github.UnavailableEnvironmentAbsent:
+		// Environment の宣言は、方式や変数だけを書いても存在の宣言を兼ねるため、同じ変更計画が先にその Environment を作成する
 		if !createsEnvironment(settings, s.Unit.Environment) {
 			panic(fmt.Sprintf("changeplan: %s is not comparable without the creation of its environment", s.Unit.String()))
 		}

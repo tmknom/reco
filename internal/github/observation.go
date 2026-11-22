@@ -98,6 +98,8 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 		return o.RepositoryVariables.Lookup(unit.Variable)
 	case setting.EnvironmentDeploymentBranchPolicy:
 		return o.Environments.Lookup(unit.Environment).DeploymentBranchPolicy()
+	case setting.EnvironmentVariable:
+		return o.Environments.Lookup(unit.Environment).Variable(unit.Variable)
 	case setting.EnvironmentResource:
 		// Environment そのものは値を持たないため、この関数では引けない。存在は Environments.Lookup で引く。
 	}

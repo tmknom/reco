@@ -374,50 +374,101 @@ func TestRepositoryPlan_LogicalChangesOfRepositoryVariables(t *testing.T) {
 	}
 	want := []LogicalChange{
 		{DesiredState: []DesiredSetting{{Unit: mismatch.Unit, Value: mismatch.Desired}}, Operations: []UpdateOperation{operationOf(mismatch)}},
-		{DesiredState: []DesiredSetting{{Unit: creation.Unit, Value: creation.Desired}}, Operations: []UpdateOperation{repositoryVariableOperationOf(creation)}},
-		{DesiredState: []DesiredSetting{{Unit: valueChange.Unit, Value: valueChange.Desired}}, Operations: []UpdateOperation{repositoryVariableOperationOf(valueChange)}},
+		{DesiredState: []DesiredSetting{{Unit: creation.Unit, Value: creation.Desired}}, Operations: []UpdateOperation{variableOperationOf(creation, creation.Observed)}},
+		{DesiredState: []DesiredSetting{{Unit: valueChange.Unit, Value: valueChange.Desired}}, Operations: []UpdateOperation{variableOperationOf(valueChange, valueChange.Observed)}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
 	}
 }
 
-// TestRepositoryVariableOperationOf は、計画時の観測結果から、変数の更新操作の種類と変更前提の基準を決めることを確かめる。
+// TestRepositoryPlan_LogicalChangesOfEnvironmentVariables は、Environment Variable の変更予定を、変数ごとに一つの更新操作からなる論理的な設定変更にし、
+// 計画時に存在した Environment では Environment、変数の順に、作成する Environment では変数が存在しないことだけを基準に載せることを確かめる。
 //
-//trace:checks INV-001 INV-004 FR-010 FR-011
-func TestRepositoryVariableOperationOf(t *testing.T) {
-	unit := variableUnit(t, "GO_VERSION")
-	desired := setting.VariableValue("1.27")
+//trace:checks INV-001 INV-004 INV-005 FR-010 FR-011
+func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
+	production, staging := mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging")
+	region, debug := mustVariableName(t, "REGION"), mustVariableName(t, "DEBUG")
+	existingStaging := lookup(t, "staging", withVariables(github.Environment{ID: 7, Name: "staging"}))
+	stagingExistence := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, ObservedEnvironment: existingStaging, Result: Match}
+	stagingEnvironment := RelevantSetting{Unit: stagingExistence.Unit, AnticipatedEnvironment: existingStaging}
+	productionUnit := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
+	productionCreation := SettingPlan{Unit: productionUnit, ObservedEnvironment: lookup(t, "production"), Result: Mismatch, Applicability: Applicable}
+	variablePlan := func(unit setting.Unit, observed github.SettingObservation[setting.Value], result ReconciliationResult) SettingPlan {
+		return SettingPlan{Unit: unit, Observed: observed, Desired: setting.VariableValue("eu"), Result: result, Applicability: Applicable}
+	}
+	variableChange := func(kind UpdateOperationKind, unit setting.Unit, relevant ...RelevantSetting) LogicalChange {
+		return LogicalChange{
+			DesiredState: []DesiredSetting{{Unit: unit, Value: setting.VariableValue("eu")}},
+			Operations:   []UpdateOperation{{Kind: kind, Unit: unit, Value: setting.VariableValue("eu"), RelevantSettings: relevant}},
+		}
+	}
+	absentVariable := github.Observed(setting.AbsentVariable())
 	cases := []struct {
 		name     string
-		observed setting.Value
-		wantKind UpdateOperationKind
+		settings []SettingPlan
+		want     []LogicalChange
 	}{
-		{name: "absent variable is a creation based on its absence", observed: setting.AbsentVariable(), wantKind: RepositoryVariableCreation},
-		{name: "different value is a value update based on the planned value", observed: setting.VariableValue("1.26"), wantKind: RepositoryVariableValueUpdate},
-		{name: "empty value is an existing variable and a value update", observed: setting.VariableValue(""), wantKind: RepositoryVariableValueUpdate},
+		{
+			name:     "value change of an existing environment is based on the environment and then the planned value",
+			settings: []SettingPlan{stagingExistence, variablePlan(environmentVariableUnit(staging, region), github.Observed(setting.VariableValue("us")), Mismatch)},
+			want: []LogicalChange{variableChange(EnvironmentVariableValueUpdate, environmentVariableUnit(staging, region),
+				stagingEnvironment, RelevantSetting{Unit: environmentVariableUnit(staging, region), AnticipatedValue: github.Observed(setting.VariableValue("us"))})},
+		},
+		{
+			name: "variables of an environment to create follow its creation one change each and are based only on their absence",
+			settings: []SettingPlan{
+				productionCreation,
+				variablePlan(environmentVariableUnit(production, region), github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), NotComparable),
+				variablePlan(environmentVariableUnit(production, debug), github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), NotComparable),
+			},
+			want: []LogicalChange{
+				{
+					DesiredState: []DesiredSetting{{Unit: productionUnit}},
+					Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: productionUnit, RelevantSettings: []RelevantSetting{{Unit: productionUnit, AnticipatedEnvironment: lookup(t, "production")}}}},
+				},
+				variableChange(EnvironmentVariableCreation, environmentVariableUnit(production, region), RelevantSetting{Unit: environmentVariableUnit(production, region), AnticipatedValue: absentVariable}),
+				variableChange(EnvironmentVariableCreation, environmentVariableUnit(production, debug), RelevantSetting{Unit: environmentVariableUnit(production, debug), AnticipatedValue: absentVariable}),
+			},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			s := SettingPlan{Unit: unit, Observed: github.Observed(tc.observed), Desired: desired, Result: Mismatch, Applicability: Applicable}
-			want := UpdateOperation{
-				Kind: tc.wantKind, Unit: unit, Value: desired,
-				RelevantSettings: []RelevantSetting{{Unit: unit, AnticipatedValue: github.Observed(tc.observed)}},
+			got, err := RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: tc.settings}.LogicalChanges()
+			if err != nil {
+				t.Fatalf("LogicalChanges() error = %v", err)
 			}
-			if got := repositoryVariableOperationOf(s); !reflect.DeepEqual(got, want) {
-				t.Errorf("repositoryVariableOperationOf() = %+v, want %+v", got, want)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("LogicalChanges() =\n%+v\nwant\n%+v", got, tc.want)
 			}
 		})
 	}
 
-	t.Run("not comparable plan panics", func(t *testing.T) {
-		defer func() {
-			if recover() == nil {
-				t.Error("repositoryVariableOperationOf() did not panic")
-			}
-		}()
-		repositoryVariableOperationOf(SettingPlan{Unit: unit, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: desired, Result: NotComparable, Applicability: Applicable})
-	})
+	// 対にならない形は、environmentPlans と judgeApplicability が作らないため、基準のない更新操作を返さずに panic する
+	panics := []struct {
+		name     string
+		settings []SettingPlan
+	}{
+		{name: "variable without the plan of its environment panics", settings: []SettingPlan{variablePlan(environmentVariableUnit(staging, region), absentVariable, Mismatch)}},
+		{
+			name:     "not comparable variable of an existing environment panics",
+			settings: []SettingPlan{stagingExistence, variablePlan(environmentVariableUnit(staging, region), github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), NotComparable)},
+		},
+		{
+			name:     "mismatched variable of an environment to create panics",
+			settings: []SettingPlan{productionCreation, variablePlan(environmentVariableUnit(production, region), absentVariable, Mismatch)},
+		},
+	}
+	for _, tc := range panics {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Error("LogicalChanges() did not panic")
+				}
+			}()
+			_, _ = RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: tc.settings}.LogicalChanges()
+		})
+	}
 }
 
 func TestRepositoryPlan_SettingPlanOf(t *testing.T) {
