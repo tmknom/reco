@@ -209,6 +209,22 @@ func TestValue_DependabotSecurityUpdatesOfBoolPanics(t *testing.T) {
 	BoolValue(true).DependabotSecurityUpdates()
 }
 
+func TestValue_VariableValue(t *testing.T) {
+	v := VariableValue("a\"b\n")
+	if got := v.VariableValue(); got != "a\"b\n" {
+		t.Errorf("VariableValue() = %q, want %q", got, "a\"b\n")
+	}
+}
+
+func TestValue_VariableValueOfAbsentVariablePanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("VariableValue() did not panic for an absent variable")
+		}
+	}()
+	AbsentVariable().VariableValue()
+}
+
 func TestValue_SelectedActionsCriteria(t *testing.T) {
 	want := SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: []string{"z/*", "a/*"}}
 	if got := SelectedActionsCriteriaValue(want).SelectedActionsCriteria(); !reflect.DeepEqual(got, want) {

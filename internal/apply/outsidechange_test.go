@@ -120,6 +120,16 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			after:  selectedWith(false, declaredCriteria),
 			want:   nil,
 		},
+		{
+			// 同じ一覧のほかの変数は、変数の更新エンドポイントの変更対象外の設定に当たらない
+			name:   "variable value change does not compare other variables of the same list",
+			change: variableValueChange(t, "GO_VERSION", "1.26", "1.27"),
+			before: []github.ObservationResult{{RepositoryVariables: variables(github.Variable{Name: "GO_VERSION", Value: "1.26"}, github.Variable{Name: "OTHER", Value: "a"})}},
+			after: github.ObservationResult{RepositoryVariables: variables(
+				github.Variable{Name: "GO_VERSION", Value: "1.27"}, github.Variable{Name: "OTHER", Value: "b"}, github.Variable{Name: "ADDED", Value: "c"},
+			)},
+			want: nil,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -136,7 +146,7 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			}
 		}()
 		change := allowAutoMergeChange()
-		change.Operations[0].Kind = changeplan.DeploymentPatternRemoval + 1
+		change.Operations[0].Kind = changeplan.RepositoryVariableValueUpdate + 1
 		unexpectedOutsideChanges(change, []github.ObservationResult{{}}, github.ObservationResult{})
 	})
 }

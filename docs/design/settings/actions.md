@@ -108,7 +108,7 @@ Repository Variable は取得条件を持たないため、比較不能になり
 | 観測 | 宣言 | 照合結果 | 変更予定 | 適用可能性 |
 |---|---|---|---|---|
 | 存在し、値が同じ | 同じ値 | 一致 | なし | なし |
-| 存在し、値が異なる | 異なる値 | 不一致 | 値の更新 | 適用可能 |
+| 存在し、値が異なる | 異なる値 | 不一致 | 値の変更 | 適用可能 |
 | 存在しない | 宣言あり | 不一致 | 作成 | 適用可能 |
 | 存在する | 宣言なし | 照合しない | なし | なし |
 
@@ -167,6 +167,15 @@ Actions 許可ポリシーを宣言せずに Actions の有効状態を宣言し
 
 `access_level` の変更予定は、一つの更新操作からなる一つの論理的な設定変更です。変更前提で比べる関係する現在値は、`access_level` が計画時の観測値であることだけです。更新直前にリポジトリが公開になっていれば `access_level` が観測不能になり、関係する現在値の変化として更新要求を送りません。更新後に公開になっていれば、期待値と比べる `access_level` が観測不能になるため、期待状態の確認失敗として完了にしません。
 
+Repository Variable の変更予定は、変数ごとに、一つの更新操作からなる一つの論理的な設定変更です。計画時の関連リソースの観測結果が存在しないことである変更予定が作成で、存在することである変更予定が値の変更です。二つは更新操作の種類が異なります。論理的な設定変更は、設定宣言で変数を書いた順に実行します。
+
+| 変更予定 | 更新操作 | 関係する現在値と、承認時に予定した値 | 更新後に確かめる期待状態 |
+|---|---|---|---|
+| 作成 | (1) `POST /repos/{owner}/{repo}/actions/variables` | その名前の変数が存在しないこと | 存在し、値が宣言した値と同じであること |
+| 値の変更 | (1) `PATCH /repos/{owner}/{repo}/actions/variables/{name}` | 存在し、値が計画時の観測値と同じであること | 存在し、値が宣言した値と同じであること |
+
+更新直前と更新後の観測は、どちらも変数の一覧を読み直します（[観測](#観測)）。どちらの更新操作も、変更前提が成り立たなければ更新要求を送りません（[ドメインモデル](../domain.md) の変更前提と期待状態の確認）。
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-006` | Functional Requirement |
@@ -174,7 +183,9 @@ Actions 許可ポリシーを宣言せずに Actions の有効状態を宣言し
 | `alignment` | `FR-012` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
 | `alignment` | `INV-004` | Invariant |
+| `alignment` | `INV-005` | Invariant |
 | `grounding` | [GitHub Actions 権限 API 仕様](../../research/actions-permissions.md) | Repository File |
+| `grounding` | [GitHub Actions 変数 API 仕様](../../research/actions-variables.md) | Repository File |
 
 ## 更新方式
 
@@ -186,6 +197,7 @@ Actions 許可ポリシーを宣言せずに Actions の有効状態を宣言し
 | `sha_pinning_required` | 必須の `enabled` には、更新直前に有効と確かめたうえで `true` を送り、省略した `allowed_actions` の保持に依拠して更新する |
 | ワークフロー権限 | 管理する値だけを送り、省略したもう一方のフィールドの保持に依拠して部分更新する |
 | リポジトリ外のワークフローからのアクセス | `access_level` だけを送る。この更新エンドポイントで reco が観測する設定はほかになく、保全を確かめる設定がない |
+| Repository Variable | 宣言した名前の変数だけを宛先にする。作成は名前と値を、値の変更は値だけを送る |
 
 Actions の有効状態では、`PUT /repos/{owner}/{repo}/actions/permissions` に `enabled` だけを送ります。省略した `allowed_actions` と `sha_pinning_required` が保持され、選択方式の Actions 許可条件も変わらないことを、無効にする更新と有効に戻す更新のどちらでも、公開・非公開のリポジトリで実際の動作により確認しています（[GitHub Actions 権限 API 仕様](../../research/actions-permissions.md) 3.2・4章）。これが、`enabled` だけを送る方式の根拠です。無効にする更新では、更新後に Actions 許可ポリシーと `sha_pinning_required` が取得条件により観測不能になり（GitHub Actions 権限 API 仕様 3.1）、更新直前の値と比べられません。有効にする更新では、更新直前に同じ理由で観測不能で、比べる基準がありません。どちらの場合も、この確認結果を根拠に保全されるとみなします。無効にする更新が反映されず有効のままだった場合は、どちらも観測できるため、更新直前の値と比べます。
 
@@ -199,12 +211,19 @@ Actions 許可ポリシーでは、`PUT /repos/{owner}/{repo}/actions/permission
 
 リポジトリ外のワークフローからのアクセスでは、`PUT /repos/{owner}/{repo}/actions/permissions/access` に `access_level` だけを送り、`204` を正常応答とします。`access_level` は必須で、この更新エンドポイントで reco が観測する設定は `access_level` だけのため、更新後に更新直前の値と比べる設定はありません。送った値が直後の取得に反映されることと、Actions が無効のときも取得・更新できることは、実際の動作で確認しています（GitHub Actions 権限 API 仕様 6章）。
 
+Repository Variable の作成では、`POST /repos/{owner}/{repo}/actions/variables` に `name` と `value` を送り、`201` を正常応答とします。応答の本文は空のオブジェクトで変数を含まないため（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 5.1）、本文を解釈せず、更新後の観測で存在と値を確かめます。同じ名前（大文字小文字だけが違う名前を含む）の変数があるとき、GitHub は `409` で拒否し、既存の値を変えません。この応答は更新操作の失敗です。応答を受け取れなかった作成は成否不明とし、再送しません。応答が返らないまま変数が作られていた例があるためです（GitHub Actions 変数 API 仕様 5.1）。
+
+値の変更では、`PATCH /repos/{owner}/{repo}/actions/variables/{name}` に `value` だけを送り、`204` を正常応答とします。`name` は送りません。reco は変数の名前を変えないためです。宛先の名前は宣言の綴りで、1つのパス要素としてエスケープして送ります。GitHub は名前を大文字で保存し、宣言の名前は英小文字を含まないため、宣言の綴りが保存された名前と一致します。存在しない名前への `PATCH` は `404` で、変数は作られません（GitHub Actions 変数 API 仕様 1章）。上限を超える値は、作成でも値の変更でも `422` で拒否され、値は変わりません（GitHub Actions 変数 API 仕様 3章）。
+
+変数の更新エンドポイントで reco が観測する設定は、その変数だけです。同じ一覧のほかの変数は、更新後に更新直前の値と比べません。作成、同じ名前の作成、値の変更のどれでも、ほかの変数が変わらなかったという確認結果（GitHub Actions 変数 API 仕様 5.4）を、保全の根拠とします。
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-006` | Functional Requirement |
 | `alignment` | `FR-011` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub Actions 権限 API 仕様](../../research/actions-permissions.md) | Repository File |
+| `grounding` | [GitHub Actions 変数 API 仕様](../../research/actions-variables.md) | Repository File |
 
 ## シナリオと反例
 
@@ -234,6 +253,8 @@ Actions 許可ポリシーでは、`PUT /repos/{owner}/{repo}/actions/permission
 | 非公開リポジトリで `access_level` を `organization` と観測し、`none` を宣言した | Mismatch で適用可能 | `organization` は宣言できない値なので Not Comparable |
 | 宣言した値と、観測した Repository Variable の値が、末尾の改行だけ異なる | 異なる値であり Mismatch。変更予定は値の変更 | 空白の違いなので同じ値とみなし Match |
 | 宣言した `GO_VERSION` に対し、一覧が `go_version` を返した | 同じ変数として照合する。作成を計画しない | 綴りが違うので存在しないとみなし、作成を計画する |
+| `GO_VERSION` の作成を承認したあと、更新直前の一覧に、宣言と同じ値の `GO_VERSION` があった | 関係する現在値の変化で、作成の要求を送らない。変更結果は未実行 | 宣言どおりの値なので完了。または、`POST` を送れば `409` で止まるので確かめなくてよい |
+| 更新直前の一覧になかった `GO_VERSION` の作成が、`409` で拒否された | 更新操作の失敗で、変更結果は失敗。更新直前の観測から要求までのあいだに作られた可能性がある | 同じ名前の変数があるので作成は完了 |
 | Actions が無効の非公開リポジトリで、`access_level` の観測値が宣言と異なる | Mismatch で適用可能。Actions の有効状態は適用可能性に関係しない | Actions が無効なので適用不能 |
 
 ## References

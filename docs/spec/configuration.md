@@ -217,7 +217,7 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 | `actions.variables[].value` | 文字列 | 7.2節の値 | その Repository Variable の値 | Repository Variable（関連リソースそのもの） |
 
 - **`name` と `value` は必須である**：要素はこの2つのキーだけを持つ。`state` などほかのキーは受け付けない
-- **要素は存在と値の宣言を兼ねる**：書いた名前の Repository Variable が存在しなければ作成を計画し、存在して値が違えば値の更新を計画する
+- **要素は存在と値の宣言を兼ねる**：書いた名前の Repository Variable が存在しなければ作成を計画し、存在して値が違えば値の変更を計画する
 - **存在しないことの宣言は受け付けない**：`value: ~` も存在しないことの宣言にはならず、入力不正として拒否する（7.2節）
 - **`actions` に `variables` だけを書いた宣言は、Actions の許可設定を宣言しない**：`permissions`、`workflow`、`access` の設定は管理範囲外のままである
 

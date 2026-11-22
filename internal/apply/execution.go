@@ -164,6 +164,10 @@ func sendUpdate(ctx context.Context, client *github.Client, target repository.Re
 	case changeplan.DeploymentPatternRemoval:
 		id := deploymentPatternIDOf(operation.Unit.Environment, operation.Pattern, observed)
 		return client.RemoveDeploymentPattern(ctx, target, environmentDestination(operation.Unit.Environment, observed), operation.Pattern, id)
+	case changeplan.RepositoryVariableCreation:
+		return client.CreateRepositoryVariable(ctx, target, operation.Unit.Variable, operation.Value.VariableValue())
+	case changeplan.RepositoryVariableValueUpdate:
+		return client.UpdateRepositoryVariableValue(ctx, target, operation.Unit.Variable, operation.Value.VariableValue())
 	}
 	panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))
 }

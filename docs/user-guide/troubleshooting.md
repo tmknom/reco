@@ -166,10 +166,11 @@ GitHub Free のアカウントが所有するプライベートリポジトリ�
 | `communication failed`、`unexpected response (HTTP 5xx)` | 通信の失敗か、GitHub 側の障害。時間をおいて実行し直す |
 | `redirect not followed`（下の `HTTP 303` の行を除く） | リポジトリの名前が変わったか、移転した可能性がある。設定ファイルの `name` と `--repo` に、今の名前を書く |
 | `redirect not followed (HTTP 303): GitHub returns this when the pattern already exists` | Environment に加えようとしたパターンが、GitHub 上にすでにあった。`plan` で今のパターンを確かめてから、`apply` し直す |
-| `Precondition: ... changed since approval` | 承認したあとに、その設定の値か Environment そのものが変わった。Environment そのものの変化は、作成する予定の名前の Environment が作られた、変える予定の Environment がなくなった、作り直されたなどの場合に当たる。`plan` で今の値を確かめてから、`apply` し直す |
+| `Precondition: ... changed since approval` | 承認したあとに、その設定の値、Environment そのもの、変数のどれかが変わった。Environment そのものの変化は、作成する予定の名前の Environment が作られた、変える予定の Environment がなくなった、作り直されたなどの場合に当たる。`actions.variables.<名前>` では、作る予定の名前の変数が作られた、値を変える予定の変数の値が変わった、その変数がなくなった場合に当たる。`plan` で今の値を確かめてから、`apply` し直す |
 | そのほかの `Precondition:` | 更新を始める前の確認ができなかったか、一つ前の更新のあとの値が予定した値と違った。エラーの行があれば原因を取り除き、`plan` で確かめてから `apply` し直す |
+| `request conflicts with the current state (HTTP 409)`（`create repository variable` のエラー） | 作ろうとした名前の変数が、GitHub 上にすでにある。更新の直前の確認のあとに作られた可能性がある。`plan` で今の値を確かめてから、`apply` し直す |
+| `request not processable (HTTP 422)`（`create repository variable` か `update repository variable` のエラー） | GitHub が変数の作成か値の変更を受け付けなかった。値が上限（48,000 バイト）を超えた可能性がある。値の長さを確かめ、上限を超えていれば短くしてから `apply` し直す |
 | `Other settings: ... (cause not determined)` | 変えようとしていない設定が、更新の前後で変わっていた。誰かが変えたものかを確かめ、`plan` で今の値を確かめる |
-| `applying repository variable changes is not supported` | reco はまだ Repository Variables を作成も変更もできない。どのリポジトリの設定も変えていない。`plan` で差分を確かめ、GitHub の画面などで変数を設定ファイルの値に合わせる。値が一致すれば `apply` できる。変数をそのままにしてほかの設定だけを `apply` するなら、その変数を設定ファイルから一時的に外す |
 
 ## References
 

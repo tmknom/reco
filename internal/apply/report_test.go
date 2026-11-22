@@ -842,7 +842,7 @@ func TestWriteChangeReport_DeploymentPatterns(t *testing.T) {
 
 	t.Run("undefined kind of an update operation panics", func(t *testing.T) {
 		change := deploymentPatternsChange(t, "production", selectedEnvironment(7, "production", []setting.DeploymentPattern{main}, 10), selectedPolicy(main, release, version))
-		change.Operations[0].Kind = changeplan.DeploymentPatternRemoval + 1
+		change.Operations[0].Kind = changeplan.RepositoryVariableValueUpdate + 1
 		defer func() {
 			if recover() == nil {
 				t.Error("updateRequestLines() did not panic")
@@ -850,4 +850,27 @@ func TestWriteChangeReport_DeploymentPatterns(t *testing.T) {
 		}()
 		updateRequestLines(changeRecord{change: change, operations: []operationRecord{succeeded, succeeded}})
 	})
+}
+
+// TestWriteChangeReport_RepositoryVariables は、変数の変更結果を名前で示し、値を示さないことを確かめる。
+//
+//trace:checks INV-005 FR-013
+func TestWriteChangeReport_RepositoryVariables(t *testing.T) {
+	records := []changeRecord{
+		completedRecord(variableCreationChange(t, "GO_VERSION", "s3cr3t-created")),
+		{change: variableValueChange(t, "NODE_VERSION", "s3cr3t-before", "s3cr3t-after"), operations: []operationRecord{started(github.UpdateRejected)}, cause: github.ErrUnprocessable},
+		{change: variableCreationChange(t, "RUBY_VERSION", "s3cr3t-stopped")},
+	}
+	var out bytes.Buffer
+	if err := writeChangeReport(&out, []repositoryRecord{{target: mustReference(t, "owner/repo"), changes: records}}); err != nil {
+		t.Fatalf("writeChangeReport() error = %v", err)
+	}
+	want := "  owner/repo\n" +
+		"    actions.variables.GO_VERSION: updated\n" +
+		"    actions.variables.NODE_VERSION: failed\n      Update request: rejected\n      Desired state: not checked\n" +
+		"    actions.variables.RUBY_VERSION: not attempted\n      Stopped: a preceding change did not complete\n" +
+		"\nNote: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.\n"
+	if out.String() != want {
+		t.Errorf("writeChangeReport() wrote %q, want %q", out.String(), want)
+	}
 }

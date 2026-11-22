@@ -189,3 +189,26 @@ func onlyLogicalChange(t *testing.T, r changeplan.RepositoryPlan) changeplan.Log
 	}
 	return changes[0]
 }
+
+// variableMismatch は、計画時に observed と観測した、宣言の名前 name の Repository Variable を、値 desired にする変更予定。
+func variableMismatch(t *testing.T, name string, observed setting.Value, desired string) changeplan.SettingPlan {
+	t.Helper()
+	return changeplan.SettingPlan{
+		Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, name)}, Observed: github.Observed(observed),
+		Desired: setting.VariableValue(desired), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+	}
+}
+
+// variableCreationChange は、計画時に存在しなかった name の Repository Variable を、値 desired で作成する論理的な設定変更。
+// 変更前提の基準を手で写さず、changeplan が導いた論理的な設定変更を使う。
+func variableCreationChange(t *testing.T, name, desired string) changeplan.LogicalChange {
+	t.Helper()
+	return onlyLogicalChange(t, newRepositoryPlan(t, variableMismatch(t, name, setting.AbsentVariable(), desired)))
+}
+
+// variableValueChange は、計画時に値 observed と観測した name の Repository Variable の値を desired にする論理的な設定変更。
+// 変更前提の基準を手で写さず、changeplan が導いた論理的な設定変更を使う。
+func variableValueChange(t *testing.T, name, observed, desired string) changeplan.LogicalChange {
+	t.Helper()
+	return onlyLogicalChange(t, newRepositoryPlan(t, variableMismatch(t, name, setting.VariableValue(observed), desired)))
+}

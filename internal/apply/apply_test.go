@@ -109,6 +109,21 @@ func TestExecutableChanges(t *testing.T) {
 		}
 	})
 
+	// Repository Variable の更新操作は UpdateEndpointOf で引けないため、引くと panic で失敗する
+	t.Run("variable changes are executable without looking up an update endpoint", func(t *testing.T) {
+		p := plans(t, []changeplan.SettingPlan{variableMismatch(t, "GO_VERSION", setting.AbsentVariable(), "1.27"), variableMismatch(t, "NODE_VERSION", setting.VariableValue("20"), "22")})
+		got, err := executableChanges(p)
+		if err != nil {
+			t.Fatalf("executableChanges() error = %v", err)
+		}
+		want := []repositoryChanges{{plan: p.Repositories[0], changes: []changeplan.LogicalChange{
+			variableCreationChange(t, "GO_VERSION", "1.27"), variableValueChange(t, "NODE_VERSION", "20", "22"),
+		}}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("executableChanges() = %+v, want %+v", got, want)
+		}
+	})
+
 	t.Run("update operation for a setting without an update request after an executable one panics before approval", func(t *testing.T) {
 		defer func() {
 			if recover() == nil {
@@ -323,29 +338,6 @@ func TestApplyPlan(t *testing.T) {
 
 		if err == nil || !strings.HasSuffix(err.Error(), "; no changes made") {
 			t.Errorf("applyPlan() error = %v, want an error ending with %q", err, "; no changes made")
-		}
-		if calls != 0 || out.Len() != 0 || len(server.Methods()) != 0 {
-			t.Errorf("approve calls = %d, Out = %q, requests = %v, want none", calls, out.String(), server.Methods())
-		}
-	})
-
-	t.Run("repository variable change returns an error without output, approval, or requests", func(t *testing.T) {
-		baseURL, server := newSequenceServer(t)
-		var out bytes.Buffer
-		calls := 0
-		variable := changeplan.SettingPlan{
-			Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, "GO_VERSION")}, Observed: github.Observed(setting.AbsentVariable()),
-			Desired: setting.VariableValue("1.27"), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
-		}
-
-		p := newPlan(t, allowAutoMergeMismatch(), variable)
-
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), p)
-
-		// 拒否の文言は changeplan が持つため、apply は no changes made を足すことだけを確かめる
-		_, logicalErr := p.Repositories[0].LogicalChanges()
-		if want := logicalErr.Error() + "; no changes made"; err == nil || err.Error() != want {
-			t.Errorf("applyPlan() error = %v, want %q", err, want)
 		}
 		if calls != 0 || out.Len() != 0 || len(server.Methods()) != 0 {
 			t.Errorf("approve calls = %d, Out = %q, requests = %v, want none", calls, out.String(), server.Methods())
@@ -603,7 +595,7 @@ const workflowConfigSource = `repositories:
         default_workflow_permissions: read
 `
 
-//trace:checks INV-001 INV-002 INV-004 FR-008 FR-011
+//trace:checks INV-001 INV-002 INV-004 INV-005 FR-008 FR-011
 func TestRun(t *testing.T) {
 	newConfig := func(files fstest.MapFS, out *bytes.Buffer, baseURL *url.URL, calls *int) Config {
 		return Config{
@@ -1050,6 +1042,44 @@ func TestRun(t *testing.T) {
 		want := slices.Concat(reads,
 			reads, []string{"PUT /repos/owner/repo/environments/production"},
 			readPatterns, []string{"POST /repos/owner/repo/environments/production/deployment-branch-policies"}, readPatterns)
+		if !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		if calls != 1 || !strings.Contains(out.String(), "owner/repo: updated") || !strings.Contains(out.String(), "Apply complete.") {
+			t.Errorf("approve calls = %d, Out = %q, want one approval and the repository updated", calls, out.String())
+		}
+	})
+
+	t.Run("variables are created and updated in the declared order without a request to an undeclared variable", func(t *testing.T) {
+		alphaBefore := githubtest.VariableBody{Name: "ALPHA", Value: "1"}
+		alphaAfter := githubtest.VariableBody{Name: "ALPHA", Value: "2"}
+		zeta := githubtest.VariableBody{Name: "ZETA", Value: "z"}
+		other := githubtest.VariableBody{Name: "OTHER", Value: "o"}
+		baseURL, server := newSequenceServer(t,
+			okRepository(1, false, false), okVariables(alphaBefore, other),
+			okRepository(1, false, false), okVariables(alphaBefore, other), createdVariable(),
+			okRepository(1, false, false), okVariables(alphaBefore, other, zeta),
+			okRepository(1, false, false), okVariables(alphaBefore, other, zeta), noContent(),
+			okRepository(1, false, false), okVariables(alphaAfter, other, zeta))
+		var out bytes.Buffer
+		calls := 0
+		// 宣言の並びを名前順と逆にし、名前順に並べ替える実装を失敗させる
+		files := fstest.MapFS{"reco.yaml": {Data: []byte(`repositories:
+  - name: owner/repo
+    actions:
+      variables:
+        - name: ZETA
+          value: z
+        - name: ALPHA
+          value: "2"
+`)}}
+		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		reads := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/variables"}
+		want := slices.Concat(reads,
+			reads, []string{"POST /repos/owner/repo/actions/variables"}, reads,
+			reads, []string{"PATCH /repos/owner/repo/actions/variables/ALPHA"}, reads)
 		if !slices.Equal(server.RequestLines(), want) {
 			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}

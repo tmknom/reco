@@ -39,6 +39,16 @@ func (c *Client) repositoryVariablesURL(reference repository.Reference) *url.URL
 	return u
 }
 
+// repositoryVariableURL は、name の Repository Variable の URL を返す。
+// name は environmentURL と同じく1つのパス要素として送る。呼び出し元は検証済みの変数の名前だけを渡し、
+// 変数の名前は `.` と `..` になり得ないため、environmentURL のような dot-segment の確認を置かない。
+func (c *Client) repositoryVariableURL(reference repository.Reference, name string) *url.URL {
+	u := c.repositoryVariablesURL(reference)
+	u.RawPath = u.Path + "/" + url.PathEscape(name)
+	u.Path += "/" + name
+	return u
+}
+
 func (c *Client) environmentsURL(reference repository.Reference) *url.URL {
 	u := c.repositoryURL(reference)
 	u.Path += "/environments"

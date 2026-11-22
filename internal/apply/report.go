@@ -185,7 +185,8 @@ func updateRequestLines(record changeRecord) []string {
 // 未定義の種類は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func updateRequestLabel(operation changeplan.UpdateOperation, patterns []setting.DeploymentPattern) string {
 	switch operation.Kind {
-	case changeplan.SettingUpdate, changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate:
+	case changeplan.SettingUpdate, changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate,
+		changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate:
 		return operation.Unit.String()
 	case changeplan.DeploymentPatternAddition:
 		return "patterns to add " + setting.DeploymentBranchPolicy{Patterns: patterns}.PatternsString()

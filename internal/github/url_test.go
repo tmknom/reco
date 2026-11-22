@@ -119,3 +119,27 @@ func TestRepositoryURL(t *testing.T) {
 		})
 	}
 }
+
+func TestRepositoryVariableURL(t *testing.T) {
+	cases := []struct {
+		name         string
+		variableName string
+		wantEscaped  string
+		wantPath     string
+	}{
+		{name: "plain name is one path element", variableName: "GO_VERSION", wantEscaped: "/repos/owner/repo/actions/variables/GO_VERSION", wantPath: "/repos/owner/repo/actions/variables/GO_VERSION"},
+		{name: "slash is escaped as %2F", variableName: "A/B", wantEscaped: "/repos/owner/repo/actions/variables/A%2FB", wantPath: "/repos/owner/repo/actions/variables/A/B"},
+	}
+	c := New(testToken)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			u := c.repositoryVariableURL(mustReference(t, "owner/repo"), tc.variableName)
+			if got := u.EscapedPath(); got != tc.wantEscaped {
+				t.Errorf("repositoryVariableURL(%q) escaped path = %q, want %q", tc.variableName, got, tc.wantEscaped)
+			}
+			if u.Path != tc.wantPath {
+				t.Errorf("repositoryVariableURL(%q) path = %q, want %q", tc.variableName, u.Path, tc.wantPath)
+			}
+		})
+	}
+}

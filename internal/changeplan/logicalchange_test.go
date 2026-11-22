@@ -357,34 +357,66 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	})
 }
 
-//trace:checks FR-008
+// TestRepositoryPlan_LogicalChangesOfRepositoryVariables は、変数の変更予定が、変数ごとに一つの更新操作からなる別々の論理的な設定変更になり、計画の並びで実行されることを確かめる。
+//
+//trace:checks INV-005 FR-011
 func TestRepositoryPlan_LogicalChangesOfRepositoryVariables(t *testing.T) {
 	mismatch := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
-	variable := func(observed setting.Value, result ReconciliationResult) SettingPlan {
-		return SettingPlan{Unit: variableUnit(t, "GO_VERSION"), Observed: github.Observed(observed), Desired: setting.VariableValue("1.27"), Result: result, Applicability: Applicable}
-	}
-	newRepositoryPlan := func(settings ...SettingPlan) RepositoryPlan {
-		return RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
-	}
+	creation := SettingPlan{Unit: variableUnit(t, "ZETA"), Observed: github.Observed(setting.AbsentVariable()), Desired: setting.VariableValue("z"), Result: Mismatch, Applicability: Applicable}
+	valueChange := SettingPlan{Unit: variableUnit(t, "ALPHA"), Observed: github.Observed(setting.VariableValue("1")), Desired: setting.VariableValue("2"), Result: Mismatch, Applicability: Applicable}
+	// 値が一致した変数は、変更予定がないため論理的な設定変更にならない
+	matched := SettingPlan{Unit: variableUnit(t, "MATCHED"), Observed: github.Observed(setting.VariableValue("m")), Desired: setting.VariableValue("m"), Result: Match}
+	plan := RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: []SettingPlan{mismatch, creation, matched, valueChange}}
 
-	t.Run("planned change of a variable is not supported before approval", func(t *testing.T) {
-		for _, planned := range []SettingPlan{variable(setting.AbsentVariable(), Mismatch), variable(setting.VariableValue("1.26"), Mismatch)} {
-			got, err := newRepositoryPlan(mismatch, planned).LogicalChanges()
-			want := "owner/repo: actions.variables.GO_VERSION cannot be applied: applying repository variable changes is not supported"
-			if err == nil || err.Error() != want || got != nil {
-				t.Errorf("LogicalChanges() = %+v, error = %v, want error %q", got, err, want)
+	got, err := plan.LogicalChanges()
+	if err != nil {
+		t.Fatalf("LogicalChanges() error = %v", err)
+	}
+	want := []LogicalChange{
+		{DesiredState: []DesiredSetting{{Unit: mismatch.Unit, Value: mismatch.Desired}}, Operations: []UpdateOperation{operationOf(mismatch)}},
+		{DesiredState: []DesiredSetting{{Unit: creation.Unit, Value: creation.Desired}}, Operations: []UpdateOperation{repositoryVariableOperationOf(creation)}},
+		{DesiredState: []DesiredSetting{{Unit: valueChange.Unit, Value: valueChange.Desired}}, Operations: []UpdateOperation{repositoryVariableOperationOf(valueChange)}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
+	}
+}
+
+// TestRepositoryVariableOperationOf は、計画時の観測結果から、変数の更新操作の種類と変更前提の基準を決めることを確かめる。
+//
+//trace:checks INV-001 INV-004 FR-010 FR-011
+func TestRepositoryVariableOperationOf(t *testing.T) {
+	unit := variableUnit(t, "GO_VERSION")
+	desired := setting.VariableValue("1.27")
+	cases := []struct {
+		name     string
+		observed setting.Value
+		wantKind UpdateOperationKind
+	}{
+		{name: "absent variable is a creation based on its absence", observed: setting.AbsentVariable(), wantKind: RepositoryVariableCreation},
+		{name: "different value is a value update based on the planned value", observed: setting.VariableValue("1.26"), wantKind: RepositoryVariableValueUpdate},
+		{name: "empty value is an existing variable and a value update", observed: setting.VariableValue(""), wantKind: RepositoryVariableValueUpdate},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := SettingPlan{Unit: unit, Observed: github.Observed(tc.observed), Desired: desired, Result: Mismatch, Applicability: Applicable}
+			want := UpdateOperation{
+				Kind: tc.wantKind, Unit: unit, Value: desired,
+				RelevantSettings: []RelevantSetting{{Unit: unit, AnticipatedValue: github.Observed(tc.observed)}},
 			}
-		}
-	})
+			if got := repositoryVariableOperationOf(s); !reflect.DeepEqual(got, want) {
+				t.Errorf("repositoryVariableOperationOf() = %+v, want %+v", got, want)
+			}
+		})
+	}
 
-	t.Run("matched variable does not block other changes", func(t *testing.T) {
-		got, err := newRepositoryPlan(mismatch, variable(setting.VariableValue("1.27"), Match)).LogicalChanges()
-		if err != nil {
-			t.Fatalf("LogicalChanges() error = %v", err)
-		}
-		if len(got) != 1 || got[0].DesiredState[0].Unit != mismatch.Unit {
-			t.Errorf("LogicalChanges() = %+v, want only the change of %s", got, mismatch.Unit.String())
-		}
+	t.Run("not comparable plan panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("repositoryVariableOperationOf() did not panic")
+			}
+		}()
+		repositoryVariableOperationOf(SettingPlan{Unit: unit, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: desired, Result: NotComparable, Applicability: Applicable})
 	})
 }
 

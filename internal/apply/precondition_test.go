@@ -466,6 +466,63 @@ func TestCheckPrecondition_Environments(t *testing.T) {
 	}
 }
 
+// TestCheckPrecondition_RepositoryVariables は、変数の作成と値の変更の変更前提を、一覧から引いた存在と値で確かめることを確かめる。
+//
+//trace:checks INV-001 INV-004 FR-010
+func TestCheckPrecondition_RepositoryVariables(t *testing.T) {
+	goVersion := setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, "GO_VERSION")}
+	cases := []struct {
+		name        string
+		change      changeplan.LogicalChange
+		variables   *github.Variables
+		want        preconditionCheck
+		wantChanged setting.Unit
+	}{
+		{
+			name:      "creation holds when only another variable exists",
+			change:    variableCreationChange(t, "GO_VERSION", "1.27"),
+			variables: variables(github.Variable{Name: "OTHER", Value: "x"}),
+			want:      preconditionHolds,
+		},
+		{
+			name:        "creation with the variable created since approval with the declared value is a change of the variable",
+			change:      variableCreationChange(t, "GO_VERSION", "1.27"),
+			variables:   variables(github.Variable{Name: "GO_VERSION", Value: "1.27"}),
+			want:        preconditionCurrentValueChanged,
+			wantChanged: goVersion,
+		},
+		{
+			name:      "value change holds when the value is the planned value",
+			change:    variableValueChange(t, "GO_VERSION", "1.26", "1.27"),
+			variables: variables(github.Variable{Name: "GO_VERSION", Value: "1.26"}),
+			want:      preconditionHolds,
+		},
+		{
+			name:        "value change with the declared value since approval is a change of the variable",
+			change:      variableValueChange(t, "GO_VERSION", "1.26", "1.27"),
+			variables:   variables(github.Variable{Name: "GO_VERSION", Value: "1.27"}),
+			want:        preconditionCurrentValueChanged,
+			wantChanged: goVersion,
+		},
+		{
+			name:        "value change with the variable deleted since approval is a change of the variable",
+			change:      variableValueChange(t, "GO_VERSION", "1.26", "1.27"),
+			variables:   variables(),
+			want:        preconditionCurrentValueChanged,
+			wantChanged: goVersion,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := github.ObservationResult{RepositoryID: 1, RepositoryVariables: tc.variables}
+			got, changed := checkPrecondition(1, tc.change.Operations[0], observed, github.EnvironmentObservation{})
+			if got != tc.want || changed != tc.wantChanged {
+				t.Errorf("checkPrecondition() = %v, %+v, want %v, %+v", got, changed, tc.want, tc.wantChanged)
+			}
+		})
+	}
+}
+
 // TestMatchesCreatedEnvironment は、同じ論理的な設定変更が作成した Environment について、後続の更新操作の直前の観測が予定どおりかの規則を確かめる。
 //
 //trace:checks INV-004 FR-010

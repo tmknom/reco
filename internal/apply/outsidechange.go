@@ -20,6 +20,7 @@ type unexpectedOutsideChange struct {
 // ドメインモデルの観測の時点の定めに従い、更新エンドポイントごとに、それへ送った最初の更新操作の直前と比べる。
 // Environment の PUT (作成と方式の変更) は、宛先の Environment の保護設定を、その更新操作の直前と比べる。
 // 個別パターンの更新操作は、その更新エンドポイントで reco が観測するのが個別パターンの集合だけのため、比べない。
+// Repository Variable の更新操作も、その更新エンドポイントで reco が観測するのがその変数だけのため、比べない。
 // 比べる範囲はアーキテクチャ設計の未管理設定を保全する更新方式と、設定ごとの設計の更新方式に従う。
 // 未定義の種類は比べる範囲が決まらないため、不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.ObservationResult, after github.ObservationResult) []unexpectedOutsideChange {
@@ -38,7 +39,8 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.O
 		case changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate:
 			changes = append(changes, environmentProtectionChanges(operation.Unit.Environment, b, after)...)
 			continue
-		case changeplan.DeploymentPatternAddition, changeplan.DeploymentPatternRemoval:
+		case changeplan.DeploymentPatternAddition, changeplan.DeploymentPatternRemoval,
+			changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate:
 			continue
 		}
 		panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))

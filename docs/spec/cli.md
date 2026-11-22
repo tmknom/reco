@@ -68,7 +68,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 環境変数の優先順位は [GitHub CLI の環境変数仕様](https://cli.github.com/manual/gh_help_environment) と同じですが、reco が GitHub CLI の認証機構を利用することは意味しません。
 
-reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章、[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章、[GitHub Actions 変数 API 仕様](../research/actions-variables.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。`show` が読み取る Environment と個別パターンの一覧には、GitHub App の権限の分類で Actions の read に当たる権限が要ります。ほかのトークンがこの権限を持たず、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。`show` と、`actions.variables` を宣言したリポジトリの `plan` と `apply` が読み取る Repository Variables の一覧には、GitHub App の権限の分類で Variables の read に当たる権限が要り、GitHub が一覧の取得を拒んだときは、どのコマンドも観測操作の失敗としてエラー終了します。一覧を読めなければ、宣言した変数が存在しないとはみなさず、作成を計画しません。`show` と、`security` を宣言したリポジトリの `plan` と `apply` が読み取る Dependabot alerts と Dependabot security updates の取得には、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。トークンの所有者が admin のアクセスを持たないリポジトリでは、どのコマンドも観測操作の失敗としてエラー終了します。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合（Administration の read を持たない fine-grained personal access token など）の応答は確かめていません。この場合に GitHub が Dependabot alerts の取得へ `404` を返すなら、`show` は有効な Dependabot alerts を `false` と表示し、`plan` と `apply` は `dependabot_alerts: false` の宣言を変更不要と判断します（[Security の設計](../design/settings/security.md) の観測）。`show` と、`secret_scanning` か `secret_scanning_push_protection` を宣言したリポジトリの `plan` と `apply` が読み取る Secret scanning の有効状態とリポジトリの push protection も、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 5章）。`apply` は、`general` の設定を更新する前後にもこの二つを読み取ります。同じ更新エンドポイント（`PATCH /repos/{owner}/{repo}`）で変わり得る設定として比べるためです（5.2節）。公開リポジトリの応答がこれらの値を含まないときは、どのコマンドも観測操作の失敗としてエラー終了します。`general` の設定の更新にも admin のアクセスが要るため（GitHub リポジトリ API 仕様 1章）、確かめた範囲では、この読み取りが `general` だけを宣言したリポジトリの `apply` を新たに止めることはありません。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合の応答は確かめていません。`show` と、`private_vulnerability_reporting` を宣言したリポジトリの `plan` と `apply` が読み取る Private vulnerability reporting の有効状態は、admin のアクセスを要しませんが、その更新には admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。非公開リポジトリでは、この設定を読み取りません。
+reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章、[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章、[GitHub Actions 変数 API 仕様](../research/actions-variables.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。`show` が読み取る Environment と個別パターンの一覧には、GitHub App の権限の分類で Actions の read に当たる権限が要ります。ほかのトークンがこの権限を持たず、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。`show` と、`actions.variables` を宣言したリポジトリの `plan` と `apply` が読み取る Repository Variables の一覧には、GitHub App の権限の分類で Variables の read に当たる権限が要り、GitHub が一覧の取得を拒んだときは、どのコマンドも観測操作の失敗としてエラー終了します。一覧を読めなければ、宣言した変数が存在しないとはみなさず、作成を計画しません。`apply` が変数を作成し値を変えるには、Variables の write に当たる権限が要ります。GitHub が更新要求を拒んだときは、その変数の更新操作の失敗になります。`show` と、`security` を宣言したリポジトリの `plan` と `apply` が読み取る Dependabot alerts と Dependabot security updates の取得には、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。トークンの所有者が admin のアクセスを持たないリポジトリでは、どのコマンドも観測操作の失敗としてエラー終了します。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合（Administration の read を持たない fine-grained personal access token など）の応答は確かめていません。この場合に GitHub が Dependabot alerts の取得へ `404` を返すなら、`show` は有効な Dependabot alerts を `false` と表示し、`plan` と `apply` は `dependabot_alerts: false` の宣言を変更不要と判断します（[Security の設計](../design/settings/security.md) の観測）。`show` と、`secret_scanning` か `secret_scanning_push_protection` を宣言したリポジトリの `plan` と `apply` が読み取る Secret scanning の有効状態とリポジトリの push protection も、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 5章）。`apply` は、`general` の設定を更新する前後にもこの二つを読み取ります。同じ更新エンドポイント（`PATCH /repos/{owner}/{repo}`）で変わり得る設定として比べるためです（5.2節）。公開リポジトリの応答がこれらの値を含まないときは、どのコマンドも観測操作の失敗としてエラー終了します。`general` の設定の更新にも admin のアクセスが要るため（GitHub リポジトリ API 仕様 1章）、確かめた範囲では、この読み取りが `general` だけを宣言したリポジトリの `apply` を新たに止めることはありません。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合の応答は確かめていません。`show` と、`private_vulnerability_reporting` を宣言したリポジトリの `plan` と `apply` が読み取る Private vulnerability reporting の有効状態は、admin のアクセスを要しませんが、その更新には admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。非公開リポジトリでは、この設定を読み取りません。
 
 ```text
 $ GH_TOKEN=$(gh auth token) reco plan
@@ -131,7 +131,7 @@ Plan: 1 repository to update, 4 changes
 Repositories checked: 1
 ```
 
-Repository Variable の変更予定は、`actions.variables.<名前>` の形で示します。作成は `absent -> "<値>"`、値の更新は `"<現在値>" -> "<期待値>"` の1行です。値は6章の Repository Variables と同じく、二重引用符で囲んでエスケープし、改行や制御文字を含む値も1行で示し、長い値も省略しません。引用符で囲むため、文字列 `absent` の値は `"absent"` と示され、存在しないことの `absent` と見分けられます。前後の空白や末尾の改行だけが違う値も、エスケープした表記の違いとして示されます。
+Repository Variable の変更予定は、`actions.variables.<名前>` の形で示します。作成は `absent -> "<値>"`、値の変更は `"<現在値>" -> "<期待値>"` の1行です。値は6章の Repository Variables と同じく、二重引用符で囲んでエスケープし、改行や制御文字を含む値も1行で示し、長い値も省略しません。引用符で囲むため、文字列 `absent` の値は `"absent"` と示され、存在しないことの `absent` と見分けられます。前後の空白や末尾の改行だけが違う値も、エスケープした表記の違いとして示されます。
 
 ```text
 Repository: example/project-a
@@ -392,12 +392,6 @@ Plan cannot be applied.
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-b: actions.permissions.sha_pinning_required is not applicable; example/project-c: actions.permissions.sha_pinning_required is not applicable; no changes made"}
 ```
 
-`apply` は Repository Variable の変更予定（作成と値の更新）を実行しません。適用不能な変更予定がなく、Repository Variable の変更予定が一つでもあれば、変更計画を表示せず、承認を求めず、どのリポジトリも更新せずにエラー終了します。stderr のエラーは、変更計画の並びで最初の Repository Variable の変更予定の対象と設定を挙げます。値が一致した変数は、ほかの変更予定の実行を妨げません。
-
-```text
-{"time":"...","level":"ERROR","msg":"command failed","error":"example/project-a: actions.variables.GO_VERSION cannot be applied: applying repository variable changes is not supported; no changes made"}
-```
-
 すべて変更不要の場合の表示例は次のとおりです。
 
 ```text
@@ -424,6 +418,7 @@ Repositories checked: 2
 | `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
 | `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
 | `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Repository File |
+| `grounding` | [GitHub Actions 変数 API 仕様](../research/actions-variables.md) | Repository File |
 
 ### 5.1 承認
 
@@ -462,7 +457,7 @@ Repositories updated: 2
 
 更新は逐次実行します。論理的な設定変更の中では、先行する更新操作の成功を確認してから次の更新操作へ進み、別の論理的な設定変更へは、その期待状態を確認してから進みます。複数のリポジトリに変更予定があるときは、設定宣言の `repositories` の並びで一つずつ更新し、あるリポジトリのすべての論理的な設定変更が完了したときだけ、次のリポジトリへ進みます。完了しなかった論理的な設定変更があれば、残りのリポジトリには、更新要求も、更新直前の確認のための読み取り要求も送りません。変更不要のリポジトリには、変更計画を作るための観測のあと、要求を送りません。自動ロールバックは行いません。
 
-更新要求のあいだは1秒以上空けます。そのため `apply` の所要時間は、2つ目以降の更新操作ごとに1秒以上延びます。別のリポジトリの更新要求とのあいだも同じです。`deployment_branch_policy` の個別パターンは、加えるパターンと取り除くパターンの一つごとに更新要求を送るため、パターンの数だけ所要時間が延びます。このあいだに中断（`SIGINT`、`SIGTERM`）を受けた場合は、次の更新操作を開始しません（[アーキテクチャ設計](../design/architecture.md) 6.2節）。
+更新要求のあいだは1秒以上空けます。そのため `apply` の所要時間は、2つ目以降の更新操作ごとに1秒以上延びます。別のリポジトリの更新要求とのあいだも同じです。`deployment_branch_policy` の個別パターンは、加えるパターンと取り除くパターンの一つごとに更新要求を送るため、パターンの数だけ所要時間が延びます。Repository Variables も、作成するか値を変える変数の一つごとに更新要求を送るため、変数の数だけ所要時間が延びます。このあいだに中断（`SIGINT`、`SIGTERM`）を受けた場合は、次の更新操作を開始しません（[アーキテクチャ設計](../design/architecture.md) 6.2節）。
 
 GitHub が更新を取得の結果に反映するまで時間がかかることがあるため、更新操作が成功したのに期待状態と一致しないとき、または期待値と比べる設定が観測不能で確認できないときは、間隔を広げながら確認し直し、一致を確認できないまま合計約30秒が経てば `failed` とします（[アーキテクチャ設計](../design/architecture.md) 6.2節）。
 
@@ -499,6 +494,8 @@ Environment の作成も、完了すれば `updated` と示します。何を作
 
 期待値の方式が `selected` の `deployment_branch_policy` の変更は、方式を `selected` にする更新要求（方式が変わる場合だけで、作成ではその作成の更新要求）、取り除く個別パターンごとの更新要求、加える個別パターンごとの更新要求を、この順に送る一つの論理的な設定変更です（順の理由は [Environments の設計](../design/settings/environments.md) の論理的な設定変更と更新操作）。名前は、存在する Environment では `environments.<名前>.deployment_branch_policy`、作成と重なる場合は `environments.<名前> + environments.<名前>.deployment_branch_policy` です。
 
+Repository Variable の作成と値の変更は、変数ごとに、一つの更新要求からなる一つの論理的な設定変更で、`actions.variables.<名前>` と示します。名前は設定宣言の綴りです。作成も、完了すれば `updated` と示します。複数の変数は、設定宣言に書いた順に一つずつ実行し、一つが完了しなければ、残りの変数は `not attempted`（`Stopped: a preceding change did not complete`）です。作成の更新要求を、同じ名前（大文字小文字だけが違う名前を含む）の変数があるとして GitHub が拒否した場合は、更新操作の失敗として `failed` と示します。この変数を期待値と比べて `updated` にはしません。変更結果と stderr のエラーは、変数の名前を示し、変数の値と更新要求の本文は示しません。
+
 複数の更新操作からなる論理的な設定変更が、更新操作を開始したあとで完了しなかった場合は、`Update request` の行を実行順に示します。行は `Update request (<対象>): <結果>` の形で、結果は `succeeded`、`rejected`、`unknown`、開始しなかった更新操作を表す `not started` のいずれかです。`<対象>` は、その更新操作が変える管理設定です。ただし、個別パターンを取り除く更新操作は `patterns to remove [<パターン>, ...]`、加える更新操作は `patterns to add [<パターン>, ...]` と示し、パターンは `plan` と同じく `branch "main"` の形で書きます。個別パターンの更新操作のうち、加えるか取り除くかと結果が同じで続けて並ぶものは、1行にまとめてパターンを実行順に並べます。そのため、この行は複数の更新要求を表すことがあります。先行する更新操作が成功し、後続の更新操作を開始できなかった場合は、完了済みの更新操作を `succeeded`、未開始の更新操作を `not started` と示し、変更全体を `failed` とします。`not started` は更新操作についての表示で、論理的な設定変更の `not attempted` とは区別します。
 
 後続の更新操作を変更前提の不成立で開始できなかった場合は、その更新操作を含む `not started` の行の次に `Precondition:` の行で理由を示します。先行する更新操作が変えた設定が予定どおりの値でなかった場合は、`Precondition: <設定> is not the value expected after the preceding update` と示します。GitHub の反映が遅れている場合も、外部主体が値を変えた場合もこの表示になり、原因は断定しません。先行する更新操作が成功しなかったために開始しなかった場合は、理由の行を足しません。先行する更新操作が成功していれば、後続を開始できなかった場合も後続が失敗した場合も、更新後の確認を一度だけ行い、その結果と変更対象外の設定の予期しない変化を示します。この確認で期待状態との一致を確認しても、必要な更新操作の成功を確認していないため、`updated` に変更しません。最初の更新操作が拒否され、更新後の確認を行わなかった場合は `Desired state: not checked` と示します。
@@ -510,6 +507,8 @@ Environment の作成も、完了すれば `updated` と示します。何を作
 Environment では、Environment そのものの変化を `Precondition: environments.<名前> changed since approval` と示します。作成の承認のあとに同じ名前（ASCII の英字の大文字小文字だけが違う名前を含む）の Environment が作られた場合、宣言した名前と同じかどうかを判定できない名前の Environment が現れて存在を確かめられなくなった場合、方式の変更の承認のあとに Environment がなくなった場合、同じ名前で作り直されて ID が変わった場合が当たります。先頭の更新操作の直前の確認で見つかった場合は、更新要求を送らずに `not attempted` になります。Environment が変わらず方式（`selected` の個別パターンを含む）だけが変わっていた場合は、`Precondition: environments.<名前>.deployment_branch_policy changed since approval` と示します。両方が変わっていた場合は Environment そのものを優先します。作り直された Environment の方式を承認時の値と比べても、承認した変更が当てはまるかは分からないためです。
 
 個別パターンの更新操作のように後続の更新操作の直前に Environment そのものが変わっていた場合は、存在する Environment では、承認したときから変わったため、先頭の更新操作と同じく `Precondition: environments.<名前> changed since approval` と示します。同じ論理的な設定変更が作成した Environment では、`Precondition: environments.<名前> is not the environment expected after the preceding update` と示します。作成のあとに Environment がなくなった場合や、作成のあとの最初の確認で見た ID から変わった場合が当たります。先行する更新操作が成功しているため、どちらの場合も変更全体は `failed` です。後続の更新操作の直前に個別パターンの集合が予定どおりでなかった場合は、`Precondition: environments.<名前>.deployment_branch_policy is not the value expected after the preceding update` と示します。予定どおりの集合は、承認時に観測した集合に、先行する更新操作が取り除いたパターンと加えたパターンを反映したものです。方式を `selected` にした更新操作や作成のあとは、パターンが一つもないことを予定します。パターンの ID だけが違う場合（同じ種類と名前で作り直された場合）は、予定どおりとして扱います。
+
+Repository Variable では、変数の変化を `Precondition: actions.variables.<名前> changed since approval` と示し、更新要求を送らずに `not attempted` とします。作成の承認のあとに同じ名前（大文字小文字だけが違う名前を含む）の変数が作られた場合は、値が宣言と同じでもこれに当たります。承認したのは作成であり、存在する変数を上書きする変更ではないためです。値の変更の承認のあとに値が変わった場合（宣言した値になっていた場合を含む）と、変数がなくなった場合も当たります。reco は作成を値の変更に、値の変更を作成に差し替えません。同じ一覧のほかの変数は、変更対象外の設定として比べません。
 
 `failed` には、更新操作の失敗、更新操作の成否不明、成功応答後の期待状態の確認失敗、成功応答後の期待状態との不一致、成功応答後の変更対象外の設定の予期しない変化のいずれに当たるかを添えて示します。先行操作の成功後に後続操作を開始できなかった場合は、その旨を示します。変更対象外の設定の予期しない変化では、観測した変化を示しますが、reco に起因するとは断定しません。変更対象外の設定には、同じリポジトリのほかの管理設定も含みます。更新要求の応答を確認できない場合は成否不明とし、その後の再観測で期待状態が一致しても、更新操作の成否が判明したことにはならず、`updated` に変更しません。この再観測で変更対象外の設定の変化を観測した場合も、更新操作の結果と分けて示します。成否不明になった原因は、理由の行では区別せず、エラーとして示します。
 
@@ -577,6 +576,18 @@ Applying changes...
       Desired state: matches
       Other settings: general.allow_auto_merge changed false -> true (cause not determined)
     general.allow_auto_merge: not attempted
+      Stopped: a preceding change did not complete
+
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
+```
+
+```text
+Applying changes...
+  example/project-a
+    actions.variables.GO_VERSION: updated
+    actions.variables.DEPLOY_REGION: not attempted
+      Precondition: actions.variables.DEPLOY_REGION changed since approval
+    actions.variables.RELEASE_CHANNEL: not attempted
       Stopped: a preceding change did not complete
 
 Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
