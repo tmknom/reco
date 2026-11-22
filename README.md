@@ -11,7 +11,7 @@ Only settings you declare are managed. Omitted settings are left untouched.
 
 ### Supported settings
 
-- General: allow auto-merge, automatically delete head branches
+- General: allow auto-merge, automatically delete head branches, allowed merge methods (squash merge, merge commit, rebase merge; not all three can be disabled), always suggesting updating pull request branches; `plan` shows changes to the merge methods and updating branches, but `apply` cannot change them yet
 - GitHub Actions: enabling or disabling GitHub Actions, allowed actions and reusable workflows, requiring actions to be pinned to a full-length commit SHA, default `GITHUB_TOKEN` permissions, allowing GitHub Actions to create and approve pull requests, access to actions and reusable workflows from other repositories (private repositories only)
 - Repository Variables: declared variables and their values; `apply` creates missing variables and updates values that differ, and variables that are not declared are never touched
 - Environments: existence of declared environments and their deployment branch restriction (`all`, `protected_branches`, or `selected` with its branch and tag patterns); `apply` creates missing environments, changes the restriction, adds and removes `selected` patterns one at a time, and never touches environments that are not declared

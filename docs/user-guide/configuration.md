@@ -68,9 +68,20 @@ repositories:
 |---|---|---|
 | `delete_branch_on_merge` | `true` / `false` | Pull Request をマージしたあと、head ブランチを自動で削除するか |
 | `allow_auto_merge` | `true` / `false` | Pull Request の自動マージを許可するか |
+| `allow_squash_merge` | `true` / `false` | Pull Request を squash merge でマージできるようにするか |
+| `allow_merge_commit` | `true` / `false` | Pull Request を merge commit でマージできるようにするか |
+| `allow_rebase_merge` | `true` / `false` | Pull Request を rebase merge でマージできるようにするか |
+| `allow_update_branch` | `true` / `false` | base ブランチより遅れた Pull Request に、ブランチの更新を常に提案するか |
 
 > [!NOTE]
 > GitHub の仕様上、GitHub Free のアカウントが所有するプライベートリポジトリでは、自動マージは使えません。
+
+`allow_squash_merge`、`allow_merge_commit`、`allow_rebase_merge` の3つは、Pull Request をマージする方法を許可する設定で、まとめて **マージ方式** と呼びます。GitHub は3つをすべて無効にすることを受け付けないため、3つとも `false` と書いた設定ファイルはエラーになります。一部を省き、書いたものをすべて `false` にした場合も、書いていないマージ方式が GitHub 上ですべて無効なら、`plan` が `Plan cannot be applied.` を表示します。reco は、書いていないマージ方式を代わりに有効にしません。有効にしておくマージ方式を `true` と書き足します。
+
+`allow_update_branch` を `true` にしても、reco も GitHub もブランチを自動では更新しません。
+
+> [!NOTE]
+> 3つのマージ方式と `allow_update_branch` は、まだ `apply` で変えられません。変更が含まれると、`apply` は承認を求めずにエラーで終わります。`plan` と `show` では確かめられます。
 
 ## GitHub Actions の設定
 

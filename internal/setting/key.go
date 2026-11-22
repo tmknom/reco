@@ -10,6 +10,10 @@ type Key string
 const (
 	DeleteBranchOnMerge          Key = "general.delete_branch_on_merge"
 	AllowAutoMerge               Key = "general.allow_auto_merge"
+	AllowSquashMerge             Key = "general.allow_squash_merge"
+	AllowMergeCommit             Key = "general.allow_merge_commit"
+	AllowRebaseMerge             Key = "general.allow_rebase_merge"
+	AllowUpdateBranch            Key = "general.allow_update_branch"
 	ActionsEnabled               Key = "actions.permissions.enabled"
 	AllowedActions               Key = "actions.permissions.allowed_actions"
 	SelectedActions              Key = "actions.permissions.selected_actions"
@@ -37,7 +41,13 @@ const (
 // 設定グループは一つの Key で表す。関連リソースに関わる管理の単位は、宣言の名前ごとに決まるため含めない。
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
 func RepositorySettingUnits() []Key {
-	return []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
+	return []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
+}
+
+// MergeMethods は、GitHub がすべてを無効にすることを受け付けないマージ方式の管理の単位を、YAML 設定仕様の表の並びで返す。
+// 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
+func MergeMethods() []Key {
+	return []Key{AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge}
 }
 
 // HasEnvironmentName は、k の形の管理の単位が Environment の名前を含むか (Environment そのもの、その中の設定、それに属する関連リソースか) を返す。
@@ -50,7 +60,7 @@ func (k Key) HasEnvironmentName() bool {
 // 定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func (k Key) Area() Area {
 	switch k {
-	case DeleteBranchOnMerge, AllowAutoMerge:
+	case DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch:
 		return AreaGeneral
 	case ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired:
 		return AreaActionsPermissions

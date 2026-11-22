@@ -49,7 +49,7 @@ func TestObserveRepositoryFailure(t *testing.T) {
 		{
 			name: "200 without allow_auto_merge is unexpected response",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write([]byte(`{"id": 1, "full_name": "owner/repo", "delete_branch_on_merge": false, "private": false}`))
+				_, _ = w.Write([]byte(`{"id": 1, "full_name": "owner/repo", "delete_branch_on_merge": false, "allow_squash_merge": true, "allow_merge_commit": false, "allow_rebase_merge": true, "allow_update_branch": false, "private": false}`))
 			},
 			want: ErrUnexpectedResponse,
 		},
@@ -264,7 +264,7 @@ func TestObserveRepositoryAreas(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ObserveRepository() error = %v", err)
 			}
-			wantGeneral := General{AllowAutoMerge: true, DeleteBranchOnMerge: false}
+			wantGeneral := General{AllowAutoMerge: true, DeleteBranchOnMerge: false, AllowSquashMerge: true, AllowMergeCommit: false, AllowRebaseMerge: true, AllowUpdateBranch: false}
 			if observed.RepositoryID != 1296269 || observed.General != wantGeneral {
 				t.Errorf("ObserveRepository() = %+v, want ID 1296269 and General %+v", observed, wantGeneral)
 			}
@@ -331,6 +331,27 @@ func TestObservationResult_Setting(t *testing.T) {
 			for i, observed := range observations {
 				if got := observed.Setting(setting.Unit{Key: tc.key}); !reflect.DeepEqual(got, tc.want[i]) {
 					t.Errorf("observations[%d].Setting(%q) = %v, want %v", i, tc.key, got, tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestObservationResult_SettingOfGeneral(t *testing.T) {
+	// 観測結果ごとに General の設定を一つだけ真にし、別の設定の値を返す誤りを検出する。
+	observations := []ObservationResult{
+		{General: General{AllowSquashMerge: true}},
+		{General: General{AllowMergeCommit: true}},
+		{General: General{AllowRebaseMerge: true}},
+		{General: General{AllowUpdateBranch: true}},
+	}
+	keys := []setting.Key{setting.AllowSquashMerge, setting.AllowMergeCommit, setting.AllowRebaseMerge, setting.AllowUpdateBranch}
+	for k, key := range keys {
+		t.Run(string(key)+" returns its observed value", func(t *testing.T) {
+			for i, observed := range observations {
+				want := Observed(setting.BoolValue(i == k))
+				if got := observed.Setting(setting.Unit{Key: key}); !reflect.DeepEqual(got, want) {
+					t.Errorf("observations[%d].Setting(%q) = %v, want %v", i, key, got, want)
 				}
 			}
 		})

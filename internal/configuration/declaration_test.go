@@ -373,9 +373,9 @@ func TestDocumentDeclaration(t *testing.T) {
 		// General
 		{
 			name:       "unknown key in general is rejected",
-			src:        second + "      allow_squash_merge: true\n",
+			src:        second + "      has_issues: true\n",
 			wantPath:   "repositories[1].general",
-			wantReason: `unknown key "allow_squash_merge"`,
+			wantReason: `unknown key "has_issues"; expected delete_branch_on_merge, allow_auto_merge, allow_squash_merge, allow_merge_commit, allow_rebase_merge, allow_update_branch`,
 		},
 		{
 			name:       "delete_branch_on_merge without a value is rejected rather than read as omitted",
@@ -635,6 +635,85 @@ func TestDocumentDeclaration(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("declaration() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDocumentGeneral は、general の各設定がそれぞれ独立に宣言できることと、3つのマージ方式をすべて無効にする宣言の拒否、判定の順序を確かめる。
+//
+//trace:checks FR-001 FR-002
+func TestDocumentGeneral(t *testing.T) {
+	const allDisabled = "allow_squash_merge, allow_merge_commit, and allow_rebase_merge cannot all be false; GitHub requires at least one merge method"
+	cases := []struct {
+		name string
+		src  string
+		want General
+		// wantPath は error の先頭に付く、問題の箇所のパス。パスの直後の " (" まで照合する。
+		wantPath   string
+		wantReason string
+	}{
+		{name: "delete_branch_on_merge is read into its own field", src: "delete_branch_on_merge: true\n", want: General{DeleteBranchOnMerge: new(true)}},
+		{name: "allow_auto_merge is read into its own field", src: "allow_auto_merge: false\n", want: General{AllowAutoMerge: new(false)}},
+		{name: "allow_squash_merge is read into its own field", src: "allow_squash_merge: true\n", want: General{AllowSquashMerge: new(true)}},
+		{name: "allow_merge_commit is read into its own field", src: "allow_merge_commit: false\n", want: General{AllowMergeCommit: new(false)}},
+		{name: "allow_rebase_merge is read into its own field", src: "allow_rebase_merge: true\n", want: General{AllowRebaseMerge: new(true)}},
+		{name: "allow_update_branch is read into its own field", src: "allow_update_branch: false\n", want: General{AllowUpdateBranch: new(false)}},
+		{
+			name:       "every merge method declared false is rejected at general",
+			src:        "allow_squash_merge: false\nallow_merge_commit: false\nallow_rebase_merge: false\n",
+			wantPath:   "P",
+			wantReason: allDisabled,
+		},
+		{
+			name:       "allow_update_branch true does not count as a merge method left enabled",
+			src:        "allow_squash_merge: false\nallow_merge_commit: false\nallow_rebase_merge: false\nallow_update_branch: true\n",
+			wantPath:   "P",
+			wantReason: allDisabled,
+		},
+		{
+			name: "two merge methods false with the third true is read",
+			src:  "allow_squash_merge: false\nallow_merge_commit: false\nallow_rebase_merge: true\n",
+			want: General{AllowSquashMerge: new(false), AllowMergeCommit: new(false), AllowRebaseMerge: new(true)},
+		},
+		{
+			name: "two merge methods false with the third omitted is read, leaving the decision to the applicability",
+			src:  "allow_squash_merge: false\nallow_rebase_merge: false\n",
+			want: General{AllowSquashMerge: new(false), AllowRebaseMerge: new(false)},
+		},
+		{
+			name: "allow_update_branch false does not count as the third merge method",
+			src:  "allow_squash_merge: false\nallow_merge_commit: false\nallow_update_branch: false\n",
+			want: General{AllowSquashMerge: new(false), AllowMergeCommit: new(false), AllowUpdateBranch: new(false)},
+		},
+		{
+			name:       "quoted merge method is rejected at the value before the combination",
+			src:        "allow_squash_merge: false\nallow_merge_commit: false\nallow_rebase_merge: \"false\"\n",
+			wantPath:   "P.allow_rebase_merge",
+			wantReason: "must be true or false",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.general(doc.root, "P")
+			if tc.wantPath != "" {
+				if err == nil {
+					t.Fatalf("general() = %+v, want error", got)
+				}
+				if !strings.HasPrefix(err.Error(), tc.wantPath+" (") {
+					t.Errorf("general() error = %q, want it to start with %q", err, tc.wantPath+" (")
+				}
+				if !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("general() error = %q, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("general() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("general() = %+v, want %+v", got, tc.want)
 			}
 		})
 	}

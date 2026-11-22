@@ -13,11 +13,16 @@ import (
 
 // RepositoryBody は、リポジトリの取得の応答本文である。
 // Private のゼロ値は公開のリポジトリを、Admin のゼロ値は admin のアクセスを持たないトークンの所有者を表す。
+// 3つのマージ方式のゼロ値はどれも無効で、GitHub が取り得ない組み合わせである。マージ方式の値を読む判定や表示を確かめるテストは、値を明示する。
 // SecretScanning と SecretScanningPushProtection は、GitHub と同じく公開で admin のアクセスを持つときだけ security_and_analysis に含め、ゼロ値は disabled を表す。
 type RepositoryBody struct {
 	ID                           int64
 	AllowAutoMerge               bool
 	DeleteBranchOnMerge          bool
+	AllowSquashMerge             bool
+	AllowMergeCommit             bool
+	AllowRebaseMerge             bool
+	AllowUpdateBranch            bool
 	Private                      bool
 	Admin                        bool
 	SecretScanning               bool
@@ -134,8 +139,11 @@ func (b RepositoryBody) JSON() string {
 		securityAndAnalysis = fmt.Sprintf(`, "security_and_analysis": {"secret_scanning": {"status": %q}, "secret_scanning_push_protection": {"status": %q}}`,
 			securityStatus(b.SecretScanning), securityStatus(b.SecretScanningPushProtection))
 	}
-	return fmt.Sprintf(`{"id": %d, "allow_auto_merge": %t, "delete_branch_on_merge": %t, "private": %t, "permissions": {"admin": %t}%s}`,
-		b.ID, b.AllowAutoMerge, b.DeleteBranchOnMerge, b.Private, b.Admin, securityAndAnalysis)
+	return fmt.Sprintf(`{"id": %d, "allow_auto_merge": %t, "delete_branch_on_merge": %t, `+
+		`"allow_squash_merge": %t, "allow_merge_commit": %t, "allow_rebase_merge": %t, "allow_update_branch": %t, `+
+		`"private": %t, "permissions": {"admin": %t}%s}`,
+		b.ID, b.AllowAutoMerge, b.DeleteBranchOnMerge, b.AllowSquashMerge, b.AllowMergeCommit, b.AllowRebaseMerge, b.AllowUpdateBranch,
+		b.Private, b.Admin, securityAndAnalysis)
 }
 
 // JSON は応答本文を返す。

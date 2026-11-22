@@ -6,9 +6,18 @@ import (
 )
 
 func TestRepositorySettingUnits_FollowsConfigurationOrder(t *testing.T) {
-	want := []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
+	want := []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
 	if got := RepositorySettingUnits(); !slices.Equal(got, want) {
 		t.Errorf("RepositorySettingUnits() = %v, want %v", got, want)
+	}
+}
+
+// TestMergeMethods は、マージ方式の列挙が YAML 設定仕様の表の並びで、allow_update_branch を含まないことを確かめる。
+// 並びは適用不能の理由に示すマージ方式の並びになる。
+func TestMergeMethods(t *testing.T) {
+	want := []Key{AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge}
+	if got := MergeMethods(); !slices.Equal(got, want) {
+		t.Errorf("MergeMethods() = %v, want %v", got, want)
 	}
 }
 
@@ -19,6 +28,10 @@ func TestKeyArea(t *testing.T) {
 	}{
 		{key: DeleteBranchOnMerge, want: AreaGeneral},
 		{key: AllowAutoMerge, want: AreaGeneral},
+		{key: AllowSquashMerge, want: AreaGeneral},
+		{key: AllowMergeCommit, want: AreaGeneral},
+		{key: AllowRebaseMerge, want: AreaGeneral},
+		{key: AllowUpdateBranch, want: AreaGeneral},
 		{key: ActionsEnabled, want: AreaActionsPermissions},
 		{key: AllowedActions, want: AreaActionsPermissions},
 		{key: SHAPinningRequired, want: AreaActionsPermissions},

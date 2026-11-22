@@ -86,7 +86,7 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 		{
 			name: "private repository with selected policy and environments reads back with escaped strings",
 			routes: map[string]githubtest.Response{
-				"GET /repos/owner/repo":                     githubtest.OK(githubtest.RepositoryBody{ID: 1, DeleteBranchOnMerge: true, Private: true, Admin: true}.JSON()),
+				"GET /repos/owner/repo":                     githubtest.OK(githubtest.RepositoryBody{ID: 1, DeleteBranchOnMerge: true, AllowSquashMerge: true, AllowUpdateBranch: true, Private: true, Admin: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions": githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "selected", SHAPinningRequired: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/selected-actions": githubtest.OK(githubtest.SelectedActionsBody{
 					GitHubOwnedAllowed: true, PatternsAllowed: []string{`a"b\c`, "é/*", "#x: y", "\u200b"},
@@ -124,7 +124,7 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 		{
 			name: "public repository with disabled actions and no environments reads back without the commented lines",
 			routes: map[string]githubtest.Response{
-				"GET /repos/owner/repo":                                 githubtest.OK(githubtest.RepositoryBody{ID: 1, Admin: true}.JSON()),
+				"GET /repos/owner/repo":                                 githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowMergeCommit: true, AllowRebaseMerge: true, Admin: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions":             githubtest.OK(`{"enabled": false}`),
 				"GET /repos/owner/repo/actions/permissions/workflow":    githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
 				"GET /repos/owner/repo/actions/variables":               githubtest.OK(githubtest.VariablesBody{}.JSON()),
@@ -137,7 +137,7 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 		{
 			name: "local_only policy without selected actions reads back",
 			routes: map[string]githubtest.Response{
-				"GET /repos/owner/repo":                              githubtest.OK(githubtest.RepositoryBody{ID: 1, Private: true, Admin: true}.JSON()),
+				"GET /repos/owner/repo":                              githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowSquashMerge: true, AllowMergeCommit: true, AllowRebaseMerge: true, Private: true, Admin: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions":          githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "local_only"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/workflow": githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/access":   githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
@@ -153,7 +153,7 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 		{
 			name: "selected policy without patterns reads back with the empty sequence",
 			routes: map[string]githubtest.Response{
-				"GET /repos/owner/repo":                                      githubtest.OK(githubtest.RepositoryBody{ID: 1, Private: true, Admin: true}.JSON()),
+				"GET /repos/owner/repo":                                      githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowRebaseMerge: true, AllowUpdateBranch: true, Private: true, Admin: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions":                  githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "selected"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/selected-actions": githubtest.OK(githubtest.SelectedActionsBody{VerifiedAllowed: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/workflow":         githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),

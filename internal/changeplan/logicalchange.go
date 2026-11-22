@@ -109,6 +109,9 @@ func (o UpdateOperation) CreatesEnvironment() bool {
 	return o.Kind == EnvironmentCreation || o.Kind == EnvironmentCreationWithMode
 }
 
+// notYetUpdatable は、更新要求をまだ持たず、変更予定を apply が実行できない設定である。
+var notYetUpdatable = []setting.Key{setting.AllowSquashMerge, setting.AllowMergeCommit, setting.AllowRebaseMerge, setting.AllowUpdateBranch}
+
 // LogicalChanges は、変更予定から論理的な設定変更を、executionOrder の実行順で導く。
 // 適用可能でない変更予定があれば、承認の対象にしないため error にする。
 // 副作用を伴う変更予定の更新操作は、operationOf が副作用として提示した設定のうち reco が観測するものを必ず基準に載せる。載せずに受け付けると承認の前に示していない値を失わせ得るため。
@@ -122,6 +125,11 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 	for _, s := range r.Settings {
 		if s.IsPlannedChange() && s.Applicability != Applicable {
 			return nil, fmt.Errorf("%s: %s cannot be applied", r.Target, s.Unit.String())
+		}
+	}
+	for _, s := range r.Settings {
+		if s.IsPlannedChange() && slices.Contains(notYetUpdatable, s.Unit.Key) {
+			return nil, fmt.Errorf("%s: updating %s is not supported yet", r.Target, s.Unit.String())
 		}
 	}
 	_, hasEnabled := r.settingPlanOf(setting.Unit{Key: setting.ActionsEnabled})

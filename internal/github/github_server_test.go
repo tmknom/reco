@@ -22,6 +22,10 @@ const repositoryBody = `{
 	"html_url": "https://github.com/owner/repo",
 	"allow_auto_merge": true,
 	"delete_branch_on_merge": false,
+	"allow_squash_merge": true,
+	"allow_merge_commit": false,
+	"allow_rebase_merge": true,
+	"allow_update_branch": false,
 	"permissions": {"admin": true, "push": true, "pull": true},
 	"security_and_analysis": ` + repositorySecurityAndAnalysis + `
 }`
