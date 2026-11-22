@@ -6,7 +6,7 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// settingDependency は、前提の設定を無効にすると GitHub が依存する設定も無効にする組 (アーキテクチャ設計の非原子的な更新と中間状態)。
+// settingDependency は、前提の設定を無効にすると GitHub が依存する設定も無効にする組 (Security の設計の適用可能性と副作用)。
 // 実行順と、前提の設定を無効にする変更予定の副作用は、組によらず同じ規則で決まる。
 // 適用可能性は、前提の設定が無効のときの GitHub の応答が組ごとに違うため、この表に持たせず judgeApplicability が組ごとに判断する。
 type settingDependency struct {

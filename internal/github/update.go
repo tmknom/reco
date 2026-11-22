@@ -41,7 +41,7 @@ func (c *Client) updateDeleteBranchOnMerge(ctx context.Context, reference reposi
 }
 
 // updateSecretScanningEnabled は reference のリポジトリの Secret scanning の有効状態を enabled に更新する。
-// security_and_analysis の中のこの項目だけを送り、もう一方の項目とトップレベルの一般設定の保持に依拠する（アーキテクチャ設計の未管理設定を保全する更新方式）。
+// security_and_analysis の中のこの項目だけを送り、もう一方の項目とトップレベルの一般設定の保持に依拠する（Security の設計の更新方式）。
 func (c *Client) updateSecretScanningEnabled(ctx context.Context, reference repository.Reference, enabled bool) (UpdateOutcome, error) {
 	return c.updateRepository(ctx, reference, encodeSecurityAndAnalysis("secret_scanning", enabled))
 }
@@ -80,7 +80,7 @@ func (c *Client) updateWorkflowPermissions(ctx context.Context, reference reposi
 }
 
 // updateActionsEnabled は reference のリポジトリの Actions の有効状態を enabled に更新する。
-// allowed_actions と sha_pinning_required は送らず、GitHub が省略した値を保持することに依拠する（アーキテクチャ設計の未管理設定を保全する更新方式）。
+// allowed_actions と sha_pinning_required は送らず、GitHub が省略した値を保持することに依拠する（Actions の設計の更新方式）。
 func (c *Client) updateActionsEnabled(ctx context.Context, reference repository.Reference, enabled bool) (UpdateOutcome, error) {
 	return c.updateActionsPermissions(ctx, reference, fmt.Appendf(nil, `{"enabled":%t}`, enabled))
 }
@@ -93,7 +93,7 @@ func (c *Client) updateAllowedActions(ctx context.Context, reference repository.
 }
 
 // updateSHAPinningRequired は reference のリポジトリの sha_pinning_required を required に更新する。
-// 必須の enabled には true を送り、allowed_actions は送らない（アーキテクチャ設計の未管理設定を保全する更新方式）。
+// 必須の enabled には true を送り、allowed_actions は送らない（Actions の設計の更新方式）。
 // 無効のリポジトリへ送ると Actions を有効にするため、呼び出し側が更新直前に有効と確かめる。
 func (c *Client) updateSHAPinningRequired(ctx context.Context, reference repository.Reference, required bool) (UpdateOutcome, error) {
 	return c.updateActionsPermissions(ctx, reference, fmt.Appendf(nil, `{"enabled":true,"sha_pinning_required":%t}`, required))
@@ -168,7 +168,7 @@ func (c *Client) UpdateEnvironmentDeploymentBranchPolicy(ctx context.Context, re
 }
 
 // AddDeploymentPattern は、reference のリポジトリの environment の Environment に、個別パターン pattern を加える POST を一度だけ送る。再送はしない。
-// 応答の扱いはアーキテクチャ設計の HTTP 通信とリダイレクトの信頼境界と、未管理設定を保全する更新方式に従う。
+// 応答の扱いはアーキテクチャ設計の HTTP 通信とリダイレクトの信頼境界と、Environments の設計の更新方式に従う。
 // 呼び出し元は宛先にできる名前だけを渡すため、URL を組めないときは不変条件の破れとして panic する。
 func (c *Client) AddDeploymentPattern(ctx context.Context, reference repository.Reference, environment string, pattern setting.DeploymentPattern) (UpdateOutcome, error) {
 	u, ok := c.deploymentBranchPoliciesURL(reference, environment)

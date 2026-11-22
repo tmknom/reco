@@ -56,7 +56,7 @@ func (k SideEffectKind) ObservedSetting() (setting.Key, bool) {
 	panic(fmt.Sprintf("changeplan: undefined side effect kind %d", int(k)))
 }
 
-// sideEffects は、s の変更予定に伴う副作用と、副作用を示さなかった設定を、アーキテクチャ設計の遷移表と依存の表に従って返す。
+// sideEffects は、s の変更予定に伴う副作用と、副作用を示さなかった設定を、設定ごとの設計の遷移表と依存の表に従って返す。
 // settings は s と同じリポジトリの管理設定の計画で、宣言した設定の変化は管理設定の変更として扱い、どちらにも数えない。
 // 比較不能な変更予定は、前提の設定では適用不能 (非公開リポジトリの Secret scanning) に限られ、更新しないため副作用を添えない。
 func sideEffects(s SettingPlan, observed github.ObservationResult, settings []SettingPlan) ([]SideEffect, []SettingWithoutSideEffect) {

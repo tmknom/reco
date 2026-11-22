@@ -39,8 +39,8 @@ const (
 
 // judgeApplicability は、管理設定の計画 s の観測結果と、同じリポジトリの管理設定の計画 settings の期待値と、
 // 計画時の観測結果 observed (同じ設定の領域の未管理設定の値) から、変更予定を安全に適用できるかを判断し、適用不能ならその理由を返す。
-// 不一致は、アーキテクチャ設計の未管理設定を保全する更新方式で、前提の設定を持つ依存する設定を除いて追加の条件なしに適用できる。
-// 比較不能は、アーキテクチャ設計の遷移表に挙がる観測不能に限って判断する。
+// 不一致は、設定ごとの設計の更新方式で、前提の設定を持つ依存する設定を除いて追加の条件なしに適用できる。
+// 比較不能は、設定ごとの設計の遷移表に挙がる観測不能に限って判断する。
 // 遷移表にない観測不能を適用可能として黙って通さないよう、不変条件の破れとして panic する。
 func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.ObservationResult) (Applicability, NotApplicableReason) {
 	switch s.Result {

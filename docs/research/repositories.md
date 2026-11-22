@@ -189,7 +189,9 @@ PUT    /repos/{owner}/{repo}/vulnerability-alerts  Enables dependency alerts and
 DELETE /repos/{owner}/{repo}/vulnerability-alerts  Disables dependency alerts and the dependency graph
 ```
 
-リポジトリの設定画面の解説は、Dependency graph と Dependabot alerts を別々の項目として示し、Dependabot alerts には先に Dependency graph を有効にする必要があると記載しています。Dependency graph、Dependabot alerts、push protection は、公開リポジトリでも既定では有効でないと記載されています。Dependency graph だけを有効・無効にする REST API の記載は、このページにはありません。
+リポジトリの設定画面の解説は、Dependency graph と Dependabot alerts を別々の項目として示し、Dependabot alerts には先に Dependency graph を有効にする必要があると記載しています。Dependency graph、Dependabot alerts、push protection は、公開リポジトリでも既定では有効でないと記載されています。
+
+Dependency graph の有効状態を返す操作と、Dependency graph だけを有効・無効にする操作は、REST API の記載にありません。Dependency graph を有効・無効にすると記載された操作は、Dependabot alerts の `PUT` と `DELETE` だけです。`/repos/{owner}/{repo}/dependency-graph/` の下の操作は、SBOM の取得、2つのコミットのあいだの依存関係の差分の取得（dependency review）、依存関係のスナップショットの送信（dependency submission）で、どれも Dependency graph の有効状態を返さず、変えもしません。SBOM を同期で返す `GET /repos/{owner}/{repo}/dependency-graph/sbom` は、2026年11月13日以降は使えなくなると記載され、生成を依頼する `.../sbom/generate-report` と、生成した SBOM を取得する `.../sbom/fetch-report/{sbom_uuid}` への移行が勧められています。`security_and_analysis` にも Dependency graph の項目はありません（5章）。Dependency graph の有効化の手順は、設定画面の操作だけを示し、REST API に触れていません。無効にしたときにほかの機能がどうなるかは記載がありません。
 
 Dependabot security updates は、Dependency graph と Dependabot alerts を有効にしたリポジトリで利用できると記載されています（7章）。Dependabot alerts を無効にしたときに Dependabot security updates がどうなるかは記載がありません。
 
@@ -202,6 +204,8 @@ Dependabot security updates は、Dependency graph と Dependabot alerts を有�
 > - 更新の応答：`PUT` と `DELETE` は `204` で、すでに同じ状態のときも `204` だった。直後の取得は更新後の状態を示した
 > - Dependency graph：Dependabot alerts が無効で Dependency graph が有効な公開リポジトリ（確認前の状態）で、`PUT` は Dependency graph を有効のままにした。`DELETE` は Dependency graph を無効にした（SBOM の取得が `404`、設定画面でも無効）。そのあとの `PUT` は Dependency graph を有効に戻した。Dependabot alerts を無効のまま Dependency graph を有効に戻すには、設定画面の操作が要った。非公開リポジトリでも、`DELETE` のあと SBOM の取得が `404`、`PUT` のあと `200` になった
 > - Dependency graph を有効に戻した直後の SBOM：`PUT` の直後の SBOM の取得は `200` だったが、含まれるパッケージの数は `DELETE` の前より少なかった（公開リポジトリで 12 から 1、その十数秒後に 2）
+> - SBOM の同期の取得：記載された期限を過ぎても `200` を返し、応答は `Deprecation` と `Sunset` のヘッダーを持った。非同期の操作の成否が Dependency graph の状態を示すかは確かめていない
+> - 設定画面での Dependency graph の無効化：非公開リポジトリの設定画面で Dependency graph を無効にしようとすると、確認のダイアログが「Disabling the dependency graph will also disable Dependabot alerts and Dependabot security updates.」と示した。無効にしたあと、設定画面で Dependency graph だけを有効に戻せた。戻したあとの Dependabot alerts の取得は `404`（`Vulnerability alerts are disabled.`、`permissions.admin` は `true`）、Dependabot security updates は `enabled: false`、`paused: false`、SBOM の取得は `200` で、Dependabot の2設定は無効のままだった。無効にする前と、無効にしていたあいだの Dependabot の2設定の値は観測していない
 > - Dependabot security updates：`DELETE` は、有効だった Dependabot security updates を無効にした（公開リポジトリでは `enabled: true` から、非公開リポジトリでは `enabled: true` と `paused: true` から、`enabled: false` と `paused: false` へ）。`security_and_analysis.dependabot_security_updates` も `disabled` になった。そのあとの `PUT` は Dependabot security updates を有効に戻さなかった。`PUT` は、無効だった Dependabot security updates を有効にしなかった
 > - `PUT` と Dependabot security updates の一時停止：有効で一時停止中（`paused: true`）のリポジトリで Dependabot alerts の `PUT` を再び送っても、`paused` は `true` のままだった
 
@@ -212,6 +216,10 @@ Dependabot security updates は、Dependency graph と Dependabot alerts を有�
 | `grounding` | [Disable vulnerability alerts](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#disable-vulnerability-alerts) | External Document |
 | `grounding` | [Managing security and analysis settings for your repository](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-security-and-analysis-settings-for-your-repository) | External Document |
 | `grounding` | [Dependabot security updates](https://docs.github.com/en/code-security/concepts/supply-chain-security/dependabot-security-updates) | External Document |
+| `grounding` | [Enabling the dependency graph](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/enable-dependency-graph) | External Document |
+| `grounding` | [REST API endpoints for software bill of materials (SBOM)](https://docs.github.com/en/rest/dependency-graph/sboms?apiVersion=2026-03-10) | External Document |
+| `grounding` | [REST API endpoints for dependency review](https://docs.github.com/en/rest/dependency-graph/dependency-review?apiVersion=2026-03-10) | External Document |
+| `grounding` | [REST API endpoints for dependency submission](https://docs.github.com/en/rest/dependency-graph/dependency-submission?apiVersion=2026-03-10) | External Document |
 
 ## 7. Dependabot security updates
 
