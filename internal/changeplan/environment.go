@@ -30,7 +30,7 @@ func environmentPlans(e configuration.EnvironmentDeclaration, observed github.En
 
 // environmentChangeOf は、Environment の変更予定 s を、それを含む論理的な設定変更にして返す。
 // 存在しない Environment のデプロイ元制限の変更予定は、同じ名前の作成の論理的な設定変更にまとめ、単独の論理的な設定変更にしないため偽を返す。
-// 更新操作の並びと基準はアーキテクチャ設計の非原子的な更新と中間状態に従う。
+// 更新操作の並びと基準は Environments の設計の論理的な設定変更と更新操作に従う。
 // 対にならない形（作成のない存在しないことを理由にした方式、存在が一致でない方式の不一致）と適用可能な比較不能の存在は、
 // environmentPlans と judgeApplicability が作らないため、不変条件の破れとして panic する。
 func (r RepositoryPlan) environmentChangeOf(s SettingPlan) (LogicalChange, bool) {

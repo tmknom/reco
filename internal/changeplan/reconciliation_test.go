@@ -91,7 +91,7 @@ func TestReconcile(t *testing.T) {
 	}
 }
 
-// 期待値と観測値の組を、アーキテクチャ設計の遷移表の行ごとに照合する。
+// 期待値と観測値の組を、Actions の設計の遷移表の行ごとに照合する。
 //
 //trace:checks FR-005 INV-001
 func TestReconcile_ActionsPermissions(t *testing.T) {

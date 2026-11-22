@@ -68,7 +68,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 環境変数の優先順位は [GitHub CLI の環境変数仕様](https://cli.github.com/manual/gh_help_environment) と同じですが、reco が GitHub CLI の認証機構を利用することは意味しません。
 
-reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章、[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。`show` が読み取る Environment と個別パターンの一覧には、GitHub App の権限の分類で Actions の read に当たる権限が要ります。ほかのトークンがこの権限を持たず、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。`show` と、`security` を宣言したリポジトリの `plan` と `apply` が読み取る Dependabot alerts と Dependabot security updates の取得には、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。トークンの所有者が admin のアクセスを持たないリポジトリでは、どのコマンドも観測操作の失敗としてエラー終了します。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合（Administration の read を持たない fine-grained personal access token など）の応答は確かめていません。この場合に GitHub が Dependabot alerts の取得へ `404` を返すなら、`show` は有効な Dependabot alerts を `false` と表示し、`plan` と `apply` は `dependabot_alerts: false` の宣言を変更不要と判断します（[アーキテクチャ設計](../design/architecture.md) 3.2節）。`show` と、`secret_scanning` か `secret_scanning_push_protection` を宣言したリポジトリの `plan` と `apply` が読み取る Secret scanning の有効状態とリポジトリの push protection も、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 5章）。`apply` は、`general` の設定を更新する前後にもこの二つを読み取ります。同じ更新エンドポイント（`PATCH /repos/{owner}/{repo}`）で変わり得る設定として比べるためです（5.2節）。公開リポジトリの応答がこれらの値を含まないときは、どのコマンドも観測操作の失敗としてエラー終了します。`general` の設定の更新にも admin のアクセスが要るため（GitHub リポジトリ API 仕様 1章）、確かめた範囲では、この読み取りが `general` だけを宣言したリポジトリの `apply` を新たに止めることはありません。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合の応答は確かめていません。`show` と、`private_vulnerability_reporting` を宣言したリポジトリの `plan` と `apply` が読み取る Private vulnerability reporting の有効状態は、admin のアクセスを要しませんが、その更新には admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。非公開リポジトリでは、この設定を読み取りません。
+reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章、[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。`show` が読み取る Environment と個別パターンの一覧には、GitHub App の権限の分類で Actions の read に当たる権限が要ります。ほかのトークンがこの権限を持たず、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。`show` と、`security` を宣言したリポジトリの `plan` と `apply` が読み取る Dependabot alerts と Dependabot security updates の取得には、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。トークンの所有者が admin のアクセスを持たないリポジトリでは、どのコマンドも観測操作の失敗としてエラー終了します。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合（Administration の read を持たない fine-grained personal access token など）の応答は確かめていません。この場合に GitHub が Dependabot alerts の取得へ `404` を返すなら、`show` は有効な Dependabot alerts を `false` と表示し、`plan` と `apply` は `dependabot_alerts: false` の宣言を変更不要と判断します（[Security の設計](../design/settings/security.md) の観測）。`show` と、`secret_scanning` か `secret_scanning_push_protection` を宣言したリポジトリの `plan` と `apply` が読み取る Secret scanning の有効状態とリポジトリの push protection も、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 5章）。`apply` は、`general` の設定を更新する前後にもこの二つを読み取ります。同じ更新エンドポイント（`PATCH /repos/{owner}/{repo}`）で変わり得る設定として比べるためです（5.2節）。公開リポジトリの応答がこれらの値を含まないときは、どのコマンドも観測操作の失敗としてエラー終了します。`general` の設定の更新にも admin のアクセスが要るため（GitHub リポジトリ API 仕様 1章）、確かめた範囲では、この読み取りが `general` だけを宣言したリポジトリの `apply` を新たに止めることはありません。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合の応答は確かめていません。`show` と、`private_vulnerability_reporting` を宣言したリポジトリの `plan` と `apply` が読み取る Private vulnerability reporting の有効状態は、admin のアクセスを要しませんが、その更新には admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。非公開リポジトリでは、この設定を読み取りません。
 
 ```text
 $ GH_TOKEN=$(gh auth token) reco plan
@@ -234,7 +234,7 @@ Plan: 1 repository to update, 2 changes
 Repositories checked: 1
 ```
 
-安全な変更に必要な条件を確認できない変更予定には、変更予定の行のすぐ下に `Applicability: not applicable (<理由>)` を添えます。理由は、セミコロンの前に何が成り立っていないかを、後ろに設定ファイルの直し方を示します。適用不能な変更予定が一つでもあれば、`Repositories checked:` の後に空行を挟んで `Plan cannot be applied.` を一度だけ表示します。集計は、適用不能な変更予定と、適用不能な変更予定だけを持つリポジトリも数えます。現在は、Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言した場合と、公開リポジトリで `access_level` を宣言した場合と、宣言した名前と同じかどうかを判定できない名前の Environment があり、宣言した名前の Environment が存在するかを確かめられない場合と、Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を宣言せずに `dependabot_security_updates` を宣言し、その値を変える場合と、非公開リポジトリで `secret_scanning`、`secret_scanning_push_protection`、`private_vulnerability_reporting` のいずれかを宣言した場合と、Secret scanning が無効のリポジトリで、`secret_scanning: true` を宣言せずに `secret_scanning_push_protection: true` を宣言し、その値を変える場合が該当します（[アーキテクチャ設計](../design/architecture.md) 5.4）。
+安全な変更に必要な条件を確認できない変更予定には、変更予定の行のすぐ下に `Applicability: not applicable (<理由>)` を添えます。理由は、セミコロンの前に何が成り立っていないかを、後ろに設定ファイルの直し方を示します。適用不能な変更予定が一つでもあれば、`Repositories checked:` の後に空行を挟んで `Plan cannot be applied.` を一度だけ表示します。集計は、適用不能な変更予定と、適用不能な変更予定だけを持つリポジトリも数えます。現在は、Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言した場合と、公開リポジトリで `access_level` を宣言した場合と、宣言した名前と同じかどうかを判定できない名前の Environment があり、宣言した名前の Environment が存在するかを確かめられない場合と、Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を宣言せずに `dependabot_security_updates` を宣言し、その値を変える場合と、非公開リポジトリで `secret_scanning`、`secret_scanning_push_protection`、`private_vulnerability_reporting` のいずれかを宣言した場合と、Secret scanning が無効のリポジトリで、`secret_scanning: true` を宣言せずに `secret_scanning_push_protection: true` を宣言し、その値を変える場合が該当します（[設定ごとの設計](../design/settings/README.md) の各文書の「適用可能性と副作用」）。
 
 ```text
 Repository: example/project-a
@@ -259,7 +259,7 @@ Plan: 1 repository to update, 2 changes
 Repositories checked: 1
 ```
 
-公開リポジトリの `access_level` は、ほかの宣言によらず適用不能です（[アーキテクチャ設計](../design/architecture.md) 5.4）。直し方は、その宣言を設定ファイルから消すことです。
+公開リポジトリの `access_level` は、ほかの宣言によらず適用不能です（[Actions の設計](../design/settings/actions.md) の適用可能性と副作用）。直し方は、その宣言を設定ファイルから消すことです。
 
 ```text
 Repository: example/project-a
@@ -272,7 +272,7 @@ Repositories checked: 1
 Plan cannot be applied.
 ```
 
-宣言した Environment が存在するかを確かめられない場合（[アーキテクチャ設計](../design/architecture.md) 5.4）、作成すると既存の Environment を変え得るため、その Environment とその中の設定の変更予定は適用不能です。直し方は、その Environment の宣言を設定ファイルから消すことです。
+宣言した Environment が存在するかを確かめられない場合（[Environments の設計](../design/settings/environments.md) の適用可能性と副作用）、作成すると既存の Environment を変え得るため、その Environment とその中の設定の変更予定は適用不能です。直し方は、その Environment の宣言を設定ファイルから消すことです。
 
 ```text
 Repository: example/project-a
@@ -285,7 +285,7 @@ Repositories checked: 1
 Plan cannot be applied.
 ```
 
-宣言した変更に伴って GitHub が管理範囲外の設定を削除するか変える場合は、変更予定に `Side effect:` として、その設定と、reco が観測する設定なら現在値を添えます。この変更は適用可能であり、利用者が承認すれば実行します。該当するのは、Actions 許可ポリシーを `selected` から `all` / `local_only` へ変え、既存の選択方式の Actions 許可条件が失われる場合と、Dependabot alerts の有効状態を変える場合と、Secret scanning を無効にする場合です（[アーキテクチャ設計](../design/architecture.md) 5.4）。Actions が無効のリポジトリで `all` / `local_only` を宣言した場合は、無効にする前のポリシーが `selected` であれば同じく失われますが、無効の間は値もポリシーも取得できないため、失われる可能性があることと、値を示せない理由を示します。遷移先が `selected` の変更には添えません。3項目は宣言した値で上書きされ、管理範囲内の変更になるためです。`Side effect:` は、変更が完了したあとも残る影響だけを示します。一つの変更の更新操作のあいだだけ生じる中間状態（[アーキテクチャ設計](../design/architecture.md) 5.4）は示しません。完了すれば残らず、利用者が承認の前に避ける手段もないためです。中間状態が残るのは変更が完了しなかった場合で、そのときは変更結果が `failed` と注記で示します（5.2節）。`Side effect:` は、副作用を伴う変更予定の最後の行として示します。変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。
+宣言した変更に伴って GitHub が管理範囲外の設定を削除するか変える場合は、変更予定に `Side effect:` として、その設定と、reco が観測する設定なら現在値を添えます。この変更は適用可能であり、利用者が承認すれば実行します。該当するのは、Actions 許可ポリシーを `selected` から `all` / `local_only` へ変え、既存の選択方式の Actions 許可条件が失われる場合と、Dependabot alerts の有効状態を変える場合と、Secret scanning を無効にする場合です（[設定ごとの設計](../design/settings/README.md) の各文書の「適用可能性と副作用」）。Actions が無効のリポジトリで `all` / `local_only` を宣言した場合は、無効にする前のポリシーが `selected` であれば同じく失われますが、無効の間は値もポリシーも取得できないため、失われる可能性があることと、値を示せない理由を示します。遷移先が `selected` の変更には添えません。3項目は宣言した値で上書きされ、管理範囲内の変更になるためです。`Side effect:` は、変更が完了したあとも残る影響だけを示します。一つの変更の更新操作のあいだだけ生じる中間状態（[アーキテクチャ設計](../design/architecture.md) 5.4）は示しません。完了すれば残らず、利用者が承認の前に避ける手段もないためです。中間状態が残るのは変更が完了しなかった場合で、そのときは変更結果が `failed` と注記で示します（5.2節）。`Side effect:` は、副作用を伴う変更予定の最後の行として示します。変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。
 
 ```text
 Repository: example/project-a
@@ -450,7 +450,7 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 一つの論理的な設定変更が複数の更新操作からなるときは、後続の更新操作の直前の確認にも同じ遅れが現れ得ます。先行する更新操作が成功したのに、その更新操作が変えた設定が更新前の値のままのときは、同じ間隔で確認し直します。合計約30秒が経っても変わらなければ、後続の更新操作を開始せずに `failed` とします。先行する更新操作の更新要求は再送しません。
 
-一つのリポジトリに複数の変更予定があるときは、承認の前に提示する順も、論理的な設定変更を実行する順も、4章が定める変更予定の表示順に従います。ただし、Dependabot alerts を無効にする変更と Dependabot security updates の変更がともにあるときは、Dependabot security updates の変更を先に実行します。Dependabot alerts を先に無効にすると、GitHub が Dependabot security updates も無効にし、宣言した変更の変更前提が成り立たなくなるためです（[アーキテクチャ設計](../design/architecture.md) 5.4）。Secret scanning を無効にする変更とリポジトリの push protection の変更がともにあるときも、同じ理由で、リポジトリの push protection の変更を先に実行します。変更結果は実行した順に示します。`allowed_actions` と `sha_pinning_required` の両方に変更予定があるときも、別々の論理的な設定変更として一つずつ更新します。
+一つのリポジトリに複数の変更予定があるときは、承認の前に提示する順も、論理的な設定変更を実行する順も、4章が定める変更予定の表示順に従います。ただし、Dependabot alerts を無効にする変更と Dependabot security updates の変更がともにあるときは、Dependabot security updates の変更を先に実行します。Dependabot alerts を先に無効にすると、GitHub が Dependabot security updates も無効にし、宣言した変更の変更前提が成り立たなくなるためです（[Security の設計](../design/settings/security.md) の論理的な設定変更と更新操作）。Secret scanning を無効にする変更とリポジトリの push protection の変更がともにあるときも、同じ理由で、リポジトリの push protection の変更を先に実行します。変更結果は実行した順に示します。`allowed_actions` と `sha_pinning_required` の両方に変更予定があるときも、別々の論理的な設定変更として一つずつ更新します。
 
 ### 5.2 結果の表示区分
 
@@ -479,7 +479,7 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 Environment の作成も、完了すれば `updated` と示します。何を作成したかは、承認の前に提示した `absent -> present` が示します。`deployment_branch_policy` を宣言した Environment の作成は、一つの更新要求で Environment と方式を設定する一つの論理的な設定変更で、`environments.<名前> + environments.<名前>.deployment_branch_policy` と示します。方式を宣言していない作成は `environments.<名前>`、存在する Environment の方式の変更は `environments.<名前>.deployment_branch_policy` と示します。名前は設定宣言の綴りです。期待値の方式が `selected` の変更でなければ、更新操作は一つのため、`Update request` は1行です。
 
-期待値の方式が `selected` の `deployment_branch_policy` の変更は、方式を `selected` にする更新要求（方式が変わる場合だけで、作成ではその作成の更新要求）、取り除く個別パターンごとの更新要求、加える個別パターンごとの更新要求を、この順に送る一つの論理的な設定変更です（順の理由は[アーキテクチャ設計](../design/architecture.md) 5.4節）。名前は、存在する Environment では `environments.<名前>.deployment_branch_policy`、作成と重なる場合は `environments.<名前> + environments.<名前>.deployment_branch_policy` です。
+期待値の方式が `selected` の `deployment_branch_policy` の変更は、方式を `selected` にする更新要求（方式が変わる場合だけで、作成ではその作成の更新要求）、取り除く個別パターンごとの更新要求、加える個別パターンごとの更新要求を、この順に送る一つの論理的な設定変更です（順の理由は [Environments の設計](../design/settings/environments.md) の論理的な設定変更と更新操作）。名前は、存在する Environment では `environments.<名前>.deployment_branch_policy`、作成と重なる場合は `environments.<名前> + environments.<名前>.deployment_branch_policy` です。
 
 複数の更新操作からなる論理的な設定変更が、更新操作を開始したあとで完了しなかった場合は、`Update request` の行を実行順に示します。行は `Update request (<対象>): <結果>` の形で、結果は `succeeded`、`rejected`、`unknown`、開始しなかった更新操作を表す `not started` のいずれかです。`<対象>` は、その更新操作が変える管理設定です。ただし、個別パターンを取り除く更新操作は `patterns to remove [<パターン>, ...]`、加える更新操作は `patterns to add [<パターン>, ...]` と示し、パターンは `plan` と同じく `branch "main"` の形で書きます。個別パターンの更新操作のうち、加えるか取り除くかと結果が同じで続けて並ぶものは、1行にまとめてパターンを実行順に並べます。そのため、この行は複数の更新要求を表すことがあります。先行する更新操作が成功し、後続の更新操作を開始できなかった場合は、完了済みの更新操作を `succeeded`、未開始の更新操作を `not started` と示し、変更全体を `failed` とします。`not started` は更新操作についての表示で、論理的な設定変更の `not attempted` とは区別します。
 

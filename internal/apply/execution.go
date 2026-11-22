@@ -168,7 +168,7 @@ func sendUpdate(ctx context.Context, client *github.Client, target repository.Re
 	panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))
 }
 
-// environmentDestination は、宣言の名前 name の Environment の更新要求の宛先の綴りを返す（アーキテクチャ設計の未管理設定を保全する更新方式）。
+// environmentDestination は、宣言の名前 name の Environment の更新要求の宛先の綴りを返す（Environments の設計の更新方式）。
 func environmentDestination(name setting.EnvironmentName, observed github.ObservationResult) string {
 	if existing, ok := observed.Environments.Lookup(name).Existing(); ok {
 		return existing.Name

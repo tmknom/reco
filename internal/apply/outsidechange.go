@@ -20,7 +20,7 @@ type unexpectedOutsideChange struct {
 // ドメインモデルの観測の時点の定めに従い、更新エンドポイントごとに、それへ送った最初の更新操作の直前と比べる。
 // Environment の PUT (作成と方式の変更) は、宛先の Environment の保護設定を、その更新操作の直前と比べる。
 // 個別パターンの更新操作は、その更新エンドポイントで reco が観測するのが個別パターンの集合だけのため、比べない。
-// 比べる範囲はアーキテクチャ設計の未管理設定を保全する更新方式に従う。
+// 比べる範囲はアーキテクチャ設計の未管理設定を保全する更新方式と、設定ごとの設計の更新方式に従う。
 // 未定義の種類は比べる範囲が決まらないため、不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.ObservationResult, after github.ObservationResult) []unexpectedOutsideChange {
 	var changes []unexpectedOutsideChange
@@ -70,7 +70,7 @@ func outsideChangesAt(endpoint github.UpdateEndpoint, excluded []setting.Unit, b
 }
 
 // environmentProtectionChanges は、宣言の名前 name の Environment の保護設定について、更新直前と更新後の観測の差を CLI 仕様の変更結果の並びで返す。
-// 比べる範囲はアーキテクチャ設計の未管理設定を保全する更新方式に従う。
+// 比べる範囲はアーキテクチャ設計の未管理設定を保全する更新方式と、設定ごとの設計の更新方式に従う。
 // どちらかの観測で存在しない Environment は、比べる値がないため返さない。
 func environmentProtectionChanges(name setting.EnvironmentName, before, after github.ObservationResult) []unexpectedOutsideChange {
 	b, beforeOK := before.Environments.Lookup(name).Existing()

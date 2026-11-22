@@ -122,7 +122,7 @@ Environment や Variable のように、一つのリポジトリに名前の違�
 
 `enabled: false` は Actions を無効にする宣言です。reco が Actions を無効にするのは、`enabled: false` を宣言したリポジトリに限ります。
 
-`sha_pinning_required` は独立した管理の単位で、`allowed_actions` を宣言しなくても宣言できます。Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言すると、その変更予定は適用不能になります（[アーキテクチャ設計](../design/architecture.md) 5.4）。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。
+`sha_pinning_required` は独立した管理の単位で、`allowed_actions` を宣言しなくても宣言できます。Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言すると、その変更予定は適用不能になります（[Actions の設計](../design/settings/actions.md) の適用可能性と副作用）。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。
 
 `allowed_actions` を宣言した場合は、そのポリシーで Actions が実行できること、つまり Actions が有効であることも期待状態に含めます。Actions が無効のリポジトリでは、reco は宣言したポリシーで Actions を有効にします。そのため、`allowed_actions` とともに宣言した `enabled: true` の意味は、`enabled` を省略した場合と同じです。
 
@@ -193,7 +193,7 @@ GitHub の公式資料は `patterns_allowed` を公開リポジトリに適用�
 
 GitHub の値には `organization` もありますが、reco は宣言として受け付けません。`organization` は Organization が所有するリポジトリのための値で、reco がサポートするユーザー所有のリポジトリでは、GitHub がこの値への更新を拒否するためです（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 6章）。一方、Organization から移転したリポジトリなどで `organization` を観測した場合は、宣言した値と異なる値として扱い、宣言した値への変更を計画します。
 
-`access_level` は非公開リポジトリにだけ適用される設定です。公開リポジトリで宣言すると、その変更予定は適用不能になります（[アーキテクチャ設計](../design/architecture.md) 5.4）。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。Actions の有効状態は、この設定の宣言にも適用可能性にも関係しません。`actions.permissions.enabled: false` と同時に宣言できます。
+`access_level` は非公開リポジトリにだけ適用される設定です。公開リポジトリで宣言すると、その変更予定は適用不能になります（[Actions の設計](../design/settings/actions.md) の適用可能性と副作用）。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。Actions の有効状態は、この設定の宣言にも適用可能性にも関係しません。`actions.permissions.enabled: false` と同時に宣言できます。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -236,7 +236,7 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 
 ASCII 以外の文字と制御文字を受け付けないのは、GitHub が大文字小文字のほかに、アクセントの有無、全角と半角、末尾の空白、制御文字の違いも同じ名前とみなすためです（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 2章）。reco はこの判定を再現できません。受け付けると、GitHub 上で綴りの違う同じ Environment を存在しないと判断し、作成の要求で既存の Environment を変え得ます。
 
-GitHub 上の Environment の名前に ASCII 以外の文字などが含まれ、宣言した名前と同じかどうかを reco が判定できない場合の扱いは、入力検証ではなく、観測のあとに行う適用可能性の判断です（2章、[アーキテクチャ設計](../design/architecture.md) 5.4）。
+GitHub 上の Environment の名前に ASCII 以外の文字などが含まれ、宣言した名前と同じかどうかを reco が判定できない場合の扱いは、入力検証ではなく、観測のあとに行う適用可能性の判断です（2章、[Environments の設計](../design/settings/environments.md) の適用可能性と副作用）。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -312,7 +312,7 @@ GitHub が Dependabot security updates を一時停止していても、設定�
 
 `dependabot_alerts: false` と `dependabot_security_updates: true` を同時に宣言できないのは、GitHub が、Dependabot alerts が無効のリポジトリで Dependabot security updates の有効化を拒否し（GitHub リポジトリ API 仕様 7章）、この状態を実現できないためです。値の誤りを先に示すのは、組み合わせが2つの値で決まるためです。
 
-Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を宣言せずに `dependabot_security_updates` の値を変える宣言をすると、その変更予定は適用不能になります（[アーキテクチャ設計](../design/architecture.md) 5.4）。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。
+Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を宣言せずに `dependabot_security_updates` の値を変える宣言をすると、その変更予定は適用不能になります（[Security の設計](../design/settings/security.md) の適用可能性と副作用）。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。
 
 `dependabot_alerts: false` は、Dependabot alerts を無効にする宣言です。GitHub は、Dependabot alerts を無効にすると、Dependency graph と、有効だった Dependabot security updates も無効にします（GitHub リポジトリ API 仕様 6章）。reco はこの変化を変更に伴う副作用として承認の前に示したうえで、宣言どおりに無効にします。Dependency graph は reco が宣言を受け付けない設定です。
 
@@ -329,7 +329,7 @@ Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を
 
 `secret_scanning: false` と `secret_scanning_push_protection: true` を同時に宣言できないのは、GitHub が、Secret scanning を無効にするとリポジトリの push protection も無効にし、Secret scanning が無効のあいだはリポジトリの push protection を有効にする更新を反映しないため（GitHub リポジトリ API 仕様 5章）、この状態を実現できないためです。
 
-2つの設定は、非公開リポジトリでは利用できません。非公開リポジトリでどちらかを宣言すると、その変更予定は適用不能になります。Secret scanning が無効のリポジトリで、`secret_scanning: true` を宣言せずに `secret_scanning_push_protection: true` を宣言した場合も、その変更予定は適用不能になります（[アーキテクチャ設計](../design/architecture.md) 5.4）。どちらの判断も、入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。
+2つの設定は、非公開リポジトリでは利用できません。非公開リポジトリでどちらかを宣言すると、その変更予定は適用不能になります。Secret scanning が無効のリポジトリで、`secret_scanning: true` を宣言せずに `secret_scanning_push_protection: true` を宣言した場合も、その変更予定は適用不能になります（[Security の設計](../design/settings/security.md) の適用可能性と副作用）。どちらの判断も、入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。
 
 `secret_scanning: false` は、Secret scanning を無効にする宣言です。GitHub は、Secret scanning を無効にすると、有効だったリポジトリの push protection も無効にします。reco はこの変化を変更に伴う副作用として承認の前に示したうえで、宣言どおりに無効にします。あとで Secret scanning を有効に戻しても、リポジトリの push protection は有効に戻りません。
 
