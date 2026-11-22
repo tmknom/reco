@@ -35,6 +35,10 @@ repositories:
     general:
       delete_branch_on_merge: false
       allow_auto_merge: false
+      allow_squash_merge: true
+      allow_merge_commit: true
+      allow_rebase_merge: true
+      allow_update_branch: false
     actions:
       permissions:
         enabled: true
@@ -159,6 +163,8 @@ Repositories updated: 1
 | `Apply complete.` | すべてのリポジトリが `updated` か `no change` だった |
 
 変更計画に `Plan cannot be applied.` が出たときは、承認を求めず、どのリポジトリの設定も変えずにエラーで終わります。直し方は [Troubleshooting](troubleshooting.md#plan-cannot-be-applied-と表示された) にあります。
+
+`general.allow_squash_merge`、`general.allow_merge_commit`、`general.allow_rebase_merge`、`general.allow_update_branch` の変更は、まだ `apply` で実行できません。これらの変更が適用可能で、ほかに `Applicability: not applicable` の変更がなければ、変更計画を表示せず、承認を求めず、`updating general.allow_squash_merge is not supported yet; no changes made` のようなエラーで終わります。
 
 Repository Variables と Environment Variables は、設定ファイルに書いた順に一つずつ作成するか値を変えます。Environment Variables は、その Environment の作成と `deployment_branch_policy` の変更のあとに変えます。リポジトリのすべての変更が完了すれば、結果はリポジトリの行の `updated` だけです。変更が2件以上あり、完了しなかったものがあるときは、リポジトリの行の下に `actions.variables.<名前>: updated` や `environments.<Environment の名前>.variables.<名前>: not attempted` のように変数ごとの結果が出ます。
 

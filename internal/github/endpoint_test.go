@@ -7,6 +7,9 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
+// notYetUpdatable は、管理の単位のうち、更新要求をまだ持たない設定である。
+var notYetUpdatable = []setting.Key{setting.AllowSquashMerge, setting.AllowMergeCommit, setting.AllowRebaseMerge, setting.AllowUpdateBranch}
+
 // TestUpdateEndpointObservedSettings は、更新エンドポイントごとの、reco が観測する設定の一覧の不変条件を確かめる。
 //
 //trace:checks INV-001 FR-012
@@ -15,7 +18,12 @@ func TestUpdateEndpointObservedSettings(t *testing.T) {
 	// その設定を比べ漏らすため、すべての管理の単位を回して検出する。
 	t.Run("every management unit is observed at its update endpoint", func(t *testing.T) {
 		for _, key := range setting.RepositorySettingUnits() {
-			if got := UpdateEndpointOf(key).ObservedSettings(); !slices.Contains(got, key) {
+			endpoint := RepositoryEndpoint
+			// マージ方式と allow_update_branch はまだ更新要求を持たないが、観測はリポジトリの更新エンドポイントの応答から読む
+			if !slices.Contains(notYetUpdatable, key) {
+				endpoint = UpdateEndpointOf(key)
+			}
+			if got := endpoint.ObservedSettings(); !slices.Contains(got, key) {
 				t.Errorf("ObservedSettings() of the update endpoint of %q = %v, want it to contain %q", key, got, key)
 			}
 		}

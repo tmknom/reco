@@ -37,7 +37,7 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 	}
 	b.WriteString(deploymentPatternChangesText(s))
 	if s.Applicability == changeplan.NotApplicable {
-		fmt.Fprintf(&b, "    Applicability: not applicable (%s)\n", notApplicableReasonText(s.NotApplicableReason, s.Unit.Key))
+		fmt.Fprintf(&b, "    Applicability: not applicable (%s)\n", notApplicableReasonText(s))
 	}
 	if len(s.ResumedSettings) > 0 {
 		fmt.Fprintf(&b, "    Previous settings: %s\n", resumedSettingsText(s.ResumedSettings))
@@ -69,10 +69,11 @@ func repositoryStateText(reason github.UnavailableReason) string {
 }
 
 // notApplicableReasonText は、適用不能の理由を、利用者が対処を選べる CLI 仕様の文言で返す。
-// 非公開リポジトリの理由は複数の設定が持つため、直し方に挙げるキーを key から決める。
+// 非公開リポジトリの理由は複数の設定が持つため、直し方に挙げるキーを s の管理の単位から決める。
 // 未定義の理由は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
-func notApplicableReasonText(reason changeplan.NotApplicableReason, key setting.Key) string {
-	switch reason {
+func notApplicableReasonText(s changeplan.SettingPlan) string {
+	key := s.Unit.Key
+	switch s.NotApplicableReason {
 	case changeplan.NotApplicableActionsRemainDisabled:
 		return "GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it"
 	case changeplan.NotApplicablePublicRepository:
@@ -85,8 +86,27 @@ func notApplicableReasonText(reason changeplan.NotApplicableReason, key setting.
 		return "the repository is private; remove " + string(key)[strings.LastIndex(string(key), ".")+1:] + ", which reco manages only on public repositories"
 	case changeplan.NotApplicableSecretScanningRemainsDisabled:
 		return "Secret scanning is disabled; declare secret_scanning: true to enable it"
+	case changeplan.NotApplicableNoMergeMethodEnabled:
+		return noMergeMethodEnabledText(s.MergeMethodsLeftDisabled)
 	}
-	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(reason)))
+	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(s.NotApplicableReason)))
+}
+
+// noMergeMethodEnabledText は、更新後に有効なマージ方式が残らない理由を、無効のまま残るマージ方式と、そのどれかを有効にする宣言で返す。
+// 変更予定のマージ方式は宣言されているため、無効のまま残るのは 1 つか 2 つで、ほかの数は不変条件の破れとして panic する。
+func noMergeMethodEnabledText(keys []setting.Key) string {
+	names := make([]string, len(keys))
+	for i, key := range keys {
+		names[i] = strings.TrimPrefix(string(key), "general.")
+	}
+	switch len(names) {
+	case 1:
+		return names[0] + " is disabled, so no merge method would remain enabled; declare " + names[0] + ": true to enable it"
+	case 2:
+		return names[0] + " and " + names[1] + " are disabled, so no merge method would remain enabled; declare " +
+			names[0] + ": true or " + names[1] + ": true to enable one of them"
+	}
+	panic(fmt.Sprintf("changeplandisplay: %d merge methods left disabled", len(names)))
 }
 
 // resumedSettingsText は、再開する設定を、CLI 仕様の Previous settings: の文言で返す。

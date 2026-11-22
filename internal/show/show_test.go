@@ -38,8 +38,9 @@ func TestWriteObservationResult(t *testing.T) {
 	enabledSecretScanning := &github.SecretScanning{Enabled: github.Observed(true), PushProtection: github.Observed(true)}
 	disabledPrivateVulnerabilityReporting := &github.PrivateVulnerabilityReporting{Enabled: github.Observed(false)}
 	const (
-		header           = "repositories:\n  - name: owner/repo\n"
-		defaultGeneral   = "    general:\n      delete_branch_on_merge: false\n      allow_auto_merge: false\n"
+		header         = "repositories:\n  - name: owner/repo\n"
+		defaultGeneral = "    general:\n      delete_branch_on_merge: false\n      allow_auto_merge: false\n" +
+			"      allow_squash_merge: false\n      allow_merge_commit: false\n      allow_rebase_merge: false\n      allow_update_branch: false\n"
 		allPermissions   = "    actions:\n      permissions:\n        enabled: true\n        allowed_actions: all\n        sha_pinning_required: true\n"
 		readOnlyWorkflow = "      workflow:\n        default_workflow_permissions: read\n        can_approve_pull_request_reviews: false\n"
 		notSharedAccess  = "      access:\n        access_level: none\n"
@@ -57,7 +58,7 @@ func TestWriteObservationResult(t *testing.T) {
 			name: "all areas are shown in the configuration structure and the all policy omits the criteria",
 			observed: github.ObservationResult{
 				RepositoryID:                  1,
-				General:                       github.General{DeleteBranchOnMerge: true, AllowAutoMerge: false},
+				General:                       github.General{DeleteBranchOnMerge: true, AllowAutoMerge: false, AllowSquashMerge: true, AllowMergeCommit: false, AllowRebaseMerge: true, AllowUpdateBranch: false},
 				ActionsPermissions:            allPolicy,
 				WorkflowPermissions:           readOnly,
 				ActionsAccess:                 notShared,
@@ -69,13 +70,14 @@ func TestWriteObservationResult(t *testing.T) {
 			},
 			want: header +
 				"    general:\n      delete_branch_on_merge: true\n      allow_auto_merge: false\n" +
+				"      allow_squash_merge: true\n      allow_merge_commit: false\n      allow_rebase_merge: true\n      allow_update_branch: false\n" +
 				allPermissions + readOnlyWorkflow + notSharedAccess + noVariable + noEnvironment + enabledSecurity,
 		},
 		{
 			name: "opposite values are shown as observed",
 			observed: github.ObservationResult{
 				RepositoryID:                  1,
-				General:                       github.General{DeleteBranchOnMerge: false, AllowAutoMerge: true},
+				General:                       github.General{DeleteBranchOnMerge: false, AllowAutoMerge: true, AllowSquashMerge: false, AllowMergeCommit: true, AllowRebaseMerge: false, AllowUpdateBranch: true},
 				ActionsPermissions:            allPolicy,
 				WorkflowPermissions:           &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: true},
 				ActionsAccess:                 &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessUser)},
@@ -87,6 +89,7 @@ func TestWriteObservationResult(t *testing.T) {
 			},
 			want: header +
 				"    general:\n      delete_branch_on_merge: false\n      allow_auto_merge: true\n" +
+				"      allow_squash_merge: false\n      allow_merge_commit: true\n      allow_rebase_merge: false\n      allow_update_branch: true\n" +
 				allPermissions +
 				"      workflow:\n        default_workflow_permissions: write\n        can_approve_pull_request_reviews: true\n" +
 				"      access:\n        access_level: user\n" +

@@ -35,6 +35,8 @@ const (
 	NotApplicablePrivateRepository
 	// NotApplicableSecretScanningRemainsDisabled は、Secret scanning が無効で、同じリポジトリの期待状態が Secret scanning の有効を含まないこと。
 	NotApplicableSecretScanningRemainsDisabled
+	// NotApplicableNoMergeMethodEnabled は、更新後に有効なマージ方式が一つも残らないこと。無効のまま残るマージ方式を伴う。
+	NotApplicableNoMergeMethodEnabled
 )
 
 // judgeApplicability は、管理設定の計画 s の観測結果と、同じリポジトリの管理設定の計画 settings の期待値と、
@@ -54,6 +56,9 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 		// GitHub は Secret scanning が無効のあいだ、push protection を有効にする更新に成功を応答して値を変えない
 		if s.Unit.Key == setting.RepositoryPushProtection && s.Desired.Bool() && !prerequisiteAvailable(setting.SecretScanningEnabled, settings, observed) {
 			return NotApplicable, NotApplicableSecretScanningRemainsDisabled
+		}
+		if len(mergeMethodsLeftDisabled(s, settings, observed)) > 0 {
+			return NotApplicable, NotApplicableNoMergeMethodEnabled
 		}
 		return Applicable, 0
 	case NotComparable:

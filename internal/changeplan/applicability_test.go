@@ -367,3 +367,34 @@ func TestExpectsActionsEnabled(t *testing.T) {
 		})
 	}
 }
+
+//trace:checks FR-006 INV-001
+func TestJudgeApplicability_MergeMethods(t *testing.T) {
+	disableSquash := newSettingPlan(setting.Unit{Key: setting.AllowSquashMerge}, github.Observed(setting.BoolValue(true)), setting.BoolValue(false))
+	cases := []struct {
+		name       string
+		observed   github.ObservationResult
+		want       Applicability
+		wantReason NotApplicableReason
+	}{
+		{
+			name:     "disabling with another merge method left enabled is applicable",
+			observed: github.ObservationResult{General: github.General{AllowSquashMerge: true, AllowRebaseMerge: true}},
+			want:     Applicable,
+		},
+		{
+			name:       "disabling the last enabled merge method is not applicable",
+			observed:   github.ObservationResult{General: github.General{AllowSquashMerge: true}},
+			want:       NotApplicable,
+			wantReason: NotApplicableNoMergeMethodEnabled,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, reason := judgeApplicability(disableSquash, []SettingPlan{disableSquash}, tc.observed)
+			if got != tc.want || reason != tc.wantReason {
+				t.Errorf("judgeApplicability() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)
+			}
+		})
+	}
+}

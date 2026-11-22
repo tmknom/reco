@@ -13,6 +13,10 @@ type repositoryPayload struct {
 	ID                  *int64 `json:"id"`
 	AllowAutoMerge      *bool  `json:"allow_auto_merge"`
 	DeleteBranchOnMerge *bool  `json:"delete_branch_on_merge"`
+	AllowSquashMerge    *bool  `json:"allow_squash_merge"`
+	AllowMergeCommit    *bool  `json:"allow_merge_commit"`
+	AllowRebaseMerge    *bool  `json:"allow_rebase_merge"`
+	AllowUpdateBranch   *bool  `json:"allow_update_branch"`
 	Private             *bool  `json:"private"`
 	// Permissions は Dependabot の領域を読まない観測では使わないため、取得契約に含めず、欠落と null を許す。
 	Permissions *repositoryPermissionsPayload `json:"permissions"`
@@ -48,6 +52,18 @@ func decodeRepository(data []byte) (ObservationResult, repositoryAttributes, err
 	if p.DeleteBranchOnMerge == nil {
 		missing = append(missing, "delete_branch_on_merge")
 	}
+	if p.AllowSquashMerge == nil {
+		missing = append(missing, "allow_squash_merge")
+	}
+	if p.AllowMergeCommit == nil {
+		missing = append(missing, "allow_merge_commit")
+	}
+	if p.AllowRebaseMerge == nil {
+		missing = append(missing, "allow_rebase_merge")
+	}
+	if p.AllowUpdateBranch == nil {
+		missing = append(missing, "allow_update_branch")
+	}
 	if p.Private == nil {
 		missing = append(missing, "private")
 	}
@@ -59,6 +75,10 @@ func decodeRepository(data []byte) (ObservationResult, repositoryAttributes, err
 		General: General{
 			AllowAutoMerge:      *p.AllowAutoMerge,
 			DeleteBranchOnMerge: *p.DeleteBranchOnMerge,
+			AllowSquashMerge:    *p.AllowSquashMerge,
+			AllowMergeCommit:    *p.AllowMergeCommit,
+			AllowRebaseMerge:    *p.AllowRebaseMerge,
+			AllowUpdateBranch:   *p.AllowUpdateBranch,
 		},
 	}, repositoryAttributes{
 		private:             *p.Private,

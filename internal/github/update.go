@@ -193,6 +193,8 @@ func updateRequestOf(key setting.Key) updateRequest {
 		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateRepositoryPushProtection)}
 	case setting.PrivateVulnerabilityReportingEnabled:
 		return updateRequest{PrivateVulnerabilityReportingEndpoint, boolUpdate((*Client).updatePrivateVulnerabilityReporting)}
+	case setting.AllowSquashMerge, setting.AllowMergeCommit, setting.AllowRebaseMerge, setting.AllowUpdateBranch:
+		// 更新要求をまだ持たない。
 	case setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentVariable:
 		// 関連リソースの更新要求は宛先に名前が要るため、設定の識別だけで引くこの関数では扱えない。
 	}

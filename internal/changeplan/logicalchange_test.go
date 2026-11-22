@@ -91,6 +91,28 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 		return LogicalChange{DesiredState: []DesiredSetting{{Unit: setting.Unit{Key: key}, Value: desired}}, Operations: []UpdateOperation{settingUpdate(key, desired, relevant...)}}
 	}
 
+	for _, key := range []setting.Key{setting.AllowSquashMerge, setting.AllowMergeCommit, setting.AllowRebaseMerge, setting.AllowUpdateBranch} {
+		t.Run("applicable change of "+string(key)+" is rejected as not supported yet", func(t *testing.T) {
+			change := SettingPlan{Unit: setting.Unit{Key: key}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
+			_, err := newRepositoryPlan(mismatch, change).LogicalChanges()
+			if want := "owner/repo: updating " + string(key) + " is not supported yet"; err == nil || err.Error() != want {
+				t.Errorf("LogicalChanges() error = %v, want %q", err, want)
+			}
+		})
+	}
+
+	t.Run("matching merge method and allow_update_branch are not rejected", func(t *testing.T) {
+		squash := SettingPlan{Unit: setting.Unit{Key: setting.AllowSquashMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: Match}
+		updateBranch := SettingPlan{Unit: setting.Unit{Key: setting.AllowUpdateBranch}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(false), Result: Match}
+		got, err := newRepositoryPlan(mismatch, squash, updateBranch).LogicalChanges()
+		if err != nil {
+			t.Fatalf("LogicalChanges() error = %v", err)
+		}
+		if want := []LogicalChange{settingChange(setting.AllowAutoMerge, setting.BoolValue(true), relevant(setting.AllowAutoMerge, github.Observed(setting.BoolValue(false))))}; !reflect.DeepEqual(got, want) {
+			t.Errorf("LogicalChanges() =\n%+v\nwant\n%+v", got, want)
+		}
+	})
+
 	t.Run("all matches have no logical change", func(t *testing.T) {
 		got, err := newRepositoryPlan(match).LogicalChanges()
 		if err != nil || len(got) != 0 {

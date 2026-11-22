@@ -14,26 +14,29 @@ func TestBodies(t *testing.T) {
 		want map[string]any
 	}{
 		{
-			name: "private repository body has id, the two merge-related fields, the visibility, and the admin access, without security_and_analysis",
-			body: RepositoryBody{ID: 7, AllowAutoMerge: true, Private: true, Admin: true, SecretScanning: true}.JSON(),
+			name: "private repository body has id, the six general fields, the visibility, and the admin access, without security_and_analysis",
+			body: RepositoryBody{ID: 7, AllowAutoMerge: true, AllowSquashMerge: true, AllowUpdateBranch: true, Private: true, Admin: true, SecretScanning: true}.JSON(),
 			want: map[string]any{
-				"id": float64(7), "allow_auto_merge": true, "delete_branch_on_merge": false, "private": true,
+				"id": float64(7), "allow_auto_merge": true, "delete_branch_on_merge": false,
+				"allow_squash_merge": true, "allow_merge_commit": false, "allow_rebase_merge": false, "allow_update_branch": true, "private": true,
 				"permissions": map[string]any{"admin": true},
 			},
 		},
 		{
 			name: "public repository body without admin access has no security_and_analysis",
-			body: RepositoryBody{ID: 7, SecretScanning: true}.JSON(),
+			body: RepositoryBody{ID: 7, AllowMergeCommit: true, SecretScanning: true}.JSON(),
 			want: map[string]any{
-				"id": float64(7), "allow_auto_merge": false, "delete_branch_on_merge": false, "private": false,
+				"id": float64(7), "allow_auto_merge": false, "delete_branch_on_merge": false,
+				"allow_squash_merge": false, "allow_merge_commit": true, "allow_rebase_merge": false, "allow_update_branch": false, "private": false,
 				"permissions": map[string]any{"admin": false},
 			},
 		},
 		{
 			name: "public repository body with admin access has the secret scanning statuses in security_and_analysis",
-			body: RepositoryBody{ID: 7, Admin: true, SecretScanning: true}.JSON(),
+			body: RepositoryBody{ID: 7, AllowRebaseMerge: true, Admin: true, SecretScanning: true}.JSON(),
 			want: map[string]any{
-				"id": float64(7), "allow_auto_merge": false, "delete_branch_on_merge": false, "private": false,
+				"id": float64(7), "allow_auto_merge": false, "delete_branch_on_merge": false,
+				"allow_squash_merge": false, "allow_merge_commit": false, "allow_rebase_merge": true, "allow_update_branch": false, "private": false,
 				"permissions": map[string]any{"admin": true},
 				"security_and_analysis": map[string]any{
 					"secret_scanning":                 map[string]any{"status": "enabled"},

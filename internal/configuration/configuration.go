@@ -58,6 +58,10 @@ type EnvironmentDeclaration struct {
 type General struct {
 	DeleteBranchOnMerge *bool
 	AllowAutoMerge      *bool
+	AllowSquashMerge    *bool
+	AllowMergeCommit    *bool
+	AllowRebaseMerge    *bool
+	AllowUpdateBranch   *bool
 }
 
 // ActionsPermissions は Actions の実行許可の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
@@ -143,6 +147,14 @@ func (d DesiredState) value(key setting.Key) (value setting.Value, ok bool) {
 		return optionalBoolValue(d.General.DeleteBranchOnMerge)
 	case setting.AllowAutoMerge:
 		return optionalBoolValue(d.General.AllowAutoMerge)
+	case setting.AllowSquashMerge:
+		return optionalBoolValue(d.General.AllowSquashMerge)
+	case setting.AllowMergeCommit:
+		return optionalBoolValue(d.General.AllowMergeCommit)
+	case setting.AllowRebaseMerge:
+		return optionalBoolValue(d.General.AllowRebaseMerge)
+	case setting.AllowUpdateBranch:
+		return optionalBoolValue(d.General.AllowUpdateBranch)
 	case setting.ActionsEnabled:
 		return optionalBoolValue(d.ActionsPermissions.Enabled)
 	case setting.AllowedActions:

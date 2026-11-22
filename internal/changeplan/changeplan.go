@@ -53,6 +53,9 @@ type SettingPlan struct {
 	SettingsWithoutSideEffect []SettingWithoutSideEffect
 	// ResumedSettings は、Actions を有効にする変更予定に添える再開する設定。当たらなければ nil。
 	ResumedSettings []setting.Key
+	// MergeMethodsLeftDisabled は、NotApplicableReason が NotApplicableNoMergeMethodEnabled のときだけ持つ、
+	// 無効のまま残るマージ方式。YAML 設定仕様の表の並びで一つ以上を持つ。当たらなければ nil。
+	MergeMethodsLeftDisabled []setting.Key
 }
 
 // Generate は、selection で選んだ対象の変更計画を生成する。selection が nil なら宣言された全リポジトリを選ぶ。
@@ -149,6 +152,9 @@ func generateRepositoryPlan(ctx context.Context, client *github.Client, target c
 		settings[i].Applicability, settings[i].NotApplicableReason = judgeApplicability(settings[i], settings, observed)
 		settings[i].SideEffects, settings[i].SettingsWithoutSideEffect = sideEffects(settings[i], observed, settings)
 		settings[i].ResumedSettings = resumedSettings(settings[i], settings)
+		if settings[i].NotApplicableReason == NotApplicableNoMergeMethodEnabled {
+			settings[i].MergeMethodsLeftDisabled = mergeMethodsLeftDisabled(settings[i], settings, observed)
+		}
 	}
 	return RepositoryPlan{Target: target.Reference, RepositoryID: observed.RepositoryID, Settings: settings}, nil
 }

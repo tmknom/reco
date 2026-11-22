@@ -77,7 +77,7 @@ Plan cannot be applied.
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-a: actions.permissions.sha_pinning_required is not applicable; no changes made"}
 ```
 
-理由は、変更計画の `Applicability:` の行の括弧の中にあります。セミコロンの前が成り立っていないこと、後ろが設定ファイルの直し方です。この例では Actions が無効のため、同じリポジトリに `enabled: true` か `allowed_actions` を書き足します。`Dependabot alerts is disabled` なら、同じリポジトリに `dependabot_alerts: true` を書き足します。`Secret scanning is disabled` なら `secret_scanning: true` を書き足し、`the repository is private` なら、そのリポジトリから、セミコロンの後ろに示されたキー（`secret_scanning` など）を消します。設定ファイルを直したら、`plan` で `Plan cannot be applied.` が消えたことを確かめ、`apply` を実行し直します。
+理由は、変更計画の `Applicability:` の行の括弧の中にあります。セミコロンの前が成り立っていないこと、後ろが設定ファイルの直し方です。この例では Actions が無効のため、同じリポジトリに `enabled: true` か `allowed_actions` を書き足します。`Dependabot alerts is disabled` なら、同じリポジトリに `dependabot_alerts: true` を書き足します。`Secret scanning is disabled` なら `secret_scanning: true` を書き足し、`the repository is private` なら、そのリポジトリから、セミコロンの後ろに示されたキー（`secret_scanning` など）を消します。`no merge method would remain enabled` なら、セミコロンの後ろに示されたキー（`allow_rebase_merge` など）のどれかを `true` と書き足します。設定ファイルを直したら、`plan` で `Plan cannot be applied.` が消えたことを確かめ、`apply` を実行し直します。
 
 ## 承認できない
 

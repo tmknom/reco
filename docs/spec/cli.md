@@ -260,7 +260,7 @@ Plan: 1 repository to update, 2 changes
 Repositories checked: 1
 ```
 
-安全な変更に必要な条件を確認できない変更予定には、変更予定の行のすぐ下に `Applicability: not applicable (<理由>)` を添えます。理由は、セミコロンの前に何が成り立っていないかを、後ろに設定ファイルの直し方を示します。適用不能な変更予定が一つでもあれば、`Repositories checked:` の後に空行を挟んで `Plan cannot be applied.` を一度だけ表示します。集計は、適用不能な変更予定と、適用不能な変更予定だけを持つリポジトリも数えます。現在は、Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言した場合と、公開リポジトリで `access_level` を宣言した場合と、宣言した名前と同じかどうかを判定できない名前の Environment があり、宣言した名前の Environment が存在するかを確かめられない場合と、Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を宣言せずに `dependabot_security_updates` を宣言し、その値を変える場合と、非公開リポジトリで `secret_scanning`、`secret_scanning_push_protection`、`private_vulnerability_reporting` のいずれかを宣言した場合と、Secret scanning が無効のリポジトリで、`secret_scanning: true` を宣言せずに `secret_scanning_push_protection: true` を宣言し、その値を変える場合が該当します（[設定ごとの設計](../design/settings/README.md) の各文書の「適用可能性と副作用」）。
+安全な変更に必要な条件を確認できない変更予定には、変更予定の行のすぐ下に `Applicability: not applicable (<理由>)` を添えます。理由は、セミコロンの前に何が成り立っていないかを、後ろに設定ファイルの直し方を示します。適用不能な変更予定が一つでもあれば、`Repositories checked:` の後に空行を挟んで `Plan cannot be applied.` を一度だけ表示します。集計は、適用不能な変更予定と、適用不能な変更予定だけを持つリポジトリも数えます。現在は、Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言した場合と、公開リポジトリで `access_level` を宣言した場合と、宣言した名前と同じかどうかを判定できない名前の Environment があり、宣言した名前の Environment が存在するかを確かめられない場合と、Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を宣言せずに `dependabot_security_updates` を宣言し、その値を変える場合と、非公開リポジトリで `secret_scanning`、`secret_scanning_push_protection`、`private_vulnerability_reporting` のいずれかを宣言した場合と、Secret scanning が無効のリポジトリで、`secret_scanning: true` を宣言せずに `secret_scanning_push_protection: true` を宣言し、その値を変える場合と、マージ方式を無効にする変更で、更新後に3つのマージ方式がすべて無効になる場合が該当します（[設定ごとの設計](../design/settings/README.md) の各文書の「適用可能性と副作用」）。
 
 ```text
 Repository: example/project-a
@@ -366,6 +366,29 @@ Repository: example/project-b
     Applicability: not applicable (Secret scanning is disabled; declare secret_scanning: true to enable it)
 ```
 
+マージ方式（`allow_squash_merge`、`allow_merge_commit`、`allow_rebase_merge`）を無効にする変更予定は、更新後に3つのマージ方式がすべて無効になるとき、適用不能です。GitHub は、3つのマージ方式をすべて無効にする更新を拒否するためです（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）。更新後の値は、宣言したマージ方式では期待値、宣言していないマージ方式では現在値です。無効にする変更予定が複数あれば、どれも適用不能です。理由は、セミコロンの前に、宣言しておらず現在無効のマージ方式を示し、後ろに、そのどれかを `true` と宣言する直し方を示します。reco は、宣言していないマージ方式を有効にしません。宣言していないマージ方式のどれかが有効なら、無効にする変更予定は適用可能です。`allow_update_branch` はマージ方式に数えません。
+
+```text
+Repository: example/project-a
+  general.allow_squash_merge: true -> false
+    Applicability: not applicable (allow_rebase_merge is disabled, so no merge method would remain enabled; declare allow_rebase_merge: true to enable it)
+  general.allow_merge_commit: true -> false
+    Applicability: not applicable (allow_rebase_merge is disabled, so no merge method would remain enabled; declare allow_rebase_merge: true to enable it)
+
+Plan: 1 repository to update, 2 changes
+Repositories checked: 1
+
+Plan cannot be applied.
+```
+
+宣言していない無効のマージ方式が2つのときは、次のように示します。
+
+```text
+Repository: example/project-a
+  general.allow_squash_merge: true -> false
+    Applicability: not applicable (allow_merge_commit and allow_rebase_merge are disabled, so no merge method would remain enabled; declare allow_merge_commit: true or allow_rebase_merge: true to enable one of them)
+```
+
 `plan` の終了コード `0` は、差分がないことも、後の `apply` が成功することも保証しません。
 
 | Relationship | Target | Target Type |
@@ -405,6 +428,8 @@ Plan cannot be applied.
 ```text
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-b: actions.permissions.sha_pinning_required is not applicable; example/project-c: actions.permissions.sha_pinning_required is not applicable; no changes made"}
 ```
+
+`general.allow_squash_merge`、`general.allow_merge_commit`、`general.allow_rebase_merge`、`general.allow_update_branch` の適用可能な変更予定を含む変更計画は、`apply` ではまだ実行できません。事前検証の問題として、変更計画を表示せず、承認を求めず、更新を開始せずに、`example/project-a: updating general.allow_squash_merge is not supported yet; no changes made` のように対象と設定を示してエラー終了します。適用不能な変更予定がほかにあれば、適用不能の報告を先に行い、このエラーは表示しません。`plan` では変更予定を確認できます。
 
 すべて変更不要の場合の表示例は次のとおりです。
 
@@ -799,6 +824,10 @@ repositories:
     general:
       delete_branch_on_merge: true
       allow_auto_merge: false
+      allow_squash_merge: true
+      allow_merge_commit: false
+      allow_rebase_merge: false
+      allow_update_branch: true
     actions:
       permissions:
         enabled: true

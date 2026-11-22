@@ -36,6 +36,10 @@ type ObservationResult struct {
 type General struct {
 	AllowAutoMerge      bool
 	DeleteBranchOnMerge bool
+	AllowSquashMerge    bool
+	AllowMergeCommit    bool
+	AllowRebaseMerge    bool
+	AllowUpdateBranch   bool
 }
 
 // Setting は、管理の単位 unit の設定の観測結果を返す。取得条件を持たない設定は、常に観測値になる。
@@ -48,6 +52,14 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 		return Observed(setting.BoolValue(o.General.DeleteBranchOnMerge))
 	case setting.AllowAutoMerge:
 		return Observed(setting.BoolValue(o.General.AllowAutoMerge))
+	case setting.AllowSquashMerge:
+		return Observed(setting.BoolValue(o.General.AllowSquashMerge))
+	case setting.AllowMergeCommit:
+		return Observed(setting.BoolValue(o.General.AllowMergeCommit))
+	case setting.AllowRebaseMerge:
+		return Observed(setting.BoolValue(o.General.AllowRebaseMerge))
+	case setting.AllowUpdateBranch:
+		return Observed(setting.BoolValue(o.General.AllowUpdateBranch))
 	case setting.ActionsEnabled:
 		return Observed(setting.BoolValue(o.ActionsPermissions.Enabled))
 	case setting.AllowedActions:

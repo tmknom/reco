@@ -107,13 +107,32 @@ Environment や Variable のように、一つのリポジトリに名前の違�
 |---|---|---|---|---|
 | `general.delete_branch_on_merge` | 真偽値 | `true` / `false` | Pull Request のマージ後に head branch を自動削除する設定 | 独立 |
 | `general.allow_auto_merge` | 真偽値 | `true` / `false` | Pull Request の Auto-merge を許可する設定 | 独立 |
+| `general.allow_squash_merge` | 真偽値 | `true` / `false` | Pull Request の squash merge を許可する設定 | 独立 |
+| `general.allow_merge_commit` | 真偽値 | `true` / `false` | Pull Request を merge commit でマージすることを許可する設定 | 独立 |
+| `general.allow_rebase_merge` | 真偽値 | `true` / `false` | Pull Request の rebase merge を許可する設定 | 独立 |
+| `general.allow_update_branch` | 真偽値 | `true` / `false` | base branch より遅れた head branch の更新を、Pull Request で常に提案する設定 | 独立 |
 
-これらはリポジトリ単位の許可設定であり、変更しても個々の Pull Request のマージやブランチの直接削除は行いません。
+これらはリポジトリ単位の設定であり、変更しても個々の Pull Request のマージ、ブランチの更新、ブランチの直接削除は行いません。`allow_update_branch` は更新を提案するボタンを表示する設定で、reco も GitHub もブランチを自動では更新しません。
+
+`allow_squash_merge`、`allow_merge_commit`、`allow_rebase_merge` の3つを **マージ方式** と呼びます。3つは独立した管理の単位で、一部だけを宣言できます。`allow_update_branch` はマージ方式に数えず、次の組み合わせの規則に関わりません。
+
+| 宣言したマージ方式 | 判定 |
+|---|---|
+| 3つとも `false` | エラー |
+| 1つ以上が `true` | 有効 |
+| 一部を省略し、宣言したものがすべて `false` | 有効 |
+
+3つとも `false` と宣言できないのは、GitHub が、3つのマージ方式をすべて無効にする更新を拒否し（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）、この状態を実現できないためです。この誤りは、`general` の6つの設定のいずれかの値が真偽値でない誤りより後に示します。
+
+一部を省略し、宣言したものがすべて `false` の場合、宣言していないマージ方式がすべて無効のリポジトリでは、無効にする変更予定が適用不能になります（[General の設計](../design/settings/general.md) の適用可能性と副作用）。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。reco は、宣言していないマージ方式を有効にしません。
 
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-001` | Functional Requirement |
+| `alignment` | `FR-005` | Functional Requirement |
+| `alignment` | `FR-006` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
+| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
 
 ## 4. Actions permissions
 
@@ -466,6 +485,7 @@ reco は、この設定を公開リポジトリでだけ管理します。公式
 | `allow_auto_merge: "true"` | エラー（文字列） |
 | `allow_auto_merge: TRUE` | エラー（受理する表記ではない） |
 | `allow_auto_merge: !!bool "true"` | エラー（明示タグ） |
+| `allow_squash_merge: false`、`allow_merge_commit: false`、`allow_rebase_merge: false` を同時に宣言 | エラー（3つのマージ方式をすべて無効にできない） |
 | `allowed_actions: "selected"` | 値の形式は有効。ただし `selected_actions` の3項目も必要 |
 | `access_level: organization` | エラー（宣言で受け付ける値ではない） |
 | `value: "1.27"`（変数の値） | 有効 |

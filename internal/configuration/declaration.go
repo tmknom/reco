@@ -439,27 +439,50 @@ func (d document) access(n *yaml.Node, path string) (ActionsAccess, error) {
 	return ActionsAccess{AccessLevel: &level}, nil
 }
 
+// general は general の設定を読む。マージ方式の組み合わせの規則は 3 つの値で決まるため、すべての値の誤りを先に示す。
 func (d document) general(n *yaml.Node, path string) (General, error) {
-	entries, err := d.mappingEntries(n, path, nil, []string{"delete_branch_on_merge", "allow_auto_merge"})
+	entries, err := d.mappingEntries(n, path, nil, []string{"delete_branch_on_merge", "allow_auto_merge", "allow_squash_merge", "allow_merge_commit", "allow_rebase_merge", "allow_update_branch"})
 	if err != nil {
 		return General{}, err
 	}
 	var general General
-	if value, ok := entries["delete_branch_on_merge"]; ok {
-		v, err := d.boolValue(value, path+".delete_branch_on_merge")
+	for _, field := range []struct {
+		key string
+		dst **bool
+	}{
+		{"delete_branch_on_merge", &general.DeleteBranchOnMerge},
+		{"allow_auto_merge", &general.AllowAutoMerge},
+		{"allow_squash_merge", &general.AllowSquashMerge},
+		{"allow_merge_commit", &general.AllowMergeCommit},
+		{"allow_rebase_merge", &general.AllowRebaseMerge},
+		{"allow_update_branch", &general.AllowUpdateBranch},
+	} {
+		value, ok := entries[field.key]
+		if !ok {
+			continue
+		}
+		v, err := d.boolValue(value, path+"."+field.key)
 		if err != nil {
 			return General{}, err
 		}
-		general.DeleteBranchOnMerge = &v
+		*field.dst = &v
 	}
-	if value, ok := entries["allow_auto_merge"]; ok {
-		v, err := d.boolValue(value, path+".allow_auto_merge")
-		if err != nil {
-			return General{}, err
-		}
-		general.AllowAutoMerge = &v
+	if disablesEveryMergeMethod(general) {
+		return General{}, invalid(n, path, "allow_squash_merge, allow_merge_commit, and allow_rebase_merge cannot all be false; GitHub requires at least one merge method")
 	}
 	return general, nil
+}
+
+// disablesEveryMergeMethod は、3 つのマージ方式をすべて宣言し、すべて false としているかを返す。
+// GitHub はこの状態を受け付けないため (YAML 設定仕様の General)、観測によらず拒否する。
+func disablesEveryMergeMethod(general General) bool {
+	desired := DesiredState{General: general}
+	for _, key := range setting.MergeMethods() {
+		if v, ok := desired.value(key); !ok || v.Bool() {
+			return false
+		}
+	}
+	return true
 }
 
 // security は security の設定を読む。組み合わせの規則は 2 つの値で決まるため、すべての値の誤りを先に示す。

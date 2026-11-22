@@ -52,7 +52,7 @@
 > [!NOTE]
 > 次は、reco の開発者が `gh auth token` のトークン（scope は `admin:public_key`、`gist`、`read:org`、`repo`）で実際の動作を確認した事項です。
 >
-> - トークン所有者が Admin ロールを持つ個人アカウント所有のリポジトリでは、`allow_auto_merge` と `delete_branch_on_merge` が値とともに返る
+> - トークン所有者が Admin ロールを持つ個人アカウント所有のリポジトリでは、`allow_auto_merge`、`delete_branch_on_merge`、`allow_squash_merge`、`allow_merge_commit`、`allow_rebase_merge`、`allow_update_branch` が値とともに返る（後の4つは公開・非公開の両方で確認）
 > - トークン所有者が Write 以上のロールを持たない第三者の公開リポジトリ（応答の `permissions` は `pull` だけが `true`）では、`allow_auto_merge`、`delete_branch_on_merge`、`allow_merge_commit`、`allow_rebase_merge`、`allow_squash_merge`、`allow_update_branch`、`merge_commit_message`、`merge_commit_title`、`squash_merge_commit_message`、`squash_merge_commit_title` の各フィールドが応答から欠け、`false` などの値では返らない。応答は `200` で、`id` は返る
 > - Write・Maintain ロールでの応答は確認していない
 
@@ -83,7 +83,7 @@
 ## 3. `GET /repos/{owner}/{repo}`
 
 - 用途：リポジトリの情報と一般設定の取得
-- 主な応答フィールド：`id`（整数、必須）、`name`（文字列、必須）、`full_name`（文字列、必須）、`owner`（必須）、`updated_at`（日時の文字列、必須）、`delete_branch_on_merge`（boolean、必須ではない）、`allow_auto_merge`（boolean、必須ではない）、`private`（boolean、必須）、`visibility`（文字列、必須ではない）、`permissions`（オブジェクト、必須ではない。中の `admin`、`push`、`pull` は boolean で必須）
+- 主な応答フィールド：`id`（整数、必須）、`name`（文字列、必須）、`full_name`（文字列、必須）、`owner`（必須）、`updated_at`（日時の文字列、必須）、`delete_branch_on_merge`（boolean、必須ではない）、`allow_auto_merge`（boolean、必須ではない）、`allow_squash_merge`、`allow_merge_commit`、`allow_rebase_merge`、`allow_update_branch`（いずれも boolean、必須ではない）、`private`（boolean、必須）、`visibility`（文字列、必須ではない）、`permissions`（オブジェクト、必須ではない。中の `admin`、`push`、`pull` は boolean で必須）
 
 `permissions` の各値が、認証したユーザーのリポジトリでのロールを表すのか、トークンに与えた権限を表すのかは、スキーマに記載がありません。
 
@@ -112,6 +112,10 @@
 |---|---|---|---|
 | `delete_branch_on_merge` | boolean | 任意 | `false` |
 | `allow_auto_merge` | boolean | 任意 | `false` |
+| `allow_squash_merge` | boolean | 任意 | `true` |
+| `allow_merge_commit` | boolean | 任意 | `true` |
+| `allow_rebase_merge` | boolean | 任意 | `true` |
+| `allow_update_branch` | boolean | 任意 | `false` |
 
 `delete_branch_on_merge` は Pull Request のマージ時に head ブランチを自動で削除するか、`allow_auto_merge` は Pull Request の自動マージを許可するかの設定です。リポジトリ設定のドキュメントは、同じ二つの機能を、設定画面の「General」ページの「Pull Requests」の欄にある「Automatically delete head branches」と「Allow auto-merge」という項目で設定できると記載しています。たとえば、`allow_auto_merge` だけを指定するリクエスト本文は次のとおりです。
 
@@ -123,7 +127,9 @@
 
 Pull Request の自動マージは、GitHub Free と GitHub Free for organizations では公開リポジトリだけで、GitHub Pro・GitHub Team・GitHub Enterprise Cloud・GitHub Enterprise Server では公開・非公開の両方のリポジトリで利用できると記載されています。この記載は GitHub Enterprise Server 版のドキュメントにあり、GitHub.com 版の同じページには見当たりません。利用できないリポジトリで `allow_auto_merge` を送ったときの応答は記載がありません。
 
-本文フィールドはいずれも任意ですが、省略したフィールドの既存値が保持されるかは記載がありません。上の表の既定値 `false` が省略時に適用される値なのかも記載がありません。`200` の応答はリポジトリの表現を返しますが、それが更新後の状態を反映しているかは記載がありません。条件付きリクエストに対応する旨の記載もありません。
+`allow_squash_merge`、`allow_merge_commit`、`allow_rebase_merge` は、Pull Request を squash merge、merge commit、rebase merge でマージすることを許可するかの設定です。リポジトリ設定のドキュメントは、同じ機能を「Pull Requests」の欄の「Allow squash merging」「Allow merge commits」「Allow rebase merging」という項目で設定できると記載しています。`allow_update_branch` は、マージの前に最新であることを求められていなくても、base ブランチより遅れた head ブランチを常に更新できるようにするかの設定です。ドキュメントは、同じ機能を「Pull Requests」の欄の「Always suggest updating pull request branches」という項目で設定できると記載しています。3つのマージ方式をすべて `false` にする要求の応答と、マージ方式の無効化がマージメッセージの設定（`squash_merge_commit_title` など）に及ぼす影響は、記載がありません。
+
+本文フィールドはいずれも任意ですが、省略したフィールドの既存値が保持されるかは記載がありません。上の表の既定値が省略時に適用される値なのかも記載がありません。`200` の応答はリポジトリの表現を返しますが、それが更新後の状態を反映しているかは記載がありません。条件付きリクエストに対応する旨の記載もありません。
 
 > [!NOTE]
 > 次は、reco の開発者が `Content-Type: application/json` の本文で送り、実際の動作で確認した事項です。
@@ -132,12 +138,33 @@ Pull Request の自動マージは、GitHub Free と GitHub Free for organizatio
 > - `200` の応答本文：`id`、`allow_auto_merge`、`delete_branch_on_merge` を含み、これらの値は直後の `GET` と一致する。ただし本文全体は `GET` の応答と同じではなく、ネストしたオブジェクトの有無（`security_and_analysis`、`template_repository`）が異なる。`security_and_analysis` は、`GET` が返さない非公開リポジトリでも `PATCH` の応答本文には含まれた（5章）
 > - 反映されない更新：GitHub Free のアカウントが所有する非公開リポジトリでは、`allow_auto_merge` だけを送ると `200` が返るが、値は変わらない。応答本文と直後の `GET` は更新前の値を示す。同じリポジトリで `delete_branch_on_merge` は変更できる。自動マージを利用できない条件（上記）に当たるリポジトリで起きたが、ほかの条件で起きないかは確認していない
 
+> [!NOTE]
+> 次は、reco の開発者が、トークン所有者が Admin ロールを持つ個人アカウント所有の公開・非公開リポジトリ（GitHub Free）で、実際の動作を確認した事項です。
+>
+> - 4項目の保持と反映：`allow_squash_merge`、`allow_merge_commit`、`allow_rebase_merge`、`allow_update_branch` のどれか一つだけを `true` か `false` で送ると、`200` が返り、直後の `GET` は送った値を返す。ほかのマージ関連の9フィールド（1.1節）は変わらない（公開・非公開）
+> - `200` の応答本文：マージ関連の10フィールドを含み、値は直後の `GET` と一致する（公開・非公開）
+> - 3つのマージ方式をすべて無効にする要求：2方式を無効にしたあと、残る1方式に `false` を送ると `422` が返り、値は変わらない（公開・非公開）。3方式に `false` を一つの要求で送っても同じ `422` が返り、3つとも変わらない（公開）。本文は次のとおりで、`field` は送ったフィールドにかかわらず `merge_commit_allowed` だった
+>
+>     ```json
+>     {"message":"Validation Failed","errors":[{"message":"Sorry, you need to allow at least one merge strategy. (no_merge_method)","resource":"Repository","field":"merge_commit_allowed","code":"invalid"}],"documentation_url":"https://docs.github.com/rest/repos/repos#update-a-repository","status":"422"}
+>     ```
+>
+> - 有効な方式の入れ替え：`allow_merge_commit` だけが有効のとき、`allow_merge_commit: false` と `allow_squash_merge: true` を一つの要求で送ると、`200` が返り、両方が反映される（公開）
+> - マージメッセージの設定への影響：squash merge と merge commit をそれぞれ無効にして有効に戻しても、`squash_merge_commit_title`、`squash_merge_commit_message`、`merge_commit_title`、`merge_commit_message` は変わらない。無効のあいだも `GET` は値を返す（公開）
+> - `allow_auto_merge` と `delete_branch_on_merge`：上のどの要求でも変わらない（公開・非公開）
+> - `use_squash_pr_title_as_default`：`GET` の応答にも `PATCH` の応答本文にも含まれない
+> - Organization 所有のリポジトリと、Rulesets や Branch protection がマージ方式を求めるリポジトリでの応答は確認していない
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `grounding` | [Update a repository](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#update-a-repository) | External Document |
 | `grounding` | [Managing auto-merge for pull requests in your repository (GitHub Enterprise Server 3.18)](https://docs.github.com/en/enterprise-server@3.18/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-auto-merge-for-pull-requests-in-your-repository) | External Document |
 | `grounding` | [Managing auto-merge for pull requests in your repository](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-auto-merge-for-pull-requests-in-your-repository) | External Document |
 | `grounding` | [Managing the automatic deletion of branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-the-automatic-deletion-of-branches) | External Document |
+| `grounding` | [Configuring commit squashing for pull requests](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/configuring-commit-squashing-for-pull-requests) | External Document |
+| `grounding` | [Configuring commit merging for pull requests](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/configuring-commit-merging-for-pull-requests) | External Document |
+| `grounding` | [Configuring commit rebasing for pull requests](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/configuring-commit-rebasing-for-pull-requests) | External Document |
+| `grounding` | [Managing suggestions to update pull request branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-suggestions-to-update-pull-request-branches) | External Document |
 
 ## 5. `security_and_analysis`
 

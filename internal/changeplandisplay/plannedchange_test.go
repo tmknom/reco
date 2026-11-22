@@ -220,6 +220,27 @@ func TestPlannedChangeText(t *testing.T) {
 				"    Side effect: GitHub also disables secret_scanning_push_protection, which is currently true\n",
 		},
 		{
+			name: "disabling a merge method with one merge method left disabled names it and the declaration to enable it",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.AllowSquashMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false),
+				Result: changeplan.Mismatch, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableNoMergeMethodEnabled,
+				MergeMethodsLeftDisabled: []setting.Key{setting.AllowRebaseMerge},
+			},
+			want: "  general.allow_squash_merge: true -> false\n" +
+				"    Applicability: not applicable (allow_rebase_merge is disabled, so no merge method would remain enabled; declare allow_rebase_merge: true to enable it)\n",
+		},
+		{
+			name: "disabling a merge method with two merge methods left disabled names both and either declaration",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.AllowSquashMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false),
+				Result: changeplan.Mismatch, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableNoMergeMethodEnabled,
+				MergeMethodsLeftDisabled: []setting.Key{setting.AllowMergeCommit, setting.AllowRebaseMerge},
+			},
+			want: "  general.allow_squash_merge: true -> false\n" +
+				"    Applicability: not applicable (allow_merge_commit and allow_rebase_merge are disabled, so no merge method would remain enabled; " +
+				"declare allow_merge_commit: true or allow_rebase_merge: true to enable one of them)\n",
+		},
+		{
 			name: "match is empty",
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true),
@@ -256,7 +277,17 @@ func TestNotApplicableReasonText_UndefinedReasonPanics(t *testing.T) {
 			t.Error("notApplicableReasonText() did not panic for an undefined not-applicable reason")
 		}
 	}()
-	_ = notApplicableReasonText(0, setting.AllowAutoMerge)
+	_ = notApplicableReasonText(changeplan.SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}})
+}
+
+// 無効のまま残るマージ方式のない理由は、changeplan が作らない。
+func TestNotApplicableReasonText_NoMergeMethodEnabledWithoutMethodsPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("notApplicableReasonText() did not panic without merge methods left disabled")
+		}
+	}()
+	_ = notApplicableReasonText(changeplan.SettingPlan{Unit: setting.Unit{Key: setting.AllowSquashMerge}, NotApplicableReason: changeplan.NotApplicableNoMergeMethodEnabled})
 }
 
 func TestRepositoryStateText_UndefinedReasonPanics(t *testing.T) {

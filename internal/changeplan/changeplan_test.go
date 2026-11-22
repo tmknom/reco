@@ -352,6 +352,40 @@ const workflowSource = `repositories:
         default_workflow_permissions: read
 `
 
+// TestGenerate_MergeMethods は、無効のまま残るマージ方式が、適用不能の判断とともに管理設定の計画に入ることを確かめる。
+//
+//trace:checks FR-006 INV-001
+func TestGenerate_MergeMethods(t *testing.T) {
+	const src = `repositories:
+  - name: owner/repo
+    general:
+      allow_squash_merge: false
+      allow_merge_commit: false
+`
+	server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+		"GET /repos/owner/repo": githubtest.OK(githubtest.RepositoryBody{ID: 7, AllowSquashMerge: true, AllowMergeCommit: true}.JSON()),
+	}))
+	client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+	got, err := Generate(context.Background(), client, configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(src)}}, Name: "reco.yaml", Path: "./reco.yaml"}, nil)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	disabled := func(key setting.Key) SettingPlan {
+		return SettingPlan{
+			Unit: setting.Unit{Key: key}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false), Result: Mismatch,
+			Applicability: NotApplicable, NotApplicableReason: NotApplicableNoMergeMethodEnabled, MergeMethodsLeftDisabled: []setting.Key{setting.AllowRebaseMerge},
+		}
+	}
+	want := []SettingPlan{disabled(setting.AllowSquashMerge), disabled(setting.AllowMergeCommit)}
+	if len(got.Repositories) != 1 {
+		t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
+	}
+	if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
+		t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
+	}
+}
+
 //trace:checks FR-004 FR-005
 func TestGenerate_ObservedAreas(t *testing.T) {
 	file := func(src string) configuration.File {
