@@ -4,7 +4,7 @@ package setting
 import "fmt"
 
 // Key は設定の識別。リポジトリ設定では、値を表示にそのまま使い、管理の単位 (RepositorySettingUnits) では YAML 設定仕様のキーのパスと一致する。
-// Environment に関わる管理の単位では、Key は形だけを表し、名前との組 (Unit) で一つに定まる。
+// 関連リソースに関わる管理の単位では、Key は形だけを表し、名前との組 (Unit) で一つに定まる。
 type Key string
 
 const (
@@ -17,9 +17,11 @@ const (
 	DefaultWorkflowPermissions   Key = "actions.workflow.default_workflow_permissions"
 	CanApprovePullRequestReviews Key = "actions.workflow.can_approve_pull_request_reviews"
 	ActionsAccessLevel           Key = "actions.access.access_level"
-	DependabotAlerts             Key = "security.dependabot_alerts"
-	DependabotSecurityUpdates    Key = "security.dependabot_security_updates"
-	SecretScanningEnabled        Key = "security.secret_scanning"
+	// RepositoryVariable は、Repository Variable そのもの (期待値は存在し、値を伴うこと) の形。
+	RepositoryVariable        Key = "actions.variables"
+	DependabotAlerts          Key = "security.dependabot_alerts"
+	DependabotSecurityUpdates Key = "security.dependabot_security_updates"
+	SecretScanningEnabled     Key = "security.secret_scanning"
 	// RepositoryPushProtection は、リポジトリに設定する push protection で、利用者が自分のアカウントに設定する push protection ではない。
 	RepositoryPushProtection             Key = "security.secret_scanning_push_protection"
 	PrivateVulnerabilityReportingEnabled Key = "security.private_vulnerability_reporting"
@@ -30,7 +32,7 @@ const (
 )
 
 // RepositorySettingUnits は、リポジトリ設定の管理の単位 (reco が期待値の宣言を受け付ける設定) を YAML 設定仕様の章と表の並びで返す。
-// 設定グループは一つの Key で表す。Environment に関わる管理の単位は、宣言の名前ごとに決まるため含めない。
+// 設定グループは一つの Key で表す。関連リソースに関わる管理の単位は、宣言の名前ごとに決まるため含めない。
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
 func RepositorySettingUnits() []Key {
 	return []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
@@ -48,6 +50,8 @@ func (k Key) Area() Area {
 		return AreaWorkflowPermissions
 	case ActionsAccessLevel:
 		return AreaActionsAccess
+	case RepositoryVariable:
+		return AreaRepositoryVariables
 	case EnvironmentResource, EnvironmentDeploymentBranchPolicy:
 		return AreaEnvironments
 	case DependabotAlerts, DependabotSecurityUpdates:

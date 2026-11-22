@@ -26,7 +26,7 @@ func TestSideEffects(t *testing.T) {
 	}}
 	// policyPlan は、observed を計画時に観測して期待値を desired とした Actions 許可ポリシーの計画を作る。
 	policyPlan := func(observed github.ObservationResult, desired setting.AllowedActionsPolicy) SettingPlan {
-		return newSettingPlan(setting.AllowedActions, observed.Setting(setting.Unit{Key: setting.AllowedActions}), policyValue(desired))
+		return newSettingPlan(setting.Unit{Key: setting.AllowedActions}, observed.Setting(setting.Unit{Key: setting.AllowedActions}), policyValue(desired))
 	}
 	cases := []struct {
 		name     string
@@ -66,13 +66,13 @@ func TestSideEffects(t *testing.T) {
 		},
 		{
 			name:     "disabling actions with selected policy has no side effect because GitHub keeps the criteria",
-			plan:     newSettingPlan(setting.ActionsEnabled, selected.Setting(setting.Unit{Key: setting.ActionsEnabled}), setting.BoolValue(false)),
+			plan:     newSettingPlan(setting.Unit{Key: setting.ActionsEnabled}, selected.Setting(setting.Unit{Key: setting.ActionsEnabled}), setting.BoolValue(false)),
 			observed: selected,
 			want:     nil,
 		},
 		{
 			name:     "criteria change has no side effect",
-			plan:     newSettingPlan(setting.SelectedActions, selected.Setting(setting.Unit{Key: setting.SelectedActions}), setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{})),
+			plan:     newSettingPlan(setting.Unit{Key: setting.SelectedActions}, selected.Setting(setting.Unit{Key: setting.SelectedActions}), setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{})),
 			observed: selected,
 			want:     nil,
 		},
@@ -140,10 +140,10 @@ func TestSideEffects_DependabotAlerts(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			plan := newSettingPlan(setting.DependabotAlerts, tc.observed.Setting(setting.Unit{Key: setting.DependabotAlerts}), setting.BoolValue(tc.desired))
+			plan := newSettingPlan(setting.Unit{Key: setting.DependabotAlerts}, tc.observed.Setting(setting.Unit{Key: setting.DependabotAlerts}), setting.BoolValue(tc.desired))
 			settings := []SettingPlan{plan}
 			if tc.declaresUpdates {
-				settings = append(settings, newSettingPlan(setting.DependabotSecurityUpdates, tc.observed.Setting(setting.Unit{Key: setting.DependabotSecurityUpdates}), setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesDisabled)))
+				settings = append(settings, newSettingPlan(setting.Unit{Key: setting.DependabotSecurityUpdates}, tc.observed.Setting(setting.Unit{Key: setting.DependabotSecurityUpdates}), setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesDisabled)))
 			}
 			got, without := sideEffects(plan, tc.observed, settings)
 			if !reflect.DeepEqual(got, tc.want) || !reflect.DeepEqual(without, tc.wantWithout) {
@@ -198,10 +198,10 @@ func TestSideEffects_SecretScanning(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			plan := newSettingPlan(setting.SecretScanningEnabled, tc.observed.Setting(setting.Unit{Key: setting.SecretScanningEnabled}), setting.BoolValue(tc.desired))
+			plan := newSettingPlan(setting.Unit{Key: setting.SecretScanningEnabled}, tc.observed.Setting(setting.Unit{Key: setting.SecretScanningEnabled}), setting.BoolValue(tc.desired))
 			settings := []SettingPlan{plan}
 			if tc.declaresPushProtection {
-				settings = append(settings, newSettingPlan(setting.RepositoryPushProtection, tc.observed.Setting(setting.Unit{Key: setting.RepositoryPushProtection}), setting.BoolValue(false)))
+				settings = append(settings, newSettingPlan(setting.Unit{Key: setting.RepositoryPushProtection}, tc.observed.Setting(setting.Unit{Key: setting.RepositoryPushProtection}), setting.BoolValue(false)))
 			}
 			got, without := sideEffects(plan, tc.observed, settings)
 			if !reflect.DeepEqual(got, tc.want) || !reflect.DeepEqual(without, tc.wantWithout) {
@@ -215,7 +215,7 @@ func TestSideEffects_DependentWithoutObservationPanics(t *testing.T) {
 	observed := github.ObservationResult{SecretScanning: &github.SecretScanning{
 		Enabled: github.Observed(true), PushProtection: github.Unavailable[bool](github.UnavailablePrivateRepository),
 	}}
-	plan := newSettingPlan(setting.SecretScanningEnabled, observed.Setting(setting.Unit{Key: setting.SecretScanningEnabled}), setting.BoolValue(false))
+	plan := newSettingPlan(setting.Unit{Key: setting.SecretScanningEnabled}, observed.Setting(setting.Unit{Key: setting.SecretScanningEnabled}), setting.BoolValue(false))
 	defer func() {
 		if recover() == nil {
 			t.Error("sideEffects() did not panic for the unobserved dependent setting")

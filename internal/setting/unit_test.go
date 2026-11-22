@@ -12,6 +12,7 @@ func TestUnit_String(t *testing.T) {
 		{name: "repository setting is its key", unit: Unit{Key: AllowAutoMerge}, want: "general.allow_auto_merge"},
 		{name: "environment existence is the environment path", unit: Unit{Key: EnvironmentResource, Environment: production}, want: "environments.production"},
 		{name: "setting in an environment follows the environment path", unit: Unit{Key: EnvironmentDeploymentBranchPolicy, Environment: production}, want: "environments.production.deployment_branch_policy"},
+		{name: "repository variable follows the variables path", unit: Unit{Key: RepositoryVariable, Variable: mustVariableName(t, "GO_VERSION")}, want: "actions.variables.GO_VERSION"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -29,6 +30,8 @@ func TestUnit_StringPanicsOnMismatchedName(t *testing.T) {
 	}{
 		{name: "environment key without a name", unit: Unit{Key: EnvironmentResource}},
 		{name: "repository setting with a name", unit: Unit{Key: AllowAutoMerge, Environment: mustEnvironmentName(t, "production")}},
+		{name: "repository variable key without a name", unit: Unit{Key: RepositoryVariable}},
+		{name: "repository setting with a variable name", unit: Unit{Key: AllowAutoMerge, Variable: mustVariableName(t, "X")}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

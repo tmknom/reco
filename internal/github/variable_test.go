@@ -268,20 +268,23 @@ func TestObserveRepositoryVariables(t *testing.T) {
 	}
 }
 
-//trace:checks FR-004 QR-002
-func TestASCIIUpper(t *testing.T) {
+//trace:checks FR-004
+func TestVariables_Lookup(t *testing.T) {
+	observed := Variables{Existing: []Variable{{Name: "GO_ARCH", Value: "amd64"}, {Name: "go_version", Value: "1.27"}, {Name: "EMPTY", Value: ""}}}
 	cases := []struct {
-		name string
-		s    string
-		want string
+		name     string
+		variable string
+		want     SettingObservation[setting.Value]
 	}{
-		{name: "ASCII lower case letters from a to z become upper case", s: "az_Version9", want: "AZ_VERSION9"},
-		{name: "non-ASCII letters that Unicode folds to ASCII stay as they are", s: "\u017f\u212a\u00e9", want: "\u017f\u212a\u00e9"},
+		{name: "same spelling returns the value", variable: "GO_ARCH", want: Observed(setting.VariableValue("amd64"))},
+		{name: "lower case spelling in the list returns that variable", variable: "GO_VERSION", want: Observed(setting.VariableValue("1.27"))},
+		{name: "empty value is an existing variable", variable: "EMPTY", want: Observed(setting.VariableValue(""))},
+		{name: "name missing from the list is absent", variable: "GO", want: Observed(setting.AbsentVariable())},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := asciiUpper(tc.s); got != tc.want {
-				t.Errorf("asciiUpper(%q) = %q, want %q", tc.s, got, tc.want)
+			if got := observed.Lookup(mustVariableName(t, tc.variable)); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Lookup(%q) = %+v, want %+v", tc.variable, got, tc.want)
 			}
 		})
 	}

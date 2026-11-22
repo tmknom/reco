@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/tmknom/reco/internal/repository"
+	"github.com/tmknom/reco/internal/setting"
 )
 
 // Variables は、変数の一覧の全ページを読めた観測で確認できた、属する先に存在するすべての Variable である。
@@ -32,6 +33,17 @@ const (
 	maxVariablesPages = 17
 )
 
+// Lookup は、宣言の名前 name の Variable の観測結果を、一覧の全体と突き合わせて返す。
+// 一覧は全ページを読めているため、名前のない Variable は存在しないと確かめたことになる。
+func (v Variables) Lookup(name setting.VariableName) SettingObservation[setting.Value] {
+	for _, variable := range v.Existing {
+		if name.Matches(variable.Name) {
+			return Observed(setting.VariableValue(variable.Value))
+		}
+	}
+	return Observed(setting.AbsentVariable())
+}
+
 // observeRepositoryVariables は Repository Variables の一覧の全ページを読む。
 func (c *Client) observeRepositoryVariables(ctx context.Context, reference repository.Reference) (Variables, error) {
 	items, err := c.listAll(ctx, c.repositoryVariablesURL(reference), listPaging{itemsField: "variables", perPage: variablesPerPage, maxPageBytes: maxVariablesPageBytes, maxPages: maxVariablesPages})
@@ -46,7 +58,7 @@ func (c *Client) observeRepositoryVariables(ctx context.Context, reference repos
 			return Variables{}, err
 		}
 		// GitHub は変数の名前を大文字小文字を区別せずに比べるため、二つ並ぶとどちらの値を観測値とするかが決まらない。
-		key := asciiUpper(existing[i].Name)
+		key := setting.FoldVariableName(existing[i].Name)
 		if _, duplicate := seen[key]; duplicate {
 			return Variables{}, fmt.Errorf("%w: duplicate variable name %q", ErrUnexpectedResponse, existing[i].Name)
 		}
@@ -82,16 +94,4 @@ func decodeVariable(data json.RawMessage) (Variable, error) {
 		return Variable{}, fmt.Errorf("%w: unsupported value: name", ErrUnexpectedResponse)
 	}
 	return Variable{Name: *p.Name, Value: *p.Value}, nil
-}
-
-// asciiUpper は s の ASCII の英小文字だけを大文字にする。
-// reco が同じ名前と判定できるのは、GitHub が同じとみなすと確かめた ASCII の英字の大文字小文字の違いだけである。
-// strings.ToUpper や strings.EqualFold は Unicode の畳み込みで、確かめていない名前まで重複とみなすため使わない。
-func asciiUpper(s string) string {
-	return strings.Map(func(r rune) rune {
-		if 'a' <= r && r <= 'z' {
-			return r - ('a' - 'A')
-		}
-		return r
-	}, s)
 }

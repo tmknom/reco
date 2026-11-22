@@ -212,6 +212,23 @@ func (d document) stringValue(n *yaml.Node, path string) (string, error) {
 	return n.Value, nil
 }
 
+// quotableStringValue は、stringValue と同じく文字列を要求し、文字列でないスカラー (引用符のない数値、真偽値、日付) には、
+// 引用符で囲んだ表記を直し方として添える。null は checkNode が先に拒否するため、直し方を添えない。
+// 引用符で囲めば受け付ける場所 (変数の値) にだけ使う。名前のように囲んでもほかの規則で拒否され得る場所では、直し方が誤りになる。
+func (d document) quotableStringValue(n *yaml.Node, path string) (string, error) {
+	if err := d.checkNode(n, path); err != nil {
+		return "", err
+	}
+	switch {
+	case n.Tag == "!!str":
+		return n.Value, nil
+	case n.Kind == yaml.ScalarNode:
+		return "", invalid(n, path, "must be a string; got %s; write %q in quotes", n.Value, n.Value)
+	default:
+		return "", invalid(n, path, "must be a string")
+	}
+}
+
 // invalidBool は、真偽値を書くつもりだったと読める表記に限り、拒否の理由に直し方を添える。
 func invalidBool(n *yaml.Node, path string) error {
 	lower := strings.ToLower(n.Value)

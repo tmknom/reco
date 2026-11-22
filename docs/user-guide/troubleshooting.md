@@ -169,6 +169,7 @@ GitHub Free のアカウントが所有するプライベートリポジトリ�
 | `Precondition: ... changed since approval` | 承認したあとに、その設定の値か Environment そのものが変わった。Environment そのものの変化は、作成する予定の名前の Environment が作られた、変える予定の Environment がなくなった、作り直されたなどの場合に当たる。`plan` で今の値を確かめてから、`apply` し直す |
 | そのほかの `Precondition:` | 更新を始める前の確認ができなかったか、一つ前の更新のあとの値が予定した値と違った。エラーの行があれば原因を取り除き、`plan` で確かめてから `apply` し直す |
 | `Other settings: ... (cause not determined)` | 変えようとしていない設定が、更新の前後で変わっていた。誰かが変えたものかを確かめ、`plan` で今の値を確かめる |
+| `applying repository variable changes is not supported` | reco はまだ Repository Variables を作成も変更もできない。どのリポジトリの設定も変えていない。`plan` で差分を確かめ、GitHub の画面などで変数を設定ファイルの値に合わせる。値が一致すれば `apply` できる。変数をそのままにしてほかの設定だけを `apply` するなら、その変数を設定ファイルから一時的に外す |
 
 ## References
 

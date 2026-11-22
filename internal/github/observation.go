@@ -94,6 +94,8 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 		return valueObservation(o.SecretScanning.PushProtection, setting.BoolValue)
 	case setting.PrivateVulnerabilityReportingEnabled:
 		return valueObservation(o.PrivateVulnerabilityReporting.Enabled, setting.BoolValue)
+	case setting.RepositoryVariable:
+		return o.RepositoryVariables.Lookup(unit.Variable)
 	case setting.EnvironmentDeploymentBranchPolicy:
 		return o.Environments.Lookup(unit.Environment).DeploymentBranchPolicy()
 	case setting.EnvironmentResource:

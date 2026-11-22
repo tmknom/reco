@@ -100,7 +100,7 @@ func expectsActionsEnabled(settings []SettingPlan) bool {
 // createsEnvironment は、管理設定の計画 settings が、name の Environment の作成を含むかを返す。
 func createsEnvironment(settings []SettingPlan, name setting.EnvironmentName) bool {
 	return slices.ContainsFunc(settings, func(s SettingPlan) bool {
-		return s.IsCreation() && s.Unit.Environment.EqualFold(name)
+		return s.IsEnvironmentCreation() && s.Unit.Environment.EqualFold(name)
 	})
 }
 

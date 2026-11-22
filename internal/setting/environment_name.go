@@ -53,14 +53,14 @@ func (n EnvironmentName) String() string {
 // EqualFold は、二つの宣言の名前を GitHub が同じ Environment とみなすかを返す。
 // どちらも同一性を判定できる名前のため、ASCII の英字の大文字小文字を区別せずに比べれば足りる。
 func (n EnvironmentName) EqualFold(other EnvironmentName) bool {
-	return equalFoldASCII(n.name, other.name)
+	return upperASCII(n.name) == upperASCII(other.name)
 }
 
 // Compare は、宣言の名前 n と、GitHub が返した観測の名前を突き合わせる。
 // 観測の名前が同一性を判定できる名前でなく、綴りも一致しないときは、GitHub が同じとみなし得るため判定できないとする。
 func (n EnvironmentName) Compare(observed string) EnvironmentNameComparison {
 	switch {
-	case equalFoldASCII(n.name, observed):
+	case upperASCII(n.name) == upperASCII(observed):
 		return EnvironmentNameSame
 	case isComparableEnvironmentName(observed):
 		return EnvironmentNameDifferent
@@ -80,25 +80,4 @@ func isPrintableASCII(s string) bool {
 		}
 	}
 	return true
-}
-
-// equalFoldASCII は、ASCII の英字だけを大文字小文字を区別せずに比べる。
-// strings.EqualFold は Unicode の単純な畳み込みで ſ と s を同じとみなし、同一性を判定できる名前の比較を広げてしまうため使わない。
-func equalFoldASCII(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range len(a) {
-		if lowerASCII(a[i]) != lowerASCII(b[i]) {
-			return false
-		}
-	}
-	return true
-}
-
-func lowerASCII(c byte) byte {
-	if 'A' <= c && c <= 'Z' {
-		return c + ('a' - 'A')
-	}
-	return c
 }

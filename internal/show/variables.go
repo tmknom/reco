@@ -13,8 +13,8 @@ func writeRepositoryVariables(b *strings.Builder, v github.Variables) {
 		b.WriteString("      # variables: none\n")
 		return
 	}
-	b.WriteString("      # reco does not accept the variables in the configuration file yet\n      # variables:\n")
+	b.WriteString("      variables:\n")
 	for _, variable := range v.Existing {
-		fmt.Fprintf(b, "      #   - name: %s\n      #     value: %s\n", quote(variable.Name), quote(variable.Value))
+		fmt.Fprintf(b, "        - name: %s\n          value: %s\n", quote(variable.Name), quote(variable.Value))
 	}
 }

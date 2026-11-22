@@ -6,6 +6,7 @@ import (
 )
 
 // Value は、一つの設定の値。期待値と観測値のどちらも、同じ設定についてはこの値で表す。
+// 値を持つ種類の関連リソース (Variable) では、存在し値を伴うことと存在しないことも、この値で表す。
 // 種別の違う設定の値を一つの並びで扱うため、値の種別を持つ。
 // ゼロ値は値がないことを表す。
 // 種別ごとに使わないフィールドをゼロ値に保つため、フィールドを公開せず、コンストラクタでだけ作る。
@@ -19,6 +20,7 @@ type Value struct {
 	accessLevel     AccessLevel
 	branchPolicy    DeploymentBranchPolicy
 	securityUpdates DependabotSecurityUpdatesState
+	variable        string
 }
 
 type valueKind int
@@ -32,6 +34,8 @@ const (
 	kindAccessLevel
 	kindDeploymentBranchPolicy
 	kindDependabotSecurityUpdates
+	kindVariable
+	kindAbsentVariable
 )
 
 // BoolValue は、真偽値の設定の値を作る。
@@ -77,6 +81,16 @@ func DependabotSecurityUpdatesValue(state DependabotSecurityUpdatesState) Value 
 	return Value{kind: kindDependabotSecurityUpdates, securityUpdates: state}
 }
 
+// VariableValue は、Variable が存在し、値が value であることを表す値を作る。
+func VariableValue(value string) Value {
+	return Value{kind: kindVariable, variable: value}
+}
+
+// AbsentVariable は、Variable が存在しないことを表す値を作る。値が空文字列で存在する VariableValue("") とは別の値である。
+func AbsentVariable() Value {
+	return Value{kind: kindAbsentVariable}
+}
+
 // Equal は、二つの値が設定の意味で同じ値かどうかを返す。
 // 値のないゼロ値は設定の値ではなく、比べようとするのは不変条件の破れのため panic する。
 // 同じ値として扱うと、確かめていない値が一致や変更前提の成立として黙って通るため。
@@ -92,7 +106,8 @@ func (v Value) Equal(other Value) bool {
 		v.criteria.equal(other.criteria) &&
 		v.accessLevel == other.accessLevel &&
 		v.branchPolicy.equal(other.branchPolicy) &&
-		v.securityUpdates.Enabled() == other.securityUpdates.Enabled()
+		v.securityUpdates.Enabled() == other.securityUpdates.Enabled() &&
+		v.variable == other.variable
 }
 
 // String は、表示に使う表記で値を返す。値のないゼロ値を表示しようとするのは不変条件の破れのため panic する。
@@ -121,6 +136,11 @@ func (v Value) String() string {
 			return "true (paused by GitHub)"
 		}
 		return strconv.FormatBool(v.securityUpdates.Enabled())
+	case kindVariable:
+		// 値の改行や制御文字が変更計画の行を偽装しないよう、エスケープした1行で示す。引用符で、存在しないことの absent と見分けられる
+		return strconv.Quote(v.variable)
+	case kindAbsentVariable:
+		return "absent"
 	case kindNone:
 	}
 	panic("setting: no value to format")

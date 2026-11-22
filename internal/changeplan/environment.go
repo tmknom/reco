@@ -21,9 +21,8 @@ func environmentPlans(e configuration.EnvironmentDeclaration, observed github.En
 	}
 	plans := []SettingPlan{{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: e.Name}, ObservedEnvironment: observed, Result: result}}
 	if e.DeploymentBranchPolicy != nil {
-		policy := newSettingPlan(setting.EnvironmentDeploymentBranchPolicy, observed.DeploymentBranchPolicy(), setting.DeploymentBranchPolicyValue(*e.DeploymentBranchPolicy))
-		policy.Unit.Environment = e.Name
-		plans = append(plans, policy)
+		unit := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: e.Name}
+		plans = append(plans, newSettingPlan(unit, observed.DeploymentBranchPolicy(), setting.DeploymentBranchPolicyValue(*e.DeploymentBranchPolicy)))
 	}
 	return plans
 }
@@ -39,7 +38,7 @@ func (r RepositoryPlan) environmentChangeOf(s SettingPlan) (LogicalChange, bool)
 	}
 	existence, ok := r.settingPlanOf(setting.Unit{Key: setting.EnvironmentResource, Environment: s.Unit.Environment})
 	switch {
-	case isPolicyOfAbsentEnvironment(s) && ok && existence.IsCreation():
+	case isPolicyOfAbsentEnvironment(s) && ok && existence.IsEnvironmentCreation():
 		return LogicalChange{}, false
 	case s.Result == Mismatch && ok && existence.Result == Match:
 		environment := RelevantSetting{Unit: existence.Unit, AnticipatedEnvironment: existence.ObservedEnvironment}
@@ -53,7 +52,7 @@ func (r RepositoryPlan) environmentChangeOf(s SettingPlan) (LogicalChange, bool)
 // 作成でない Environment の変更予定と、存在しないことを理由にした比較不能でない方式との組は、environmentPlans と judgeApplicability が作らないため、
 // 不変条件の破れとして panic する。
 func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
-	if !s.IsCreation() {
+	if !s.IsEnvironmentCreation() {
 		panic(fmt.Sprintf("changeplan: %s is a planned change other than a creation", s.Unit.String()))
 	}
 	change := LogicalChange{DesiredState: []DesiredSetting{{Unit: s.Unit}}}

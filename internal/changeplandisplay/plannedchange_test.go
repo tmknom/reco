@@ -268,6 +268,31 @@ func TestRepositoryStateText_UndefinedReasonPanics(t *testing.T) {
 	_ = repositoryStateText(0)
 }
 
+// 期待値は CLI 仕様の Repository Variable の表示例から導く。
+//
+//trace:checks FR-005 FR-007 QR-002
+func TestPlannedChangeText_RepositoryVariables(t *testing.T) {
+	unit := setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, "GO_VERSION")}
+	variable := func(observed setting.Value, desired string) changeplan.SettingPlan {
+		return changeplan.SettingPlan{Unit: unit, Observed: github.Observed(observed), Desired: setting.VariableValue(desired), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
+	}
+	cases := []struct {
+		name string
+		s    changeplan.SettingPlan
+		want string
+	}{
+		{name: "value update shows the quoted current and desired values on one line", s: variable(setting.VariableValue("1.26"), "1.27"), want: "  actions.variables.GO_VERSION: \"1.26\" -> \"1.27\"\n"},
+		{name: "creation shows absent without parentheses as the current value", s: variable(setting.AbsentVariable(), "1.27"), want: "  actions.variables.GO_VERSION: absent -> \"1.27\"\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := PlannedChangeText(tc.s); got != tc.want {
+				t.Errorf("PlannedChangeText() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // 期待値は CLI 仕様 4章の Environment の表示例から導く。
 //
 //trace:checks FR-005 FR-006 FR-007

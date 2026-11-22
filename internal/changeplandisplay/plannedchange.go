@@ -21,7 +21,7 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 	case changeplan.Match:
 		return ""
 	case changeplan.Mismatch:
-		if s.IsCreation() {
+		if s.IsEnvironmentCreation() {
 			// 存在しないことは確かめた事実のため、比較不能の印の括弧に入れない
 			current = "absent"
 			break

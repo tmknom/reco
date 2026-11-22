@@ -329,6 +329,29 @@ func TestApplyPlan(t *testing.T) {
 		}
 	})
 
+	t.Run("repository variable change returns an error without output, approval, or requests", func(t *testing.T) {
+		baseURL, server := newSequenceServer(t)
+		var out bytes.Buffer
+		calls := 0
+		variable := changeplan.SettingPlan{
+			Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, "GO_VERSION")}, Observed: github.Observed(setting.AbsentVariable()),
+			Desired: setting.VariableValue("1.27"), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+		}
+
+		p := newPlan(t, allowAutoMergeMismatch(), variable)
+
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), p)
+
+		// 拒否の文言は changeplan が持つため、apply は no changes made を足すことだけを確かめる
+		_, logicalErr := p.Repositories[0].LogicalChanges()
+		if want := logicalErr.Error() + "; no changes made"; err == nil || err.Error() != want {
+			t.Errorf("applyPlan() error = %v, want %q", err, want)
+		}
+		if calls != 0 || out.Len() != 0 || len(server.Methods()) != 0 {
+			t.Errorf("approve calls = %d, Out = %q, requests = %v, want none", calls, out.String(), server.Methods())
+		}
+	})
+
 	t.Run("not-applicable change plan write failure is returned without approval", func(t *testing.T) {
 		calls := 0
 		err := applyPlan(context.Background(), Config{Out: failingWriter{}, Approve: approve(&calls)}, nil, newPlan(t, shaPinningRequiredNotApplicable()))
@@ -1241,4 +1264,13 @@ func newPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.Plan {
 // unknownMismatch は、更新要求を持たない設定の適用可能な変更予定。
 func unknownMismatch() changeplan.SettingPlan {
 	return changeplan.SettingPlan{Unit: setting.Unit{Key: unknownKey}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
+}
+
+func mustVariableName(t *testing.T, name string) setting.VariableName {
+	t.Helper()
+	variable, err := setting.ParseVariableName(name)
+	if err != nil {
+		t.Fatalf("ParseVariableName(%q) error = %v", name, err)
+	}
+	return variable
 }

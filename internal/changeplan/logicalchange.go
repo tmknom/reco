@@ -122,6 +122,12 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 			return nil, fmt.Errorf("%s: %s cannot be applied", r.Target, s.Unit.String())
 		}
 	}
+	// Repository Variable の変更予定を実現する更新操作がないため、承認を求める前に止める
+	for _, s := range r.Settings {
+		if s.IsPlannedChange() && s.Unit.Key == setting.RepositoryVariable {
+			return nil, fmt.Errorf("%s: %s cannot be applied: applying repository variable changes is not supported", r.Target, s.Unit.String())
+		}
+	}
 	_, hasEnabled := r.settingPlanOf(setting.Unit{Key: setting.ActionsEnabled})
 	if _, hasPolicy := r.settingPlanOf(setting.Unit{Key: setting.AllowedActions}); hasEnabled && hasPolicy {
 		panic(fmt.Sprintf("changeplan: plans of %s and %s are in the same repository plan", setting.ActionsEnabled, setting.AllowedActions))
@@ -205,9 +211,10 @@ func (r RepositoryPlan) criteriaFollowingPolicy() (SettingPlan, bool) {
 
 // settingPlanOf は、管理の単位 unit の計画を返す。管理範囲になければ偽を返す。
 // Environment の名前は、GitHub が同じ Environment とみなす名前どうしを同じ単位にするため、EqualFold で比べる。
+// 変数の名前は英小文字を含まないため、== で比べれば足りる。
 func (r RepositoryPlan) settingPlanOf(unit setting.Unit) (SettingPlan, bool) {
 	for _, s := range r.Settings {
-		if s.Unit.Key == unit.Key && s.Unit.Environment.EqualFold(unit.Environment) {
+		if s.Unit.Key == unit.Key && s.Unit.Environment.EqualFold(unit.Environment) && s.Unit.Variable == unit.Variable {
 			return s, true
 		}
 	}

@@ -29,11 +29,20 @@ type DesiredState struct {
 	ActionsPermissions  ActionsPermissions
 	WorkflowPermissions WorkflowPermissions
 	ActionsAccess       ActionsAccess
+	// RepositoryVariables は宣言の並びのまま持ち、actions.variables を省略したリポジトリでは nil。
+	RepositoryVariables []VariableDeclaration
 	// Environments は宣言の並びのまま持ち、environments を省略したリポジトリでは nil。
 	Environments                  []EnvironmentDeclaration
 	Dependabot                    Dependabot
 	SecretScanning                SecretScanning
 	PrivateVulnerabilityReporting PrivateVulnerabilityReporting
+}
+
+// VariableDeclaration は、一つの変数の宣言。
+type VariableDeclaration struct {
+	Name setting.VariableName
+	// Desired は、存在し値を伴うことの期待値 (setting.VariableValue)。
+	Desired setting.Value
 }
 
 // EnvironmentDeclaration は、一つの Environment の宣言。その名前の Environment が存在することの期待値を兼ねる。
@@ -138,8 +147,8 @@ func (d DesiredState) Value(key setting.Key) (value setting.Value, ok bool) {
 		return optionalBoolValue(d.SecretScanning.PushProtection)
 	case setting.PrivateVulnerabilityReportingEnabled:
 		return optionalBoolValue(d.PrivateVulnerabilityReporting.Enabled)
-	case setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy:
-		// Environment の管理の単位は名前との組で識別するため、この関数では引けない。
+	case setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy:
+		// 関連リソースに関わる管理の単位は名前との組で識別するため、この関数では引けない。
 	}
 	panic(fmt.Sprintf("unknown setting %q", key))
 }

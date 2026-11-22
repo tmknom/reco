@@ -93,7 +93,7 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 				}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/workflow": githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "write", CanApprovePullRequestReviews: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/access":   githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "user"}.JSON()),
-				// 改行に続けてキーを模した値も、コメントの行から出なければ設定宣言として読むことを妨げない
+				// 改行に続けてキーを模した値も、エスケープした1行の値として読み戻せ、設定宣言の構造を変えない
 				"GET /repos/owner/repo/actions/variables": githubtest.OK(githubtest.VariablesBody{TotalCount: 2, Variables: []githubtest.VariableBody{
 					{Name: "GO_VERSION", Value: "1.27"},
 					{Name: "NOTE", Value: "a \"b\" #c\n    general:\n      delete_branch_on_merge: false"},
