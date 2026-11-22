@@ -13,7 +13,7 @@
 | 文書 | トップレベルのキー | 扱う設定の領域 |
 |---|---|---|
 | [General の設計](general.md) | `general` | General |
-| [Actions の設計](actions.md) | `actions` | Actions の実行許可、ワークフロー権限、リポジトリ外のワークフローからのアクセス |
+| [Actions の設計](actions.md) | `actions` | Actions の実行許可、ワークフロー権限、リポジトリ外のワークフローからのアクセス、Repository Variables |
 | [Environments の設計](environments.md) | `environments` | Environments |
 | [Security の設計](security.md) | `security` | Dependabot、Secret scanning、Private vulnerability reporting |
 

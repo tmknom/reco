@@ -4,7 +4,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"testing"
+
+	"github.com/tmknom/reco/internal/githubtest"
 )
 
 const testToken = "ghp_test-secret-token"
@@ -52,4 +55,31 @@ func newTestClient(t *testing.T, handler http.HandlerFunc) *Client {
 		t.Fatal(err)
 	}
 	return New(testToken, WithBaseURL(u))
+}
+
+// escapedPathRoutes は、パスごとに登録した応答を返す。パスは r.URL.EscapedPath() で比べ、%2F を区切りと取り違えない。
+// 検索条件を含めた要求の列を、届いた順に requests へ記録する。登録のない要求は 500 を返し、テストの失敗として報告する。
+type escapedPathRoutes struct {
+	t        *testing.T
+	routes   map[string]githubtest.Response
+	mu       sync.Mutex
+	requests []string
+}
+
+func (e *escapedPathRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	e.mu.Lock()
+	e.requests = append(e.requests, r.URL.EscapedPath()+"?"+r.URL.RawQuery)
+	e.mu.Unlock()
+	response, ok := e.routes[r.URL.EscapedPath()]
+	if !ok {
+		e.t.Errorf("got request %s, want one of the registered routes", r.URL)
+		response = githubtest.Response{Status: http.StatusInternalServerError}
+	}
+	response.ServeHTTP(w, r)
+}
+
+func (e *escapedPathRoutes) Requests() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]string(nil), e.requests...)
 }

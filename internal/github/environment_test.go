@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/tmknom/reco/internal/githubtest"
@@ -13,33 +12,6 @@ import (
 )
 
 const environmentsPath = "/repos/owner/repo/environments"
-
-// environmentRoutes は、パスごとに登録した応答を返す。パスは r.URL.EscapedPath() で比べ、%2F を区切りと取り違えない。
-// 検索条件を含めた要求の列を、届いた順に requests へ記録する。登録のない要求は 500 を返し、テストの失敗として報告する。
-type environmentRoutes struct {
-	t        *testing.T
-	routes   map[string]githubtest.Response
-	mu       sync.Mutex
-	requests []string
-}
-
-func (e *environmentRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	e.mu.Lock()
-	e.requests = append(e.requests, r.URL.EscapedPath()+"?"+r.URL.RawQuery)
-	e.mu.Unlock()
-	response, ok := e.routes[r.URL.EscapedPath()]
-	if !ok {
-		e.t.Errorf("got request %s, want one of the registered routes", r.URL)
-		response = githubtest.Response{Status: http.StatusInternalServerError}
-	}
-	response.ServeHTTP(w, r)
-}
-
-func (e *environmentRoutes) Requests() []string {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return append([]string(nil), e.requests...)
-}
 
 const firstPage = "?per_page=100&page=1"
 
@@ -52,7 +24,7 @@ func TestObserveRepositoryEnvironments(t *testing.T) {
 	reviewers := &githubtest.RequiredReviewersBody{PreventSelfReview: true, Reviewers: []githubtest.ReviewerBody{{Type: "User", ID: 7}}}
 
 	t.Run("an observation without the environments area sends no list request and has no Environments", func(t *testing.T) {
-		routes := &environmentRoutes{t: t, routes: map[string]githubtest.Response{
+		routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{
 			repositoryPath:          githubtest.OK(repositoryBody),
 			workflowPermissionsPath: githubtest.OK(workflowPermissionsBody),
 		}}
@@ -72,7 +44,7 @@ func TestObserveRepositoryEnvironments(t *testing.T) {
 	})
 
 	t.Run("environments are read after the actions access", func(t *testing.T) {
-		routes := &environmentRoutes{t: t, routes: map[string]githubtest.Response{
+		routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{
 			repositoryPath:          githubtest.OK(privateRepositoryBody),
 			actionsPermissionsPath:  githubtest.OK(actionsPermissionsBody("all")),
 			workflowPermissionsPath: githubtest.OK(workflowPermissionsBody),
@@ -108,7 +80,7 @@ func TestObserveRepositoryEnvironments(t *testing.T) {
 			{ID: 3, Name: "guarded", DeploymentBranchPolicy: protected},
 			{ID: 4, Name: "Prod/Eu 100%", DeploymentBranchPolicy: selected},
 		}}
-		routes := &environmentRoutes{t: t, routes: map[string]githubtest.Response{
+		routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{
 			repositoryPath:   githubtest.OK(repositoryBody),
 			environmentsPath: githubtest.OK(list.JSON()),
 			environmentsPath + "/main-only/deployment-branch-policies": githubtest.OK(githubtest.DeploymentBranchPoliciesBody{TotalCount: 3, Patterns: []githubtest.DeploymentPatternBody{
@@ -253,7 +225,7 @@ func TestObserveRepositoryEnvironmentsFailure(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.routes[repositoryPath] = githubtest.OK(repositoryBody)
-			routes := &environmentRoutes{t: t, routes: tc.routes}
+			routes := &escapedPathRoutes{t: t, routes: tc.routes}
 			c := newTestClient(t, routes.ServeHTTP)
 
 			observed, err := c.ObserveRepository(t.Context(), mustReference(t, "owner/repo"), setting.AreaEnvironments)

@@ -78,6 +78,8 @@ Environment Variables は、すべての公開リポジトリで利用でき、�
 
 値は一つの変数あたり 48 KB に制限されると記載されています。保存できる変数の数は、リポジトリあたり500件、Environment あたり100件です。ワークフローの実行1回で使える Organization と Repository の変数の合計は 256 KB までと記載されています。上限を数える単位（文字かバイトか）、空文字列を値にできるか、値を正規化するか（前後の空白、改行）は記載がありません。
 
+GitHub は Variables を、機密でない設定情報を保存して再利用するためのものとしています（「Variables provide a way to store and reuse non-sensitive configuration information.」）。値はビルドの出力でマスクされずに表示され、パスワードのような秘密情報には Secrets を使うよう記載されています（「By default, variables render unmasked in your build outputs. If you need greater security for sensitive information, such as passwords, use secrets instead.」）。
+
 > [!NOTE]
 > 次は、reco の開発者が実際の動作で確認した事項です（公開リポジトリで確認。上限と空文字列、前後の空白、CRLF、マルチバイト文字の往復は Environment Variables でも確認）。
 >
@@ -89,6 +91,7 @@ Environment Variables は、すべての公開リポジトリで利用でき、�
 | Relationship | Target | Target Type |
 |---|---|---|
 | `grounding` | [Variables reference: Limits for configuration variables](https://docs.github.com/en/actions/reference/workflows-and-actions/variables#limits-for-configuration-variables) | External Document |
+| `grounding` | [Variables](https://docs.github.com/en/actions/concepts/workflows-and-actions/variables) | External Document |
 
 ## 4. 変数の一覧と取得
 

@@ -10,24 +10,36 @@ import (
 )
 
 const (
-	// listPerPage は一覧の1ページで求める件数。GitHub が受け付ける上限。
+	// listPerPage は、多くの一覧で GitHub が受け付ける1ページの件数の上限。上限が異なる一覧は自分の値を listPaging に渡す。
 	listPerPage = 100
-	// maxListPages は読むページ数の上限。異常な応答で要求を送り続けないためにある。
+	// maxListPages は、多くの一覧で読むページ数の上限。異常な応答で要求を送り続けないためにある。
 	maxListPages = 100
 )
 
-// listAll は u の一覧を全ページ読み、itemsField の配列の要素を届いた順につないで返す。
+// listPaging は、一覧ごとに決まる、ページの求め方と読み方。
+type listPaging struct {
+	// itemsField は要素の配列の項目名。
+	itemsField string
+	// perPage は1ページで求める件数。
+	perPage int
+	// maxPageBytes は1ページの応答本文を読む上限。
+	maxPageBytes int
+	// maxPages は読むページ数の上限。
+	maxPages int
+}
+
+// listAll は u の一覧を全ページ読み、paging.itemsField の配列の要素を届いた順につないで返す。
 // 失敗したときは、読めたページの要素を返さない。読めた範囲だけから、存在しないとは判断させないため。
 // 次のページへの要求は reco が組み立てた URL にだけ送り、応答の Link ヘッダーは読まない。Link の URL をたどると、送信先を応答の内容に委ねるため。
-func (c *Client) listAll(ctx context.Context, u *url.URL, itemsField string) ([]json.RawMessage, error) {
+func (c *Client) listAll(ctx context.Context, u *url.URL, paging listPaging) ([]json.RawMessage, error) {
 	var items []json.RawMessage
 	var firstTotal int
-	for page := 1; page <= maxListPages; page++ {
-		_, body, err := c.send(ctx, http.MethodGet, listPageURL(u, page), nil, http.StatusOK)
+	for page := 1; page <= paging.maxPages; page++ {
+		_, body, err := c.sendWithBodyLimit(ctx, http.MethodGet, listPageURL(u, paging.perPage, page), nil, http.StatusOK, paging.maxPageBytes)
 		if err != nil {
 			return nil, err
 		}
-		total, pageItems, err := decodeListPage(body, itemsField)
+		total, pageItems, err := decodeListPage(body, paging.itemsField)
 		if err != nil {
 			return nil, err
 		}
@@ -43,7 +55,7 @@ func (c *Client) listAll(ctx context.Context, u *url.URL, itemsField string) ([]
 			return items, nil
 		}
 	}
-	return nil, fmt.Errorf("%w: list not complete after %d pages", ErrUnexpectedResponse, maxListPages)
+	return nil, fmt.Errorf("%w: list not complete after %d pages", ErrUnexpectedResponse, paging.maxPages)
 }
 
 // listProgress は、1ページを読んだあとに、全件を読み終えたかを返す。
@@ -98,9 +110,9 @@ func isAbsent(raw json.RawMessage) bool {
 	return raw == nil || string(raw) == "null"
 }
 
-// listPageURL は u の写しに、1ページの件数と page 番号の検索条件を付けて返す。u は書き換えない。
-func listPageURL(u *url.URL, page int) *url.URL {
+// listPageURL は u の写しに、1ページの件数 perPage と page 番号の検索条件を付けて返す。u は書き換えない。
+func listPageURL(u *url.URL, perPage, page int) *url.URL {
 	paged := *u
-	paged.RawQuery = fmt.Sprintf("per_page=%d&page=%d", listPerPage, page)
+	paged.RawQuery = fmt.Sprintf("per_page=%d&page=%d", perPage, page)
 	return &paged
 }

@@ -61,19 +61,54 @@ func TestSendNormalStatus(t *testing.T) {
 	}
 }
 
-func TestReadResponseBody(t *testing.T) {
+// TestSendBodyLimit は、send が要求ごとの上限を渡さないとき、応答本文を maxResponseBytes まで読むことを確かめる。
+//
+//trace:checks FR-004 QR-002
+func TestSendBodyLimit(t *testing.T) {
 	cases := []struct {
 		name    string
 		size    int
 		wantErr error
 	}{
-		{name: "body at the limit is read", size: maxResponseBytes},
-		{name: "body over the limit is unexpected response", size: maxResponseBytes + 1, wantErr: ErrUnexpectedResponse},
+		{name: "body at maxResponseBytes is read", size: maxResponseBytes},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write(bytes.Repeat([]byte("a"), tc.size))
+			})
+			_, data, err := c.send(t.Context(), http.MethodGet, c.repositoryURL(mustReference(t, "owner/repo")), nil, http.StatusOK)
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Errorf("send() error = %v, want %v", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("send() error = %v", err)
+			}
+			if len(data) != tc.size {
+				t.Errorf("send() returned %d bytes, want %d", len(data), tc.size)
+			}
+		})
+	}
+}
+
+func TestReadResponseBody(t *testing.T) {
+	// maxResponseBytes と違う上限を渡し、渡した上限で判定することを確かめる
+	const limit = 10
+	cases := []struct {
+		name    string
+		size    int
+		wantErr error
+	}{
+		{name: "body at the given limit is read", size: limit},
+		{name: "body over the given limit is unexpected response", size: limit + 1, wantErr: ErrUnexpectedResponse},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			body := bytes.Repeat([]byte("a"), tc.size)
-			got, err := readResponseBody(bytes.NewReader(body))
+			got, err := readResponseBody(bytes.NewReader(body), limit)
 			if tc.wantErr != nil {
 				if !errors.Is(err, tc.wantErr) {
 					t.Errorf("readResponseBody() error = %v, want %v", err, tc.wantErr)
@@ -91,7 +126,7 @@ func TestReadResponseBody(t *testing.T) {
 
 	t.Run("read failure is communication failure", func(t *testing.T) {
 		readErr := errors.New("connection reset")
-		_, err := readResponseBody(iotest.ErrReader(readErr))
+		_, err := readResponseBody(iotest.ErrReader(readErr), maxResponseBytes)
 		if !errors.Is(err, ErrCommunicationFailure) || !errors.Is(err, readErr) {
 			t.Errorf("readResponseBody() error = %v, want %v wrapping %v", err, ErrCommunicationFailure, readErr)
 		}

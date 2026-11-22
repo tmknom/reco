@@ -1,6 +1,7 @@
 package githubtest
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -8,6 +9,7 @@ import (
 // 応答本文は、各取得エンドポイントの応答のうち reco が読む項目だけを持つ。
 // 値の組み合わせはテストごとに違うため、項目名だけをここに閉じ、値は各テストが構造体で書く。
 // 文字列の値は %q で埋め込む。Go の引用は ASCII の印字可能な文字では JSON の文字列と同じ形になり、テストはその範囲の値だけを使う。
+// 変数の名前と値だけは、制御文字や ASCII 以外の文字を含む値をテストに使うため、encoding/json で書く。
 
 // RepositoryBody は、リポジトリの取得の応答本文である。
 // Private のゼロ値は公開のリポジトリを、Admin のゼロ値は admin のアクセスを持たないトークンの所有者を表す。
@@ -112,6 +114,19 @@ type DeploymentPatternBody struct {
 	Type string
 }
 
+// VariablesBody は、変数の一覧の1ページの応答本文である。
+// TotalCount は GitHub が返す全件数で、このページの要素数とは限らない。
+type VariablesBody struct {
+	TotalCount int
+	Variables  []VariableBody
+}
+
+// VariableBody は、変数の一覧の要素である。
+type VariableBody struct {
+	Name  string
+	Value string
+}
+
 // JSON は応答本文を返す。
 func (b RepositoryBody) JSON() string {
 	securityAndAnalysis := ""
@@ -202,6 +217,27 @@ func (b DeploymentBranchPoliciesBody) JSON() string {
 // JSON は応答本文を返す。
 func (b DeploymentPatternBody) JSON() string {
 	return fmt.Sprintf(`{"id": %d, "name": %q, "type": %q}`, b.ID, b.Name, b.Type)
+}
+
+// JSON は応答本文を返す。
+func (b VariablesBody) JSON() string {
+	variables := make([]string, len(b.Variables))
+	for i, v := range b.Variables {
+		variables[i] = v.JSON()
+	}
+	return fmt.Sprintf(`{"total_count": %d, "variables": [%s]}`, b.TotalCount, strings.Join(variables, ", "))
+}
+
+// JSON は変数の1件の応答本文を返す。
+func (b VariableBody) JSON() string {
+	return fmt.Sprintf(`{"name": %s, "value": %s}`, jsonString(b.Name), jsonString(b.Value))
+}
+
+// jsonString は s を JSON の文字列として返す。
+func jsonString(s string) string {
+	// string の Marshal は失敗しない
+	data, _ := json.Marshal(s)
+	return string(data)
 }
 
 // securityStatus は security_and_analysis の項目の status を返す。

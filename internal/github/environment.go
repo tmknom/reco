@@ -56,7 +56,7 @@ func (e Environments) Lookup(name setting.EnvironmentName) EnvironmentObservatio
 // observeEnvironments は Environment の一覧の全ページを読み、方式が selected の Environment にだけ、一覧の並びで個別パターンを読む。
 // 個別パターンの要求を送る前にすべての要素を変換し、契約外の要素があれば要求を送らずに失敗する。
 func (c *Client) observeEnvironments(ctx context.Context, reference repository.Reference) (Environments, error) {
-	items, err := c.listAll(ctx, c.environmentsURL(reference), "environments")
+	items, err := c.listAll(ctx, c.environmentsURL(reference), listPaging{itemsField: "environments", perPage: listPerPage, maxPageBytes: maxResponseBytes, maxPages: maxListPages})
 	if err != nil {
 		return Environments{}, err
 	}
@@ -95,7 +95,7 @@ func (c *Client) observeDeploymentPatterns(ctx context.Context, reference reposi
 	if !ok {
 		return nil, nil, fmt.Errorf("deployment branch policies of environment %q: %w: the name cannot be sent as a path element", name, ErrUnexpectedResponse)
 	}
-	items, err := c.listAll(ctx, u, "branch_policies")
+	items, err := c.listAll(ctx, u, listPaging{itemsField: "branch_policies", perPage: listPerPage, maxPageBytes: maxResponseBytes, maxPages: maxListPages})
 	if err != nil {
 		return nil, nil, fmt.Errorf("deployment branch policies of environment %q: %w", name, err)
 	}

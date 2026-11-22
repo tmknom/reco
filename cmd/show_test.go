@@ -27,6 +27,7 @@ func TestShow_Success(t *testing.T) {
 				"GET /repos/owner/repo/actions/permissions/selected-actions": {Status: http.StatusOK, Body: selectedActionsBody},
 				"GET /repos/owner/repo/actions/permissions/workflow":         {Status: http.StatusOK, Body: workflowPermissionsBody},
 				"GET /repos/owner/repo/actions/permissions/access":           githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
+				"GET /repos/owner/repo/actions/variables":                    githubtest.OK(githubtest.VariablesBody{}.JSON()),
 				"GET /repos/owner/repo/environments":                         githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
 				"GET /repos/owner/repo/vulnerability-alerts":                 {Status: http.StatusNoContent},
 				"GET /repos/owner/repo/automated-security-fixes":             githubtest.OK(githubtest.AutomatedSecurityFixesBody{Enabled: true}.JSON()),
@@ -48,6 +49,7 @@ func TestShow_Success(t *testing.T) {
 				"/repos/owner/repo/actions/permissions/selected-actions",
 				"/repos/owner/repo/actions/permissions/workflow",
 				"/repos/owner/repo/actions/permissions/access",
+				"/repos/owner/repo/actions/variables",
 				"/repos/owner/repo/environments",
 				"/repos/owner/repo/vulnerability-alerts",
 				"/repos/owner/repo/automated-security-fixes",
@@ -91,6 +93,11 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 				}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/workflow": githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "write", CanApprovePullRequestReviews: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/access":   githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "user"}.JSON()),
+				// 改行に続けてキーを模した値も、コメントの行から出なければ設定宣言として読むことを妨げない
+				"GET /repos/owner/repo/actions/variables": githubtest.OK(githubtest.VariablesBody{TotalCount: 2, Variables: []githubtest.VariableBody{
+					{Name: "GO_VERSION", Value: "1.27"},
+					{Name: "NOTE", Value: "a \"b\" #c\n    general:\n      delete_branch_on_merge: false"},
+				}}.JSON()),
 				"GET /repos/owner/repo/environments": githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 3, Environments: []githubtest.EnvironmentBody{
 					{ID: 2, Name: environmentName, DeploymentBranchPolicy: selected},
 					{ID: 3, Name: "empty", DeploymentBranchPolicy: selected},
@@ -113,6 +120,7 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 				"GET /repos/owner/repo":                                 githubtest.OK(githubtest.RepositoryBody{ID: 1, Admin: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions":             githubtest.OK(`{"enabled": false}`),
 				"GET /repos/owner/repo/actions/permissions/workflow":    githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
+				"GET /repos/owner/repo/actions/variables":               githubtest.OK(githubtest.VariablesBody{}.JSON()),
 				"GET /repos/owner/repo/environments":                    githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
 				"GET /repos/owner/repo/vulnerability-alerts":            {Status: http.StatusNotFound},
 				"GET /repos/owner/repo/automated-security-fixes":        githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),
@@ -126,6 +134,7 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 				"GET /repos/owner/repo/actions/permissions":          githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "local_only"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/workflow": githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/access":   githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
+				"GET /repos/owner/repo/actions/variables":            githubtest.OK(githubtest.VariablesBody{}.JSON()),
 				"GET /repos/owner/repo/environments": githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 1, Environments: []githubtest.EnvironmentBody{
 					{ID: 2, Name: "production"},
 				}}.JSON()),
@@ -141,6 +150,7 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 				"GET /repos/owner/repo/actions/permissions/selected-actions": githubtest.OK(githubtest.SelectedActionsBody{VerifiedAllowed: true}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/workflow":         githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/access":           githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
+				"GET /repos/owner/repo/actions/variables":                    githubtest.OK(githubtest.VariablesBody{}.JSON()),
 				"GET /repos/owner/repo/environments":                         githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
 				"GET /repos/owner/repo/vulnerability-alerts":                 {Status: http.StatusNotFound},
 				"GET /repos/owner/repo/automated-security-fixes":             githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),

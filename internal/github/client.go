@@ -56,9 +56,14 @@ func New(token string, opts ...Option) *Client {
 	return c
 }
 
-// send は要求を送り、正常応答 normalStatus の応答本文を返す。失敗しても reco からは送り直さない。
+// send は要求を送り、正常応答 normalStatus の応答本文を maxResponseBytes まで読んで返す。失敗しても reco からは送り直さない。
 // status は受け取った応答のステータスで、応答を受け取れなかったときは 0 になる。
 func (c *Client) send(ctx context.Context, method string, u *url.URL, body []byte, normalStatus int) (status int, data []byte, err error) {
+	return c.sendWithBodyLimit(ctx, method, u, body, normalStatus, maxResponseBytes)
+}
+
+// sendWithBodyLimit は send と同じく要求を送り、応答本文を maxBodyBytes まで読む。
+func (c *Client) sendWithBodyLimit(ctx context.Context, method string, u *url.URL, body []byte, normalStatus, maxBodyBytes int) (status int, data []byte, err error) {
 	// http.NewRequestWithContext は URL の解析に失敗し得る形をとるが、ここでは組み立て済みの URL を渡すため、到達しない失敗の分岐を作らないように直接組み立てる
 	req := (&http.Request{Method: method, URL: u, Header: http.Header{}}).WithContext(ctx)
 	req.Header.Set("Authorization", "Bearer "+c.token)
@@ -81,19 +86,19 @@ func (c *Client) send(ctx context.Context, method string, u *url.URL, body []byt
 	if resp.StatusCode != normalStatus {
 		return resp.StatusCode, nil, classifyFailure(resp.StatusCode, resp.Header)
 	}
-	data, err = readResponseBody(resp.Body)
+	data, err = readResponseBody(resp.Body, maxBodyBytes)
 	return resp.StatusCode, data, err
 }
 
-// readResponseBody は応答本文を maxResponseBytes まで読む。
+// readResponseBody は応答本文を maxBytes まで読む。
 // 上限で切り詰めると JSON の解析エラーになって原因が読めないため、超過を区別して返す。
-func readResponseBody(r io.Reader) ([]byte, error) {
-	data, err := io.ReadAll(io.LimitReader(r, maxResponseBytes+1))
+func readResponseBody(r io.Reader, maxBytes int) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, int64(maxBytes)+1))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrCommunicationFailure, err)
 	}
-	if len(data) > maxResponseBytes {
-		return nil, fmt.Errorf("%w: body exceeds %d bytes", ErrUnexpectedResponse, maxResponseBytes)
+	if len(data) > maxBytes {
+		return nil, fmt.Errorf("%w: body exceeds %d bytes", ErrUnexpectedResponse, maxBytes)
 	}
 	return data, nil
 }

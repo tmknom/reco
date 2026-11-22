@@ -127,11 +127,11 @@ func TestListPageURL(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := listPageURL(u, 3)
+	got := listPageURL(u, 30, 3)
 
 	query := got.Query()
-	if query.Get("per_page") != "100" || query.Get("page") != "3" || len(query) != 2 {
-		t.Errorf("listPageURL() query = %q, want per_page=100 and page=3 only", got.RawQuery)
+	if query.Get("per_page") != "30" || query.Get("page") != "3" || len(query) != 2 {
+		t.Errorf("listPageURL() query = %q, want per_page=30 and page=3 only", got.RawQuery)
 	}
 	if got.EscapedPath() != u.EscapedPath() || got.Host != u.Host || got.Scheme != u.Scheme {
 		t.Errorf("listPageURL() = %q, want the same origin and path as %q", got, u)
@@ -140,6 +140,9 @@ func TestListPageURL(t *testing.T) {
 		t.Errorf("listPageURL() changed the given URL to %q", u)
 	}
 }
+
+// thingsPaging は、listAll のテストが使う一覧の読み方である。
+var thingsPaging = listPaging{itemsField: "things", perPage: listPerPage, maxPageBytes: maxResponseBytes, maxPages: maxListPages}
 
 // listPageBody は、listAll のテストが使う一覧の1ページの応答本文である。
 func listPageBody(total int, ns ...int) string {
@@ -168,7 +171,7 @@ func TestListAll(t *testing.T) {
 		return u
 	}
 
-	t.Run("pages are requested in order on the same path and their items are joined", func(t *testing.T) {
+	t.Run("pages are requested in order on the same path with the given page size and their items are joined", func(t *testing.T) {
 		var requests []string
 		c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			requests = append(requests, r.URL.Path+"?"+r.URL.Query().Encode())
@@ -184,7 +187,9 @@ func TestListAll(t *testing.T) {
 			}
 		})
 
-		items, err := c.listAll(t.Context(), listURL(c), "things")
+		paging := thingsPaging
+		paging.perPage = 30
+		items, err := c.listAll(t.Context(), listURL(c), paging)
 		if err != nil {
 			t.Fatalf("listAll() error = %v", err)
 		}
@@ -196,7 +201,7 @@ func TestListAll(t *testing.T) {
 		if strings.Join(got, "|") != strings.Join(want, "|") {
 			t.Errorf("listAll() items = %q, want %q", got, want)
 		}
-		wantRequests := []string{path + "?page=1&per_page=100", path + "?page=2&per_page=100"}
+		wantRequests := []string{path + "?page=1&per_page=30", path + "?page=2&per_page=30"}
 		if strings.Join(requests, "|") != strings.Join(wantRequests, "|") {
 			t.Errorf("listAll() requests = %q, want %q", requests, wantRequests)
 		}
@@ -211,7 +216,7 @@ func TestListAll(t *testing.T) {
 			count.Add(1)
 			_, _ = w.Write([]byte(listPageBody(2, 1, 2)))
 		})
-		items, err := c.listAll(t.Context(), listURL(c), "things")
+		items, err := c.listAll(t.Context(), listURL(c), thingsPaging)
 		if err != nil {
 			t.Fatalf("listAll() error = %v", err)
 		}
@@ -244,7 +249,7 @@ func TestListAll(t *testing.T) {
 				}
 				tc.page2(w, r)
 			})
-			items, err := c.listAll(t.Context(), listURL(c), "things")
+			items, err := c.listAll(t.Context(), listURL(c), thingsPaging)
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("listAll() error = %v, want %v", err, tc.wantErr)
 			}
@@ -257,22 +262,54 @@ func TestListAll(t *testing.T) {
 		t.Errorf("the redirect target received %d requests, want 0", n)
 	}
 
-	t.Run("a list that never reaches the total stops at the page limit", func(t *testing.T) {
+	t.Run("a page over the given body limit is unexpected response and returns no items", func(t *testing.T) {
+		body := listPageBody(1, 1)
+		c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(body))
+		})
+		paging := thingsPaging
+		paging.maxPageBytes = len(body) - 1
+		items, err := c.listAll(t.Context(), listURL(c), paging)
+		if !errors.Is(err, ErrUnexpectedResponse) {
+			t.Fatalf("listAll() error = %v, want %v", err, ErrUnexpectedResponse)
+		}
+		if items != nil {
+			t.Errorf("listAll() items = %q, want none", items)
+		}
+	})
+
+	t.Run("a page over maxResponseBytes is read when the given body limit allows it", func(t *testing.T) {
+		padding := strings.Repeat(" ", maxResponseBytes)
+		body := `{"total_count": 1,` + padding + `"things": [{"n": 1}]}`
+		c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(body))
+		})
+		paging := thingsPaging
+		paging.maxPageBytes = len(body)
+		items, err := c.listAll(t.Context(), listURL(c), paging)
+		if err != nil {
+			t.Fatalf("listAll() error = %v", err)
+		}
+		if len(items) != 1 {
+			t.Errorf("listAll() returned %d items, want 1", len(items))
+		}
+	})
+
+	t.Run("a list that never reaches the total stops at the given page limit", func(t *testing.T) {
 		var count atomic.Int32
 		c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			count.Add(1)
 			page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 			_, _ = w.Write([]byte(listPageBody(1_000_000, page)))
 		})
-		items, err := c.listAll(t.Context(), listURL(c), "things")
+		paging := thingsPaging
+		paging.maxPages = 3
+		items, err := c.listAll(t.Context(), listURL(c), paging)
 		if !errors.Is(err, ErrUnexpectedResponse) {
 			t.Fatalf("listAll() error = %v, want %v", err, ErrUnexpectedResponse)
 		}
-		if items != nil {
-			t.Errorf("listAll() items = %d items, want none", len(items))
-		}
-		if got := int(count.Load()); got != maxListPages {
-			t.Errorf("listAll() sent %d requests, want %d", got, maxListPages)
+		if items != nil || count.Load() != 3 {
+			t.Errorf("listAll() returned %d items with %d requests, want none with 3 requests", len(items), count.Load())
 		}
 	})
 
@@ -283,7 +320,7 @@ func TestListAll(t *testing.T) {
 			page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 			_, _ = w.Write([]byte(listPageBody(maxListPages, page)))
 		})
-		items, err := c.listAll(t.Context(), listURL(c), "things")
+		items, err := c.listAll(t.Context(), listURL(c), thingsPaging)
 		if err != nil {
 			t.Fatalf("listAll() error = %v", err)
 		}
