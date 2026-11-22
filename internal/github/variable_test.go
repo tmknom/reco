@@ -509,7 +509,7 @@ func TestVariables_Lookup(t *testing.T) {
 		{name: "same spelling returns the value", variable: "GO_ARCH", want: Observed(setting.VariableValue("amd64"))},
 		{name: "lower case spelling in the list returns that variable", variable: "GO_VERSION", want: Observed(setting.VariableValue("1.27"))},
 		{name: "empty value is an existing variable", variable: "EMPTY", want: Observed(setting.VariableValue(""))},
-		{name: "name missing from the list is absent", variable: "GO", want: Observed(setting.AbsentVariable())},
+		{name: "name missing from the list is absent", variable: "GO", want: Observed(setting.Absent())},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

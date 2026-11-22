@@ -101,10 +101,43 @@ type PrivateVulnerabilityReporting struct {
 	Enabled *bool
 }
 
-// Value は、key の設定の期待値を返す。期待値が省略されていれば ok は偽になる。
+// ManagedSetting は、管理設定 (期待値を明示した管理の単位) と、その期待値。
+type ManagedSetting struct {
+	Unit    setting.Unit
+	Desired setting.Value
+}
+
+// ManagedSettings は、管理範囲の管理設定を期待値とともに返す。何も宣言していなければ nil を返す。
+// 並びは、リポジトリ設定 (setting.RepositorySettingUnits の並び)、Repository Variable (宣言の並び)、Environment ごと (宣言の並び) に存在、デプロイ元制限、変数 (宣言の並び) である。
+// Environment の宣言は存在することの期待値を兼ねるため、名前だけの宣言も存在の管理設定になる。
+// 管理範囲を読む処理ごとに宣言を走査すると管理設定が食い違うため、ここでだけ列挙する。
+func (d DesiredState) ManagedSettings() []ManagedSetting {
+	var managed []ManagedSetting
+	for _, key := range setting.RepositorySettingUnits() {
+		if desired, ok := d.value(key); ok {
+			managed = append(managed, ManagedSetting{Unit: setting.Unit{Key: key}, Desired: desired})
+		}
+	}
+	for _, v := range d.RepositoryVariables {
+		managed = append(managed, ManagedSetting{Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: v.Name}, Desired: v.Desired})
+	}
+	for _, e := range d.Environments {
+		managed = append(managed, ManagedSetting{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: e.Name}, Desired: setting.Present()})
+		if e.DeploymentBranchPolicy != nil {
+			unit := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: e.Name}
+			managed = append(managed, ManagedSetting{Unit: unit, Desired: setting.DeploymentBranchPolicyValue(*e.DeploymentBranchPolicy)})
+		}
+		for _, v := range e.Variables {
+			managed = append(managed, ManagedSetting{Unit: setting.Unit{Key: setting.EnvironmentVariable, Environment: e.Name, Variable: v.Name}, Desired: v.Desired})
+		}
+	}
+	return managed
+}
+
+// value は、key の設定の期待値を返す。期待値が省略されていれば ok は偽になる。
 // 未知の設定は不変条件の破れとして panic する。
 // 設定を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
-func (d DesiredState) Value(key setting.Key) (value setting.Value, ok bool) {
+func (d DesiredState) value(key setting.Key) (value setting.Value, ok bool) {
 	switch key {
 	case setting.DeleteBranchOnMerge:
 		return optionalBoolValue(d.General.DeleteBranchOnMerge)

@@ -5,9 +5,9 @@ import (
 	"strings"
 )
 
-// EnvironmentName は、設定宣言で書ける Environment の名前。ドメインモデルの同一性を判定できる名前に限る。
+// EnvironmentName は、ドメインモデルの同一性を判定できる名前に限った Environment の名前。宣言と観測の文脈が同じ定義で使う。
 // フィールドを公開しないのは、ゼロ値のほかは ParseEnvironmentName の検証を通った値しか作れない状態にするため。
-// 綴りは宣言のまま持ち、名前が同じかどうかは EqualFold と Compare で判定する。
+// 綴りは与えられたまま持ち、名前が同じかどうかは EqualFold と Compare で判定する。
 type EnvironmentName struct {
 	name string
 }

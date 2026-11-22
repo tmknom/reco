@@ -19,6 +19,26 @@ func TestEnvironmentObservation(t *testing.T) {
 	absent := Environments{}.Lookup(declared)
 	unavailable := Environments{Existing: []Environment{{Name: "café"}}}.Lookup(declared)
 
+	t.Run("existence is present, absent, or unavailable with the same reason", func(t *testing.T) {
+		cases := []struct {
+			observation EnvironmentObservation
+			want        SettingObservation[setting.Value]
+		}{
+			{observation: existing, want: Observed(setting.Present())},
+			{observation: absent, want: Observed(setting.Absent())},
+			{observation: unavailable, want: Unavailable[setting.Value](UnavailableEnvironmentNameUndetermined)},
+		}
+		for _, tc := range cases {
+			if got := tc.observation.Existence(); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Existence() = %+v, want %+v", got, tc.want)
+			}
+		}
+	})
+
+	t.Run("Existence panics on the zero value", func(t *testing.T) {
+		assertPanics(t, func() { EnvironmentObservation{}.Existence() })
+	})
+
 	t.Run("existing environment observes its deployment branch policy", func(t *testing.T) {
 		v, ok := existing.DeploymentBranchPolicy().Value()
 		if !ok {
@@ -54,7 +74,7 @@ func TestEnvironmentObservation(t *testing.T) {
 		if got, want := existing.Variable(mustVariableName(t, "REGION")), Observed(setting.VariableValue("eu")); !reflect.DeepEqual(got, want) {
 			t.Errorf("Variable(REGION) = %+v, want %+v", got, want)
 		}
-		if got, want := existing.Variable(mustVariableName(t, "STAGE")), Observed(setting.AbsentVariable()); !reflect.DeepEqual(got, want) {
+		if got, want := existing.Variable(mustVariableName(t, "STAGE")), Observed(setting.Absent()); !reflect.DeepEqual(got, want) {
 			t.Errorf("Variable(STAGE) = %+v, want %+v", got, want)
 		}
 	})

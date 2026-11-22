@@ -362,7 +362,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 //trace:checks INV-005 FR-011
 func TestRepositoryPlan_LogicalChangesOfRepositoryVariables(t *testing.T) {
 	mismatch := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
-	creation := SettingPlan{Unit: variableUnit(t, "ZETA"), Observed: github.Observed(setting.AbsentVariable()), Desired: setting.VariableValue("z"), Result: Mismatch, Applicability: Applicable}
+	creation := SettingPlan{Unit: variableUnit(t, "ZETA"), Observed: github.Observed(setting.Absent()), Desired: setting.VariableValue("z"), Result: Mismatch, Applicability: Applicable}
 	valueChange := SettingPlan{Unit: variableUnit(t, "ALPHA"), Observed: github.Observed(setting.VariableValue("1")), Desired: setting.VariableValue("2"), Result: Mismatch, Applicability: Applicable}
 	// 値が一致した変数は、変更予定がないため論理的な設定変更にならない
 	matched := SettingPlan{Unit: variableUnit(t, "MATCHED"), Observed: github.Observed(setting.VariableValue("m")), Desired: setting.VariableValue("m"), Result: Match}
@@ -389,11 +389,13 @@ func TestRepositoryPlan_LogicalChangesOfRepositoryVariables(t *testing.T) {
 func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 	production, staging := mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging")
 	region, debug := mustVariableName(t, "REGION"), mustVariableName(t, "DEBUG")
-	existingStaging := lookup(t, "staging", withVariables(github.Environment{ID: 7, Name: "staging"}))
-	stagingExistence := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, ObservedEnvironment: existingStaging, Result: Match}
-	stagingEnvironment := RelevantSetting{Unit: stagingExistence.Unit, AnticipatedEnvironment: existingStaging}
+	stagingExistence := SettingPlan{
+		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, Observed: github.Observed(setting.Present()), Desired: setting.Present(),
+		EnvironmentIdentity: ObservedEnvironmentIdentity(7), Result: Match,
+	}
+	stagingEnvironment := RelevantSetting{Unit: stagingExistence.Unit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedIdentity: ObservedEnvironmentIdentity(7)}
 	productionUnit := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
-	productionCreation := SettingPlan{Unit: productionUnit, ObservedEnvironment: lookup(t, "production"), Result: Mismatch, Applicability: Applicable}
+	productionCreation := SettingPlan{Unit: productionUnit, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch, Applicability: Applicable}
 	variablePlan := func(unit setting.Unit, observed github.SettingObservation[setting.Value], result ReconciliationResult) SettingPlan {
 		return SettingPlan{Unit: unit, Observed: observed, Desired: setting.VariableValue("eu"), Result: result, Applicability: Applicable}
 	}
@@ -403,7 +405,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 			Operations:   []UpdateOperation{{Kind: kind, Unit: unit, Value: setting.VariableValue("eu"), RelevantSettings: relevant}},
 		}
 	}
-	absentVariable := github.Observed(setting.AbsentVariable())
+	absentVariable := github.Observed(setting.Absent())
 	cases := []struct {
 		name     string
 		settings []SettingPlan
@@ -424,8 +426,8 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 			},
 			want: []LogicalChange{
 				{
-					DesiredState: []DesiredSetting{{Unit: productionUnit}},
-					Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: productionUnit, RelevantSettings: []RelevantSetting{{Unit: productionUnit, AnticipatedEnvironment: lookup(t, "production")}}}},
+					DesiredState: []DesiredSetting{{Unit: productionUnit, Value: setting.Present()}},
+					Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: productionUnit, RelevantSettings: []RelevantSetting{{Unit: productionUnit, AnticipatedValue: github.Observed(setting.Absent())}}}},
 				},
 				variableChange(EnvironmentVariableCreation, environmentVariableUnit(production, region), RelevantSetting{Unit: environmentVariableUnit(production, region), AnticipatedValue: absentVariable}),
 				variableChange(EnvironmentVariableCreation, environmentVariableUnit(production, debug), RelevantSetting{Unit: environmentVariableUnit(production, debug), AnticipatedValue: absentVariable}),
@@ -444,7 +446,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 		})
 	}
 
-	// 対にならない形は、environmentPlans と judgeApplicability が作らないため、基準のない更新操作を返さずに panic する
+	// 対にならない形は、reconcile と judgeApplicability が作らないため、基準のない更新操作を返さずに panic する
 	panics := []struct {
 		name     string
 		settings []SettingPlan
@@ -489,14 +491,15 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 	mismatch := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
 	all := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll})
 	protected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches})
-	absent := lookup(t, "production")
-	existingStaging := lookup(t, "staging", github.Environment{ID: 7, Name: "Staging", DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}})
-	creation := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, ObservedEnvironment: absent, Result: Mismatch, Applicability: Applicable}
+	creation := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch, Applicability: Applicable}
 	creationMode := SettingPlan{
 		Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
 		Desired: protected, Result: NotComparable, Applicability: Applicable,
 	}
-	existing := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, ObservedEnvironment: existingStaging, Result: Match}
+	existing := SettingPlan{
+		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, Observed: github.Observed(setting.Present()), Desired: setting.Present(),
+		EnvironmentIdentity: ObservedEnvironmentIdentity(7), Result: Match,
+	}
 	modeChange := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}, Observed: github.Observed(all), Desired: protected, Result: Mismatch, Applicability: Applicable}
 	newRepositoryPlan := func(settings ...SettingPlan) RepositoryPlan {
 		return RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
@@ -513,16 +516,16 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 		}},
 	}
 	// 作成の基準は存在しないことだけで、方式を宣言していても方式の基準は並ばない
-	productionAbsent := []RelevantSetting{{Unit: productionUnit, AnticipatedEnvironment: absent}}
+	productionAbsent := []RelevantSetting{{Unit: productionUnit, AnticipatedValue: github.Observed(setting.Absent())}}
 	createProduction := LogicalChange{
-		DesiredState: []DesiredSetting{{Unit: productionUnit}},
+		DesiredState: []DesiredSetting{{Unit: productionUnit, Value: setting.Present()}},
 		Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: productionUnit, RelevantSettings: productionAbsent}},
 	}
 	// createProductionWithMode は、デプロイ元制限を desired と宣言した作成の、期待状態と、方式を送る作成の更新操作に、operations を続けたもの。
 	createProductionWithMode := func(desired setting.Value, operations ...UpdateOperation) LogicalChange {
 		creation := UpdateOperation{Kind: EnvironmentCreationWithMode, Unit: productionUnit, Mode: desired.DeploymentBranchPolicy().Mode, RelevantSettings: productionAbsent}
 		return LogicalChange{
-			DesiredState: []DesiredSetting{{Unit: productionUnit}, {Unit: productionPolicyUnit, Value: desired}},
+			DesiredState: []DesiredSetting{{Unit: productionUnit, Value: setting.Present()}, {Unit: productionPolicyUnit, Value: desired}},
 			Operations:   append([]UpdateOperation{creation}, operations...),
 		}
 	}
@@ -530,7 +533,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 	stagingPolicyChange := func(desired setting.Value, operations ...UpdateOperation) LogicalChange {
 		return LogicalChange{DesiredState: []DesiredSetting{{Unit: stagingPolicyUnit, Value: desired}}, Operations: operations}
 	}
-	stagingEnvironment := RelevantSetting{Unit: stagingUnit, AnticipatedEnvironment: existingStaging}
+	stagingEnvironment := RelevantSetting{Unit: stagingUnit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedIdentity: ObservedEnvironmentIdentity(7)}
 	// stagingModeUpdate は、計画時に observed だった staging の方式を desired の方式にする更新操作。
 	// 方式の変更の基準は、Environment が存在し ID が同じこと、方式が計画時の観測値と同じことの順に並ぶ
 	stagingModeUpdate := func(observed, desired setting.Value) UpdateOperation {
@@ -586,7 +589,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 		for _, step := range steps {
 			operations = append(operations, UpdateOperation{
 				Kind: step.kind, Unit: productionPolicyUnit, Pattern: step.pattern,
-				RelevantSettings: []RelevantSetting{{Unit: productionUnit, CreatedByPrecedingOperation: true}, {Unit: productionPolicyUnit, AnticipatedValue: github.Observed(step.base)}},
+				RelevantSettings: []RelevantSetting{{Unit: productionUnit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedIdentity: CreatedByPrecedingOperation()}, {Unit: productionPolicyUnit, AnticipatedValue: github.Observed(step.base)}},
 			})
 		}
 		return operations
@@ -715,7 +718,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 		})
 	}
 
-	// environmentPlans と judgeApplicability が作らない組
+	// reconcile と judgeApplicability が作らない組
 	panicCases := []struct {
 		name     string
 		settings []SettingPlan
@@ -725,8 +728,11 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 			settings: []SettingPlan{creationMode},
 		},
 		{
-			name:     "mode of an absent environment following a matched existence panics",
-			settings: []SettingPlan{{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, ObservedEnvironment: lookup(t, "production", github.Environment{ID: 1, Name: "production"}), Result: Match}, creationMode},
+			name: "mode of an absent environment following a matched existence panics",
+			settings: []SettingPlan{{
+				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Observed(setting.Present()), Desired: setting.Present(),
+				EnvironmentIdentity: ObservedEnvironmentIdentity(1), Result: Match,
+			}, creationMode},
 		},
 		{
 			name:     "mode mismatch without the existence panics",
@@ -743,7 +749,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 		{
 			name: "applicable not comparable existence panics",
 			settings: []SettingPlan{{
-				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, ObservedEnvironment: lookup(t, "production", github.Environment{ID: 1, Name: "prod\u00fcction"}),
+				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined), Desired: setting.Present(),
 				Result: NotComparable, Applicability: Applicable,
 			}},
 		},

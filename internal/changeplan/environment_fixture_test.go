@@ -21,9 +21,3 @@ func withVariables(e github.Environment, variables ...github.Variable) github.En
 	e.Variables = &github.Variables{Existing: variables}
 	return e
 }
-
-// lookup は、existing を一覧とする観測結果から、宣言の名前 name の Environment を引く。
-func lookup(t *testing.T, name string, existing ...github.Environment) github.EnvironmentObservation {
-	t.Helper()
-	return github.Environments{Existing: existing}.Lookup(mustEnvironmentName(t, name))
-}

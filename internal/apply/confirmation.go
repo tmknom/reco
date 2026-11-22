@@ -4,7 +4,6 @@ import (
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
-	"github.com/tmknom/reco/internal/setting"
 )
 
 // desiredStateConfirmation は、更新後の観測で期待状態を確かめた結果。
@@ -49,20 +48,7 @@ func confirmDesiredState(approvedID repository.ID, change changeplan.LogicalChan
 }
 
 // confirmDesiredSetting は、一つの管理設定の期待値を observed と比べ、一致、不一致、理由を伴う観測不能のいずれかを返す。
-// Environment そのものの期待値は存在することのため、宣言の名前で引いた存在を確かめる（ドメインモデルの関連リソースと存在）。
 func confirmDesiredSetting(desired changeplan.DesiredSetting, observed github.ObservationResult) (desiredStateConfirmation, github.UnavailableReason) {
-	if desired.Unit.Key == setting.EnvironmentResource {
-		environment := observed.Environments.Lookup(desired.Unit.Environment)
-		_, exists := environment.Existing()
-		switch {
-		case environment.Absent():
-			return desiredStateMismatch, 0
-		case !exists:
-			return desiredStateUnavailable, environment.UnavailableReason()
-		default:
-			return desiredStateMatches, 0
-		}
-	}
 	current := observed.Setting(desired.Unit)
 	value, ok := current.Value()
 	switch {

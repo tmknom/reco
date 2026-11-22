@@ -6,7 +6,8 @@ import (
 )
 
 // Value は、一つの設定の値。期待値と観測値のどちらも、同じ設定についてはこの値で表す。
-// 値を持つ種類の関連リソース (Variable) では、存在し値を伴うことと存在しないことも、この値で表す。
+// 関連リソースそのものでは、存在すること (値を持つ種類の Variable では値を伴う) と存在しないことも、この値で表す。
+// GitHub が付ける ID は含めない (ドメインモデルの関連リソースの同一性)。
 // 種別の違う設定の値を一つの並びで扱うため、値の種別を持つ。
 // ゼロ値は値がないことを表す。
 // 種別ごとに使わないフィールドをゼロ値に保つため、フィールドを公開せず、コンストラクタでだけ作る。
@@ -35,7 +36,8 @@ const (
 	kindDeploymentBranchPolicy
 	kindDependabotSecurityUpdates
 	kindVariable
-	kindAbsentVariable
+	kindPresent
+	kindAbsent
 )
 
 // BoolValue は、真偽値の設定の値を作る。
@@ -86,9 +88,14 @@ func VariableValue(value string) Value {
 	return Value{kind: kindVariable, variable: value}
 }
 
-// AbsentVariable は、Variable が存在しないことを表す値を作る。値が空文字列で存在する VariableValue("") とは別の値である。
-func AbsentVariable() Value {
-	return Value{kind: kindAbsentVariable}
+// Present は、値を持たない種類の関連リソース (Environment) が存在することを表す値を作る。
+func Present() Value {
+	return Value{kind: kindPresent}
+}
+
+// Absent は、関連リソースが存在しないことを表す値を作る。値が空文字列で存在する VariableValue("") とは別の値である。
+func Absent() Value {
+	return Value{kind: kindAbsent}
 }
 
 // Equal は、二つの値が設定の意味で同じ値かどうかを返す。
@@ -137,9 +144,11 @@ func (v Value) String() string {
 		}
 		return strconv.FormatBool(v.securityUpdates.Enabled())
 	case kindVariable:
-		// 値の改行や制御文字が変更計画の行を偽装しないよう、エスケープした1行で示す。引用符で、存在しないことの absent と見分けられる
+		// 値の改行や制御文字が変更計画の行を偽装しないよう、エスケープした1行で示す。引用符で、存在の present と absent と見分けられる
 		return strconv.Quote(v.variable)
-	case kindAbsentVariable:
+	case kindPresent:
+		return "present"
+	case kindAbsent:
 		return "absent"
 	case kindNone:
 	}

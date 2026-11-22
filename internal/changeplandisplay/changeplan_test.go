@@ -54,7 +54,7 @@ func TestText(t *testing.T) {
 					Desired: setting.VariableValue("1.27"), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 				},
 				{
-					Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, "GO_ARCH")}, Observed: github.Observed(setting.AbsentVariable()),
+					Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, "GO_ARCH")}, Observed: github.Observed(setting.Absent()),
 					Desired: setting.VariableValue("amd64"), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 				},
 			},
@@ -73,7 +73,7 @@ func TestText(t *testing.T) {
 					Unit:     setting.Unit{Key: setting.EnvironmentVariable, Environment: mustEnvironmentName(t, "production"), Variable: mustVariableName(t, "REGION")},
 					Observed: github.Observed(setting.VariableValue("ap-northeast-1")), Desired: setting.VariableValue("ap-northeast-3"), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
 				},
-				{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "staging")}, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "staging")}, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 				{
 					Unit:     setting.Unit{Key: setting.EnvironmentVariable, Environment: mustEnvironmentName(t, "staging"), Variable: mustVariableName(t, "REGION")},
 					Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.VariableValue("ap-northeast-1"), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
@@ -120,7 +120,7 @@ func TestText(t *testing.T) {
 		{
 			name: "creation and mode changes of environments are shown in the plan order and each counted",
 			settings: []changeplan.SettingPlan{
-				{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "production")}, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "production")}, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
 				{
 					Unit:     setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: mustEnvironmentName(t, "production")},
 					Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),

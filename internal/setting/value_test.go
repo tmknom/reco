@@ -20,7 +20,8 @@ func TestValue_String(t *testing.T) {
 		{value: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesPaused), want: "true (paused by GitHub)"},
 		{value: VariableValue("a\nb"), want: `"a\nb"`},
 		{value: VariableValue("absent"), want: `"absent"`},
-		{value: AbsentVariable(), want: "absent"},
+		{value: Absent(), want: "absent"},
+		{value: Present(), want: "present"},
 		{
 			value: SelectedActionsCriteriaValue(SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: []string{"z/*", "a/*"}}),
 			want:  `github_owned_allowed: true, verified_allowed: false, patterns_allowed: ["z/*", "a/*"]`,
@@ -62,8 +63,9 @@ func TestValue_Equal(t *testing.T) {
 		{name: "security updates differ from a boolean of the same enablement", a: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesDisabled), b: BoolValue(false), equal: false},
 		{name: "same variable values are equal", a: VariableValue("1.27"), b: VariableValue("1.27"), equal: true},
 		{name: "variable values differing only in a trailing newline differ", a: VariableValue("1.27"), b: VariableValue("1.27\n"), equal: false},
-		{name: "empty variable value differs from an absent variable", a: VariableValue(""), b: AbsentVariable(), equal: false},
-		{name: "absent variables are equal", a: AbsentVariable(), b: AbsentVariable(), equal: true},
+		{name: "empty variable value differs from an absent variable", a: VariableValue(""), b: Absent(), equal: false},
+		{name: "absences are equal", a: Absent(), b: Absent(), equal: true},
+		{name: "presence differs from an absence", a: Present(), b: Absent(), equal: false},
 		{name: "variable value differs from a boolean of the same spelling", a: VariableValue("true"), b: BoolValue(true), equal: false},
 	}
 	for _, tc := range cases {
@@ -216,13 +218,13 @@ func TestValue_VariableValue(t *testing.T) {
 	}
 }
 
-func TestValue_VariableValueOfAbsentVariablePanics(t *testing.T) {
+func TestValue_VariableValueOfAbsencePanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {
 			t.Error("VariableValue() did not panic for an absent variable")
 		}
 	}()
-	AbsentVariable().VariableValue()
+	Absent().VariableValue()
 }
 
 func TestValue_SelectedActionsCriteria(t *testing.T) {

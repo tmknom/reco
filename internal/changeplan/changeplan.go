@@ -33,17 +33,18 @@ type RepositoryPlan struct {
 
 // SettingPlan は、一つの管理設定についての計画。
 // Result は Observed と Desired から決まる。判定は Result で行い、Observed は値と理由の取り出しに使う。
-// Environment そのものの計画は値を持たないため、Observed と Desired をゼロ値にし、ObservedEnvironment から Result を決める。
 type SettingPlan struct {
 	// Unit は、この計画の管理の単位。Environment の名前の綴りは宣言のまま。
 	Unit setting.Unit
-	// ObservedEnvironment は、Environment そのものの計画だけが持つ、計画時の関連リソースの観測結果。
-	ObservedEnvironment github.EnvironmentObservation
-	// Observed は計画時の設定の観測結果。観測不能のときだけ比較不能になり、その理由が比較できない理由になる。
-	Observed      github.SettingObservation[setting.Value]
-	Desired       setting.Value
-	Result        ReconciliationResult
-	Applicability Applicability
+	// Observed は計画時の設定の観測結果。関連リソースそのものの計画では、存在の観測結果である。
+	// 観測不能のときだけ比較不能になり、その理由が比較できない理由になる。
+	Observed github.SettingObservation[setting.Value]
+	// EnvironmentIdentity は、Environment そのものの計画で、計画時に存在を観測した Environment の ID。承認されると変更前提の同一性の基準になる。
+	// ほかの計画と、存在しない Environment の計画ではゼロ値。
+	EnvironmentIdentity EnvironmentIdentity
+	Desired             setting.Value
+	Result              ReconciliationResult
+	Applicability       Applicability
 	// NotApplicableReason は、Applicability が NotApplicable のときだけ定まる。
 	NotApplicableReason NotApplicableReason
 	// SideEffects は変更予定に伴う副作用。副作用がなければ nil。
@@ -129,15 +130,6 @@ func (s SettingPlan) EnablesActionsByPolicy() bool {
 // IsEnvironmentCreation は、この変更予定が Environment の作成かを返す。
 func (s SettingPlan) IsEnvironmentCreation() bool {
 	return s.Unit.Key == setting.EnvironmentResource && s.Result == Mismatch
-}
-
-// UnavailableReason は、比較不能な変更予定の観測不能の理由を返す。
-// Environment そのものの計画は関連リソースの観測結果から、ほかは設定の観測結果から読む。どちらも観測不能でなければ panic する。
-func (s SettingPlan) UnavailableReason() github.UnavailableReason {
-	if s.Unit.Key == setting.EnvironmentResource {
-		return s.ObservedEnvironment.UnavailableReason()
-	}
-	return s.Observed.UnavailableReason()
 }
 
 // IsPlannedChange は、この管理設定が変更予定 (不一致か比較不能の管理設定) かを返す。

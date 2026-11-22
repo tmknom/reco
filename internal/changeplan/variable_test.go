@@ -22,10 +22,10 @@ func TestVariableOperationOf(t *testing.T) {
 		anticipated setting.Value
 		wantKind    UpdateOperationKind
 	}{
-		{name: "absent repository variable is a creation based on its absence", unit: repositoryUnit, anticipated: setting.AbsentVariable(), wantKind: RepositoryVariableCreation},
+		{name: "absent repository variable is a creation based on its absence", unit: repositoryUnit, anticipated: setting.Absent(), wantKind: RepositoryVariableCreation},
 		{name: "different repository variable value is a value update based on the planned value", unit: repositoryUnit, anticipated: setting.VariableValue("1.26"), wantKind: RepositoryVariableValueUpdate},
 		{name: "empty value is an existing variable and a value update", unit: repositoryUnit, anticipated: setting.VariableValue(""), wantKind: RepositoryVariableValueUpdate},
-		{name: "absent environment variable is an environment variable creation", unit: environmentUnit, anticipated: setting.AbsentVariable(), wantKind: EnvironmentVariableCreation},
+		{name: "absent environment variable is an environment variable creation", unit: environmentUnit, anticipated: setting.Absent(), wantKind: EnvironmentVariableCreation},
 		{name: "different environment variable value is an environment variable value update", unit: environmentUnit, anticipated: setting.VariableValue("1.26"), wantKind: EnvironmentVariableValueUpdate},
 	}
 	for _, tc := range cases {
@@ -47,7 +47,7 @@ func TestVariableOperationOf(t *testing.T) {
 		anticipated github.SettingObservation[setting.Value]
 	}{
 		{name: "not comparable anticipated value panics", unit: repositoryUnit, anticipated: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
-		{name: "unit other than a variable panics", unit: setting.Unit{Key: setting.AllowAutoMerge}, anticipated: github.Observed(setting.AbsentVariable())},
+		{name: "unit other than a variable panics", unit: setting.Unit{Key: setting.AllowAutoMerge}, anticipated: github.Observed(setting.Absent())},
 	}
 	for _, tc := range panics {
 		t.Run(tc.name, func(t *testing.T) {

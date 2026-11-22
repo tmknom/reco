@@ -7,8 +7,48 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
+// TestDesiredState_ManagedSettings は、管理範囲の管理設定を期待値とともに、リポジトリ設定、Repository Variable、Environment ごとの順に列挙することを確かめる。
+//
 //trace:checks FR-001
-func TestDesiredState_Value(t *testing.T) {
+func TestDesiredState_ManagedSettings(t *testing.T) {
+	production, staging := mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging")
+	region, debug := mustVariableName(t, "REGION"), mustVariableName(t, "DEBUG")
+	protected := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}
+
+	t.Run("declared settings are listed with their desired values in the order of the management units and the declarations", func(t *testing.T) {
+		desired := DesiredState{
+			Dependabot:          Dependabot{Alerts: new(false)},
+			General:             General{AllowAutoMerge: new(true)},
+			RepositoryVariables: []VariableDeclaration{{Name: region, Desired: setting.VariableValue("eu")}, {Name: debug, Desired: setting.VariableValue("")}},
+			Environments: []EnvironmentDeclaration{
+				{Name: staging, DeploymentBranchPolicy: &protected, Variables: []VariableDeclaration{{Name: region, Desired: setting.VariableValue("us")}}},
+				{Name: production},
+			},
+		}
+		want := []ManagedSetting{
+			{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Desired: setting.BoolValue(true)},
+			{Unit: setting.Unit{Key: setting.DependabotAlerts}, Desired: setting.BoolValue(false)},
+			{Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: region}, Desired: setting.VariableValue("eu")},
+			{Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: debug}, Desired: setting.VariableValue("")},
+			{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, Desired: setting.Present()},
+			{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}, Desired: setting.DeploymentBranchPolicyValue(protected)},
+			{Unit: setting.Unit{Key: setting.EnvironmentVariable, Environment: staging, Variable: region}, Desired: setting.VariableValue("us")},
+			{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Desired: setting.Present()},
+		}
+		if got := desired.ManagedSettings(); !reflect.DeepEqual(got, want) {
+			t.Errorf("ManagedSettings() =\n%+v\nwant\n%+v", got, want)
+		}
+	})
+
+	t.Run("nothing declared lists no managed settings", func(t *testing.T) {
+		if got := (DesiredState{}).ManagedSettings(); len(got) != 0 {
+			t.Errorf("ManagedSettings() = %+v, want none", got)
+		}
+	})
+}
+
+//trace:checks FR-001
+func TestDesiredState_value(t *testing.T) {
 	cases := []struct {
 		name    string
 		desired DesiredState
@@ -46,58 +86,58 @@ func TestDesiredState_Value(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, ok := tc.desired.Value(tc.key)
+			got, ok := tc.desired.value(tc.key)
 			if !reflect.DeepEqual(got, tc.want) || ok != tc.wantOK {
-				t.Errorf("Value(%q) = %v, %v, want %v, %v", tc.key, got, ok, tc.want, tc.wantOK)
+				t.Errorf("value(%q) = %v, %v, want %v, %v", tc.key, got, ok, tc.want, tc.wantOK)
 			}
 		})
 	}
 }
 
-// TestDesiredState_ValueCoversEveryDesiredValue は、期待状態が持つ期待値の数と、Value が返す期待値の数が食い違わないことを確かめる。
-// 期待状態に設定を足して setting.RepositorySettingUnits や Value に足し忘れると、宣言を受理した設定が照合されないまま
+// TestDesiredState_valueCoversEveryDesiredValue は、期待状態が持つ期待値の数と、value が返す期待値の数が食い違わないことを確かめる。
+// 期待状態に設定を足して setting.RepositorySettingUnits や value に足し忘れると、宣言を受理した設定が照合されないまま
 // コンパイルもほかのテストも通るため、期待状態の全フィールドを埋めて数える。
-func TestDesiredState_ValueCoversEveryDesiredValue(t *testing.T) {
+func TestDesiredState_valueCoversEveryDesiredValue(t *testing.T) {
 	var desired DesiredState
 	declared := fillDesiredValues(reflect.ValueOf(&desired).Elem())
 
 	n := 0
 	for _, key := range setting.RepositorySettingUnits() {
-		if _, ok := desired.Value(key); ok {
+		if _, ok := desired.value(key); ok {
 			n++
 		}
 	}
 	if n != declared {
-		t.Errorf("Value() returned %d desired values for %d declared settings", n, declared)
+		t.Errorf("value() returned %d desired values for %d declared settings", n, declared)
 	}
 }
 
-// 関連リソースに関わる管理の単位は名前との組で識別するため、Value では引けない。
-func TestDesiredState_ValueOfRelatedResourceSettingPanics(t *testing.T) {
+// 関連リソースに関わる管理の単位は名前との組で識別するため、value では引けない。
+func TestDesiredState_valueOfRelatedResourceSettingPanics(t *testing.T) {
 	for _, key := range []setting.Key{setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentVariable} {
 		t.Run(string(key), func(t *testing.T) {
 			defer func() {
 				if recover() == nil {
-					t.Errorf("Value(%q) did not panic", key)
+					t.Errorf("value(%q) did not panic", key)
 				}
 			}()
-			_, _ = DesiredState{}.Value(key)
+			_, _ = DesiredState{}.value(key)
 		})
 	}
 }
 
-func TestDesiredState_ValueOfUnknownSettingPanics(t *testing.T) {
+func TestDesiredState_valueOfUnknownSettingPanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {
-			t.Error("Value() did not panic for an unknown setting")
+			t.Error("value() did not panic for an unknown setting")
 		}
 	}()
-	_, _ = DesiredState{}.Value("general.unknown")
+	_, _ = DesiredState{}.value("general.unknown")
 }
 
 // fillDesiredValues は、v の中の期待値 (ポインタのフィールド) をすべてゼロ値への参照で埋め、その数を返す。
 // 列挙値のゼロ値は定義外の値だが、ここでは期待値の有無だけを数える。
-// 関連リソースの宣言 (RepositoryVariables、Environments) は Value で引かない期待値のため、数えない。
+// 関連リソースの宣言 (RepositoryVariables、Environments) は value で引かない期待値のため、数えない。
 func fillDesiredValues(v reflect.Value) int {
 	n := 0
 	for structField, field := range v.Fields() {

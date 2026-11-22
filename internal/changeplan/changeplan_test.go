@@ -101,21 +101,6 @@ func TestSettingPlan_IsEnvironmentCreation(t *testing.T) {
 	}
 }
 
-func TestSettingPlan_UnavailableReason(t *testing.T) {
-	t.Run("environment existence reads the reason of the environment observation", func(t *testing.T) {
-		s := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource}, ObservedEnvironment: lookup(t, "production", github.Environment{Name: "prodüction"}), Result: NotComparable}
-		if got := s.UnavailableReason(); got != github.UnavailableEnvironmentNameUndetermined {
-			t.Errorf("UnavailableReason() = %v, want %v", got, github.UnavailableEnvironmentNameUndetermined)
-		}
-	})
-	t.Run("other settings read the reason of the setting observation", func(t *testing.T) {
-		s := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Result: NotComparable}
-		if got := s.UnavailableReason(); got != github.UnavailableEnvironmentAbsent {
-			t.Errorf("UnavailableReason() = %v, want %v", got, github.UnavailableEnvironmentAbsent)
-		}
-	})
-}
-
 func TestRepositoryPlan_Count(t *testing.T) {
 	r := RepositoryPlan{Settings: []SettingPlan{{Result: Mismatch}, {Result: Match}, {Result: Mismatch}, {Result: NotComparable}}}
 	if got := r.Count(Mismatch); got != 2 {
@@ -556,7 +541,7 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 		}
 		want := []SettingPlan{
 			{Unit: variableUnit(t, "GO_VERSION"), Observed: github.Observed(setting.VariableValue("1.26")), Desired: setting.VariableValue("1.27"), Result: Mismatch, Applicability: Applicable},
-			{Unit: variableUnit(t, "GO_ARCH"), Observed: github.Observed(setting.AbsentVariable()), Desired: setting.VariableValue("amd64"), Result: Mismatch, Applicability: Applicable},
+			{Unit: variableUnit(t, "GO_ARCH"), Observed: github.Observed(setting.Absent()), Desired: setting.VariableValue("amd64"), Result: Mismatch, Applicability: Applicable},
 		}
 		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
 			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
