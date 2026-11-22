@@ -109,7 +109,7 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 					{ID: 6, Name: `v"\*`, Type: "tag"},
 				}}.JSON()),
 				"GET /repos/owner/repo/environments/empty/deployment-branch-policies": githubtest.OK(githubtest.DeploymentBranchPoliciesBody{}.JSON()),
-				// コメントにした変数の行は、改行に続けてキーを模した値でもコメントの外に出ず、設定宣言の構造を変えない
+				// Environment Variables も、改行に続けてキーを模した値をエスケープした1行の値として読み戻せ、plan がその Environment の一覧と照合する
 				"GET /repos/owner/repo/environments/" + environmentName + "/variables": githubtest.OK(githubtest.VariablesBody{TotalCount: 2, Variables: []githubtest.VariableBody{
 					{Name: "GO_VERSION", Value: "1.26"},
 					{Name: "NOTE", Value: "x\n        deployment_branch_policy:\n          mode: all"},

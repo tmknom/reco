@@ -44,15 +44,14 @@ func TestWriteEnvironmentVariables(t *testing.T) {
 		want      string
 	}{
 		{
-			name:      "no variables shows none as a comment on the key without the guidance line",
+			name:      "no variables shows none as a comment on the key",
 			variables: github.Variables{Existing: []github.Variable{}},
 			want:      "        # variables: none\n",
 		},
 		{
-			name:      "variables are shown as comments under the environment after the guidance line",
+			name:      "variables are shown as keys under the environment",
 			variables: github.Variables{Existing: []github.Variable{{Name: "REGION", Value: "eu"}}},
-			want: "        # reco does not accept the environment variables in the configuration file yet\n" +
-				"        # variables:\n        #   - name: \"REGION\"\n        #     value: \"eu\"\n",
+			want:      "        variables:\n          - name: \"REGION\"\n            value: \"eu\"\n",
 		},
 	}
 	for _, tc := range cases {

@@ -22,8 +22,7 @@ func writeEnvironmentVariables(b *strings.Builder, v github.Variables) {
 		b.WriteString("        # variables: none\n")
 		return
 	}
-	b.WriteString("        # reco does not accept the environment variables in the configuration file yet\n")
-	writeVariableLines(b, "        # ", v)
+	writeVariableLines(b, "        ", v)
 }
 
 // writeVariableLines は、variables のキーと変数ごとの name と value の行を、各行の先頭に prefix を付けて書く。

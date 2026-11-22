@@ -293,7 +293,7 @@ func TestRun(t *testing.T) {
 			}
 		}
 		for _, observed := range []string{
-			"default_workflow_permissions: write", `        - name: "GO_VERSION"`, `- name: "staging"`, `        #   - name: "REGION"`, "dependabot_security_updates: true # paused",
+			"default_workflow_permissions: write", `        - name: "GO_VERSION"`, `- name: "staging"`, `          - name: "REGION"`, "dependabot_security_updates: true # paused",
 			"# secret_scanning: unavailable (the repository is private)",
 			"# private_vulnerability_reporting: unavailable (the repository is private)",
 		} {

@@ -19,3 +19,7 @@ func variableUnit(t *testing.T, name string) setting.Unit {
 	t.Helper()
 	return setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, name)}
 }
+
+func environmentVariableUnit(environment setting.EnvironmentName, name setting.VariableName) setting.Unit {
+	return setting.Unit{Key: setting.EnvironmentVariable, Environment: environment, Variable: name}
+}

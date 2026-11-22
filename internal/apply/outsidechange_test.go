@@ -130,6 +130,22 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			)},
 			want: nil,
 		},
+		{
+			// 変数の更新エンドポイントは変数ごとに別で、Environment の保護設定もほかの変数も変えない
+			name: "environment variable value change does not compare the protection or other variables of the environment",
+			change: environmentVariableValueChange(t, "staging",
+				withVariables(stagingAll, github.Variable{Name: "REGION", Value: "a"}), "REGION", "a", "b"),
+			before: []github.ObservationResult{stagingWith(withVariables(stagingAll, github.Variable{Name: "REGION", Value: "a"}, github.Variable{Name: "OTHER", Value: "x"}), 30)},
+			after:  stagingWith(withVariables(stagingAll, github.Variable{Name: "REGION", Value: "b"}, github.Variable{Name: "OTHER", Value: "y"}), 10),
+			want:   nil,
+		},
+		{
+			name:   "environment variable creation does not compare the protection of the environment",
+			change: createdEnvironmentVariableChange(t, "staging", "REGION", "b"),
+			before: []github.ObservationResult{stagingWith(withVariables(stagingAll), 30)},
+			after:  stagingWith(withVariables(stagingAll, github.Variable{Name: "REGION", Value: "b"}), 10),
+			want:   nil,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -146,7 +162,7 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			}
 		}()
 		change := allowAutoMergeChange()
-		change.Operations[0].Kind = changeplan.RepositoryVariableValueUpdate + 1
+		change.Operations[0].Kind = changeplan.EnvironmentVariableValueUpdate + 1
 		unexpectedOutsideChanges(change, []github.ObservationResult{{}}, github.ObservationResult{})
 	})
 }

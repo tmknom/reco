@@ -94,6 +94,29 @@ func TestEnvironmentVariablesURL(t *testing.T) {
 	}
 }
 
+// TestEnvironmentVariableURL は、Environment の変数の一覧の URL に変数の名前を1つのパス要素として足し、Path と RawPath の両方が同じ要素を指すことと、組めない名前を伝えることを確かめる。
+//
+//trace:checks FR-011
+func TestEnvironmentVariableURL(t *testing.T) {
+	c := New(testToken)
+	u, ok := c.environmentVariableURL(mustReference(t, "owner/repo"), "a b/c", "REGION")
+	if !ok {
+		t.Fatal("environmentVariableURL(\"a b/c\", \"REGION\") ok = false, want true")
+	}
+	if got, want := u.EscapedPath(), "/repos/owner/repo/environments/a%20b%2Fc/variables/REGION"; got != want {
+		t.Errorf("escaped path = %q, want %q", got, want)
+	}
+	if got, want := u.Path, "/repos/owner/repo/environments/a b/c/variables/REGION"; got != want {
+		t.Errorf("path = %q, want %q", got, want)
+	}
+
+	for _, environment := range []string{".", ".."} {
+		if u, ok := c.environmentVariableURL(mustReference(t, "owner/repo"), environment, "REGION"); ok {
+			t.Errorf("environmentVariableURL(%q, \"REGION\") = %q, true, want false", environment, u)
+		}
+	}
+}
+
 // TestDeploymentBranchPolicyURL は、一覧の URL に ID を足し、Path と RawPath の両方が同じ要素を指すことと、組めない名前を伝えることを確かめる。
 //
 //trace:checks FR-004

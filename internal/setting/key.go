@@ -29,6 +29,8 @@ const (
 	EnvironmentResource Key = "environments"
 	// EnvironmentDeploymentBranchPolicy は、Environment の中のデプロイ元制限の形。
 	EnvironmentDeploymentBranchPolicy Key = "environments.deployment_branch_policy"
+	// EnvironmentVariable は、Environment に属する Environment Variable そのもの (期待値は存在し、値を伴うこと) の形。
+	EnvironmentVariable Key = "environments.variables"
 )
 
 // RepositorySettingUnits は、リポジトリ設定の管理の単位 (reco が期待値の宣言を受け付ける設定) を YAML 設定仕様の章と表の並びで返す。
@@ -36,6 +38,12 @@ const (
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
 func RepositorySettingUnits() []Key {
 	return []Key{DeleteBranchOnMerge, AllowAutoMerge, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
+}
+
+// HasEnvironmentName は、k の形の管理の単位が Environment の名前を含むか (Environment そのもの、その中の設定、それに属する関連リソースか) を返す。
+func (k Key) HasEnvironmentName() bool {
+	area := k.Area()
+	return area == AreaEnvironments || area == AreaEnvironmentVariables
 }
 
 // Area は、k が属する設定の領域を返す。未知の設定は不変条件の破れとして panic する。
@@ -54,6 +62,8 @@ func (k Key) Area() Area {
 		return AreaRepositoryVariables
 	case EnvironmentResource, EnvironmentDeploymentBranchPolicy:
 		return AreaEnvironments
+	case EnvironmentVariable:
+		return AreaEnvironmentVariables
 	case DependabotAlerts, DependabotSecurityUpdates:
 		return AreaDependabot
 	case SecretScanningEnabled, RepositoryPushProtection:

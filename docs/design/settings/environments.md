@@ -12,9 +12,11 @@
 | 個別パターン | Deployment Pattern | デプロイ元制限の値の要素。種類（ブランチかタグか）と名前の組 |
 | Environment の保護設定 | Environment Protection | デプロイを待たせる分数（`wait_timer`）、承認を求めるレビュアーと自己承認の禁止（`required_reviewers`）、管理者による迂回の可否（`can_admins_bypass`）。reco は観測するが、宣言を受け付けない |
 | Environment Variables | Environment Variables | Environment に属する Environment Variable からなる設定の領域。Environments とは別の設定の領域 |
-| Environment Variable | Environment Variable | Environment に属し、名前と値を持つ関連リソース。GitHub は ID を付けない。属する先が違うため、同じ名前の Repository Variable や、別の Environment の同じ名前の変数とは別の関連リソースである。reco は観測するが、宣言を受け付けない |
+| Environment Variable | Environment Variable | Environment に属し、名前と値を持つ関連リソース。GitHub は ID を付けない。属する先が違うため、同じ名前の Repository Variable や、別の Environment の同じ名前の変数とは別の関連リソースである |
 
 Environment は値を持たない種類の関連リソースです。存在することの期待値は、存在することだけを表します。
+
+Environment Variable は値を持つ種類の関連リソースで、関連リソースそのものを管理の単位とします。管理の単位は、属する先の Environment の名前と変数の名前の組で一つに定まり、期待値は存在すること（値を伴う）です。Environment の名前は Environment と同じ判定で、変数の名前は Repository Variable と同じ判定（ASCII の英字の大文字小文字を区別しない）で比べます。GitHub は ID を付けないため、名前だけで識別する種類として扱います（[ドメインモデル](../domain.md) の関連リソースの同一性）。`environments[]` の要素に `variables` を書くことは、属する先の Environment が存在することの宣言を兼ねます（[YAML 設定仕様](../../spec/configuration.md) 8.3節）。
 
 デプロイ元制限は、ほかの項目の値によって持つかどうかが決まる集合を含む、一つの設定グループです。個別パターンが同じかどうかは、種類（ブランチかタグか）と名前の組で決まり、名前は大文字と小文字を区別します。方式が `selected` でないときの値は方式だけです。GitHub は方式が `selected` のあいだだけ個別パターンを受け付け、方式を `selected` から変えると個別パターンを残しません。そのため、このときの値は観測不能ではなく、方式だけの値として確かめられます。
 
@@ -50,7 +52,7 @@ Environment Variables は、`GET /repos/{owner}/{repo}/environments/{environment
 
 `per_page`、1ページの本文の上限、要素の取得契約、名前の重複の扱いは、[Actions の設計](actions.md) の観測の Repository Variables と同じです。名前の重複は、一つの Environment の一覧の中で判定します。ページ数の上限は、GitHub が一つの Environment に保存できる100件（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 3章）を1ページ30件で読み切る4ページです。Environment Variables に、取得条件による観測不能はありません。非公開リポジトリでも一覧を取得できたためです（GitHub Actions 変数 API 仕様 1.1）。
 
-`plan` と `apply` は、Environment Variables の領域を読み取りません。宣言を受け付けず、管理の単位がないためです。
+`plan` と `apply` は、`environments[].variables` を一つでも宣言したリポジトリに限り、Environment Variables の領域を読み取ります。読むときは、`show` と同じく、宣言に名前のない Environment を含めて一覧のすべての Environment の変数を読みます。宣言した変数の観測結果は、宣言の Environment の名前で Environment を引いた結果から決めます。Environment が存在すれば、その Environment の一覧と変数の名前を突き合わせ、同じ名前があれば値を伴って存在し、なければ存在しません。Environment が存在しなければ、属する先が存在しないことを理由とする観測不能です。Environment が名前の同一性を判定できないことを理由とする観測不能なら、変数も同じ理由の観測不能です。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -63,7 +65,19 @@ Environment Variables は、`GET /repos/{owner}/{repo}/environments/{environment
 
 ## 適用可能性と副作用
 
-名前の同一性を判定できない Environment の作成と、その中の設定の変更予定は、適用不能です。作成の要求が、GitHub が同じとみなす既存の Environment を変え得るためです（[ドメインモデル](../domain.md) の照合と変更予定）。それ以外の Environment とデプロイ元制限の変更予定は、[論理的な設定変更と更新操作](#論理的な設定変更と更新操作) の表のとおり適用可能です。
+名前の同一性を判定できない Environment の作成と、その中の設定と Environment Variable の変更予定は、適用不能です。作成の要求が、GitHub が同じとみなす既存の Environment を変え得るためです（[ドメインモデル](../domain.md) の照合と変更予定）。それ以外の Environment とデプロイ元制限の変更予定は、[論理的な設定変更と更新操作](#論理的な設定変更と更新操作) の表のとおり適用可能です。
+
+Environment Variable の変更予定は、次の表に従います。
+
+| Environment の観測 | 変数の観測 | 照合結果と変更予定 | 適用可能性 |
+|---|---|---|---|
+| 存在する | 存在し、値が宣言と同じ | Match。なし | なし |
+| 存在する | 存在し、値が宣言と違う | Mismatch。値の変更 | 適用可能 |
+| 存在する | 存在しない | Mismatch。作成 | 適用可能 |
+| 存在しない（同じ要素が作成を宣言する） | 属する先が存在しないことを理由とする観測不能 | Not Comparable。作成 | 適用可能。Environment の作成のあとに実行する |
+| 名前の同一性を判定できない | 同じ理由の観測不能 | Not Comparable | 適用不能 |
+
+変数を書いた Environment は `environments[]` に書いた Environment のため、属する先が宣言されていないことによる適用不能はありません。Environments を利用できないことによる適用不能も設けません。非公開リポジトリでも Environment Variables の一覧、作成、更新を利用できたためです（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 1.1）。一つの Environment の変数の件数の上限（100件）と値の長さの上限は、Repository Variables と同じく、計画の時点で確かめません。Environment Variable の変更に、変更に伴う副作用と再開する設定はありません。
 
 方式を `selected` から変える宣言によって個別パターンがなくなることは、デプロイ元制限という管理設定の値の変更であり、変更に伴う副作用には当たりません。個別パターンは同じ管理設定の値の一部で、未管理設定ではないためです。なくなる個別パターンは、変更予定の計画時の観測値に含まれて承認の対象になり、その更新操作の関係する現在値として更新直前に確かめます。
 
@@ -111,6 +125,21 @@ Environment とその `deployment_branch_policy` の変更予定は、次の表�
 
 作成の変更前提で比べる関係する現在値は、その名前の Environment が存在しないことだけです。更新直前に同じ名前の Environment が存在するか、同じかどうかを判定できない名前の Environment があれば、方式が宣言と同じでも関係する現在値の変化として更新要求を送りません。承認したのは作成であり、存在する Environment の設定を上書きする変更ではないためです。方式の変更の変更前提で比べる関係する現在値は、Environment が存在し ID が計画時と同じこと、方式が計画時の観測値と同じこと（`selected` なら個別パターンの集合を含む）です。この順に並べ、Environment そのものの変化を先に示します。期待状態は、作成では Environment が存在し、方式を宣言していれば方式が宣言した値であることです。方式の変更では、方式が宣言した値であることです。ID は期待状態で比べません。作成のあとに存在しないと確かめた場合は不一致、方式の変更のあとに存在しない場合は方式が観測不能、同じかどうかを判定できない名前が現れた場合は観測不能として、どれも完了にしません。
 
+Environment Variable の変更予定は、変数ごとに、一つの更新操作からなる一つの論理的な設定変更にします。存在しない変数は作成の `POST`、存在する変数は値の変更の `PATCH` で、種類は計画時の観測で決め、承認のあとで決め直しません。Environment の作成とその変数の作成は、[ドメインモデル](../domain.md) の照合と変更予定に従い、一つの論理的な設定変更にまとめません。作成とデプロイ元制限を一つにまとめた理由（一つの `PUT` が両方を設定し、分けると宣言していない方式の Environment を完了と報告する）は、変数には当たりません。変数のない Environment は、Environment の存在という管理設定の期待状態を満たしており、変数の作成は別の更新要求だからです。
+
+論理的な設定変更の並びは、Environment ごとに、存在（デプロイ元制限をまとめた作成を含む）、デプロイ元制限、変数（宣言の順）の順で、Environment をまたいでは宣言の順です（[YAML 設定仕様](../../spec/configuration.md) 8章）。設定の領域の順（全 Environment のあとに全 Environment Variable）にしないのは、変更計画の行を設定ファイルの行と同じ順に並べ、作成から変数の更新直前の観測までのあいだを短くするためです。そのため Environment Variable の変更予定は、設定の領域が Environment Variables でも、並びの上では Environments の領域に置きます。Environment の作成が完了しなければ、その変数の論理的な設定変更は先行する異常により開始しません。
+
+Environment Variable の更新操作の変更前提で比べる関係する現在値と、承認時に予定した値は次のとおりです。
+
+| 更新操作 | Environment そのもの | 変数 |
+|---|---|---|
+| 計画時に存在した Environment の変数の作成、値の変更 | 存在し、ID が計画時と同じ | 計画時の観測結果（存在しない、または計画時の値で存在する） |
+| 同じ変更計画が作成した Environment の変数の作成 | 比べない（変数が存在しないと観測できれば、Environment も存在する） | 存在しない |
+
+計画時に存在した Environment では、Environment そのものを先に比べます。作り直された Environment の変数の一覧は空になるため（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 4.3）、変数だけを比べると、作成の承認のあとに Environment が作り直されたことを検出できないためです。同じ変更計画が作成した Environment では、承認の時点で ID が定まらず、比べる ID がありません。変数は Environment が存在するときだけ観測値を持ち、存在しなければ属する先が存在しないことを理由とする観測不能になるため、「変数が存在しない」との一致が Environment の存在も確かめます。作成の完了から変数の更新直前の観測までのあいだに Environment がなくなっていれば、変数の観測不能が承認時に予定した値と違うため、関係する現在値の変化として開始しません。Environment を作り直さず、観測し直しません。作られたばかりの Environment の変数の一覧が、直後に空で返ることは実際の動作で確かめています（同 4.3）。同じあいだに同じ名前で作り直された Environment は区別できません。
+
+期待状態は、変数が存在し、値が宣言と同じことです。更新後の観測で Environment が存在しなければ変数が観測不能のため確認失敗、同じかどうかを判定できない名前が現れた場合も確認失敗として、どちらも完了にしません。
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-006` | Functional Requirement |
@@ -127,6 +156,7 @@ Environment とその `deployment_branch_policy` の変更予定は、次の表�
 |---|---|
 | Environment | `deployment_branch_policy` だけを送り、省略した保護設定の保持に依拠して更新する。方式を宣言していない作成は本文を送らない |
 | Environment の個別パターン | 加える要求は種類と名前だけを送り、取り除く要求は更新直前の観測の ID を宛先にする。どちらも要素一つずつで、一覧の全体を置き換えない |
+| Environment Variable | 作成は名前と値、値の変更は値だけを送る。変数一つずつで、一覧の全体を置き換えない |
 
 Environment では、`PUT /repos/{owner}/{repo}/environments/{environment_name}` に `deployment_branch_policy` だけを送ります。`all` は `null`、`protected_branches` は `protected_branches: true` と `custom_branch_policies: false`、`selected` は `protected_branches: false` と `custom_branch_policies: true` で表します。方式を宣言していない作成は本文を送りません。正常応答は作成も更新も `200` で、本文は個別取得と同じ形です。本文が Environment の取得契約を満たさない `200` と、ほかの `2xx`（`201` など）は、更新の契約の外として成否不明にします（[アーキテクチャ設計](../architecture.md) 6.1節）。方式を送る根拠は、次の実際の動作の確認です（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 4.1）。
 
@@ -145,6 +175,10 @@ Environment の個別パターンは、`POST /repos/{owner}/{repo}/environments/
 個別パターンを加える要求に GitHub が返す `303`（同じ種類と名前のパターンがすでにある場合の応答で、パターンは作られない）も、追従せず成否不明とします（GitHub デプロイ元パターン API 仕様 4.1、[アーキテクチャ設計](../architecture.md) 5.2節）。成功や変更なしとは読み替えません。更新直前の観測で加えるパターンがないことを確かめてから送るため、この応答は、観測と要求のあいだに外部主体が同じパターンを加えた場合に限って起きます。エラーの示し方は [CLI 仕様](../../spec/cli.md) 7章に従います。
 
 更新直前の観測と更新要求のあいだに、外部主体が同じ名前の Environment を作った場合は防げません。本文のない作成の要求は、存在する名前の Environment を何も変えません。方式を本文に含む作成の要求は、その Environment の方式を宣言した方式にします。外部主体が作った Environment の方式が `selected` で、宣言した方式が `selected` でない場合、この要求は個別パターンを失わせます。同じあいだに外部主体が、加えようとするパターンを先に加えた場合は `303` で成否不明に、取り除こうとするパターンを先に消した場合は `404` で更新操作の失敗になります。
+
+Environment Variable は、`POST /repos/{owner}/{repo}/environments/{environment_name}/variables` に `name` と `value` を送って作成し、`PATCH .../environments/{environment_name}/variables/{name}` に `value` だけを送って値を変えます。本文と正常応答（作成が `201`、値の変更が `204`）、同じ名前の作成への `409` と存在しない名前への `PATCH` の `404` を更新操作の失敗とする扱いは、Repository Variable と同じです（[Actions の設計](actions.md) の更新方式、[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 5.1・5.2）。宛先の Environment の名前は、変更前提で存在を確かめた更新直前の観測の綴りにし、変数の名前は宣言の綴りにします。どちらもパスの一つの要素としてエスケープします。Environment の名前は、変数のエンドポイントのパスでも大文字小文字と末尾の空白を同じ Environment とみなされます（同 4.3）。存在しない Environment への作成は `404` で拒否され、Environment を作りません（同 1章）。reco は更新直前の観測で Environment の存在を確かめてから送るため、この応答に頼りません。
+
+Environment Variable の更新では、変更対象外の設定として比べる設定はありません。更新エンドポイントが変数ごとに別で、reco がそこで観測するのはその変数だけだからです。変数の作成、値の変更、削除の前後で、Environment の `id` と `updated_at`、同じ Environment のほかの変数、別の Environment とその変数、同じ名前の Repository Variable が変わらなかったことを、実際の動作で確かめています（同 5.4）。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -180,6 +214,10 @@ Environment の個別パターンは、`POST /repos/{owner}/{repo}/environments/
 | Repository Variable `REGION` と、Environment `production` の Environment Variable `REGION` がある | 別の関連リソース。それぞれの一覧に、それぞれの値で観測する | 名前が同じなので重複、または一方の値で他方を上書きして示す |
 | Environment `production` と `staging` の両方に Environment Variable `REGION` がある | 別の関連リソース。重複は一つの Environment の一覧の中で判定する | 名前が同じなので取得契約に適合しない応答 |
 | 一覧にあった Environment の Environment Variables の一覧を、GitHub が見つからないと応答した | 観測操作の失敗。二つの読み取りのあいだに Environment がなくなった可能性がある | 変数が一つもない、または Environment が存在しない |
+| 存在しない Environment `staging` に、`variables` だけを書いた | Environment は Mismatch で作成、変数は属する先が存在しないことを理由とする Not Comparable で作成。どちらも適用可能で、論理的な設定変更は Environment の作成と変数ごとに一つずつ | `variables` だけでは Environment の存在を宣言しないので適用不能。または、Environment の作成と変数の作成を一つにまとめる |
+| Environment `staging` の作成が完了したあと、変数の作成の更新直前の観測で `staging` がなかった | 変数が観測不能で、承認時に予定した値（存在しない）と違い、関係する現在値の変化。未実行で、Environment を作り直さない | Environment がないので、変数が存在しないことと同じで変更前提は成立する。または、Environment をもう一度作る |
+| 存在する Environment の変数 `REGION` の値の変更を承認したあと、Environment が同じ名前で作り直された | Environment の ID が違い、関係する現在値の変化。未実行 | 変数が存在しなくなっただけなので、作成に切り替える |
+| Repository Variable `REGION` と、Environment `production` の Environment Variable `REGION` を両方宣言した | 別の管理設定。それぞれの一覧と照合し、それぞれのエンドポイントへ更新要求を送る | 名前が同じなので値を同期する |
 | 個別パターンだけを変える変更のあと、その Environment の `wait_timer` が変わっていた | 変更対象外の設定ではなく、予期しない変化として扱わない。個別パターンの更新エンドポイントで reco が観測するのは個別パターンの集合だけである | Environment の保護設定なので、変更対象外の設定の予期しない変化 |
 
 ## References

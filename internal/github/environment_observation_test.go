@@ -1,6 +1,7 @@
 package github
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/tmknom/reco/internal/setting"
@@ -13,6 +14,7 @@ func TestEnvironmentObservation(t *testing.T) {
 		ID:                     7,
 		Name:                   "production",
 		DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected},
+		Variables:              &Variables{Existing: []Variable{{Name: "REGION", Value: "eu"}}},
 	}}}.Lookup(declared)
 	absent := Environments{}.Lookup(declared)
 	unavailable := Environments{Existing: []Environment{{Name: "café"}}}.Lookup(declared)
@@ -45,6 +47,29 @@ func TestEnvironmentObservation(t *testing.T) {
 		}
 		if got := o.UnavailableReason(); got != UnavailableEnvironmentNameUndetermined {
 			t.Errorf("UnavailableReason() = %v, want %v", got, UnavailableEnvironmentNameUndetermined)
+		}
+	})
+
+	t.Run("existing environment observes a listed variable's value and an unlisted one as absent", func(t *testing.T) {
+		if got, want := existing.Variable(mustVariableName(t, "REGION")), Observed(setting.VariableValue("eu")); !reflect.DeepEqual(got, want) {
+			t.Errorf("Variable(REGION) = %+v, want %+v", got, want)
+		}
+		if got, want := existing.Variable(mustVariableName(t, "STAGE")), Observed(setting.AbsentVariable()); !reflect.DeepEqual(got, want) {
+			t.Errorf("Variable(STAGE) = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("absent environment makes its variable unavailable as absent", func(t *testing.T) {
+		got, want := absent.Variable(mustVariableName(t, "REGION")), Unavailable[setting.Value](UnavailableEnvironmentAbsent)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("Variable(REGION) = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("unavailable environment makes its variable unavailable with the same reason", func(t *testing.T) {
+		got, want := unavailable.Variable(mustVariableName(t, "REGION")), Unavailable[setting.Value](UnavailableEnvironmentNameUndetermined)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("Variable(REGION) = %+v, want %+v", got, want)
 		}
 	})
 

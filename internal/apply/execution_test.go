@@ -244,6 +244,20 @@ func TestObservationAreas(t *testing.T) {
 			notWant: []setting.Area{setting.AllowedActions.Area(), setting.AreaSecretScanning},
 		},
 		{
+			// 計画時に存在した Environment の変数は、Environment の存在と ID も基準にする
+			name:    "environment variable change reads the environment variables and environments areas",
+			change:  environmentVariableValueChange(t, "staging", withVariables(observedEnvironment(7, "staging", setting.DeploymentBranchPolicyAll), github.Variable{Name: "REGION", Value: "a"}), "REGION", "a", "b"),
+			want:    []setting.Area{setting.AreaEnvironmentVariables, setting.AreaEnvironments},
+			notWant: []setting.Area{setting.AreaRepositoryVariables},
+		},
+		{
+			// 属する先の Environment の存在は、Environment Variables の領域の観測が同じ観測で確かめる
+			name:    "variable creation in a created environment reads the environment variables area",
+			change:  createdEnvironmentVariableChange(t, "production", "REGION", "a"),
+			want:    []setting.Area{setting.AreaEnvironmentVariables},
+			notWant: []setting.Area{setting.AreaRepositoryVariables},
+		},
+		{
 			// どの変更予定にも生じない組。基準の設定の領域を読まないと、観測結果にその値がないことを確かめる
 			name:   "relevant setting in another area is also read",
 			change: singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), relevantTo(setting.DefaultWorkflowPermissions, setting.PermissionLevelValue(setting.PermissionRead))),
@@ -1650,6 +1664,7 @@ func TestExecuteRepositories(t *testing.T) {
 
 // TestSendUpdate は、更新操作ごとに送る更新要求の宛先と本文を確かめる。
 // Environment には、作成は宣言の綴りへ、存在する Environment には更新直前の観測の綴りへ、deployment_branch_policy だけを送る。
+// Environment Variable は、属する Environment の更新直前の観測の綴りへ送り、Repository Variables の更新エンドポイントへは送らない。
 //
 //trace:checks INV-001 INV-004
 func TestSendUpdate(t *testing.T) {
@@ -1659,6 +1674,8 @@ func TestSendUpdate(t *testing.T) {
 	toSelectedPatterns := deploymentPatternsChange(t, "staging", staging, selectedPolicy(tagPattern("v*")))
 	// DELETE tag main だけ。計画時の ID は 10 と 11
 	removeMainTag := deploymentPatternsChange(t, "staging", selectedEnvironment(7, "Staging", []setting.DeploymentPattern{mainBranch, mainTag}, 10, 11), selectedPolicy(mainBranch))
+	// 宣言の production と綴りを変え、観測の綴りを宛先にすることを確かめる
+	productionRegion := withVariables(observedEnvironment(7, "Production", setting.DeploymentBranchPolicyAll), github.Variable{Name: "REGION", Value: "us-east-1"})
 	cases := []struct {
 		name      string
 		operation changeplan.UpdateOperation
@@ -1727,6 +1744,22 @@ func TestSendUpdate(t *testing.T) {
 			response:  noContent(),
 			want:      githubtest.Request{Method: http.MethodPatch, Path: "/repos/owner/repo/actions/variables/GO_VERSION", Body: map[string]any{"value": "1.27\n"}},
 		},
+		{
+			name:      "environment variable creation is sent to the observed spelling of the environment with the declared name and value",
+			operation: createdEnvironmentVariableChange(t, "production", "REGION", "ap-northeast-1\n").Operations[0],
+			observed:  github.ObservationResult{Environments: environments(withVariables(observedEnvironment(8, "Production", setting.DeploymentBranchPolicyAll)))},
+			response:  createdVariable(),
+			want: githubtest.Request{Method: http.MethodPost, Path: "/repos/owner/repo/environments/Production/variables", Body: map[string]any{
+				"name": "REGION", "value": "ap-northeast-1\n",
+			}},
+		},
+		{
+			name:      "environment variable value change is sent to the observed spelling of the environment with only the value",
+			operation: environmentVariableValueChange(t, "production", productionRegion, "REGION", "us-east-1", "ap-northeast-1\n").Operations[0],
+			observed:  github.ObservationResult{Environments: environments(productionRegion)},
+			response:  noContent(),
+			want:      githubtest.Request{Method: http.MethodPatch, Path: "/repos/owner/repo/environments/Production/variables/REGION", Body: map[string]any{"value": "ap-northeast-1\n"}},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1763,7 +1796,7 @@ func TestSendUpdate(t *testing.T) {
 			name: "undefined kind of an update operation panics",
 			operation: func() changeplan.UpdateOperation {
 				o := toSelectedPatterns.Operations[1]
-				o.Kind = changeplan.RepositoryVariableValueUpdate + 1
+				o.Kind = changeplan.EnvironmentVariableValueUpdate + 1
 				return o
 			}(),
 			observed: github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", nil))},
@@ -2040,6 +2073,75 @@ func TestExecuteChange_RepositoryVariables(t *testing.T) {
 			}
 			if got.operation(0).precondition != tc.wantPrecond {
 				t.Errorf("precondition = %v, want %v", got.operation(0).precondition, tc.wantPrecond)
+			}
+			if tc.wantPrecond == preconditionHolds && got.operation(0).update != tc.wantUpdate {
+				t.Errorf("update = %v, want %v", got.operation(0).update, tc.wantUpdate)
+			}
+			if got.confirmation != tc.wantDesired {
+				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
+			}
+			if got.result() != tc.wantResult {
+				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)
+			}
+		})
+	}
+}
+
+// TestExecuteChange_EnvironmentVariables は、Environment Variable の作成を、Environment の一覧と変数の一覧の読み直しで確かめて一度だけ送るつなぎ目を確かめる。
+//
+//trace:checks INV-001 INV-004 INV-005 FR-010 FR-011 FR-012 FR-013
+func TestExecuteChange_EnvironmentVariables(t *testing.T) {
+	const (
+		getRepository   = "GET /repos/owner/repo"
+		getEnvironments = "GET /repos/owner/repo/environments"
+		getVariables    = "GET /repos/owner/repo/environments/production/variables"
+		postVariable    = "POST /repos/owner/repo/environments/production/variables"
+	)
+	production := githubtest.EnvironmentBody{ID: 8, Name: "production"}
+	creation := createdEnvironmentVariableChange(t, "production", "REGION", "ap-northeast-1")
+	cases := []struct {
+		name         string
+		responses    []response
+		wantRequests []string
+		wantPrecond  preconditionCheck
+		wantChanged  setting.Unit
+		wantUpdate   github.UpdateOutcome
+		wantDesired  desiredStateConfirmation
+		wantResult   changeResult
+	}{
+		{
+			name: "creation in an existing environment without the variable is sent once and completes",
+			responses: []response{
+				okRepository(1, false, false), okEnvironments(production), okVariables(), createdVariable(),
+				okRepository(1, false, false), okEnvironments(production), okVariables(githubtest.VariableBody{Name: "REGION", Value: "ap-northeast-1"}),
+			},
+			wantRequests: []string{getRepository, getEnvironments, getVariables, postVariable, getRepository, getEnvironments, getVariables},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
+		{
+			name:         "creation in an environment absent before the update sends no update request",
+			responses:    []response{okRepository(1, false, false), okEnvironments()},
+			wantRequests: []string{getRepository, getEnvironments},
+			wantPrecond:  preconditionCurrentValueChanged,
+			wantChanged:  creation.Operations[0].Unit,
+			wantResult:   notAttempted,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, server := newSequenceServer(t, tc.responses...)
+
+			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), creation, (&delayRecorder{}).after, &updateInterval{})
+
+			// Repository Variables の一覧と更新エンドポイントを宛先にしないことも、要求の並びの一致で確かめる
+			if !slices.Equal(server.RequestLines(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", server.RequestLines(), tc.wantRequests)
+			}
+			if o := got.operation(0); o.precondition != tc.wantPrecond || o.changedSetting != tc.wantChanged {
+				t.Errorf("precondition = %v, %+v, want %v, %+v", o.precondition, o.changedSetting, tc.wantPrecond, tc.wantChanged)
 			}
 			if tc.wantPrecond == preconditionHolds && got.operation(0).update != tc.wantUpdate {
 				t.Errorf("update = %v, want %v", got.operation(0).update, tc.wantUpdate)

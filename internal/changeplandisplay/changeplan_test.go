@@ -63,6 +63,35 @@ func TestText(t *testing.T) {
 				"Plan: 1 repository to update, 2 changes\nRepositories checked: 1\n",
 		},
 		{
+			name: "environment variables are shown under their environment in the plan order and an environment to create with two variables counts as three changes",
+			settings: []changeplan.SettingPlan{
+				{
+					Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, "REGION")}, Observed: github.Observed(setting.VariableValue("us-east-1")),
+					Desired: setting.VariableValue("us-west-2"), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+				},
+				{
+					Unit:     setting.Unit{Key: setting.EnvironmentVariable, Environment: mustEnvironmentName(t, "production"), Variable: mustVariableName(t, "REGION")},
+					Observed: github.Observed(setting.VariableValue("ap-northeast-1")), Desired: setting.VariableValue("ap-northeast-3"), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+				},
+				{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "staging")}, Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+				{
+					Unit:     setting.Unit{Key: setting.EnvironmentVariable, Environment: mustEnvironmentName(t, "staging"), Variable: mustVariableName(t, "REGION")},
+					Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.VariableValue("ap-northeast-1"), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
+				},
+				{
+					Unit:     setting.Unit{Key: setting.EnvironmentVariable, Environment: mustEnvironmentName(t, "staging"), Variable: mustVariableName(t, "DEBUG")},
+					Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.VariableValue("true"), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
+				},
+			},
+			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n" +
+				"  actions.variables.REGION: \"us-east-1\" -> \"us-west-2\"\n" +
+				"  environments.production.variables.REGION: \"ap-northeast-1\" -> \"ap-northeast-3\"\n" +
+				"  environments.staging: absent -> present\n" +
+				"  environments.staging.variables.REGION: (environment absent) -> \"ap-northeast-1\"\n" +
+				"  environments.staging.variables.DEBUG: (environment absent) -> \"true\"\n\n" +
+				"Plan: 1 repository to update, 5 changes\nRepositories checked: 1\n",
+		},
+		{
 			name: "general and workflow permissions mismatches are shown in the plan order with enumerated values and counted",
 			settings: []changeplan.SettingPlan{
 				{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},

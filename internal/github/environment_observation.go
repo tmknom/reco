@@ -54,3 +54,18 @@ func (o EnvironmentObservation) DeploymentBranchPolicy() SettingObservation[sett
 		return Unavailable[setting.Value](o.UnavailableReason())
 	}
 }
+
+// Variable は、その Environment に属する、宣言の名前 name の Environment Variable の観測結果を返す。
+// 存在しない Environment の変数は値として読めないため、存在しないことを理由にした観測不能にする。
+// 存在する Environment の Variables が nil なのは変数の領域を読まなかった観測で、不変条件の破れとして panic する。
+func (o EnvironmentObservation) Variable(name setting.VariableName) SettingObservation[setting.Value] {
+	switch o.state {
+	case environmentExisting:
+		return o.environment.Variables.Lookup(name)
+	case environmentAbsent:
+		return Unavailable[setting.Value](UnavailableEnvironmentAbsent)
+	default:
+		// 観測不能のときは同じ理由にし、ゼロ値は UnavailableReason の panic で検出する
+		return Unavailable[setting.Value](o.UnavailableReason())
+	}
+}

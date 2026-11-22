@@ -29,6 +29,7 @@ func TestKeyArea(t *testing.T) {
 		{key: RepositoryVariable, want: AreaRepositoryVariables},
 		{key: EnvironmentResource, want: AreaEnvironments},
 		{key: EnvironmentDeploymentBranchPolicy, want: AreaEnvironments},
+		{key: EnvironmentVariable, want: AreaEnvironmentVariables},
 		{key: DependabotAlerts, want: AreaDependabot},
 		{key: DependabotSecurityUpdates, want: AreaDependabot},
 		{key: SecretScanningEnabled, want: AreaSecretScanning},
@@ -39,6 +40,26 @@ func TestKeyArea(t *testing.T) {
 		t.Run(string(tt.key), func(t *testing.T) {
 			if got := tt.key.Area(); got != tt.want {
 				t.Errorf("Area() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestKey_HasEnvironmentName(t *testing.T) {
+	tests := []struct {
+		key  Key
+		want bool
+	}{
+		{key: EnvironmentResource, want: true},
+		{key: EnvironmentDeploymentBranchPolicy, want: true},
+		{key: EnvironmentVariable, want: true},
+		{key: RepositoryVariable, want: false},
+		{key: AllowAutoMerge, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.key), func(t *testing.T) {
+			if got := tt.key.HasEnvironmentName(); got != tt.want {
+				t.Errorf("HasEnvironmentName() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -53,6 +53,9 @@ repositories:
       - name: production
         deployment_branch_policy:
           mode: protected_branches
+        variables:
+          - name: REGION
+            value: ap-northeast-1
     security:
       dependabot_alerts: true
 ```
@@ -206,6 +209,30 @@ repositories:
 - `type` が違えば、名前が同じでも別のパターンになる。大文字と小文字だけが違う名前（`main` と `MAIN`）も別のパターンになる
 - `*` で始まる名前は、引用符で囲まないと設定ファイルを読めない。パターンの名前は引用符で囲んで書くとよい
 - `selected` の Environment を `all` などに変えると、GitHub は並んでいたパターンを残さない
+
+### Environment Variables
+
+`environments` の各 Environment の `variables` には、その Environment を使うジョブから `vars.<名前>` で読む Environment Variables を、名前ごとに並べます。
+
+```yaml
+repositories:
+  - name: example/project-a
+    environments:
+      - name: production
+        variables:
+          - name: REGION
+            value: ap-northeast-1
+      - name: staging
+        variables:
+          - name: REGION
+            value: us-west-2
+```
+
+`name` と `value` の書き方と、書かなかった変数を変えないことは、[Repository Variables](#repository-variables) と同じです。
+
+- `variables` だけを書いた Environment も、GitHub 上になければ reco が作成し、そのあとに変数を作る
+- 同じ Environment の `variables` には、同じ名前を二度書けない。別の Environment と `actions.variables` には、同じ名前を書ける
+- `actions.variables` と同じ名前の変数を書いても、別の変数として扱う。片方の値に合わせてもう一方を変えることはない
 
 ## セキュリティの設定
 

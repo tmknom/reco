@@ -90,6 +90,18 @@ func (c *Client) environmentVariablesURL(reference repository.Reference, name st
 	return u, true
 }
 
+// environmentVariableURL は、environment の Environment の name の Environment Variable の URL を返す。environment が environmentURL で組めなければ偽を返す。
+// name は repositoryVariableURL と同じく1つのパス要素として送る。
+func (c *Client) environmentVariableURL(reference repository.Reference, environment, name string) (*url.URL, bool) {
+	u, ok := c.environmentVariablesURL(reference, environment)
+	if !ok {
+		return nil, false
+	}
+	u.RawPath += "/" + url.PathEscape(name)
+	u.Path += "/" + name
+	return u, true
+}
+
 // deploymentBranchPolicyURL は、name の Environment の ID が id の個別パターンの URL を返す。name が environmentURL で組めなければ偽を返す。
 func (c *Client) deploymentBranchPolicyURL(reference repository.Reference, name string, id DeploymentPatternID) (*url.URL, bool) {
 	u, ok := c.deploymentBranchPoliciesURL(reference, name)

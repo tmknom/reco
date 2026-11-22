@@ -1654,3 +1654,113 @@ func TestRepositoryVariableUpdateOutcome(t *testing.T) {
 		})
 	}
 }
+
+//trace:checks INV-001 FR-011
+func TestCreateEnvironmentVariable(t *testing.T) {
+	t.Run("posts the name and the value to the environment's variables", func(t *testing.T) {
+		var gotMethod, gotPath string
+		var gotBody []byte
+		c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			gotMethod, gotPath = r.Method, r.URL.EscapedPath()
+			gotBody, _ = io.ReadAll(r.Body)
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{}`))
+		})
+
+		outcome, err := c.CreateEnvironmentVariable(t.Context(), mustReference(t, "owner/repo"), "production", mustVariableName(t, "REGION"), "eu")
+		if err != nil || outcome != UpdateSucceeded {
+			t.Fatalf("CreateEnvironmentVariable() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+		}
+		if gotMethod != http.MethodPost || gotPath != "/repos/owner/repo/environments/production/variables" {
+			t.Errorf("request = %s %s, want POST /repos/owner/repo/environments/production/variables", gotMethod, gotPath)
+		}
+		if want := `{"name":"REGION","value":"eu"}`; string(gotBody) != want {
+			t.Errorf("request body = %s, want %s", gotBody, want)
+		}
+	})
+
+	t.Run("unaddressable environment name panics without sending a request", func(t *testing.T) {
+		var received atomic.Int32
+		c := newTestClient(t, func(http.ResponseWriter, *http.Request) { received.Add(1) })
+		assertPanics(t, func() {
+			_, _ = c.CreateEnvironmentVariable(t.Context(), mustReference(t, "owner/repo"), "..", mustVariableName(t, "REGION"), "eu")
+		})
+		if n := received.Load(); n != 0 {
+			t.Errorf("server received %d requests, want 0", n)
+		}
+	})
+}
+
+//trace:checks INV-001 FR-011
+func TestUpdateEnvironmentVariableValue(t *testing.T) {
+	t.Run("patches only the value to the variable of the environment", func(t *testing.T) {
+		var gotMethod, gotPath string
+		var gotBody []byte
+		c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			gotMethod, gotPath = r.Method, r.URL.EscapedPath()
+			gotBody, _ = io.ReadAll(r.Body)
+			w.WriteHeader(http.StatusNoContent)
+		})
+
+		outcome, err := c.UpdateEnvironmentVariableValue(t.Context(), mustReference(t, "owner/repo"), "production", mustVariableName(t, "REGION"), "eu")
+		if err != nil || outcome != UpdateSucceeded {
+			t.Fatalf("UpdateEnvironmentVariableValue() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+		}
+		if gotMethod != http.MethodPatch || gotPath != "/repos/owner/repo/environments/production/variables/REGION" {
+			t.Errorf("request = %s %s, want PATCH /repos/owner/repo/environments/production/variables/REGION", gotMethod, gotPath)
+		}
+		if want := `{"value":"eu"}`; string(gotBody) != want {
+			t.Errorf("request body = %s, want %s", gotBody, want)
+		}
+	})
+
+	t.Run("unaddressable environment name panics without sending a request", func(t *testing.T) {
+		var received atomic.Int32
+		c := newTestClient(t, func(http.ResponseWriter, *http.Request) { received.Add(1) })
+		assertPanics(t, func() {
+			_, _ = c.UpdateEnvironmentVariableValue(t.Context(), mustReference(t, "owner/repo"), "..", mustVariableName(t, "REGION"), "eu")
+		})
+		if n := received.Load(); n != 0 {
+			t.Errorf("server received %d requests, want 0", n)
+		}
+	})
+}
+
+// TestEnvironmentVariableUpdateOutcome は、Environment の変数の作成と値の変更のエラーが、操作名と Environment と変数の名前を示し、値を含めないことを確かめる。
+// 操作名はメソッドごとに組み立てるため確かめ、応答の分類と再送しないことは TestRepositoryVariableUpdateOutcome が確かめる。
+//
+//trace:checks FR-013 INV-005
+func TestEnvironmentVariableUpdateOutcome(t *testing.T) {
+	const value = "s3cr3t-value-eu"
+	create := func(c *Client, t *testing.T) (UpdateOutcome, error) {
+		return c.CreateEnvironmentVariable(t.Context(), mustReference(t, "example/project-a"), "production", mustVariableName(t, "REGION"), value)
+	}
+	update := func(c *Client, t *testing.T) (UpdateOutcome, error) {
+		return c.UpdateEnvironmentVariableValue(t.Context(), mustReference(t, "example/project-a"), "production", mustVariableName(t, "REGION"), value)
+	}
+	cases := []struct {
+		name       string
+		send       func(*Client, *testing.T) (UpdateOutcome, error)
+		status     int
+		wantPrefix string
+	}{
+		{name: "creation error names the operation, the environment, and the variable", send: create, status: http.StatusConflict, wantPrefix: `create environment variable "REGION" in environment "production" example/project-a: `},
+		{name: "value update error names the operation, the environment, and the variable", send: update, status: http.StatusNotFound, wantPrefix: `update environment variable "REGION" in environment "production" example/project-a: `},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(`{"message":"` + value + `"}`))
+			})
+
+			_, err := tc.send(c, t)
+			if err == nil || !strings.HasPrefix(err.Error(), tc.wantPrefix) {
+				t.Fatalf("error = %v, want it to start with %q", err, tc.wantPrefix)
+			}
+			if strings.Contains(err.Error(), value) {
+				t.Errorf("error = %q, want it not to contain the value", err)
+			}
+		})
+	}
+}

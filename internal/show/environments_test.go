@@ -133,8 +133,7 @@ func TestWriteEnvironments(t *testing.T) {
 			want: "    environments:\n" +
 				"      - name: \"production\"\n        deployment_branch_policy:\n          mode: selected\n          patterns:\n" +
 				"            - type: branch\n              name: \"main\"\n" +
-				"        # reco does not accept the environment variables in the configuration file yet\n" +
-				"        # variables:\n        #   - name: \"REGION\"\n        #     value: \"eu\"\n" +
+				"        variables:\n          - name: \"REGION\"\n            value: \"eu\"\n" +
 				"      - name: \"staging\"\n        deployment_branch_policy:\n          mode: all\n        # variables: none\n",
 		},
 	}

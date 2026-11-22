@@ -103,7 +103,7 @@ func (d document) environments(n *yaml.Node, path string) ([]EnvironmentDeclarat
 }
 
 func (d document) environment(n *yaml.Node, path string) (EnvironmentDeclaration, error) {
-	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"deployment_branch_policy"})
+	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"deployment_branch_policy", "variables"})
 	if err != nil {
 		return EnvironmentDeclaration{}, err
 	}
@@ -123,6 +123,11 @@ func (d document) environment(n *yaml.Node, path string) (EnvironmentDeclaration
 			return EnvironmentDeclaration{}, err
 		}
 		declaration.DeploymentBranchPolicy = &policy
+	}
+	if value, ok := entries["variables"]; ok {
+		if declaration.Variables, err = d.variables(value, path+".variables"); err != nil {
+			return EnvironmentDeclaration{}, err
+		}
 	}
 	return declaration, nil
 }

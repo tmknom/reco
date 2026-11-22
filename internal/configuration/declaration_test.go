@@ -470,6 +470,30 @@ func TestDocumentDeclaration(t *testing.T) {
 			}},
 		},
 		{
+			name: "same variable name in two environments and in actions.variables is accepted",
+			src: minimal + "  - name: owner/second\n    actions:\n      variables:\n        - name: GO_VERSION\n          value: \"1.27\"\n" +
+				"    environments:\n      - name: staging\n        variables:\n          - name: GO_VERSION\n            value: \"1.26\"\n      - name: production\n        variables:\n          - name: GO_VERSION\n            value: \"1.25\"\n",
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				{
+					Reference: mustReference(t, "owner/second"),
+					Desired: DesiredState{
+						RepositoryVariables: []VariableDeclaration{{Name: mustVariableName(t, "GO_VERSION"), Desired: setting.VariableValue("1.27")}},
+						Environments: []EnvironmentDeclaration{
+							{Name: mustEnvironmentName(t, "staging"), Variables: []VariableDeclaration{{Name: mustVariableName(t, "GO_VERSION"), Desired: setting.VariableValue("1.26")}}},
+							{Name: mustEnvironmentName(t, "production"), Variables: []VariableDeclaration{{Name: mustVariableName(t, "GO_VERSION"), Desired: setting.VariableValue("1.25")}}},
+						},
+					},
+				},
+			}},
+		},
+		{
+			name:       "invalid variable in an environment is rejected at the path of the repository, the environment, and the variable",
+			src:        second + "    environments:\n      - name: staging\n        variables:\n          - name: A\n            value: \"\"\n",
+			wantPath:   "repositories[1].environments[0].variables[0].value",
+			wantReason: "must not be an empty string",
+		},
+		{
 			name:       "invalid environment name is rejected at the path of the repository and the item",
 			src:        second + "    environments:\n      - name: staging\n      - name: café\n",
 			wantPath:   "repositories[1].environments[1].name",
@@ -919,7 +943,17 @@ func TestDocumentEnvironment(t *testing.T) {
 		{name: "missing name is rejected", src: "deployment_branch_policy:\n  mode: all\n", wantPath: "E", wantReason: `missing key "name"`},
 		{name: "non-string name is rejected", src: strings.Replace(base, "staging", "42", 1), wantPath: "E.name", wantReason: "must be a string"},
 		{name: "non-ASCII name is rejected at the name", src: strings.Replace(base, "staging", "café", 1), wantPath: "E.name", wantReason: `must consist of printable ASCII characters; got "café"`},
-		{name: "unknown key is rejected", src: base + "variables: {}\n", wantPath: "E", wantReason: `unknown key "variables"; expected name, deployment_branch_policy`},
+		{name: "unknown key is rejected", src: base + "labels: {}\n", wantPath: "E", wantReason: `unknown key "labels"; expected name, deployment_branch_policy, variables`},
+		{
+			name: "variables are read in the declared order into Variables",
+			src:  "name: staging\nvariables:\n  - name: GO_VERSION\n    value: \"1.27\"\n  - name: GO_ARCH\n    value: amd64\n",
+			want: EnvironmentDeclaration{Name: mustEnvironmentName(t, "staging"), Variables: []VariableDeclaration{
+				{Name: mustVariableName(t, "GO_VERSION"), Desired: setting.VariableValue("1.27")},
+				{Name: mustVariableName(t, "GO_ARCH"), Desired: setting.VariableValue("amd64")},
+			}},
+		},
+		{name: "duplicate variable name is rejected at the later variable", src: "name: staging\nvariables:\n  - name: A\n    value: x\n  - name: A\n    value: y\n", wantPath: "E.variables[1]", wantReason: `duplicate name "A"`},
+		{name: "variables without name is rejected for the missing name", src: "variables:\n  - name: A\n    value: x\n", wantPath: "E", wantReason: `missing key "name"`},
 		{name: "invalid deployment_branch_policy is rejected at deployment_branch_policy", src: strings.Replace(base, "mode: all", "mode: custom", 1), wantPath: "E.deployment_branch_policy.mode", wantReason: "must be all, protected_branches, or selected"},
 	}
 	for _, tc := range cases {

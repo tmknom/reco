@@ -842,7 +842,7 @@ func TestWriteChangeReport_DeploymentPatterns(t *testing.T) {
 
 	t.Run("undefined kind of an update operation panics", func(t *testing.T) {
 		change := deploymentPatternsChange(t, "production", selectedEnvironment(7, "production", []setting.DeploymentPattern{main}, 10), selectedPolicy(main, release, version))
-		change.Operations[0].Kind = changeplan.RepositoryVariableValueUpdate + 1
+		change.Operations[0].Kind = changeplan.EnvironmentVariableValueUpdate + 1
 		defer func() {
 			if recover() == nil {
 				t.Error("updateRequestLines() did not panic")
@@ -872,5 +872,79 @@ func TestWriteChangeReport_RepositoryVariables(t *testing.T) {
 		"\nNote: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.\n"
 	if out.String() != want {
 		t.Errorf("writeChangeReport() wrote %q, want %q", out.String(), want)
+	}
+}
+
+// TestWriteChangeReport_EnvironmentVariables は、Environment Variable の変更結果を Environment と変数の名前で示すことを確かめる。
+// 期待値は CLI 仕様の apply の表示例から導く。
+//
+//trace:checks FR-013 INV-005 QR-002
+func TestWriteChangeReport_EnvironmentVariables(t *testing.T) {
+	target := mustReference(t, "example/project-a")
+	region := setting.Unit{Key: setting.EnvironmentVariable, Environment: mustEnvironmentName(t, "production"), Variable: mustVariableName(t, "REGION")}
+	cases := []struct {
+		name    string
+		records []changeRecord
+		want    string
+	}{
+		{
+			name: "variables after a rejected creation of their environment are not attempted",
+			records: []changeRecord{
+				{change: creationChange(t, "staging"), operations: []operationRecord{started(github.UpdateRejected)}, cause: github.ErrUnprocessable},
+				{change: createdEnvironmentVariableChange(t, "staging", "REGION", "ap-northeast-1")},
+				{change: createdEnvironmentVariableChange(t, "staging", "DEBUG", "true")},
+			},
+			want: "  example/project-a\n" +
+				"    environments.staging: failed\n" +
+				"      Update request: rejected\n" +
+				"      Desired state: not checked\n" +
+				"    environments.staging.variables.REGION: not attempted\n" +
+				"      Stopped: a preceding change did not complete\n" +
+				"    environments.staging.variables.DEBUG: not attempted\n" +
+				"      Stopped: a preceding change did not complete\n" +
+				"\nNote: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.\n",
+		},
+		{
+			name: "variable changed since approval names the environment and the variable",
+			records: []changeRecord{{
+				change: environmentVariableValueChange(t, "production",
+					withVariables(observedEnvironment(7, "Production", setting.DeploymentBranchPolicyAll), github.Variable{Name: "REGION", Value: "us-east-1"}),
+					"REGION", "us-east-1", "ap-northeast-1"),
+				operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: region}},
+			}},
+			want: "  example/project-a: not attempted\n    Precondition: environments.production.variables.REGION changed since approval\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			if err := writeChangeReport(&out, []repositoryRecord{{target: target, changes: tc.records}}); err != nil {
+				t.Fatalf("writeChangeReport() error = %v", err)
+			}
+			if out.String() != tc.want {
+				t.Errorf("writeChangeReport() wrote %q, want %q", out.String(), tc.want)
+			}
+		})
+	}
+}
+
+// TestUpdateRequestLabel_EnvironmentVariables は、Environment Variable の更新操作を、Environment と変数の宣言の名前で示すことを確かめる。
+//
+//trace:checks FR-013
+func TestUpdateRequestLabel_EnvironmentVariables(t *testing.T) {
+	approved := withVariables(observedEnvironment(7, "Production", setting.DeploymentBranchPolicyAll), github.Variable{Name: "region", Value: "a"})
+	cases := []struct {
+		name      string
+		operation changeplan.UpdateOperation
+	}{
+		{name: "creation is named by the variable", operation: createdEnvironmentVariableChange(t, "production", "REGION", "a").Operations[0]},
+		{name: "value change is named by the variable", operation: environmentVariableValueChange(t, "production", approved, "REGION", "a", "b").Operations[0]},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got, want := updateRequestLabel(tc.operation, nil), "environments.production.variables.REGION"; got != want {
+				t.Errorf("updateRequestLabel() = %q, want %q", got, want)
+			}
+		})
 	}
 }
