@@ -126,8 +126,8 @@ func (s SettingPlan) EnablesActionsByPolicy() bool {
 	return s.Unit.Key == setting.AllowedActions && s.Result == NotComparable && s.Observed.UnavailableReason() == github.UnavailableActionsDisabled
 }
 
-// IsCreation は、この変更予定が Environment の作成かを返す。
-func (s SettingPlan) IsCreation() bool {
+// IsEnvironmentCreation は、この変更予定が Environment の作成かを返す。
+func (s SettingPlan) IsEnvironmentCreation() bool {
 	return s.Unit.Key == setting.EnvironmentResource && s.Result == Mismatch
 }
 

@@ -450,6 +450,41 @@ func TestDocumentStringValue(t *testing.T) {
 	}
 }
 
+//trace:checks FR-001
+func TestDocumentQuotableStringValue(t *testing.T) {
+	cases := []struct {
+		name    string
+		src     string
+		want    string
+		wantErr string
+	}{
+		{name: "quoted string that looks like a number is accepted", src: "\"1.27\"\n", want: "1.27"},
+		{name: "unquoted float is rejected with its quoted spelling", src: "1.27\n", wantErr: `must be a string; got 1.27; write "1.27" in quotes`},
+		{name: "unquoted boolean is rejected with its quoted spelling", src: "true\n", wantErr: `must be a string; got true; write "true" in quotes`},
+		{name: "unquoted date is rejected with its quoted spelling", src: "2026-11-22\n", wantErr: `must be a string; got 2026-11-22; write "2026-11-22" in quotes`},
+		{name: "mapping is rejected without a quoting hint", src: "{a: b}\n", wantErr: "must be a string"},
+		{name: "null is rejected as null without a quoting hint", src: "~\n", wantErr: "must not be null or empty"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.quotableStringValue(doc.root, "v")
+			if tc.wantErr != "" {
+				if err == nil || !strings.HasSuffix(err.Error(), ": "+tc.wantErr) {
+					t.Errorf("quotableStringValue() error = %v, want it to end with %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("quotableStringValue() error = %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("quotableStringValue() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // nodeAt は、root から Content の添字を順にたどったノードを返す。添字がなければ root を返す。
 func nodeAt(root *yaml.Node, indexes []int) *yaml.Node {
 	n := root

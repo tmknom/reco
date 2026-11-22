@@ -267,6 +267,11 @@ func TestManagedAreas(t *testing.T) {
 			want: []setting.Area{setting.AreaGeneral, setting.AreaEnvironments},
 		},
 		{
+			name:    "repository variables alone include repository variables without the actions permission areas",
+			desired: configuration.DesiredState{RepositoryVariables: []configuration.VariableDeclaration{{Name: mustVariableName(t, "GO_VERSION"), Desired: setting.VariableValue("1.27")}}},
+			want:    []setting.Area{setting.AreaRepositoryVariables},
+		},
+		{
 			name:    "dependabot_security_updates alone includes dependabot",
 			desired: configuration.DesiredState{Dependabot: configuration.Dependabot{SecurityUpdates: new(true)}},
 			want:    []setting.Area{setting.AreaDependabot},
@@ -281,6 +286,57 @@ func TestManagedAreas(t *testing.T) {
 				t.Errorf("managedAreas() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+//trace:checks FR-005
+func TestReconcile_RepositoryVariables(t *testing.T) {
+	cases := []struct {
+		name         string
+		observed     []github.Variable
+		desired      string
+		wantObserved setting.Value
+		wantResult   ReconciliationResult
+	}{
+		{name: "same value is a match", observed: []github.Variable{{Name: "GO_VERSION", Value: "1.27"}}, desired: "1.27", wantObserved: setting.VariableValue("1.27"), wantResult: Match},
+		{name: "different value is a mismatch with the observed value", observed: []github.Variable{{Name: "GO_VERSION", Value: "1.26"}}, desired: "1.27", wantObserved: setting.VariableValue("1.26"), wantResult: Mismatch},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			unit := variableUnit(t, "GO_VERSION")
+			desired := configuration.DesiredState{RepositoryVariables: []configuration.VariableDeclaration{{Name: unit.Variable, Desired: setting.VariableValue(tc.desired)}}}
+			observed := github.ObservationResult{RepositoryVariables: &github.Variables{Existing: tc.observed}}
+			want := []SettingPlan{{Unit: unit, Observed: github.Observed(tc.wantObserved), Desired: setting.VariableValue(tc.desired), Result: tc.wantResult}}
+			if got := reconcile(desired, observed); !reflect.DeepEqual(got, want) {
+				t.Errorf("reconcile() = %+v, want %+v", got, want)
+			}
+		})
+	}
+}
+
+//trace:checks FR-005 INV-001
+func TestReconcile_RepositoryVariablesOrder(t *testing.T) {
+	desired := configuration.DesiredState{
+		ActionsAccess: configuration.ActionsAccess{AccessLevel: new(setting.AccessNone)},
+		RepositoryVariables: []configuration.VariableDeclaration{
+			{Name: mustVariableName(t, "ZETA"), Desired: setting.VariableValue("z")},
+			{Name: mustVariableName(t, "ALPHA"), Desired: setting.VariableValue("a")},
+		},
+		Environments: []configuration.EnvironmentDeclaration{{Name: mustEnvironmentName(t, "production")}},
+	}
+	observed := github.ObservationResult{
+		ActionsAccess:       &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessNone)},
+		RepositoryVariables: &github.Variables{Existing: []github.Variable{{Name: "ALPHA", Value: "a"}, {Name: "UNDECLARED", Value: "u"}}},
+		Environments:        &github.Environments{Existing: []github.Environment{{Name: "production"}}},
+	}
+	var units []string
+	for _, s := range reconcile(desired, observed) {
+		units = append(units, s.Unit.String())
+	}
+	// YAML 設定仕様の章の並びで Actions access と Environments のあいだに、宣言の並びで続き、宣言していない変数は現れない
+	want := []string{"actions.access.access_level", "actions.variables.ZETA", "actions.variables.ALPHA", "environments.production"}
+	if !reflect.DeepEqual(units, want) {
+		t.Errorf("reconcile() units = %v, want %v", units, want)
 	}
 }
 

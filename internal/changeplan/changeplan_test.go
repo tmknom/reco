@@ -80,7 +80,7 @@ func TestPlan_NotApplicableError(t *testing.T) {
 }
 
 //trace:checks FR-007
-func TestSettingPlan_IsCreation(t *testing.T) {
+func TestSettingPlan_IsEnvironmentCreation(t *testing.T) {
 	production := mustEnvironmentName(t, "production")
 	cases := []struct {
 		name string
@@ -94,8 +94,8 @@ func TestSettingPlan_IsCreation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.plan.IsCreation(); got != tc.want {
-				t.Errorf("IsCreation() = %t, want %t", got, tc.want)
+			if got := tc.plan.IsEnvironmentCreation(); got != tc.want {
+				t.Errorf("IsEnvironmentCreation() = %t, want %t", got, tc.want)
 			}
 		})
 	}
@@ -484,6 +484,49 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 		client := github.New("test-token", github.WithBaseURL(server.URL()))
 
 		got, err := Generate(context.Background(), client, file(environmentsSource), nil)
+		if !errors.Is(err, github.ErrForbidden) {
+			t.Errorf("Generate() error = %v, want %v", err, github.ErrForbidden)
+		}
+		if !reflect.DeepEqual(got, Plan{}) {
+			t.Errorf("Generate() = %+v, want the zero plan", got)
+		}
+	})
+
+	const variablesSource = "repositories:\n  - name: owner/repo\n    actions:\n      variables:\n        - name: GO_VERSION\n          value: \"1.27\"\n        - name: GO_ARCH\n          value: amd64\n"
+
+	t.Run("declared repository variables are observed and planned as a value update and a creation", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo": githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/actions/variables": githubtest.OK(githubtest.VariablesBody{TotalCount: 2, Variables: []githubtest.VariableBody{
+				{Name: "GO_VERSION", Value: "1.26"}, {Name: "UNDECLARED", Value: "u"},
+			}}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+		got, err := Generate(context.Background(), client, file(variablesSource), nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		if want := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/variables"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		want := []SettingPlan{
+			{Unit: variableUnit(t, "GO_VERSION"), Observed: github.Observed(setting.VariableValue("1.26")), Desired: setting.VariableValue("1.27"), Result: Mismatch, Applicability: Applicable},
+			{Unit: variableUnit(t, "GO_ARCH"), Observed: github.Observed(setting.AbsentVariable()), Desired: setting.VariableValue("amd64"), Result: Mismatch, Applicability: Applicable},
+		}
+		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
+			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
+		}
+	})
+
+	t.Run("repository variables observation failure is returned without planning a creation", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo":                   githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/actions/variables": {Status: http.StatusForbidden},
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+		got, err := Generate(context.Background(), client, file(variablesSource), nil)
 		if !errors.Is(err, github.ErrForbidden) {
 			t.Errorf("Generate() error = %v, want %v", err, github.ErrForbidden)
 		}

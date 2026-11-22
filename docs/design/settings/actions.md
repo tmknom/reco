@@ -1,6 +1,6 @@
 # Actions の設計
 
-設定宣言の `actions`（[YAML 設定仕様](../../spec/configuration.md) 4〜6章）に属する設定の設計を定めます。文書の構成は [設定ごとの設計](README.md) に従います。
+設定宣言の `actions`（[YAML 設定仕様](../../spec/configuration.md) 4〜7章）に属する設定の設計を定めます。文書の構成は [設定ごとの設計](README.md) に従います。
 
 ## 設定と管理の単位
 
@@ -24,6 +24,8 @@ Actions 許可ポリシーの期待値は、そのポリシーで Actions を実
 Actions の有効状態が管理設定になるのは、Actions 許可ポリシーを宣言せずに有効状態を宣言したリポジトリです。無効を宣言できるのも、この場合に限ります（YAML 設定仕様 4.1）。無効のあいだは Actions 許可ポリシー、`sha_pinning_required`、選択方式の Actions 許可条件を観測できず、それらの期待値を確かめられないためです。どちらも宣言していないリポジトリでは、Actions の有効状態は未管理設定です。
 
 許可パターンが同じ文字列を重ねて含む場合の扱いは、YAML 設定仕様 4.2 に従います。
+
+Repository Variable の管理の単位は、関連リソースそのもの（[ドメインモデル](../domain.md) の管理の単位の形）で、中の設定を持ちません。期待値は存在すること（値を伴う）です。存在しないことの宣言は受け付けません。値は文字列で、文字列の完全一致で比べます（YAML 設定仕様 7.2）。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -60,6 +62,8 @@ Repository Variables は、`GET /repos/{owner}/{repo}/actions/variables` の一�
 この一覧は `per_page` に GitHub の上限の `30` を送り、1ページの本文の上限を 9 MiB にします。GitHub は `30` を超える `per_page` を `30` に丸めますが（GitHub Actions 変数 API 仕様 4.1）、本文の上限の導出が1ページ30件を前提にするため、丸めに頼りません。上限は GitHub の制限から次のとおり導きます。値の1バイトは JSON の文字列で最長6バイト（`\uXXXX`）になり、値は 48,000 バイト、名前は300文字までのため（GitHub Actions 変数 API 仕様 2章、3章）、1要素は値の 288,000 バイトと名前の 1,800 バイトにフィールド名と日時を加えて約 290,000 バイト、30件で約 8,700,000 バイトです。9 MiB はこれに、要素のあいだの空白などの余裕を加えた大きさです。ページ数の上限は、GitHub がリポジトリに保存できる500件（GitHub Actions 変数 API 仕様 3章）を1ページ30件で読み切る17ページとし、異常な応答で読み続ける総量を抑えます。1 MiB の上限では、48,000 バイトの値を28件含むページ（1,347,400 バイト）を読めません（GitHub Actions 変数 API 仕様 4.1）。代償として、全ページを読み終えるまで要素を持つため、最大で17ページ分（約 153 MiB）をメモリに持ち、30秒の要求の時間切れは本文の読み取りを含むため、大きな値を持つリポジトリを遅い回線で読むと通信の失敗で止まり得ます。どちらも観測操作の失敗で止まる側であり、受け入れます。
 
 一覧の要素は、`name` と `value` が文字列のときだけ取得契約に適合します。`value` の空文字列は値であり、存在する変数として観測します。空の `name`、`name` か `value` の欠落と `null` は、取得契約に適合しない応答です。`value` の欠落を空文字列で補いません。値は GitHub が返したとおりに持ち、前後の空白や改行を変えません。一覧に、ASCII の英字の大文字小文字だけが違う名前を含め、同じ名前が二つ以上あれば、取得契約に適合しない応答とします。GitHub は名前を大文字小文字を区別せずに比べるため（GitHub Actions 変数 API 仕様 2章）、二つは同じ変数を指すはずです（[ドメインモデル](../domain.md) の存在の観測）。
+
+宣言の名前は、一覧の名前と ASCII の英字の大文字小文字を区別せずに突き合わせ、一覧にない名前は存在しないとします。名前の文字が ASCII の英数字と `_` に限られるため、Environment と違い、同じかどうかを判定できない名前は生じません（[ドメインモデル](../domain.md) の同一性を判定できる名前）。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -99,12 +103,22 @@ Actions 許可ポリシーを `selected` から `all` / `local_only` へ変え�
 
 Actions を無効から有効にする変更予定は、宣言していない設定の値を変えずに、その効力を戻します。GitHub は無効にする前の Actions 許可ポリシー、選択方式の Actions 許可条件、`sha_pinning_required` を残しており、有効に戻すとそれらの値で Actions を実行できるようになるためです。このうち未管理設定であるものが再開する設定であり、有効にする変更予定に添えます。値が失われる副作用とは起きることが異なるため、副作用には数えません。管理設定を除くのは、同じ変更計画が宣言した値に変えるためです。副作用として示す設定も、値が失われ得るため、再開する設定に数えません。
 
+Repository Variable は取得条件を持たないため、比較不能になりません。変更予定はどれも適用可能で、副作用も再開する設定も持ちません。変数の数の上限（500件）と値の長さの上限は、計画の時点で確かめません。
+
+| 観測 | 宣言 | 照合結果 | 変更予定 | 適用可能性 |
+|---|---|---|---|---|
+| 存在し、値が同じ | 同じ値 | 一致 | なし | なし |
+| 存在し、値が異なる | 異なる値 | 不一致 | 値の更新 | 適用可能 |
+| 存在しない | 宣言あり | 不一致 | 作成 | 適用可能 |
+| 存在する | 宣言なし | 照合しない | なし | なし |
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-005` | Functional Requirement |
 | `alignment` | `FR-006` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub Actions 権限 API 仕様](../../research/actions-permissions.md) | Repository File |
+| `grounding` | [GitHub Actions 変数 API 仕様](../../research/actions-variables.md) | Repository File |
 
 ## 論理的な設定変更と更新操作
 
@@ -218,6 +232,8 @@ Actions 許可ポリシーでは、`PUT /repos/{owner}/{repo}/actions/permission
 | Actions が無効の非公開リポジトリで、`access_level` の値が返った | 観測値。取得条件は公開範囲だけである | Actions が無効なので観測不能とする |
 | 公開リポジトリで `access_level` を宣言した | Not Comparable で適用不能。理由はリポジトリが公開であること。ほかの宣言では解消しない | `none` を宣言したので Match。または、値を送れば成功の応答が返るので適用可能 |
 | 非公開リポジトリで `access_level` を `organization` と観測し、`none` を宣言した | Mismatch で適用可能 | `organization` は宣言できない値なので Not Comparable |
+| 宣言した値と、観測した Repository Variable の値が、末尾の改行だけ異なる | 異なる値であり Mismatch。変更予定は値の変更 | 空白の違いなので同じ値とみなし Match |
+| 宣言した `GO_VERSION` に対し、一覧が `go_version` を返した | 同じ変数として照合する。作成を計画しない | 綴りが違うので存在しないとみなし、作成を計画する |
 | Actions が無効の非公開リポジトリで、`access_level` の観測値が宣言と異なる | Mismatch で適用可能。Actions の有効状態は適用可能性に関係しない | Actions が無効なので適用不能 |
 
 ## References

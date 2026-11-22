@@ -18,6 +18,9 @@ func TestValue_String(t *testing.T) {
 		{value: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesDisabled), want: "false"},
 		{value: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesEnabled), want: "true"},
 		{value: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesPaused), want: "true (paused by GitHub)"},
+		{value: VariableValue("a\nb"), want: `"a\nb"`},
+		{value: VariableValue("absent"), want: `"absent"`},
+		{value: AbsentVariable(), want: "absent"},
 		{
 			value: SelectedActionsCriteriaValue(SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: []string{"z/*", "a/*"}}),
 			want:  `github_owned_allowed: true, verified_allowed: false, patterns_allowed: ["z/*", "a/*"]`,
@@ -57,6 +60,11 @@ func TestValue_Equal(t *testing.T) {
 		{name: "enabled security updates differ from disabled ones", a: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesEnabled), b: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesDisabled), equal: false},
 		{name: "paused security updates differ from disabled ones", a: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesPaused), b: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesDisabled), equal: false},
 		{name: "security updates differ from a boolean of the same enablement", a: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesDisabled), b: BoolValue(false), equal: false},
+		{name: "same variable values are equal", a: VariableValue("1.27"), b: VariableValue("1.27"), equal: true},
+		{name: "variable values differing only in a trailing newline differ", a: VariableValue("1.27"), b: VariableValue("1.27\n"), equal: false},
+		{name: "empty variable value differs from an absent variable", a: VariableValue(""), b: AbsentVariable(), equal: false},
+		{name: "absent variables are equal", a: AbsentVariable(), b: AbsentVariable(), equal: true},
+		{name: "variable value differs from a boolean of the same spelling", a: VariableValue("true"), b: BoolValue(true), equal: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

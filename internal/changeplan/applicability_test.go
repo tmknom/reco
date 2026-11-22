@@ -185,10 +185,10 @@ func TestJudgeApplicability(t *testing.T) {
 //trace:checks FR-006 INV-001
 func TestJudgeApplicability_DependabotSecurityUpdates(t *testing.T) {
 	updatesPlan := func(observed setting.DependabotSecurityUpdatesState, desired bool) SettingPlan {
-		return newSettingPlan(setting.DependabotSecurityUpdates, github.Observed(setting.DependabotSecurityUpdatesValue(observed)), setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesStateOf(desired)))
+		return newSettingPlan(setting.Unit{Key: setting.DependabotSecurityUpdates}, github.Observed(setting.DependabotSecurityUpdatesValue(observed)), setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesStateOf(desired)))
 	}
 	alertsPlan := func(observed, desired bool) SettingPlan {
-		return newSettingPlan(setting.DependabotAlerts, github.Observed(setting.BoolValue(observed)), setting.BoolValue(desired))
+		return newSettingPlan(setting.Unit{Key: setting.DependabotAlerts}, github.Observed(setting.BoolValue(observed)), setting.BoolValue(desired))
 	}
 	observation := func(alerts bool, updates setting.DependabotSecurityUpdatesState) github.ObservationResult {
 		return github.ObservationResult{Dependabot: &github.Dependabot{Alerts: alerts, SecurityUpdates: updates}}
@@ -264,7 +264,7 @@ func TestJudgeApplicability_DependabotSecurityUpdates(t *testing.T) {
 //trace:checks FR-006 INV-001
 func TestJudgeApplicability_RepositoryPushProtection(t *testing.T) {
 	boolPlan := func(key setting.Key, observed, desired bool) SettingPlan {
-		return newSettingPlan(key, github.Observed(setting.BoolValue(observed)), setting.BoolValue(desired))
+		return newSettingPlan(setting.Unit{Key: key}, github.Observed(setting.BoolValue(observed)), setting.BoolValue(desired))
 	}
 	observation := func(enabled, pushProtection bool) github.ObservationResult {
 		return github.ObservationResult{SecretScanning: &github.SecretScanning{Enabled: github.Observed(enabled), PushProtection: github.Observed(pushProtection)}}

@@ -357,6 +357,46 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	})
 }
 
+//trace:checks FR-008
+func TestRepositoryPlan_LogicalChangesOfRepositoryVariables(t *testing.T) {
+	mismatch := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
+	variable := func(observed setting.Value, result ReconciliationResult) SettingPlan {
+		return SettingPlan{Unit: variableUnit(t, "GO_VERSION"), Observed: github.Observed(observed), Desired: setting.VariableValue("1.27"), Result: result, Applicability: Applicable}
+	}
+	newRepositoryPlan := func(settings ...SettingPlan) RepositoryPlan {
+		return RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
+	}
+
+	t.Run("planned change of a variable is not supported before approval", func(t *testing.T) {
+		for _, planned := range []SettingPlan{variable(setting.AbsentVariable(), Mismatch), variable(setting.VariableValue("1.26"), Mismatch)} {
+			got, err := newRepositoryPlan(mismatch, planned).LogicalChanges()
+			want := "owner/repo: actions.variables.GO_VERSION cannot be applied: applying repository variable changes is not supported"
+			if err == nil || err.Error() != want || got != nil {
+				t.Errorf("LogicalChanges() = %+v, error = %v, want error %q", got, err, want)
+			}
+		}
+	})
+
+	t.Run("matched variable does not block other changes", func(t *testing.T) {
+		got, err := newRepositoryPlan(mismatch, variable(setting.VariableValue("1.27"), Match)).LogicalChanges()
+		if err != nil {
+			t.Fatalf("LogicalChanges() error = %v", err)
+		}
+		if len(got) != 1 || got[0].DesiredState[0].Unit != mismatch.Unit {
+			t.Errorf("LogicalChanges() = %+v, want only the change of %s", got, mismatch.Unit.String())
+		}
+	})
+}
+
+func TestRepositoryPlan_SettingPlanOf(t *testing.T) {
+	first := SettingPlan{Unit: variableUnit(t, "FIRST"), Desired: setting.VariableValue("1")}
+	second := SettingPlan{Unit: variableUnit(t, "SECOND"), Desired: setting.VariableValue("2")}
+	got, ok := RepositoryPlan{Settings: []SettingPlan{first, second}}.settingPlanOf(second.Unit)
+	if !ok || got.Unit != second.Unit {
+		t.Errorf("settingPlanOf(%s) = %+v, %v, want the plan of the same variable name", second.Unit.String(), got, ok)
+	}
+}
+
 // TestRepositoryPlan_LogicalChangesOfEnvironments は、Environment の変更予定から導く更新操作の形と、その変更前提の基準を確かめる。
 //
 //trace:checks INV-001 INV-002 INV-003 INV-004 FR-010 FR-011

@@ -1086,6 +1086,15 @@ func TestObservationResult_SettingOfEnvironmentDeploymentBranchPolicy(t *testing
 	}
 }
 
+//trace:checks FR-004
+func TestObservationResult_SettingOfRepositoryVariable(t *testing.T) {
+	observed := ObservationResult{RepositoryVariables: &Variables{Existing: []Variable{{Name: "GO_VERSION", Value: "1.27"}}}}
+	unit := setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, "GO_VERSION")}
+	if got, want := observed.Setting(unit), Observed(setting.VariableValue("1.27")); !reflect.DeepEqual(got, want) {
+		t.Errorf("Setting(%v) = %+v, want %+v", unit.String(), got, want)
+	}
+}
+
 func TestObservationResult_SettingOfEnvironmentResourcePanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {

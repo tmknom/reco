@@ -320,6 +320,19 @@ func TestDocumentDeclaration(t *testing.T) {
 				},
 			}},
 		},
+		{
+			name: "actions with variables alone is read, leaving the Actions permission settings omitted",
+			src:  strings.Replace(second, "    general:\n      allow_auto_merge: false\n", "    actions:\n      variables:\n        - name: GO_VERSION\n          value: \"1.27\"\n", 1),
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				{
+					Reference: mustReference(t, "owner/second"),
+					Desired: DesiredState{RepositoryVariables: []VariableDeclaration{
+						{Name: mustVariableName(t, "GO_VERSION"), Desired: setting.VariableValue("1.27")},
+					}},
+				},
+			}},
+		},
 		// リポジトリごとの宣言
 		{
 			name:       "name alone is rejected for lacking both general and actions",
@@ -503,6 +516,12 @@ func TestDocumentDeclaration(t *testing.T) {
 			src:        second + "    actions:\n      access:\n        access_level: organization\n",
 			wantPath:   "repositories[1].actions.access.access_level",
 			wantReason: "must be none or user",
+		},
+		{
+			name:       "empty variables is rejected at actions.variables",
+			src:        second + "    actions:\n      variables: []\n",
+			wantPath:   "repositories[1].actions.variables",
+			wantReason: "must not be empty",
 		},
 		{
 			name:       "invalid permissions is rejected at actions.permissions",
@@ -776,6 +795,104 @@ func TestDocumentEnvironments(t *testing.T) {
 	}
 }
 
+//trace:checks FR-001
+func TestDocumentVariables(t *testing.T) {
+	const base = "- name: GO_VERSION\n  value: \"1.27\"\n- name: GO_ARCH\n  value: amd64\n"
+	cases := []struct {
+		name       string
+		src        string
+		want       []VariableDeclaration
+		wantPath   string
+		wantReason string
+	}{
+		{
+			name: "declarations are read in the declared order, not sorted by name",
+			src:  base,
+			want: []VariableDeclaration{
+				{Name: mustVariableName(t, "GO_VERSION"), Desired: setting.VariableValue("1.27")},
+				{Name: mustVariableName(t, "GO_ARCH"), Desired: setting.VariableValue("amd64")},
+			},
+		},
+		{name: "empty sequence is rejected", src: "[]\n", wantPath: "V", wantReason: "must not be empty"},
+		{name: "same name as an earlier declaration is rejected at the later declaration", src: base + "- name: GO_VERSION\n  value: \"1.28\"\n", wantPath: "V[2]", wantReason: `duplicate name "GO_VERSION"; same as V[0]`},
+		{name: "invalid item is rejected at the item", src: "- name: GO_VERSION\n  value: \"1.27\"\n- name: GO_ARCH\n", wantPath: "V[1]", wantReason: `missing key "value"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.variables(doc.root, "V")
+			if tc.wantPath != "" {
+				if err == nil {
+					t.Fatalf("variables() = %+v, want error", got)
+				}
+				if !strings.HasPrefix(err.Error(), tc.wantPath+" (") {
+					t.Errorf("variables() error = %q, want it to start with %q", err, tc.wantPath+" (")
+				}
+				if !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("variables() error = %q, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("variables() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("variables() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDocumentVariable は、一つの変数の宣言が持つ規則 (キーの集合、name の形式、value の空文字列) を確かめる。
+// 拒否のケースは、受理される入力 (base) の条件を 1 つだけ変えて作る。
+//
+//trace:checks FR-001
+func TestDocumentVariable(t *testing.T) {
+	const base = "name: GO_VERSION\nvalue: \"1.27\"\n"
+	cases := []struct {
+		name       string
+		src        string
+		want       VariableDeclaration
+		wantPath   string
+		wantReason string
+	}{
+		{name: "name and value are read into the declaration", src: base, want: VariableDeclaration{Name: mustVariableName(t, "GO_VERSION"), Desired: setting.VariableValue("1.27")}},
+		{name: "value of spaces is read without trimming", src: strings.Replace(base, `"1.27"`, `" "`, 1), want: VariableDeclaration{Name: mustVariableName(t, "GO_VERSION"), Desired: setting.VariableValue(" ")}},
+		{name: "empty string value is rejected", src: strings.Replace(base, `"1.27"`, `""`, 1), wantPath: "V.value", wantReason: "must not be an empty string"},
+		{name: "missing name is rejected", src: "value: \"1.27\"\n", wantPath: "V", wantReason: `missing key "name"`},
+		{name: "missing value is rejected", src: "name: GO_VERSION\n", wantPath: "V", wantReason: `missing key "value"`},
+		{name: "state is rejected as an unknown key", src: base + "state: absent\n", wantPath: "V", wantReason: `unknown key "state"; expected name, value`},
+		{name: "name against the naming rule is rejected at the name", src: strings.Replace(base, "GO_VERSION", "go_version", 1), wantPath: "V.name", wantReason: `must be upper case; write "GO_VERSION"; got "go_version"`},
+		{name: "unquoted boolean name is rejected as not a string without a quoting hint", src: strings.Replace(base, "GO_VERSION", "TRUE", 1), wantPath: "V.name", wantReason: "must be a string"},
+		{name: "unquoted number value is rejected with a quoting hint", src: strings.Replace(base, `"1.27"`, "1.27", 1), wantPath: "V.value", wantReason: `must be a string; got 1.27; write "1.27" in quotes`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.variable(doc.root, "V")
+			if tc.wantPath != "" {
+				if err == nil {
+					t.Fatalf("variable() = %+v, want error", got)
+				}
+				if !strings.HasPrefix(err.Error(), tc.wantPath+" (") {
+					t.Errorf("variable() error = %q, want it to start with %q", err, tc.wantPath+" (")
+				}
+				// 理由の後ろに直し方が続かないことも確かめるため、末尾で比べる
+				if !strings.HasSuffix(err.Error(), tc.wantReason) {
+					t.Errorf("variable() error = %q, want it to end with %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("variable() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("variable() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestDocumentEnvironment は、一つの Environment の宣言が持つ規則 (name の形式、キーの集合、デプロイ元制限の省略) を確かめる。
 // 拒否のケースは、受理される入力 (base) の条件を 1 つだけ変えて作る。
 //
@@ -972,4 +1089,13 @@ func TestDocumentDeploymentPattern(t *testing.T) {
 			}
 		})
 	}
+}
+
+func mustVariableName(t *testing.T, name string) setting.VariableName {
+	t.Helper()
+	variableName, err := setting.ParseVariableName(name)
+	if err != nil {
+		t.Fatalf("ParseVariableName(%q) error = %v", name, err)
+	}
+	return variableName
 }

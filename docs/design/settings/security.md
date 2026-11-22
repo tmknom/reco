@@ -1,6 +1,6 @@
 # Security の設計
 
-設定宣言の `security`（[YAML 設定仕様](../../spec/configuration.md) 8章）に属する設定の設計を定めます。文書の構成は [設定ごとの設計](README.md) に従います。
+設定宣言の `security`（[YAML 設定仕様](../../spec/configuration.md) 9章）に属する設定の設計を定めます。文書の構成は [設定ごとの設計](README.md) に従います。
 
 ## 設定と管理の単位
 
@@ -98,7 +98,7 @@ Dependabot alerts の変更予定は、どちらの向きも適用可能です�
 | 無効 | `true` | 適用可能。Dependabot alerts を有効にする変更のあとに更新する |
 | 無効 | 省略か `false` | 適用不能 |
 
-`dependabot_alerts: false` と `dependabot_security_updates: true` の同時の宣言は、入力検証で拒否します（[YAML 設定仕様](../../spec/configuration.md) 8章）。期待値どうしは互いの状態を含まないため、Dependabot security updates の `true` は Dependabot alerts を有効にすることを含みません。Dependabot alerts が無効で、有効にする宣言がなければ、利用者が宣言していない Dependabot alerts を reco が有効にしなければ実行できない遷移に当たります。
+`dependabot_alerts: false` と `dependabot_security_updates: true` の同時の宣言は、入力検証で拒否します（[YAML 設定仕様](../../spec/configuration.md) 9章）。期待値どうしは互いの状態を含まないため、Dependabot security updates の `true` は Dependabot alerts を有効にすることを含みません。Dependabot alerts が無効で、有効にする宣言がなければ、利用者が宣言していない Dependabot alerts を reco が有効にしなければ実行できない遷移に当たります。
 
 Dependabot alerts の変更予定に添える変更に伴う副作用と、副作用を生む更新操作の変更前提に含める設定は、次のとおりです。
 
@@ -123,7 +123,7 @@ Dependabot security updates の変更の変更前提に、Dependabot alerts が�
 | 無効 | `true` | 適用可能。Secret scanning を有効にする変更のあとに更新する | 適用可能 |
 | 無効 | 省略 | 適用不能 | 適用可能 |
 
-`secret_scanning: false` と `secret_scanning_push_protection: true` の同時の宣言は、入力検証で拒否します（YAML 設定仕様 8.2）。push protection を有効にする向きを適用不能にする根拠は、Dependabot security updates と異なり、GitHub が拒否せず `200` を返して値を変えないことです。送っても更新後の観測で不一致になるだけで、期待状態に至る手段がありません。無効にする向きは、Secret scanning が無効のときに反映されない動作を確かめておらず、確かめていない条件で止めないため、適用可能とします。反映されなければ、更新後の観測が不一致として検出します。
+`secret_scanning: false` と `secret_scanning_push_protection: true` の同時の宣言は、入力検証で拒否します（YAML 設定仕様 9.2）。push protection を有効にする向きを適用不能にする根拠は、Dependabot security updates と異なり、GitHub が拒否せず `200` を返して値を変えないことです。送っても更新後の観測で不一致になるだけで、期待状態に至る手段がありません。無効にする向きは、Secret scanning が無効のときに反映されない動作を確かめておらず、確かめていない条件で止めないため、適用可能とします。反映されなければ、更新後の観測が不一致として検出します。
 
 Secret scanning の変更予定に添える変更に伴う副作用と、副作用を生む更新操作の変更前提に含める設定は、次のとおりです。
 

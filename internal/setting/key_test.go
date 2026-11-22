@@ -26,6 +26,7 @@ func TestKeyArea(t *testing.T) {
 		{key: DefaultWorkflowPermissions, want: AreaWorkflowPermissions},
 		{key: CanApprovePullRequestReviews, want: AreaWorkflowPermissions},
 		{key: ActionsAccessLevel, want: AreaActionsAccess},
+		{key: RepositoryVariable, want: AreaRepositoryVariables},
 		{key: EnvironmentResource, want: AreaEnvironments},
 		{key: EnvironmentDeploymentBranchPolicy, want: AreaEnvironments},
 		{key: DependabotAlerts, want: AreaDependabot},

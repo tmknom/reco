@@ -44,7 +44,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 ### 2.3 リポジトリ指定と対象選択
 
-`--repo` の値は、[YAML 設定仕様](configuration.md) の第9.2節で定めるリポジトリ指定です。
+`--repo` の値は、[YAML 設定仕様](configuration.md) の第10.2節で定めるリポジトリ指定です。
 
 `plan` / `apply` の `--repo` には、設定ファイルで宣言したリポジトリだけを指定できます。設定宣言全体は対象選択の有無にかかわらず検証します。
 
@@ -68,7 +68,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 環境変数の優先順位は [GitHub CLI の環境変数仕様](https://cli.github.com/manual/gh_help_environment) と同じですが、reco が GitHub CLI の認証機構を利用することは意味しません。
 
-reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章、[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章、[GitHub Actions 変数 API 仕様](../research/actions-variables.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。`show` が読み取る Environment と個別パターンの一覧には、GitHub App の権限の分類で Actions の read に当たる権限が要ります。ほかのトークンがこの権限を持たず、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。`show` が読み取る Repository Variables の一覧には、GitHub App の権限の分類で Variables の read に当たる権限が要り、GitHub が一覧の取得を拒んだときも同じくエラー終了します。`show` と、`security` を宣言したリポジトリの `plan` と `apply` が読み取る Dependabot alerts と Dependabot security updates の取得には、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。トークンの所有者が admin のアクセスを持たないリポジトリでは、どのコマンドも観測操作の失敗としてエラー終了します。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合（Administration の read を持たない fine-grained personal access token など）の応答は確かめていません。この場合に GitHub が Dependabot alerts の取得へ `404` を返すなら、`show` は有効な Dependabot alerts を `false` と表示し、`plan` と `apply` は `dependabot_alerts: false` の宣言を変更不要と判断します（[Security の設計](../design/settings/security.md) の観測）。`show` と、`secret_scanning` か `secret_scanning_push_protection` を宣言したリポジトリの `plan` と `apply` が読み取る Secret scanning の有効状態とリポジトリの push protection も、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 5章）。`apply` は、`general` の設定を更新する前後にもこの二つを読み取ります。同じ更新エンドポイント（`PATCH /repos/{owner}/{repo}`）で変わり得る設定として比べるためです（5.2節）。公開リポジトリの応答がこれらの値を含まないときは、どのコマンドも観測操作の失敗としてエラー終了します。`general` の設定の更新にも admin のアクセスが要るため（GitHub リポジトリ API 仕様 1章）、確かめた範囲では、この読み取りが `general` だけを宣言したリポジトリの `apply` を新たに止めることはありません。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合の応答は確かめていません。`show` と、`private_vulnerability_reporting` を宣言したリポジトリの `plan` と `apply` が読み取る Private vulnerability reporting の有効状態は、admin のアクセスを要しませんが、その更新には admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。非公開リポジトリでは、この設定を読み取りません。
+reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章、[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章、[GitHub Actions 変数 API 仕様](../research/actions-variables.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。`show` が読み取る Environment と個別パターンの一覧には、GitHub App の権限の分類で Actions の read に当たる権限が要ります。ほかのトークンがこの権限を持たず、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。`show` と、`actions.variables` を宣言したリポジトリの `plan` と `apply` が読み取る Repository Variables の一覧には、GitHub App の権限の分類で Variables の read に当たる権限が要り、GitHub が一覧の取得を拒んだときは、どのコマンドも観測操作の失敗としてエラー終了します。一覧を読めなければ、宣言した変数が存在しないとはみなさず、作成を計画しません。`show` と、`security` を宣言したリポジトリの `plan` と `apply` が読み取る Dependabot alerts と Dependabot security updates の取得には、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。トークンの所有者が admin のアクセスを持たないリポジトリでは、どのコマンドも観測操作の失敗としてエラー終了します。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合（Administration の read を持たない fine-grained personal access token など）の応答は確かめていません。この場合に GitHub が Dependabot alerts の取得へ `404` を返すなら、`show` は有効な Dependabot alerts を `false` と表示し、`plan` と `apply` は `dependabot_alerts: false` の宣言を変更不要と判断します（[Security の設計](../design/settings/security.md) の観測）。`show` と、`secret_scanning` か `secret_scanning_push_protection` を宣言したリポジトリの `plan` と `apply` が読み取る Secret scanning の有効状態とリポジトリの push protection も、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 5章）。`apply` は、`general` の設定を更新する前後にもこの二つを読み取ります。同じ更新エンドポイント（`PATCH /repos/{owner}/{repo}`）で変わり得る設定として比べるためです（5.2節）。公開リポジトリの応答がこれらの値を含まないときは、どのコマンドも観測操作の失敗としてエラー終了します。`general` の設定の更新にも admin のアクセスが要るため（GitHub リポジトリ API 仕様 1章）、確かめた範囲では、この読み取りが `general` だけを宣言したリポジトリの `apply` を新たに止めることはありません。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合の応答は確かめていません。`show` と、`private_vulnerability_reporting` を宣言したリポジトリの `plan` と `apply` が読み取る Private vulnerability reporting の有効状態は、admin のアクセスを要しませんが、その更新には admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。非公開リポジトリでは、この設定を読み取りません。
 
 ```text
 $ GH_TOKEN=$(gh auth token) reco plan
@@ -104,11 +104,11 @@ $ GH_TOKEN=$(gh auth token) reco plan
 
 一つのリポジトリに複数の変更予定があるときは、[YAML 設定仕様](configuration.md) の章と表の並びで表示します。設定宣言での記述順には従いません。
 
-関連リソースの変更予定も YAML 設定仕様の章の並びに従い、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。たとえば Environments（7章）の変更予定は、Security（8章）の変更予定より前に表示します。
+関連リソースの変更予定も YAML 設定仕様の章の並びに従い、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。たとえば Repository Variables（7章）の変更予定は、Environments（8章）の変更予定より前に、Environments の変更予定は Security（9章）の変更予定より前に表示します。
 
 関連リソースの作成と削除は、確認済みの差分として示し、集計の変更予定数に数えます。存在しないと確認できたことは、比較できる事実だからです。作成と削除は、設定の値の変更と見分けられる形で示し、削除では失われる値を示します。宣言に名前のない関連リソースは、変更計画に示しません。
 
-関連リソースの作成は、現在値の位置に `absent`、期待値の位置に `present` を置いて示します。`absent` は確かめた事実であり、比較不能の印である括弧には入れません。関連リソースとその中の設定は、`<種類のキー>.<名前>` と `<種類のキー>.<名前>.<設定>` の形で示し、名前は設定宣言に書いた綴りのまま示します。GitHub が大文字小文字の違う綴りで返しても、設定ファイルの行と対応づけられるようにするためです。
+関連リソースの作成は、現在値の位置に `absent` を置いて示します。期待値の位置には、値を持たない種類（Environment）では `present` を、値を持つ種類（Repository Variable）では宣言した値を置きます。`absent` は確かめた事実であり、比較不能の印である括弧には入れません。関連リソースとその中の設定は、`<種類のキー>.<名前>` と `<種類のキー>.<名前>.<設定>` の形で示し、名前は設定宣言に書いた綴りのまま示します。GitHub が大文字小文字の違う綴りで返しても、設定ファイルの行と対応づけられるようにするためです。
 
 Environment では、存在しない Environment の作成と、その Environment の `deployment_branch_policy` を、別の変更予定として示し、集計でもそれぞれ数えます。作成する Environment の `deployment_branch_policy` は、属する先が存在しないため比較不能な設定予定であり、現在値の位置に `(environment absent)` を示します。`deployment_branch_policy` の値は、方式が `selected` なら個別パターンを含めて `selected [<種類> "<名前>", ...]` の形で示します。現在値は GitHub が返した順、期待値は設定宣言の順に並べ、個別パターンのない `selected` は `selected []` と示します。現在値か期待値のどちらかが `selected` の変更予定は、個別パターンを並べた値が長くなるため、設定の行の下に現在値（比較不能なら現在の状態）と、`->` に続けて期待値を1行ずつ示します。どちらも `selected` でない変更予定は1行で示します。`selected` から変えると GitHub は個別パターンを残しませんが、個別パターンは同じ管理設定の値の一部であり、現在値に示しているため、`Side effect:` は添えません。
 
@@ -128,6 +128,17 @@ Repository: example/project-a
     Patterns to add: [branch "release/*"]
 
 Plan: 1 repository to update, 4 changes
+Repositories checked: 1
+```
+
+Repository Variable の変更予定は、`actions.variables.<名前>` の形で示します。作成は `absent -> "<値>"`、値の更新は `"<現在値>" -> "<期待値>"` の1行です。値は6章の Repository Variables と同じく、二重引用符で囲んでエスケープし、改行や制御文字を含む値も1行で示し、長い値も省略しません。引用符で囲むため、文字列 `absent` の値は `"absent"` と示され、存在しないことの `absent` と見分けられます。前後の空白や末尾の改行だけが違う値も、エスケープした表記の違いとして示されます。
+
+```text
+Repository: example/project-a
+  actions.variables.GO_VERSION: "1.26" -> "1.27"
+  actions.variables.RELEASE_NOTE: absent -> "line 1\nline 2"
+
+Plan: 1 repository to update, 2 changes
 Repositories checked: 1
 ```
 
@@ -303,7 +314,7 @@ Repository: example/project-a
     Side effect: GitHub also disables dependabot_security_updates, which is currently true (paused by GitHub)
 ```
 
-Dependabot security updates の値は、一時停止中なら `true (paused by GitHub)` と示します。一時停止中も設定は有効のままのため、`dependabot_security_updates: true` と一致し、変更予定になりません（[YAML 設定仕様](configuration.md) 8章）。一致した設定は変更予定の行を持たないため、一時停止中であることは `show` で確かめます。
+Dependabot security updates の値は、一時停止中なら `true (paused by GitHub)` と示します。一時停止中も設定は有効のままのため、`dependabot_security_updates: true` と一致し、変更予定になりません（[YAML 設定仕様](configuration.md) 9章）。一致した設定は変更予定の行を持たないため、一時停止中であることは `show` で確かめます。
 
 Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を宣言せずに `dependabot_security_updates` の値を変える変更予定は、適用不能です。GitHub は、Dependabot alerts が無効のあいだ、Dependabot security updates の有効化も無効化も拒否するためです（GitHub リポジトリ API 仕様 7章）。
 
@@ -323,7 +334,7 @@ Repository: example/project-a
 
 非公開リポジトリで Secret scanning の2設定を宣言した変更予定と、Secret scanning が無効のリポジトリで、`secret_scanning: true` を宣言せずにリポジトリの push protection を有効にする変更予定は、適用不能です。前者は、非公開リポジトリでは2設定を利用できず、更新のあとに値を確かめられないためです。後者は、GitHub が、Secret scanning が無効のあいだ、リポジトリの push protection を有効にする更新に成功を応答しながら値を変えないためです（GitHub リポジトリ API 仕様 5章）。リポジトリの push protection を無効にする変更予定は、Secret scanning の状態によらず適用可能です。
 
-非公開リポジトリで `private_vulnerability_reporting` を宣言した変更予定も、更新のあとに値を確かめられないため適用不能です（[YAML 設定仕様](configuration.md) 8.3）。公開リポジトリでは、有効にする変更予定も無効にする変更予定も、ほかの設定の状態によらず適用可能です。
+非公開リポジトリで `private_vulnerability_reporting` を宣言した変更予定も、更新のあとに値を確かめられないため適用不能です（[YAML 設定仕様](configuration.md) 9.3）。公開リポジトリでは、有効にする変更予定も無効にする変更予定も、ほかの設定の状態によらず適用可能です。
 
 非公開リポジトリによる適用不能の理由は、セミコロンの後ろに、その変更予定のキーだけを消す直し方を示します。
 
@@ -379,6 +390,12 @@ Plan cannot be applied.
 
 ```text
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-b: actions.permissions.sha_pinning_required is not applicable; example/project-c: actions.permissions.sha_pinning_required is not applicable; no changes made"}
+```
+
+`apply` は Repository Variable の変更予定（作成と値の更新）を実行しません。適用不能な変更予定がなく、Repository Variable の変更予定が一つでもあれば、変更計画を表示せず、承認を求めず、どのリポジトリも更新せずにエラー終了します。stderr のエラーは、変更計画の並びで最初の Repository Variable の変更予定の対象と設定を挙げます。値が一致した変数は、ほかの変更予定の実行を妨げません。
+
+```text
+{"time":"...","level":"ERROR","msg":"command failed","error":"example/project-a: actions.variables.GO_VERSION cannot be applied: applying repository variable changes is not supported; no changes made"}
 ```
 
 すべて変更不要の場合の表示例は次のとおりです。
@@ -498,7 +515,7 @@ Environment では、Environment そのものの変化を `Precondition: environ
 
 再観測の失敗とリポジトリ ID の変化による期待状態の確認失敗は、`not confirmed` に確認できなかった理由を括弧で添えて示します（`not confirmed (read failed)`、`not confirmed (repository ID changed)`）。
 
-期待値と比べる設定が GitHub の取得条件により観測不能だったことによる確認失敗は、`not in effect` に、宣言した設定が効いていない理由を括弧で添えて示します。理由は、Actions が無効なら `GitHub Actions is disabled`、Actions 許可ポリシーが `selected` でなければ `allowed_actions is not "selected"`、リポジトリが公開なら `the repository is public`、リポジトリが非公開なら `the repository is private` です。`allowed_actions` を宣言できるのは Actions を有効にする場合に限られ、`sha_pinning_required` は Actions を無効にする宣言と同時には宣言できず、`selected_actions` を宣言できるのは Actions 許可ポリシーを `selected` と宣言した場合に限られます（[YAML 設定仕様](configuration.md) 4章）。`access_level` は公開リポジトリには適用されず（[YAML 設定仕様](configuration.md) 6章）、Secret scanning の2設定と Private vulnerability reporting は、reco が公開リポジトリでだけ管理する設定です（[YAML 設定仕様](configuration.md) 8.2、8.3）。このため、この観測不能は、宣言した設定が効いていないことを意味します。値そのものは確認できていないため、`does not match` とは示しません。`not confirmed` とも示さないのは、reco が確認に失敗したと読ませず、利用者が確かめるべきリポジトリの状態を示すためです。
+期待値と比べる設定が GitHub の取得条件により観測不能だったことによる確認失敗は、`not in effect` に、宣言した設定が効いていない理由を括弧で添えて示します。理由は、Actions が無効なら `GitHub Actions is disabled`、Actions 許可ポリシーが `selected` でなければ `allowed_actions is not "selected"`、リポジトリが公開なら `the repository is public`、リポジトリが非公開なら `the repository is private` です。`allowed_actions` を宣言できるのは Actions を有効にする場合に限られ、`sha_pinning_required` は Actions を無効にする宣言と同時には宣言できず、`selected_actions` を宣言できるのは Actions 許可ポリシーを `selected` と宣言した場合に限られます（[YAML 設定仕様](configuration.md) 4章）。`access_level` は公開リポジトリには適用されず（[YAML 設定仕様](configuration.md) 6章）、Secret scanning の2設定と Private vulnerability reporting は、reco が公開リポジトリでだけ管理する設定です（[YAML 設定仕様](configuration.md) 9.2、9.3）。このため、この観測不能は、宣言した設定が効いていないことを意味します。値そのものは確認できていないため、`does not match` とは示しません。`not confirmed` とも示さないのは、reco が確認に失敗したと読ませず、利用者が確かめるべきリポジトリの状態を示すためです。
 
 Environment の方式の変更のあとに Environment が存在しなかった場合は、`not in effect (the environment does not exist)` と示します。宣言した方式を持つ Environment がないためです。作成のあとに Environment が存在しなかった場合は、存在しないことを確認できているため、`does not match` と示します。作成と方式の変更のどちらでも、宣言した名前と同じかどうかを判定できない名前の Environment が現れ、存在を確かめられなかった場合は、reco が確認できなかったことを示す `not confirmed (environment existence unknown)` と示します。
 
@@ -728,7 +745,7 @@ Note: No automatic retry was performed. Run reco plan to see the remaining chang
 
 `show` は設定宣言を使用せず、指定リポジトリについて GitHub から確認できた管理設定の値と関連リソースを表示します。認証・権限・通信による観測操作の失敗は、正常な観測結果ではなくエラーとします。GitHub の設定は変更しません。
 
-表示は、YAML 設定仕様の設定宣言と同じ構造の YAML です。ルートの `repositories` に、`name` を指定したリポジトリとする要素を一つ置き、その下に `general`、`actions`（`permissions`、`workflow`、`access`、`variables`）、`environments`、`security` の順で、確認できた値を設定宣言のキーで示します。`name` には、GitHub が返す名前ではなく、`--repo` に指定したリポジトリ指定を示します。観測操作の失敗の文言と同じ名前で対象を示すためです。設定宣言と同じ構造にするのは、表示から設定宣言のどこに何を書けばよいかを読み取れるようにし、表示をそのまま設定宣言の出発点にできるようにするためです。観測した値が設定宣言の入力検証を通る場合（この章の末尾）、表示を変えずに設定宣言として読むと、管理範囲は表示したすべての管理設定と Environment になり、期待値は観測時点の値と一致します。
+表示は、YAML 設定仕様の設定宣言と同じ構造の YAML です。ルートの `repositories` に、`name` を指定したリポジトリとする要素を一つ置き、その下に `general`、`actions`（`permissions`、`workflow`、`access`、`variables`）、`environments`、`security` の順で、確認できた値を設定宣言のキーで示します。`name` には、GitHub が返す名前ではなく、`--repo` に指定したリポジトリ指定を示します。観測操作の失敗の文言と同じ名前で対象を示すためです。設定宣言と同じ構造にするのは、表示から設定宣言のどこに何を書けばよいかを読み取れるようにし、表示をそのまま設定宣言の出発点にできるようにするためです。観測した値が設定宣言の入力検証を通る場合（この章の末尾）、表示を変えずに設定宣言として読むと、管理範囲は表示したすべての管理設定と Environment と Repository Variable になり、期待値は観測時点の値と一致します。
 
 ```text
 $ reco show --repo example/project-a
@@ -786,28 +803,25 @@ Actions が無効のリポジトリでは、`allowed_actions`、`selected_action
         enabled: false
 ```
 
-`access_level` は非公開リポジトリにだけ適用される設定で、公開リポジトリでは取得できません（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 6章）。公開リポジトリでは、`access` とその下の行をコメントとして示します。`access` の下に設定のない空のマッピングは、設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 9.1節）。Actions が無効のリポジトリでも、非公開であれば値を示します。
+`access_level` は非公開リポジトリにだけ適用される設定で、公開リポジトリでは取得できません（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 6章）。公開リポジトリでは、`access` とその下の行をコメントとして示します。`access` の下に設定のない空のマッピングは、設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 10.1節）。Actions が無効のリポジトリでも、非公開であれば値を示します。
 
 ```text
       # access:
       #   access_level: unavailable (the repository is public)
 ```
 
-関連リソースは、種類ごとに、存在するものをすべて示します。並びは GitHub が一覧で返した順で、reco は並べ替えません。名前は二重引用符で囲み、制御文字をエスケープして示します。エスケープは YAML の二重引用符のスカラーとして読める表記です。一つもないときは、種類のキーを省かず、YAML のコメントとして `none` と示します。キーを省くと、存在しないと確かめたことと、reco がその種類を表示しないことを区別できないためです。コメントにするのは、空のシーケンスを設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 9.1節）。
+関連リソースは、種類ごとに、存在するものをすべて示します。並びは GitHub が一覧で返した順で、reco は並べ替えません。名前は二重引用符で囲み、制御文字をエスケープして示します。エスケープは YAML の二重引用符のスカラーとして読める表記です。一つもないときは、種類のキーを省かず、YAML のコメントとして `none` と示します。キーを省くと、存在しないと確かめたことと、reco がその種類を表示しないことを区別できないためです。コメントにするのは、空のシーケンスを設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 10.1節）。
 
 Repository Variables は `actions` の `variables` に示します。変数ごとに、`name` と `value` を示します。どちらも Environment の名前と同じく二重引用符で囲んでエスケープし、1行で示します。改行や制御文字を含む値も1行になります。値は省略せず、長い値もそのまま示します。省略した値を設定宣言として読むと、省略した値への変更を宣言することになるためです。値が空文字列の変数は、存在する変数として `value: ""` と示します。
 
 GitHub は Variables を機密でない設定情報の保存先としており、値はワークフローの出力でもマスクされません（[GitHub Actions 変数 API 仕様](../research/actions-variables.md) 3章）。reco も Variables の値を秘密情報として扱わず、`show` は値を stdout にそのまま表示します。3章の秘密情報の扱いは、認証トークンと認証ヘッダーについての規定です。
 
-Repository Variables は、表示をそのまま設定宣言の出発点にできるという規定の例外です。設定宣言が `actions.variables` をまだ受け付けないため、`variables` とその下の行を YAML のコメントとして示し、その前の行に `# reco does not accept the variables in the configuration file yet` と示します。実のキーで示すと、表示を設定宣言として読めなくなるためです。一つもないときの `# variables: none` には、この行を添えません。
-
 ```text
-      # reco does not accept the variables in the configuration file yet
-      # variables:
-      #   - name: "GO_VERSION"
-      #     value: "1.27"
-      #   - name: "RELEASE_NOTE"
-      #     value: "line 1\nline 2"
+      variables:
+        - name: "GO_VERSION"
+          value: "1.27"
+        - name: "RELEASE_NOTE"
+          value: "line 1\nline 2"
 ```
 
 Environment は `environments` に示します。Environment ごとに、`name` と `deployment_branch_policy` を示します。`deployment_branch_policy` の `mode` には、デプロイ元制限の方式（`all`、`protected_branches`、`selected`）を示します。`selected` のときに限り、`patterns` に個別パターンを `type` と `name` の要素として、GitHub が返した順に並べます。`name` は Environment の名前と同じく二重引用符で囲んでエスケープして示します。空の集合は `[]` と示します。
@@ -844,13 +858,13 @@ Secret scanning の有効状態を `secret_scanning` に、リポジトリの pu
       # secret_scanning_push_protection: unavailable (the repository is private)
 ```
 
-Private vulnerability reporting の有効状態を `private_vulnerability_reporting` に、有効なら `true`、無効なら `false` で示します。非公開リポジトリでは、Secret scanning の2設定と同じく、行を YAML のコメントとして `unavailable (the repository is private)` と示します（[YAML 設定仕様](configuration.md) 8.3）。
+Private vulnerability reporting の有効状態を `private_vulnerability_reporting` に、有効なら `true`、無効なら `false` で示します。非公開リポジトリでは、Secret scanning の2設定と同じく、行を YAML のコメントとして `unavailable (the repository is private)` と示します（[YAML 設定仕様](configuration.md) 9.3）。
 
 ```text
       # private_vulnerability_reporting: unavailable (the repository is private)
 ```
 
-表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。`organization` の `access_level`、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 9章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
+表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。`organization` の `access_level`、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 10章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
 
 権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。行を省かず、欠けた項目を示してエラーとします。
 

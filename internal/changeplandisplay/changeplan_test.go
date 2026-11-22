@@ -47,6 +47,22 @@ func TestText(t *testing.T) {
 				"Plan: 1 repository to update, 1 change\nRepositories checked: 1\n",
 		},
 		{
+			name: "repository variable creation and value update are both counted as changes",
+			settings: []changeplan.SettingPlan{
+				{
+					Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, "GO_VERSION")}, Observed: github.Observed(setting.VariableValue("1.26")),
+					Desired: setting.VariableValue("1.27"), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+				},
+				{
+					Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, "GO_ARCH")}, Observed: github.Observed(setting.AbsentVariable()),
+					Desired: setting.VariableValue("amd64"), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+				},
+			},
+			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n" +
+				"  actions.variables.GO_VERSION: \"1.26\" -> \"1.27\"\n  actions.variables.GO_ARCH: absent -> \"amd64\"\n\n" +
+				"Plan: 1 repository to update, 2 changes\nRepositories checked: 1\n",
+		},
+		{
 			name: "general and workflow permissions mismatches are shown in the plan order with enumerated values and counted",
 			settings: []changeplan.SettingPlan{
 				{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},

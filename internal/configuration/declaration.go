@@ -63,7 +63,7 @@ func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDe
 		}
 	}
 	if hasActions {
-		if desired.ActionsPermissions, desired.WorkflowPermissions, desired.ActionsAccess, err = d.actions(actionsNode, path+".actions"); err != nil {
+		if desired.ActionsPermissions, desired.WorkflowPermissions, desired.ActionsAccess, desired.RepositoryVariables, err = d.actions(actionsNode, path+".actions"); err != nil {
 			return RepositoryDeclaration{}, err
 		}
 	}
@@ -209,32 +209,87 @@ func (d document) deploymentPattern(n *yaml.Node, path string) (setting.Deployme
 	return setting.DeploymentPattern{Type: patternType, Name: name}, nil
 }
 
-// actions は、Actions の階層のうち reco が受け付ける permissions、workflow、access だけを読む。
+// actions は、Actions の階層のうち reco が受け付ける permissions、workflow、access、variables だけを読む。
 // どれも任意のキーだが、空のマッピングは拒否されるため、成功すればどれかは必ずある。
-func (d document) actions(n *yaml.Node, path string) (ActionsPermissions, WorkflowPermissions, ActionsAccess, error) {
-	entries, err := d.mappingEntries(n, path, nil, []string{"permissions", "workflow", "access"})
+func (d document) actions(n *yaml.Node, path string) (ActionsPermissions, WorkflowPermissions, ActionsAccess, []VariableDeclaration, error) {
+	entries, err := d.mappingEntries(n, path, nil, []string{"permissions", "workflow", "access", "variables"})
 	if err != nil {
-		return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, err
+		return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, nil, err
 	}
 	var permissions ActionsPermissions
 	if value, ok := entries["permissions"]; ok {
 		if permissions, err = d.permissions(value, path+".permissions"); err != nil {
-			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, err
+			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, nil, err
 		}
 	}
 	var workflow WorkflowPermissions
 	if value, ok := entries["workflow"]; ok {
 		if workflow, err = d.workflow(value, path+".workflow"); err != nil {
-			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, err
+			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, nil, err
 		}
 	}
 	var access ActionsAccess
 	if value, ok := entries["access"]; ok {
 		if access, err = d.access(value, path+".access"); err != nil {
-			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, err
+			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, nil, err
 		}
 	}
-	return permissions, workflow, access, nil
+	var variables []VariableDeclaration
+	if value, ok := entries["variables"]; ok {
+		if variables, err = d.variables(value, path+".variables"); err != nil {
+			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, nil, err
+		}
+	}
+	return permissions, workflow, access, variables, nil
+}
+
+// variables は、変数の宣言の並びを宣言の順のまま読む。
+// 宣言の名前は英小文字を含まないため、同じ変数を指す二つの名前は綴りも同じになり、重複は == で判定できる。
+func (d document) variables(n *yaml.Node, path string) ([]VariableDeclaration, error) {
+	items, err := d.sequenceItems(n, path)
+	if err != nil {
+		return nil, err
+	}
+	declarations := make([]VariableDeclaration, 0, len(items))
+	for i, item := range items {
+		itemPath := fmt.Sprintf("%s[%d]", path, i)
+		declaration, err := d.variable(item, itemPath)
+		if err != nil {
+			return nil, err
+		}
+		if j := slices.IndexFunc(declarations, func(seen VariableDeclaration) bool { return seen.Name == declaration.Name }); j >= 0 {
+			return nil, invalid(item, itemPath, "duplicate name %q; same as %s[%d]", declaration.Name.String(), path, j)
+		}
+		declarations = append(declarations, declaration)
+	}
+	return declarations, nil
+}
+
+// variable は、存在し値を伴うことを宣言する一つの変数を読む。
+func (d document) variable(n *yaml.Node, path string) (VariableDeclaration, error) {
+	entries, err := d.mappingEntries(n, path, []string{"name", "value"}, nil)
+	if err != nil {
+		return VariableDeclaration{}, err
+	}
+	namePath := path + ".name"
+	name, err := d.stringValue(entries["name"], namePath)
+	if err != nil {
+		return VariableDeclaration{}, err
+	}
+	variableName, err := setting.ParseVariableName(name)
+	if err != nil {
+		return VariableDeclaration{}, invalid(entries["name"], namePath, "%v; got %q", err, name)
+	}
+	valuePath := path + ".value"
+	value, err := d.quotableStringValue(entries["value"], valuePath)
+	if err != nil {
+		return VariableDeclaration{}, err
+	}
+	// GitHub は空文字列の値の作成も更新も拒否する (YAML 設定仕様の変数の値)
+	if value == "" {
+		return VariableDeclaration{}, invalid(entries["value"], valuePath, "must not be an empty string")
+	}
+	return VariableDeclaration{Name: variableName, Desired: setting.VariableValue(value)}, nil
 }
 
 // permissions は、Actions の有効状態、Actions 許可ポリシー、選択方式の Actions 許可条件、sha_pinning_required の組み合わせを読む。

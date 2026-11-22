@@ -46,6 +46,9 @@ repositories:
         can_approve_pull_request_reviews: false
       access:
         access_level: none
+      variables:
+        - name: GO_VERSION
+          value: "1.27"
     environments:
       - name: production
         deployment_branch_policy:
@@ -68,7 +71,7 @@ repositories:
 
 ## GitHub Actions の設定
 
-`actions` には、`permissions`（Actions の実行許可）、`workflow`（ワークフローの権限）、`access`（ほかのリポジトリのワークフローからのアクセス）を書きます。使わないものは省けます。
+`actions` には、`permissions`（Actions の実行許可）、`workflow`（ワークフローの権限）、`access`（ほかのリポジトリのワークフローからのアクセス）、`variables`（Repository Variables）を書きます。使わないものは省けます。
 
 ### Actions の実行許可
 
@@ -136,6 +139,35 @@ repositories:
 - この設定はプライベートリポジトリにだけ適用される。パブリックリポジトリに書くと `apply` できない
 - `organization` は設定ファイルに書けない。Organization が所有するリポジトリのための値で、reco が扱うユーザー所有のリポジトリでは GitHub が受け付けないため。Organization から移転したリポジトリなどで `show` が `organization` を示したときは、`none` か `user` を書けば、書いた値に変わる
 - Actions が無効のリポジトリでも書ける
+
+### Repository Variables
+
+`actions.variables` には、ワークフローから `vars.<名前>` で読む Repository Variables を、名前ごとに並べます。
+
+```yaml
+repositories:
+  - name: example/project-a
+    actions:
+      variables:
+        - name: GO_VERSION
+          value: "1.27"
+        - name: DEPLOY_REGION
+          value: ap-northeast-1
+```
+
+| キー | 値 | 意味 |
+|---|---|---|
+| `name` | 文字列（必須） | 変数の名前。半角の英大文字、数字、`_` で書く |
+| `value` | 文字列（必須） | 変数の値 |
+
+- 書いた名前の変数がなければ、`plan` は作成を示す。値が違えば、書いた値への変更を示す
+- 書かなかった変数は、変更も削除もしない。設定ファイルから行を消しても、GitHub 上の変数は残る
+- GitHub が名前を大文字にして保存するため、reco は小文字を含む名前（`go_version`）を設定ファイルの誤りとして拒否し、`GO_VERSION` と書くよう示す。数字で始まる名前と、`GITHUB_` で始まる名前は書けない
+- 数値、真偽値、日付に見える値は、引用符で囲む。`value: 1.27`、`value: true`、`value: 2026-11-22` は文字列ではないため拒否し、`"1.27"` のように引用符で囲んで書くよう示す
+- 空の値（`value: ""`）は書けない。GitHub が空の値を受け付けないため
+- 値は、書いたとおりの文字列で GitHub 上の値と比べる。前後の空白や末尾の改行だけが違っても、違う値になる。`value: |` で複数行の値を書くと、末尾に改行が付く
+- 値は `show` と `plan` の表示にそのまま出る。トークンやパスワードのような秘密情報は、Variables ではなく Secrets に入れる
+- `apply` は、まだ変数を作成も変更もしない。書いた変数のうち、作成するものか値を変えるものが一つでもあると、承認を求めずにエラーで終わる。いまのところ `actions.variables` は、`plan` で差分を確かめるために使う
 
 ## Environment
 
