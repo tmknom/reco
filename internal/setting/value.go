@@ -207,3 +207,12 @@ func (v Value) DependabotSecurityUpdates() DependabotSecurityUpdatesState {
 	}
 	return v.securityUpdates
 }
+
+// VariableValue は、存在する Variable の値を返す。それ以外の値は不変条件の破れのため panic する。
+// 存在しない Variable で空文字列を返すと、空の値を送る更新要求に化けるため。
+func (v Value) VariableValue() string {
+	if v.kind != kindVariable {
+		panic("setting: value is not an existing variable")
+	}
+	return v.variable
+}

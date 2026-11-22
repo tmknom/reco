@@ -156,7 +156,7 @@ Repositories updated: 1
 
 変更計画に `Plan cannot be applied.` が出たときは、承認を求めず、どのリポジトリの設定も変えずにエラーで終わります。直し方は [Troubleshooting](troubleshooting.md#plan-cannot-be-applied-と表示された) にあります。
 
-適用できない変更（`Applicability: not applicable`）がなく、変更計画に `actions.variables.<名前>` の変更が一つでもあると、`apply` は変更計画を表示せず、承認も求めずにエラーで終わります。どのリポジトリの設定も変えません。reco がまだ Repository Variables を作成も変更もできないためです。値が一致している変数は、ほかの設定の `apply` を妨げません。
+Repository Variables は、設定ファイルに書いた順に一つずつ作成するか値を変え、結果もリポジトリの行の下に `actions.variables.<名前>: updated` のように変数ごとに出ます。
 
 どこかの変更が完了しなかったら、reco は残りの変更を始めずに止まります。すでに反映した変更は元に戻りません。`failed` や `not attempted` が出たときにすることは [Troubleshooting](troubleshooting.md#apply-が途中で止まった) にあります。
 

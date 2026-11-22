@@ -1712,6 +1712,21 @@ func TestSendUpdate(t *testing.T) {
 			response:  noContent(),
 			want:      githubtest.Request{Method: http.MethodDelete, Path: "/repos/owner/repo/environments/Staging/deployment-branch-policies/21"},
 		},
+		{
+			// 値は引用符で囲んだ表示の表記ではなく、宣言した文字列のまま送る
+			name:      "variable creation is sent with the declared name and value",
+			operation: variableCreationChange(t, "GO_VERSION", "1.27\n").Operations[0],
+			observed:  github.ObservationResult{RepositoryVariables: variables()},
+			response:  createdVariable(),
+			want:      githubtest.Request{Method: http.MethodPost, Path: "/repos/owner/repo/actions/variables", Body: map[string]any{"name": "GO_VERSION", "value": "1.27\n"}},
+		},
+		{
+			name:      "variable value change is sent to the declared name with only the value",
+			operation: variableValueChange(t, "GO_VERSION", "1.26", "1.27\n").Operations[0],
+			observed:  github.ObservationResult{RepositoryVariables: variables(github.Variable{Name: "go_version", Value: "1.26"})},
+			response:  noContent(),
+			want:      githubtest.Request{Method: http.MethodPatch, Path: "/repos/owner/repo/actions/variables/GO_VERSION", Body: map[string]any{"value": "1.27\n"}},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1748,7 +1763,7 @@ func TestSendUpdate(t *testing.T) {
 			name: "undefined kind of an update operation panics",
 			operation: func() changeplan.UpdateOperation {
 				o := toSelectedPatterns.Operations[1]
-				o.Kind = changeplan.DeploymentPatternRemoval + 1
+				o.Kind = changeplan.RepositoryVariableValueUpdate + 1
 				return o
 			}(),
 			observed: github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", nil))},
@@ -1922,6 +1937,115 @@ func TestExecuteChange_Environments(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got.unexpectedOutsideChanges, tc.wantOutside) {
 				t.Errorf("unexpectedOutsideChanges = %v, want %v", got.unexpectedOutsideChanges, tc.wantOutside)
+			}
+			if got.result() != tc.wantResult {
+				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)
+			}
+		})
+	}
+}
+
+// TestExecuteChange_RepositoryVariables は、変数の作成と値の変更を、一覧の読み直しで確かめて一度だけ送るつなぎ目を確かめる。
+//
+//trace:checks INV-001 INV-004 INV-005 FR-010 FR-011 FR-012 FR-013
+func TestExecuteChange_RepositoryVariables(t *testing.T) {
+	const (
+		getRepository = "GET /repos/owner/repo"
+		getVariables  = "GET /repos/owner/repo/actions/variables"
+		postVariable  = "POST /repos/owner/repo/actions/variables"
+		patchVariable = "PATCH /repos/owner/repo/actions/variables/GO_VERSION"
+	)
+	declared := githubtest.VariableBody{Name: "GO_VERSION", Value: "1.27"}
+	other := githubtest.VariableBody{Name: "OTHER", Value: "a"}
+	creation := variableCreationChange(t, "GO_VERSION", "1.27")
+	cases := []struct {
+		name         string
+		change       changeplan.LogicalChange
+		responses    []response
+		wantRequests []string
+		wantPrecond  preconditionCheck
+		wantUpdate   github.UpdateOutcome
+		wantDesired  desiredStateConfirmation
+		wantResult   changeResult
+	}{
+		{
+			name:   "creation absent before the update is sent once and completes",
+			change: creation,
+			responses: []response{
+				okRepository(1, false, false), okVariables(other), createdVariable(),
+				okRepository(1, false, false), okVariables(other, declared),
+			},
+			wantRequests: []string{getRepository, getVariables, postVariable, getRepository, getVariables},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
+		{
+			// GitHub は同じ名前の作成を 409 で拒否するが、拒否に頼らず更新直前の観測で止める
+			name:         "creation with the same name existing before the update sends no update request",
+			change:       creation,
+			responses:    []response{okRepository(1, false, false), okVariables(declared)},
+			wantRequests: []string{getRepository, getVariables},
+			wantPrecond:  preconditionCurrentValueChanged,
+			wantResult:   notAttempted,
+		},
+		{
+			name:   "creation rejected with 409 fails without reading after the update",
+			change: creation,
+			responses: []response{
+				okRepository(1, false, false), okVariables(), {status: http.StatusConflict, body: `{"message":"Already exists - Variable already exists"}`},
+			},
+			wantRequests: []string{getRepository, getVariables, postVariable},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateRejected,
+			wantResult:   failed,
+		},
+		{
+			name:   "creation answered with 502 is not sent again and is read once for diagnosis",
+			change: creation,
+			responses: []response{
+				okRepository(1, false, false), okVariables(), {status: http.StatusBadGateway},
+				okRepository(1, false, false), okVariables(declared),
+			},
+			wantRequests: []string{getRepository, getVariables, postVariable, getRepository, getVariables},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateUnknown,
+			wantDesired:  desiredStateMatches,
+			wantResult:   failed,
+		},
+		{
+			name:   "value change is sent once and completes",
+			change: variableValueChange(t, "GO_VERSION", "1.26", "1.27"),
+			responses: []response{
+				okRepository(1, false, false), okVariables(githubtest.VariableBody{Name: "GO_VERSION", Value: "1.26"}), noContent(),
+				okRepository(1, false, false), okVariables(declared),
+			},
+			wantRequests: []string{getRepository, getVariables, patchVariable, getRepository, getVariables},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, server := newSequenceServer(t, tc.responses...)
+			delays := &delayRecorder{}
+
+			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, delays.after, &updateInterval{})
+
+			if !slices.Equal(server.RequestLines(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", server.RequestLines(), tc.wantRequests)
+			}
+			if got.operation(0).precondition != tc.wantPrecond {
+				t.Errorf("precondition = %v, want %v", got.operation(0).precondition, tc.wantPrecond)
+			}
+			if tc.wantPrecond == preconditionHolds && got.operation(0).update != tc.wantUpdate {
+				t.Errorf("update = %v, want %v", got.operation(0).update, tc.wantUpdate)
+			}
+			if got.confirmation != tc.wantDesired {
+				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
 			}
 			if got.result() != tc.wantResult {
 				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)

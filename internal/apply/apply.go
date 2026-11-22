@@ -108,7 +108,7 @@ func executableChanges(p changeplan.Plan) ([]repositoryChanges, error) {
 
 // checkUpdateEndpoint は、operation の更新要求の宛先を承認の前に決められるかを確かめ、決められなければ panic する。
 // 設定の更新操作は更新エンドポイントを引き、更新要求を持たない設定なら UpdateEndpointOf が panic する。戻り値を使わないのは、引けることの検査だけを目的とするため。
-// Environment の更新操作は、更新エンドポイントが Environment の名前ごとに別で、設定の識別だけでは引けないため、引かずに通す。
+// 関連リソース (Environment と Repository Variable) の更新操作は、更新エンドポイントが名前ごとに別で、設定の識別だけでは引けないため、引かずに通す。
 // 未定義の種類は宛先が決まらないため、不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func checkUpdateEndpoint(operation changeplan.UpdateOperation) {
 	switch operation.Kind {
@@ -116,7 +116,8 @@ func checkUpdateEndpoint(operation changeplan.UpdateOperation) {
 		github.UpdateEndpointOf(operation.Unit.Key)
 		return
 	case changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate,
-		changeplan.DeploymentPatternAddition, changeplan.DeploymentPatternRemoval:
+		changeplan.DeploymentPatternAddition, changeplan.DeploymentPatternRemoval,
+		changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate:
 		return
 	}
 	panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))

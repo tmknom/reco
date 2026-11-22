@@ -124,6 +124,16 @@ func selectedBody() *githubtest.DeploymentBranchPolicyBody {
 	return &githubtest.DeploymentBranchPolicyBody{CustomBranchPolicies: true}
 }
 
+// okVariables は、variables を一覧の全体とする Repository Variables の一覧の取得の正常応答。
+func okVariables(variables ...githubtest.VariableBody) response {
+	return response{status: http.StatusOK, body: githubtest.VariablesBody{TotalCount: len(variables), Variables: variables}.JSON()}
+}
+
+// createdVariable は、Repository Variable の作成の正常応答。GitHub は 201 で、変数を含まない空のオブジェクトを返す。
+func createdVariable() response {
+	return response{status: http.StatusCreated, body: `{}`}
+}
+
 // okDeploymentPatterns は、patterns を一覧の全体とする個別パターンの一覧の取得の正常応答。
 func okDeploymentPatterns(patterns ...githubtest.DeploymentPatternBody) response {
 	return response{status: http.StatusOK, body: githubtest.DeploymentBranchPoliciesBody{TotalCount: len(patterns), Patterns: patterns}.JSON()}
@@ -147,7 +157,7 @@ func okSecurityUpdates(enabled, paused bool) response {
 	return response{status: http.StatusOK, body: githubtest.AutomatedSecurityFixesBody{Enabled: enabled, Paused: paused}.JSON()}
 }
 
-// noContent は、本文のない正常応答。個別パターンを取り除く要求と、Dependabot の更新と、有効な Dependabot alerts の取得が返す。
+// noContent は、本文のない正常応答。個別パターンを取り除く要求と、Dependabot の更新と、有効な Dependabot alerts の取得と、Repository Variable の値の変更が返す。
 func noContent() response {
 	return response{status: http.StatusNoContent}
 }

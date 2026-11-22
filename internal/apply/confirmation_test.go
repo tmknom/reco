@@ -205,3 +205,42 @@ func TestConfirmDesiredState_Environments(t *testing.T) {
 		})
 	}
 }
+
+// TestConfirmDesiredState_RepositoryVariables は、変数の作成と値の変更の期待状態を、一覧から引いた存在と値で確かめることを確かめる。
+//
+//trace:checks FR-012
+func TestConfirmDesiredState_RepositoryVariables(t *testing.T) {
+	cases := []struct {
+		name      string
+		change    changeplan.LogicalChange
+		variables *github.Variables
+		want      desiredStateConfirmation
+	}{
+		{
+			name:      "creation matches when the variable exists with the declared value",
+			change:    variableCreationChange(t, "GO_VERSION", "1.27"),
+			variables: variables(github.Variable{Name: "GO_VERSION", Value: "1.27"}),
+			want:      desiredStateMatches,
+		},
+		{
+			name:      "creation is a mismatch when the variable exists with another value",
+			change:    variableCreationChange(t, "GO_VERSION", "1.27"),
+			variables: variables(github.Variable{Name: "GO_VERSION", Value: "1.26"}),
+			want:      desiredStateMismatch,
+		},
+		{
+			name:      "value change is a mismatch when the variable is absent",
+			change:    variableValueChange(t, "GO_VERSION", "1.26", "1.27"),
+			variables: variables(),
+			want:      desiredStateMismatch,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := github.ObservationResult{RepositoryID: 1, RepositoryVariables: tc.variables}
+			if got, reason := confirmDesiredState(1, tc.change, observed); got != tc.want || reason != 0 {
+				t.Errorf("confirmDesiredState() = %v, %v, want %v without a reason", got, reason, tc.want)
+			}
+		})
+	}
+}
