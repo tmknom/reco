@@ -820,6 +820,296 @@
         }
       }
     },
+    "/repos/{owner}/{repo}/actions/variables": {
+      "get": {
+        "summary": "List repository variables",
+        "description": "Lists all repository variables.\n\nAuthenticated users must have collaborator access to a repository to create, update, or read variables.\n\nOAuth app tokens and personal access tokens (classic) need the `repo` scope to use this endpoint.",
+        "tags": [
+          "actions"
+        ],
+        "operationId": "actions/list-repo-variables",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/actions/variables#list-repository-variables"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          },
+          {
+            "$ref": "#/components/parameters/variables-per-page"
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "total_count",
+                    "variables"
+                  ],
+                  "properties": {
+                    "total_count": {
+                      "type": "integer"
+                    },
+                    "variables": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/actions-variable"
+                      }
+                    }
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "$ref": "#/components/examples/actions-variables-paginated"
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/link"
+              }
+            }
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "actions",
+          "subcategory": "variables"
+        }
+      },
+      "post": {
+        "summary": "Create a repository variable",
+        "description": "Creates a repository variable that you can reference in a GitHub Actions workflow.\n\nAuthenticated users must have collaborator access to a repository to create, update, or read variables.\n\nOAuth tokens and personal access tokens (classic) need the `repo` scope to use this endpoint.",
+        "tags": [
+          "actions"
+        ],
+        "operationId": "actions/create-repo-variable",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/actions/variables#create-a-repository-variable"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The name of the variable."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the variable."
+                  }
+                },
+                "required": [
+                  "name",
+                  "value"
+                ]
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "name": "USERNAME",
+                    "value": "octocat"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/empty-object"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "actions",
+          "subcategory": "variables"
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/variables/{name}": {
+      "get": {
+        "summary": "Get a repository variable",
+        "description": "Gets a specific variable in a repository.\n\nThe authenticated user must have collaborator access to the repository to use this endpoint.\n\nOAuth app tokens and personal access tokens (classic) need the `repo` scope to use this endpoint.",
+        "tags": [
+          "actions"
+        ],
+        "operationId": "actions/get-repo-variable",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/actions/variables#get-a-repository-variable"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          },
+          {
+            "$ref": "#/components/parameters/variable-name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/actions-variable"
+                },
+                "examples": {
+                  "default": {
+                    "$ref": "#/components/examples/actions-variable"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "actions",
+          "subcategory": "variables"
+        }
+      },
+      "patch": {
+        "summary": "Update a repository variable",
+        "description": "Updates a repository variable that you can reference in a GitHub Actions workflow.\n\nAuthenticated users must have collaborator access to a repository to create, update, or read variables.\n\nOAuth app tokens and personal access tokens (classic) need the `repo` scope to use this endpoint.",
+        "tags": [
+          "actions"
+        ],
+        "operationId": "actions/update-repo-variable",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/actions/variables#update-a-repository-variable"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          },
+          {
+            "$ref": "#/components/parameters/variable-name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The name of the variable."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the variable."
+                  }
+                }
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "name": "USERNAME",
+                    "value": "octocat"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Response"
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "actions",
+          "subcategory": "variables"
+        }
+      },
+      "delete": {
+        "summary": "Delete a repository variable",
+        "description": "Deletes a repository variable using the variable name.\n\nAuthenticated users must have collaborator access to a repository to create, update, or read variables.\n\nOAuth tokens and personal access tokens (classic) need the `repo` scope to use this endpoint.",
+        "tags": [
+          "actions"
+        ],
+        "operationId": "actions/delete-repo-variable",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/actions/variables#delete-a-repository-variable"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          },
+          {
+            "$ref": "#/components/parameters/variable-name"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Response"
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "actions",
+          "subcategory": "variables"
+        }
+      }
+    },
     "/repos/{owner}/{repo}/automated-security-fixes": {
       "get": {
         "summary": "Check if Dependabot security updates are enabled for a repository",
@@ -1413,6 +1703,311 @@
         }
       }
     },
+    "/repos/{owner}/{repo}/environments/{environment_name}/variables": {
+      "get": {
+        "summary": "List environment variables",
+        "description": "Lists all environment variables.\n\nAuthenticated users must have collaborator access to a repository to create, update, or read variables.\n\nOAuth app tokens and personal access tokens (classic) need the `repo` scope to use this endpoint.",
+        "tags": [
+          "actions"
+        ],
+        "operationId": "actions/list-environment-variables",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/actions/variables#list-environment-variables"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          },
+          {
+            "$ref": "#/components/parameters/environment-name"
+          },
+          {
+            "$ref": "#/components/parameters/variables-per-page"
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "total_count",
+                    "variables"
+                  ],
+                  "properties": {
+                    "total_count": {
+                      "type": "integer"
+                    },
+                    "variables": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/actions-variable"
+                      }
+                    }
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "$ref": "#/components/examples/actions-variables-paginated"
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/link"
+              }
+            }
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "actions",
+          "subcategory": "variables"
+        }
+      },
+      "post": {
+        "summary": "Create an environment variable",
+        "description": "Create an environment variable that you can reference in a GitHub Actions workflow.\n\nAuthenticated users must have collaborator access to a repository to create, update, or read variables.\n\nOAuth tokens and personal access tokens (classic) need the `repo` scope to use this endpoint.",
+        "tags": [
+          "actions"
+        ],
+        "operationId": "actions/create-environment-variable",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/actions/variables#create-an-environment-variable"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          },
+          {
+            "$ref": "#/components/parameters/environment-name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The name of the variable."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the variable."
+                  }
+                },
+                "required": [
+                  "name",
+                  "value"
+                ]
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "name": "USERNAME",
+                    "value": "octocat"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/empty-object"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "actions",
+          "subcategory": "variables"
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/environments/{environment_name}/variables/{name}": {
+      "get": {
+        "summary": "Get an environment variable",
+        "description": "Gets a specific variable in an environment.\n\nAuthenticated users must have collaborator access to a repository to create, update, or read variables.\n\nOAuth tokens and personal access tokens (classic) need the `repo` scope to use this endpoint.",
+        "tags": [
+          "actions"
+        ],
+        "operationId": "actions/get-environment-variable",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/actions/variables#get-an-environment-variable"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          },
+          {
+            "$ref": "#/components/parameters/environment-name"
+          },
+          {
+            "$ref": "#/components/parameters/variable-name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/actions-variable"
+                },
+                "examples": {
+                  "default": {
+                    "$ref": "#/components/examples/actions-variable"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "actions",
+          "subcategory": "variables"
+        }
+      },
+      "patch": {
+        "summary": "Update an environment variable",
+        "description": "Updates an environment variable that you can reference in a GitHub Actions workflow.\n\nAuthenticated users must have collaborator access to a repository to create, update, or read variables.\n\nOAuth app tokens and personal access tokens (classic) need the `repo` scope to use this endpoint.",
+        "tags": [
+          "actions"
+        ],
+        "operationId": "actions/update-environment-variable",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/actions/variables#update-an-environment-variable"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          },
+          {
+            "$ref": "#/components/parameters/variable-name"
+          },
+          {
+            "$ref": "#/components/parameters/environment-name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The name of the variable."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The value of the variable."
+                  }
+                }
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "name": "USERNAME",
+                    "value": "octocat"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Response"
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "actions",
+          "subcategory": "variables"
+        }
+      },
+      "delete": {
+        "summary": "Delete an environment variable",
+        "description": "Deletes an environment variable using the variable name.\n\nAuthenticated users must have collaborator access to a repository to create, update, or read variables.\n\nOAuth tokens and personal access tokens (classic) need the `repo` scope to use this endpoint.",
+        "tags": [
+          "actions"
+        ],
+        "operationId": "actions/delete-environment-variable",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/actions/variables#delete-an-environment-variable"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          },
+          {
+            "$ref": "#/components/parameters/variable-name"
+          },
+          {
+            "$ref": "#/components/parameters/environment-name"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Response"
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "actions",
+          "subcategory": "variables"
+        }
+      }
+    },
     "/repos/{owner}/{repo}/private-vulnerability-reporting": {
       "get": {
         "summary": "Check if private vulnerability reporting is enabled for a repository",
@@ -1654,6 +2249,33 @@
           "allowed_actions": "selected",
           "selected_actions_url": "https://api.github.com/repositories/42/actions/permissions/selected-actions",
           "sha_pinning_required": true
+        }
+      },
+      "actions-variable": {
+        "value": {
+          "name": "USERNAME",
+          "value": "octocat",
+          "created_at": "2021-08-10T14:59:22Z",
+          "updated_at": "2022-01-10T14:59:22Z"
+        }
+      },
+      "actions-variables-paginated": {
+        "value": {
+          "total_count": 2,
+          "variables": [
+            {
+              "name": "USERNAME",
+              "value": "octocat",
+              "created_at": "2019-08-10T14:59:22Z",
+              "updated_at": "2020-01-10T14:59:22Z"
+            },
+            {
+              "name": "EMAIL",
+              "value": "octocat@github.com",
+              "created_at": "2020-01-10T10:59:22Z",
+              "updated_at": "2020-01-11T11:59:22Z"
+            }
+          ]
         }
       },
       "actions-workflow-access-to-repository": {
@@ -2910,6 +3532,14 @@
         }
       }
     },
+    "headers": {
+      "link": {
+        "example": "<https://api.github.com/resource?page=2>; rel=\"next\", <https://api.github.com/resource?page=5>; rel=\"last\"",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
     "parameters": {
       "branch-policy-id": {
         "name": "branch_policy_id",
@@ -2963,6 +3593,24 @@
         "required": true,
         "schema": {
           "type": "string"
+        }
+      },
+      "variable-name": {
+        "name": "name",
+        "description": "The name of the variable.",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "variables-per-page": {
+        "name": "per_page",
+        "description": "The number of results per page (max 30). For more information, see \"[Using pagination in the REST API](https://docs.github.com/rest/using-the-rest-api/using-pagination-in-the-rest-api).\"",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "default": 10
         }
       }
     },
@@ -3098,6 +3746,40 @@
             "$ref": "#/components/schemas/actions-can-approve-pull-request-reviews"
           }
         }
+      },
+      "actions-variable": {
+        "title": "Actions Variable",
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "The name of the variable.",
+            "example": "USERNAME",
+            "type": "string"
+          },
+          "value": {
+            "description": "The value of the variable.",
+            "example": "octocat",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "The date and time at which the variable was created, in ISO 8601 format':' YYYY-MM-DDTHH:MM:SSZ.",
+            "type": "string",
+            "format": "date-time",
+            "example": "2019-01-24T22:45:36.000Z"
+          },
+          "updated_at": {
+            "description": "The date and time at which the variable was last updated, in ISO 8601 format':' YYYY-MM-DDTHH:MM:SSZ.",
+            "type": "string",
+            "format": "date-time",
+            "example": "2019-01-24T22:45:36.000Z"
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "created_at",
+          "updated_at"
+        ]
       },
       "actions-workflow-access-to-repository": {
         "type": "object",
@@ -3277,6 +3959,13 @@
           "Team"
         ],
         "example": "User"
+      },
+      "empty-object": {
+        "title": "Empty Object",
+        "description": "An object without any properties.",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
       },
       "environment": {
         "title": "Environment",
