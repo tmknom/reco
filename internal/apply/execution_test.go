@@ -227,6 +227,12 @@ func TestObservationAreas(t *testing.T) {
 			notWant: []setting.Area{setting.AllowedActions.Area()},
 		},
 		{
+			name:    "bundled merge method change reads the general and secret scanning areas",
+			change:  mergeMethodSwapChange(t),
+			want:    []setting.Area{setting.AreaGeneral, setting.AreaSecretScanning},
+			notWant: []setting.Area{setting.AllowedActions.Area()},
+		},
+		{
 			name:    "workflow permissions change does not read the secret scanning area",
 			change:  defaultWorkflowPermissionsChange(),
 			want:    []setting.Area{setting.AreaWorkflowPermissions},
@@ -1688,6 +1694,14 @@ func TestSendUpdate(t *testing.T) {
 			operation: allowAutoMergeChange().Operations[0],
 			response:  okRepository(1, true, false),
 			want:      githubtest.Request{Method: http.MethodPatch, Path: "/repos/owner/repo", Body: map[string]any{"allow_auto_merge": true}},
+		},
+		{
+			name:      "merge methods are sent together in one request",
+			operation: mergeMethodSwapChange(t).Operations[0],
+			response:  okRepositoryBody(githubtest.RepositoryBody{ID: 1, AllowSquashMerge: true}),
+			want: githubtest.Request{Method: http.MethodPatch, Path: "/repos/owner/repo", Body: map[string]any{
+				"allow_squash_merge": true, "allow_merge_commit": false,
+			}},
 		},
 		{
 			name:      "creation without a mode is sent to the declared name without a body",

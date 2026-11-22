@@ -1,6 +1,7 @@
 package changeplan
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 
@@ -107,5 +108,72 @@ func TestMergeMethodsLeftDisabled(t *testing.T) {
 		}()
 		settings := []SettingPlan{disableSquash, disableMergeCommit, plan(setting.AllowRebaseMerge, false, false)}
 		mergeMethodsLeftDisabled(disableSquash, settings, observation(true, true, false))
+	})
+}
+
+// TestMergeMethodsChange は、マージ方式の変更予定を、一つの更新要求で送る一つの論理的な設定変更にまとめる規則を確かめる (General の設計の論理的な設定変更と更新操作)。
+//
+//trace:checks INV-001 INV-004 FR-010 FR-012
+func TestMergeMethodsChange(t *testing.T) {
+	plan := func(key setting.Key, observed, desired bool) SettingPlan {
+		return newSettingPlan(setting.Unit{Key: key}, github.Observed(setting.BoolValue(observed)), setting.BoolValue(desired))
+	}
+	desired := func(key setting.Key, value bool) DesiredSetting {
+		return DesiredSetting{Unit: setting.Unit{Key: key}, Value: setting.BoolValue(value)}
+	}
+	relevant := func(key setting.Key, observed bool) RelevantSetting {
+		return RelevantSetting{Unit: setting.Unit{Key: key}, AnticipatedValue: github.Observed(setting.BoolValue(observed))}
+	}
+	// change は、期待状態 state を一つの更新操作で送り、その計画時の観測値 anticipated を基準にする論理的な設定変更。
+	change := func(state []DesiredSetting, anticipated ...RelevantSetting) LogicalChange {
+		return LogicalChange{
+			DesiredState: state,
+			Operations:   []UpdateOperation{{Kind: MergeMethodsUpdate, Unit: state[0].Unit, Settings: state, RelevantSettings: anticipated}},
+		}
+	}
+	cases := []struct {
+		name     string
+		settings []SettingPlan
+		want     LogicalChange
+	}{
+		{
+			name:     "swapping the enabled merge method is one update relevant to both observed values",
+			settings: []SettingPlan{plan(setting.AllowSquashMerge, false, true), plan(setting.AllowMergeCommit, true, false)},
+			want: change([]DesiredSetting{desired(setting.AllowSquashMerge, true), desired(setting.AllowMergeCommit, false)},
+				relevant(setting.AllowSquashMerge, false), relevant(setting.AllowMergeCommit, true)),
+		},
+		{
+			name:     "one merge method change is the same kind of update",
+			settings: []SettingPlan{plan(setting.AllowRebaseMerge, true, false)},
+			want:     change([]DesiredSetting{desired(setting.AllowRebaseMerge, false)}, relevant(setting.AllowRebaseMerge, true)),
+		},
+		{
+			// 一致したマージ方式を送ると、宣言どおりの値でも承認していない更新要求を送ることになり、変更前提にも計画にない値が入るため
+			name:     "matching merge method is neither sent nor relevant",
+			settings: []SettingPlan{plan(setting.AllowSquashMerge, false, true), plan(setting.AllowMergeCommit, true, true)},
+			want:     change([]DesiredSetting{desired(setting.AllowSquashMerge, true)}, relevant(setting.AllowSquashMerge, false)),
+		},
+		{
+			name:     "settings other than merge methods are not bundled",
+			settings: []SettingPlan{plan(setting.AllowAutoMerge, false, true), plan(setting.AllowMergeCommit, false, true), plan(setting.AllowUpdateBranch, false, true)},
+			want:     change([]DesiredSetting{desired(setting.AllowMergeCommit, true)}, relevant(setting.AllowMergeCommit, false)),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := mergeMethodsChange(tc.settings); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("mergeMethodsChange() =\n%+v\nwant\n%+v", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("no merge method change panics", func(t *testing.T) {
+		// 空の期待状態を引いた runtime error ではなく、不変条件の破れとして止まることを確かめる
+		defer func() {
+			if _, ok := recover().(string); !ok {
+				t.Error("mergeMethodsChange() did not panic as a broken invariant")
+			}
+		}()
+		_ = mergeMethodsChange([]SettingPlan{plan(setting.AllowSquashMerge, true, true)})
 	})
 }

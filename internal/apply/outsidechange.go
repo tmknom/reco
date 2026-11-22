@@ -30,7 +30,7 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.O
 	for i, b := range before {
 		operation := change.Operations[i]
 		switch operation.Kind {
-		case changeplan.SettingUpdate:
+		case changeplan.SettingUpdate, changeplan.MergeMethodsUpdate:
 			endpoint := github.UpdateEndpointOf(operation.Unit.Key)
 			if !slices.Contains(compared, endpoint) {
 				compared = append(compared, endpoint)

@@ -114,6 +114,7 @@ func executeChange(ctx context.Context, client *github.Client, r changeplan.Repo
 		record.cause = errors.Join(record.cause, err)
 		return record
 	}
+	record.mismatchedSettings = mismatchedDesiredSettings(change, observed)
 	// ID が変わった観測は別のリポジトリの値のため、更新直前の値と比べない。
 	if record.confirmation != desiredStateIdentityMismatch {
 		record.unexpectedOutsideChanges = unexpectedOutsideChanges(change, before, observed)
@@ -155,6 +156,12 @@ func sendUpdate(ctx context.Context, client *github.Client, target repository.Re
 	switch operation.Kind {
 	case changeplan.SettingUpdate:
 		return client.Update(ctx, target, operation.Unit.Key, operation.Value)
+	case changeplan.MergeMethodsUpdate:
+		allowed := make(map[setting.Key]bool, len(operation.Settings))
+		for _, s := range operation.Settings {
+			allowed[s.Unit.Key] = s.Value.Bool()
+		}
+		return client.UpdateMergeMethods(ctx, target, allowed)
 	case changeplan.EnvironmentCreation:
 		return client.CreateEnvironment(ctx, target, environmentDestination(operation.Unit.Environment, observed))
 	case changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate:
@@ -208,7 +215,7 @@ func observationAreas(change changeplan.LogicalChange) []setting.Area {
 	var areas []setting.Area
 	for _, operation := range change.Operations {
 		areas = appendArea(areas, operation.Unit.Key.Area())
-		if operation.Kind == changeplan.SettingUpdate {
+		if operation.Kind == changeplan.SettingUpdate || operation.Kind == changeplan.MergeMethodsUpdate {
 			for _, key := range github.UpdateEndpointOf(operation.Unit.Key).ObservedSettings() {
 				areas = appendArea(areas, key.Area())
 			}

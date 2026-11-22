@@ -35,6 +35,10 @@ func TestClientUpdate(t *testing.T) {
 			wantRequest: "PATCH /repos/owner/repo", wantBody: map[string]any{"allow_auto_merge": true},
 		},
 		{
+			name: "allow_update_branch sends only allow_update_branch", key: setting.AllowUpdateBranch, value: setting.BoolValue(true),
+			wantRequest: "PATCH /repos/owner/repo", wantBody: map[string]any{"allow_update_branch": true},
+		},
+		{
 			name: "enabled sends only enabled", key: setting.ActionsEnabled, value: setting.BoolValue(false),
 			wantRequest: "PUT /repos/owner/repo/actions/permissions", wantBody: map[string]any{"enabled": false},
 		},
@@ -138,6 +142,91 @@ func TestClientUpdate(t *testing.T) {
 		})
 		_, _ = c.Update(t.Context(), mustReference(t, "owner/repo"), undefined, setting.BoolValue(true))
 	})
+
+	// マージ方式は UpdateMergeMethods がまとめて送るため、一つだけを送る経路を持たない
+	for _, key := range setting.MergeMethods() {
+		t.Run(string(key)+" panics before sending a request", func(t *testing.T) {
+			// nil の送り方を呼んだ runtime error ではなく、マージ方式を名指す不変条件の破れで止まることを確かめる
+			defer func() {
+				if message, ok := recover().(string); !ok || !strings.Contains(message, string(key)) {
+					t.Errorf("Update(%q) did not panic naming the merge method", key)
+				}
+			}()
+			c := newTestClient(t, func(http.ResponseWriter, *http.Request) {
+				t.Errorf("Update() sent a request for %q", key)
+			})
+			_, _ = c.Update(t.Context(), mustReference(t, "owner/repo"), key, setting.BoolValue(true))
+		})
+	}
+}
+
+// TestClientUpdateMergeMethods は、マージ方式の値を一つの PATCH で送り、渡したマージ方式だけを本文に含めることを確かめる (General の設計の論理的な設定変更と更新操作)。
+//
+//trace:checks INV-001 FR-011
+func TestClientUpdateMergeMethods(t *testing.T) {
+	cases := []struct {
+		name     string
+		allowed  map[setting.Key]bool
+		wantBody map[string]any
+	}{
+		{
+			name: "two merge methods are sent in one request with only those fields", allowed: map[setting.Key]bool{setting.AllowSquashMerge: true, setting.AllowMergeCommit: false},
+			wantBody: map[string]any{"allow_squash_merge": true, "allow_merge_commit": false},
+		},
+		{
+			name:     "three merge methods are sent in one request",
+			allowed:  map[setting.Key]bool{setting.AllowSquashMerge: false, setting.AllowMergeCommit: true, setting.AllowRebaseMerge: false},
+			wantBody: map[string]any{"allow_squash_merge": false, "allow_merge_commit": true, "allow_rebase_merge": false},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests []string
+			var bodies []map[string]any
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				requests = append(requests, r.Method+" "+r.URL.Path)
+				data, _ := io.ReadAll(r.Body)
+				var body map[string]any
+				if err := json.Unmarshal(data, &body); err != nil {
+					t.Errorf("request body %q is not JSON: %v", data, err)
+				}
+				bodies = append(bodies, body)
+				_, _ = w.Write([]byte(repositoryBody))
+			})
+
+			if outcome, err := c.UpdateMergeMethods(t.Context(), mustReference(t, "owner/repo"), tc.allowed); err != nil || outcome != UpdateSucceeded {
+				t.Fatalf("UpdateMergeMethods() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+			}
+
+			if want := []string{"PATCH /repos/owner/repo"}; !slices.Equal(requests, want) {
+				t.Errorf("requests = %v, want %v", requests, want)
+			}
+			if want := []map[string]any{tc.wantBody}; !reflect.DeepEqual(bodies, want) {
+				t.Errorf("request bodies = %v, want %v", bodies, want)
+			}
+		})
+	}
+
+	panics := []struct {
+		name    string
+		allowed map[setting.Key]bool
+	}{
+		{name: "no merge method panics before sending a request", allowed: map[setting.Key]bool{}},
+		{name: "a setting other than a merge method panics before sending a request", allowed: map[setting.Key]bool{setting.AllowSquashMerge: true, setting.AllowAutoMerge: true}},
+	}
+	for _, tc := range panics {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("UpdateMergeMethods(%v) did not panic", tc.allowed)
+				}
+			}()
+			c := newTestClient(t, func(http.ResponseWriter, *http.Request) {
+				t.Error("UpdateMergeMethods() sent a request")
+			})
+			_, _ = c.UpdateMergeMethods(t.Context(), mustReference(t, "owner/repo"), tc.allowed)
+		})
+	}
 }
 
 // TestClientUpdateSecretScanningIgnoresSecurityAndAnalysisInResponse は、Secret scanning の更新の 200 の本文が

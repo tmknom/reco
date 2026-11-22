@@ -1,6 +1,7 @@
 package apply
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/tmknom/reco/internal/changeplan"
@@ -268,6 +269,44 @@ func TestConfirmDesiredState_EnvironmentVariables(t *testing.T) {
 			observed := github.ObservationResult{RepositoryID: 1, Environments: environments(tc.existing...)}
 			if got, reason := confirmDesiredState(1, change, observed); got != tc.want || reason != tc.wantReason {
 				t.Errorf("confirmDesiredState() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)
+			}
+		})
+	}
+}
+
+// TestMismatchedDesiredSettings は、期待状態のうち、期待値と異なる値を観測した管理設定を、期待状態の並びで返すことを確かめる。
+//
+//trace:checks FR-012 FR-013
+func TestMismatchedDesiredSettings(t *testing.T) {
+	general := func(squash, mergeCommit bool) github.ObservationResult {
+		return github.ObservationResult{RepositoryID: 1, General: github.General{AllowSquashMerge: squash, AllowMergeCommit: mergeCommit}}
+	}
+	cases := []struct {
+		name     string
+		change   changeplan.LogicalChange
+		observed github.ObservationResult
+		want     []setting.Unit
+	}{
+		{name: "all matching settings return none", change: mergeMethodSwapChange(t), observed: general(true, false), want: nil},
+		{
+			name: "only the differing one of the bundled settings is returned", change: mergeMethodSwapChange(t), observed: general(true, true),
+			want: []setting.Unit{{Key: setting.AllowMergeCommit}},
+		},
+		{
+			name: "both differing settings are returned in the order of the desired state", change: mergeMethodSwapChange(t), observed: general(false, true),
+			want: []setting.Unit{{Key: setting.AllowSquashMerge}, {Key: setting.AllowMergeCommit}},
+		},
+		{
+			// 値を確認できていない設定を、期待値と異なるとは示さないため
+			name: "unavailable setting is not returned", change: toSelectedChange(),
+			observed: github.ObservationResult{RepositoryID: 1, ActionsPermissions: actionsEnabled(setting.AllowedActionsAll, false)},
+			want:     []setting.Unit{{Key: setting.AllowedActions}},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := mismatchedDesiredSettings(tc.change, tc.observed); !slices.Equal(got, tc.want) {
+				t.Errorf("mismatchedDesiredSettings() = %v, want %v", got, tc.want)
 			}
 		})
 	}

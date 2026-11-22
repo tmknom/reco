@@ -14,6 +14,7 @@ import (
 	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
+	"github.com/tmknom/reco/internal/setting"
 )
 
 // Config は Run の入力。
@@ -108,11 +109,24 @@ func executableChanges(p changeplan.Plan) ([]repositoryChanges, error) {
 
 // checkUpdateEndpoint は、operation の更新要求の宛先を承認の前に決められるかを確かめ、決められなければ panic する。
 // 設定の更新操作は更新エンドポイントを引き、更新要求を持たない設定なら UpdateEndpointOf が panic する。戻り値を使わないのは、引けることの検査だけを目的とするため。
+// マージ方式は一つずつ送る更新要求を持たず、まとめた更新操作でだけ送るため、一つの設定の更新操作なら承認の前に panic する。
+// まとめた更新操作が送る設定が空か、マージ方式でない設定を含む場合も同じく panic する。どちらも、承認のあと先行する変更を送ってから止まらないようにするため。
 // 関連リソース (Environment、Repository Variable、Environment Variable) の更新操作は、更新エンドポイントが名前ごとに別で、設定の識別だけでは引けないため、引かずに通す。
 // 未定義の種類は宛先が決まらないため、不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func checkUpdateEndpoint(operation changeplan.UpdateOperation) {
 	switch operation.Kind {
 	case changeplan.SettingUpdate:
+		if slices.Contains(setting.MergeMethods(), operation.Unit.Key) {
+			panic("apply: " + operation.Unit.String() + " is a merge method updated on its own")
+		}
+		github.UpdateEndpointOf(operation.Unit.Key)
+		return
+	case changeplan.MergeMethodsUpdate:
+		if len(operation.Settings) == 0 || slices.ContainsFunc(operation.Settings, func(s changeplan.DesiredSetting) bool {
+			return !slices.Contains(setting.MergeMethods(), s.Unit.Key)
+		}) {
+			panic("apply: merge methods update of " + operation.Unit.String() + " does not send only merge methods")
+		}
 		github.UpdateEndpointOf(operation.Unit.Key)
 		return
 	case changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate,

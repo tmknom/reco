@@ -80,9 +80,6 @@ repositories:
 
 `allow_update_branch` を `true` にしても、reco も GitHub もブランチを自動では更新しません。
 
-> [!NOTE]
-> 3つのマージ方式と `allow_update_branch` は、まだ `apply` で変えられません。変更が含まれると、`apply` は承認を求めずにエラーで終わります。`plan` と `show` では確かめられます。
-
 ## GitHub Actions の設定
 
 `actions` には、`permissions`（Actions の実行許可）、`workflow`（ワークフローの権限）、`access`（ほかのリポジトリのワークフローからのアクセス）、`variables`（Repository Variables）を書きます。使わないものは省けます。

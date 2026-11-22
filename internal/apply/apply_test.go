@@ -180,6 +180,55 @@ func TestCheckUpdateEndpoint_EnvironmentVariables(t *testing.T) {
 	}
 }
 
+// TestCheckUpdateEndpoint_MergeMethods は、マージ方式をまとめた更新操作を、リポジトリの更新エンドポイントへ送るものとして通すことを確かめる。
+//
+//trace:checks INV-002
+func TestCheckUpdateEndpoint_MergeMethods(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("checkUpdateEndpoint() panicked: %v", r)
+		}
+	}()
+	checkUpdateEndpoint(mergeMethodSwapChange(t).Operations[0])
+}
+
+// TestCheckUpdateEndpoint_MergeMethodOnItsOwnPanics は、マージ方式を一つずつ送る更新操作を、承認の前に不変条件の破れとして止めることを確かめる。
+//
+//trace:checks INV-002 INV-005
+func TestCheckUpdateEndpoint_MergeMethodOnItsOwnPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("checkUpdateEndpoint() did not panic")
+		}
+	}()
+	checkUpdateEndpoint(singleUpdate(setting.AllowSquashMerge, setting.BoolValue(true), relevantTo(setting.AllowSquashMerge, setting.BoolValue(false))).Operations[0])
+}
+
+// TestCheckUpdateEndpoint_MergeMethodsUpdateWithoutOnlyMergeMethodsPanics は、送る設定が空か、マージ方式でない設定を含む、まとめた更新操作を、承認の前に止めることを確かめる。
+//
+//trace:checks INV-002 INV-005
+func TestCheckUpdateEndpoint_MergeMethodsUpdateWithoutOnlyMergeMethodsPanics(t *testing.T) {
+	squash := changeplan.DesiredSetting{Unit: setting.Unit{Key: setting.AllowSquashMerge}, Value: setting.BoolValue(true)}
+	autoMerge := changeplan.DesiredSetting{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Value: setting.BoolValue(true)}
+	cases := []struct {
+		name     string
+		settings []changeplan.DesiredSetting
+	}{
+		{name: "no setting to send panics", settings: nil},
+		{name: "a setting other than a merge method panics", settings: []changeplan.DesiredSetting{squash, autoMerge}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Error("checkUpdateEndpoint() did not panic")
+				}
+			}()
+			checkUpdateEndpoint(changeplan.UpdateOperation{Kind: changeplan.MergeMethodsUpdate, Unit: squash.Unit, Settings: tc.settings})
+		})
+	}
+}
+
 // failAfterWriter は、n 回の書き込みに成功したあとの書き込みを失敗させる。
 type failAfterWriter struct {
 	n   int

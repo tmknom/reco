@@ -100,7 +100,7 @@ func TestChangesError(t *testing.T) {
 	})
 
 	t.Run("failed change of two updates without a cause names both settings", func(t *testing.T) {
-		records := []changeRecord{toSelectedRecord(desiredStateMismatch,
+		records := []changeRecord{toSelectedMismatchRecord(setting.AllowedActions,
 			started(github.UpdateSucceeded), operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.AllowedActions}})}
 		err := changesError(records, target)
 		want := "actions.permissions.allowed_actions + actions.permissions.selected_actions"
@@ -276,17 +276,17 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 		{
 			// 完了済みの操作と未開始の操作を示す。未実行にしない
 			name: "second update not started because the policy is not the value expected after the first",
-			record: toSelectedRecord(desiredStateMismatch,
+			record: toSelectedMismatchRecord(setting.AllowedActions,
 				started(github.UpdateSucceeded), operationRecord{precondition: preconditionCurrentValueChanged, changedSetting: setting.Unit{Key: setting.AllowedActions}}),
 			want: "  owner/repo: failed\n" + updateRequestRows("succeeded", "not started") +
 				"    Precondition: actions.permissions.allowed_actions is not the value expected after the preceding update\n" +
-				"    Desired state: does not match\n\n" + rollbackNote,
+				"    Desired state: does not match (actions.permissions.allowed_actions)\n\n" + rollbackNote,
 		},
 		{
 			name:   "second update not started because the read before it failed",
-			record: toSelectedRecord(desiredStateMismatch, started(github.UpdateSucceeded), operationRecord{precondition: preconditionUnconfirmed}),
+			record: toSelectedMismatchRecord(setting.SelectedActions, started(github.UpdateSucceeded), operationRecord{precondition: preconditionUnconfirmed}),
 			want: "  owner/repo: failed\n" + updateRequestRows("succeeded", "not started") +
-				"    Precondition: not confirmed (read failed)\n    Desired state: does not match\n\n" + rollbackNote,
+				"    Precondition: not confirmed (read failed)\n    Desired state: does not match (actions.permissions.selected_actions)\n\n" + rollbackNote,
 		},
 		{
 			// 宣言した3項目が GitHub の戻す値と同じなら、後続を開始しなくても一致を観測し得る。必要な更新操作の成功を確認していないため failed のまま
@@ -302,8 +302,8 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 		},
 		{
 			name:   "unknown first update has the retry note",
-			record: toSelectedRecord(desiredStateMismatch, started(github.UpdateUnknown)),
-			want: "  owner/repo: failed\n" + updateRequestRows("unknown", "not started") + "    Desired state: does not match\n\n" +
+			record: toSelectedMismatchRecord(setting.AllowedActions, started(github.UpdateUnknown)),
+			want: "  owner/repo: failed\n" + updateRequestRows("unknown", "not started") + "    Desired state: does not match (actions.permissions.allowed_actions)\n\n" +
 				"Note: No automatic retry was performed. Run reco plan to see the remaining changes.\n",
 		},
 		{
@@ -314,8 +314,8 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 		},
 		{
 			name:   "both updates succeeded with a mismatch shows both update requests",
-			record: toSelectedRecord(desiredStateMismatch, started(github.UpdateSucceeded), started(github.UpdateSucceeded)),
-			want:   "  owner/repo: failed\n" + updateRequestRows("succeeded", "succeeded") + "    Desired state: does not match\n\n" + rollbackNote,
+			record: toSelectedMismatchRecord(setting.SelectedActions, started(github.UpdateSucceeded), started(github.UpdateSucceeded)),
+			want:   "  owner/repo: failed\n" + updateRequestRows("succeeded", "succeeded") + "    Desired state: does not match (actions.permissions.selected_actions)\n\n" + rollbackNote,
 		},
 		{
 			name:   "first precondition of two updates not holding is not attempted without update requests",
@@ -423,7 +423,7 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 			name: "change of two updates is shown as one change named by both settings",
 			records: []changeRecord{
 				completedRecord(allowAutoMergeChange()),
-				toSelectedRecord(desiredStateMismatch, started(github.UpdateSucceeded), started(github.UpdateRejected)),
+				toSelectedMismatchRecord(setting.SelectedActions, started(github.UpdateSucceeded), started(github.UpdateRejected)),
 				{change: defaultWorkflowPermissionsChange()},
 			},
 			want: "  owner/repo\n" +
@@ -431,7 +431,7 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 				"    actions.permissions.allowed_actions + actions.permissions.selected_actions: failed\n" +
 				"      Update request (actions.permissions.allowed_actions): succeeded\n" +
 				"      Update request (actions.permissions.selected_actions): rejected\n" +
-				"      Desired state: does not match\n" +
+				"      Desired state: does not match (actions.permissions.selected_actions)\n" +
 				"    actions.workflow.default_workflow_permissions: not attempted\n" +
 				"      Stopped: a preceding change did not complete\n\n" +
 				rollbackNote,
@@ -634,6 +634,13 @@ func toSelectedRecord(confirmation desiredStateConfirmation, operations ...opera
 	return changeRecord{change: toSelectedChange(), operations: operations, confirmation: confirmation}
 }
 
+// toSelectedMismatchRecord は、toSelectedChange の更新操作の記録が operations で、期待状態のうち mismatched だけが一致しなかった記録。
+func toSelectedMismatchRecord(mismatched setting.Key, operations ...operationRecord) changeRecord {
+	record := toSelectedRecord(desiredStateMismatch, operations...)
+	record.mismatchedSettings = []setting.Unit{{Key: mismatched}}
+	return record
+}
+
 // updateRequestRows は、toSelectedChange の2つの更新操作の結果を、リポジトリの行の下の字下げで示す行。
 func updateRequestRows(first, second string) string {
 	return "    Update request (actions.permissions.allowed_actions): " + first + "\n" +
@@ -785,9 +792,10 @@ func TestWriteChangeReport_DeploymentPatterns(t *testing.T) {
 			records: []changeRecord{
 				completedRecord(allowAutoMergeChange()),
 				{
-					change:       creationWithPatternsChange(t, "production", selectedPolicy(main, version)),
-					operations:   []operationRecord{succeeded, started(github.UpdateUnknown)},
-					confirmation: desiredStateMismatch,
+					change:             creationWithPatternsChange(t, "production", selectedPolicy(main, version)),
+					operations:         []operationRecord{succeeded, started(github.UpdateUnknown)},
+					confirmation:       desiredStateMismatch,
+					mismatchedSettings: []setting.Unit{{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: mustEnvironmentName(t, "production")}},
 				},
 			},
 			want: "  owner/repo\n" +
@@ -796,22 +804,23 @@ func TestWriteChangeReport_DeploymentPatterns(t *testing.T) {
 				"      Update request (environments.production): succeeded\n" +
 				"      Update request (patterns to add [branch \"main\"]): unknown\n" +
 				"      Update request (patterns to add [tag \"v*\"]): not started\n" +
-				"      Desired state: does not match\n\n" +
+				"      Desired state: does not match (environments.production.deployment_branch_policy)\n\n" +
 				"Note: No automatic retry was performed. Run reco plan to see the remaining changes.\n",
 		},
 		{
 			name: "environment not as expected before a later update after a creation names the environment",
 			records: []changeRecord{{
-				change:       creationWithPatternsChange(t, "production", selectedPolicy(main, version)),
-				operations:   []operationRecord{succeeded, succeeded, changed(existence)},
-				confirmation: desiredStateMismatch,
+				change:             creationWithPatternsChange(t, "production", selectedPolicy(main, version)),
+				operations:         []operationRecord{succeeded, succeeded, changed(existence)},
+				confirmation:       desiredStateMismatch,
+				mismatchedSettings: []setting.Unit{{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "production")}},
 			}},
 			want: "  owner/repo: failed\n" +
 				"    Update request (environments.production): succeeded\n" +
 				"    Update request (patterns to add [branch \"main\"]): succeeded\n" +
 				"    Update request (patterns to add [tag \"v*\"]): not started\n" +
 				"    Precondition: environments.production is not the environment expected after the preceding update\n" +
-				"    Desired state: does not match\n\n" + rollbackNote,
+				"    Desired state: does not match (environments.production)\n\n" + rollbackNote,
 		},
 		{
 			name: "existing environment changed before a later update is shown as changed since approval",
@@ -926,6 +935,46 @@ func TestWriteChangeReport_EnvironmentVariables(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestConfirmationText_Mismatch は、期待状態との不一致に、二つ以上の管理設定をまとめた論理的な設定変更でだけ、一致しなかった管理設定を添えることを確かめる。
+//
+//trace:checks FR-013
+func TestConfirmationText_Mismatch(t *testing.T) {
+	cases := []struct {
+		name       string
+		change     changeplan.LogicalChange
+		mismatched []setting.Unit
+		want       string
+	}{
+		{
+			name: "two mismatched settings of a bundle are joined in order", change: mergeMethodSwapChange(t),
+			mismatched: []setting.Unit{{Key: setting.AllowSquashMerge}, {Key: setting.AllowMergeCommit}},
+			want:       "does not match (general.allow_squash_merge, general.allow_merge_commit)",
+		},
+		{
+			// 行の名前が管理設定を示すため
+			name: "mismatch of a single setting change is not named", change: allowAutoMergeChange(), mismatched: []setting.Unit{{Key: setting.AllowAutoMerge}},
+			want: "does not match",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			record := changeRecord{change: tc.change, confirmation: desiredStateMismatch, mismatchedSettings: tc.mismatched}
+			if got := confirmationText(record); got != tc.want {
+				t.Errorf("confirmationText() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("mismatch of a bundle without a mismatched setting panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("confirmationText() did not panic")
+			}
+		}()
+		_ = confirmationText(changeRecord{change: mergeMethodSwapChange(t), confirmation: desiredStateMismatch})
+	})
 }
 
 // TestUpdateRequestLabel_EnvironmentVariables は、Environment Variable の更新操作を、Environment と変数の宣言の名前で示すことを確かめる。

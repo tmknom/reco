@@ -36,6 +36,8 @@ type changeRecord struct {
 	confirmation desiredStateConfirmation
 	// desiredUnavailableReason は confirmation が desiredStateUnavailable のときだけ意味を持つ。
 	desiredUnavailableReason github.UnavailableReason
+	// mismatchedSettings は、更新後の観測で期待値と異なる値を観測した管理設定。期待状態の並びである。confirmation が desiredStateMismatch のときだけ表示に使う。
+	mismatchedSettings       []setting.Unit
 	unexpectedOutsideChanges []unexpectedOutsideChange
 	// cause は、変更前提の確認、更新操作、更新後の観測とその前の待機のうち、失敗した操作の error。
 	cause error

@@ -189,6 +189,21 @@ func creationWithPatternsChange(t *testing.T, name string, desired setting.Deplo
 	))
 }
 
+// mergeMethodMismatch は、マージ方式 key を計画時の観測値 observed から desired にする、適用可能な変更予定。
+func mergeMethodMismatch(key setting.Key, observed, desired bool) changeplan.SettingPlan {
+	return changeplan.SettingPlan{
+		Unit: setting.Unit{Key: key}, Observed: github.Observed(setting.BoolValue(observed)), Desired: setting.BoolValue(desired),
+		Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+	}
+}
+
+// mergeMethodSwapChange は、merge commit だけが有効のリポジトリで、有効なマージ方式を squash merge に入れ替える論理的な設定変更。
+// まとめた更新操作を手で写さず、changeplan がまとめたものを使う。
+func mergeMethodSwapChange(t *testing.T) changeplan.LogicalChange {
+	t.Helper()
+	return onlyLogicalChange(t, newRepositoryPlan(t, mergeMethodMismatch(setting.AllowSquashMerge, false, true), mergeMethodMismatch(setting.AllowMergeCommit, true, false)))
+}
+
 // onlyLogicalChange は、r から導いた論理的な設定変更がちょうど一つであるときの、その論理的な設定変更。
 func onlyLogicalChange(t *testing.T, r changeplan.RepositoryPlan) changeplan.LogicalChange {
 	t.Helper()

@@ -189,6 +189,8 @@ func updateRequestLabel(operation changeplan.UpdateOperation, patterns []setting
 		changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate,
 		changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate:
 		return operation.Unit.String()
+	case changeplan.MergeMethodsUpdate:
+		// マージ方式をまとめた論理的な設定変更は更新操作が一つで、Update request の行に対象を示さないため、ここに届かない
 	case changeplan.DeploymentPatternAddition:
 		return "patterns to add " + setting.DeploymentBranchPolicy{Patterns: patterns}.PatternsString()
 	case changeplan.DeploymentPatternRemoval:
@@ -263,6 +265,7 @@ func updateOutcomeText(u github.UpdateOutcome) string {
 
 // confirmationText は、更新操作の結果に応じた期待状態の確認結果の表示を返す。
 // 成否不明のときの一致は、更新操作の成否が判明したことにならないため、その旨を添える。
+// 二つ以上の管理設定をまとめた論理的な設定変更の不一致にだけ、一致しなかった管理設定を添える (CLI 仕様の apply の結果の表示区分)。
 func confirmationText(record changeRecord) string {
 	switch record.confirmation {
 	case desiredStateMatches:
@@ -271,7 +274,10 @@ func confirmationText(record changeRecord) string {
 		}
 		return "matches"
 	case desiredStateMismatch:
-		return "does not match"
+		if len(record.change.DesiredState) == 1 {
+			return "does not match"
+		}
+		return "does not match (" + mismatchedSettingsText(record.mismatchedSettings) + ")"
 	case desiredStateUnconfirmed:
 		return "not confirmed (read failed)"
 	case desiredStateIdentityMismatch:
@@ -285,6 +291,19 @@ func confirmationText(record changeRecord) string {
 	default:
 		return "not checked"
 	}
+}
+
+// mismatchedSettingsText は、一致しなかった管理設定の名前を、並びのまま ", " でつないで返す。
+// 不一致の確認結果は期待値と異なる管理設定を必ず伴うため、空なら不変条件の破れとして panic する。
+func mismatchedSettingsText(units []setting.Unit) string {
+	if len(units) == 0 {
+		panic("apply: desired state does not match without a mismatched setting")
+	}
+	names := make([]string, len(units))
+	for i, unit := range units {
+		names[i] = unit.String()
+	}
+	return strings.Join(names, ", ")
 }
 
 // unavailableReasonText は、期待状態の確認で観測不能だったときに、宣言した設定が効いていない理由を CLI 仕様の文言で返す。
