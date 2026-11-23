@@ -15,6 +15,9 @@ const unreadWhileDisabled = "reco cannot read them while GitHub Actions is disab
 // PlannedChangeText は、変更予定を CLI 仕様の現在 -> 期待値の形で返し、適用不能の理由、再開する設定、副作用をその下に添える。
 // 末尾に改行を含む複数行になりうる。一致は空文字列を返す。
 func PlannedChangeText(s changeplan.SettingPlan) string {
+	if s.Unit.Key == setting.RulesetResource {
+		return rulesetChangeText(s)
+	}
 	var b strings.Builder
 	var current string
 	switch s.Result {
@@ -60,10 +63,12 @@ func repositoryStateText(reason github.UnavailableReason) string {
 		return "(public repository)"
 	case github.UnavailableEnvironmentAbsent:
 		return "(environment absent)"
-	case github.UnavailableEnvironmentNameUndetermined:
+	case github.UnavailableNameUndetermined:
 		return "(existence unknown)"
 	case github.UnavailablePrivateRepository:
 		return "(private repository)"
+	case github.UnavailableUninterpretedParts:
+		return "(uninterpreted parts)"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined unavailable reason %d", int(reason)))
 }
@@ -78,7 +83,10 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 		return "GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it"
 	case changeplan.NotApplicablePublicRepository:
 		return "the repository is public; remove access_level, which applies only to private repositories"
-	case changeplan.NotApplicableEnvironmentNameUndetermined:
+	case changeplan.NotApplicableNameUndetermined:
+		if key == setting.RulesetResource {
+			return "a ruleset on GitHub has a name reco cannot compare, such as one with non-ASCII characters; remove this ruleset from the configuration"
+		}
 		return "an environment on GitHub has a name reco cannot compare, such as one with non-ASCII characters; remove this environment from the configuration"
 	case changeplan.NotApplicableDependabotAlertsRemainDisabled:
 		return "Dependabot alerts is disabled; declare dependabot_alerts: true to enable it"
@@ -88,6 +96,8 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 		return "Secret scanning is disabled; declare secret_scanning: true to enable it"
 	case changeplan.NotApplicableNoMergeMethodEnabled:
 		return noMergeMethodEnabledText(s.Applicability.UnmanagedSettings())
+	case changeplan.NotApplicableUninterpretedParts:
+		return "the ruleset on GitHub contains parts that reco does not interpret; remove this ruleset from the configuration"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(s.Applicability.Reason())))
 }

@@ -77,7 +77,7 @@ Plan cannot be applied.
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-a: actions.permissions.sha_pinning_required is not applicable; no changes made"}
 ```
 
-理由は、変更計画の `Applicability:` の行の括弧の中にあります。セミコロンの前が成り立っていないこと、後ろが設定ファイルの直し方です。この例では Actions が無効のため、同じリポジトリに `enabled: true` か `allowed_actions` を書き足します。`Dependabot alerts is disabled` なら、同じリポジトリに `dependabot_alerts: true` を書き足します。`Secret scanning is disabled` なら `secret_scanning: true` を書き足し、`the repository is private` なら、そのリポジトリから、セミコロンの後ろに示されたキー（`secret_scanning` など）を消します。`the repository is public` なら `access_level` を消し、`an environment on GitHub has a name reco cannot compare` なら、設定ファイルから、`Applicability:` の行のすぐ上の変更に出た Environment の宣言を消します。`no merge method would remain enabled` なら、セミコロンの後ろに示されたキー（`allow_rebase_merge` など）のどれかを `true` と書き足します。設定ファイルを直したら、`plan` で `Plan cannot be applied.` が消えたことを確かめ、`apply` を実行し直します。
+理由は、変更計画の `Applicability:` の行の括弧の中にあります。セミコロンの前が成り立っていないこと、後ろが設定ファイルの直し方です。この例では Actions が無効のため、同じリポジトリに `enabled: true` か `allowed_actions` を書き足します。`Dependabot alerts is disabled` なら、同じリポジトリに `dependabot_alerts: true` を書き足します。`Secret scanning is disabled` なら `secret_scanning: true` を書き足し、`the repository is private` なら、そのリポジトリから、セミコロンの後ろに示されたキー（`secret_scanning` など）を消します。`the repository is public` なら `access_level` を消し、`an environment on GitHub has a name reco cannot compare` なら、設定ファイルから、`Applicability:` の行のすぐ上の変更に出た Environment の宣言を消します。`no merge method would remain enabled` なら、セミコロンの後ろに示されたキー（`allow_rebase_merge` など）のどれかを `true` と書き足します。`a ruleset on GitHub has a name reco cannot compare` か `the ruleset on GitHub contains parts that reco does not interpret` なら、設定ファイルから、`Applicability:` の行の上の `rulesets.<名前>` に出た Ruleset の宣言を消します。後者では、`Applicability:` の行の下に、reco の解釈しない部分（`rule type: "non_fast_forward"` など）が1行に一つずつ出ます。設定ファイルを直したら、`plan` で `Plan cannot be applied.` が消えたことを確かめ、`apply` を実行し直します。
 
 ## 承認できない
 
@@ -175,6 +175,7 @@ GitHub Free のアカウントが所有する非公開リポジトリでは、�
 | `request conflicts with the current state (HTTP 409)`（`create repository variable` か `create environment variable` のエラー） | 作ろうとした名前（大文字と小文字だけが違う名前を含む）の変数が、GitHub 上にすでにある。更新の直前の確認のあとに作られた可能性がある。`plan` で今の値を確かめてから、`apply` し直す |
 | `not found or not accessible (HTTP 404)`（`delete repository variable` か `delete environment variable` のエラー） | 消そうとした変数が、GitHub 上になかった可能性がある。更新の直前の確認のあとに消されたときに出る。`plan` で今の状態を確かめる。変数がなければ、その変数の行は変更計画に出ない |
 | `request not processable (HTTP 422)`（`create repository variable`、`update repository variable`、`create environment variable`、`update environment variable` のエラー） | GitHub が変数の作成か値の変更を受け付けなかった。値が上限（48,000 バイト）を超えたか、作成では変数の数が上限（リポジトリに500件、一つの Environment に100件）に達していた可能性がある。値が長すぎれば短くし、変数が多すぎれば GitHub 上の不要な変数を減らしてから `apply` し直す |
+| `is a ruleset change, which apply does not support yet` | Ruleset の作成と変更は、まだ `apply` で実行できない。何も変えていない。`plan` で差分を確かめる。ほかの設定を変えるには、その Ruleset の宣言を設定ファイルから外して `apply` する |
 | `Other settings: ... (cause not determined)` | 変えようとしていない設定が、更新の前後で変わっていた。誰かが変えたものかを確かめ、`plan` で今の値を確かめる |
 
 ## References

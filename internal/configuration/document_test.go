@@ -256,6 +256,53 @@ func TestDocumentBoolValue(t *testing.T) {
 }
 
 //trace:checks FR-001
+func TestDocumentIntValue(t *testing.T) {
+	cases := []struct {
+		name    string
+		src     string
+		node    []int
+		want    int
+		wantErr string
+	}{
+		{name: "5 is read as 5", src: "5\n", want: 5},
+		{name: "0 is read as 0", src: "0\n", want: 0},
+		{name: "explicit tag is rejected", src: "!!int 5\n", wantErr: "explicit tags are not allowed"},
+		{name: "null is rejected", src: "~\n", wantErr: "must not be null or empty"},
+		{name: "quoted number is rejected", src: "\"5\"\n", wantErr: `must be an integer; got "5"`},
+		{name: "float is rejected", src: "5.0\n", wantErr: `must be an integer; got "5.0"`},
+		{name: "hexadecimal is rejected", src: "0x5\n", wantErr: `must be an integer; got "0x5"`},
+		{name: "octal with o prefix is rejected", src: "0o5\n", wantErr: `must be an integer; got "0o5"`},
+		{name: "zero-padded number is rejected", src: "05\n", wantErr: `must be an integer; got "05"`},
+		{name: "plus sign is rejected", src: "+5\n", wantErr: `must be an integer; got "+5"`},
+		{name: "negative number is rejected", src: "-1\n", wantErr: `must be an integer; got "-1"`},
+		{name: "underscore separator is rejected", src: "1_000\n", wantErr: `must be an integer; got "1_000"`},
+		{name: "number beyond the signed 64-bit range is rejected", src: "9223372036854775808\n", wantErr: `must be an integer; got "9223372036854775808"`},
+		{name: "number beyond the unsigned 64-bit range is rejected", src: "99999999999999999999\n", wantErr: "must be an integer"},
+		{name: "boolean is rejected", src: "true\n", wantErr: `must be an integer; got "true"`},
+		{name: "sequence is rejected", src: "[1]\n", wantErr: "must be an integer"},
+		{name: "error shows path, line and column", src: "a: 5.0\n", node: []int{1}, wantErr: "v (line 1, column 4): must be an integer"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.intValue(nodeAt(doc.root, tc.node), "v")
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("intValue() error = %v, want it to contain %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("intValue() error = %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("intValue() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+//trace:checks FR-001
 func TestDocumentPermissionLevelValue(t *testing.T) {
 	cases := []struct {
 		name    string

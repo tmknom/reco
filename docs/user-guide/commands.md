@@ -73,7 +73,7 @@ repositories:
     # rulesets: unavailable (the repository is private)
 ```
 
-表示は設定ファイルと同じ構造で、それぞれの値の位置が、設定ファイルにその設定を書く位置です。表示は、設定ファイルを書く出発点に使えます。管理したい設定だけを残し、値を書き換えて使います。ただし、Ruleset はまだ設定ファイルに書けないため、Ruleset を一つでも持つリポジトリの表示は、そのままでは設定ファイルとして読めません。`rulesets` を消してから使ってください。
+表示は設定ファイルと同じ構造で、それぞれの値の位置が、設定ファイルにその設定を書く位置です。表示は、設定ファイルを書く出発点に使えます。管理したい設定だけを残し、値を書き換えて使います。ただし、`unavailable` のコメントが付いた Ruleset や、`enforcement: evaluate` のように設定ファイルに書けない値を持つ Ruleset は、そのままでは設定ファイルとして読めません。その Ruleset を `rulesets` の一覧から消してから使ってください。
 
 表示には、次の行も出ます。`#` から行末まではコメントで、設定ファイルとしては読まれません。
 
@@ -90,7 +90,7 @@ repositories:
 
 Environment の `wait_timer`、`required_reviewers`、`can_admins_bypass` のように、設定ファイルに書けない設定は表示しません。
 
-Ruleset は、まだ設定ファイルに書けませんが、ルールを迂回できる主体（`bypass_actors`）も含めて `rulesets` に表示します。Ruleset を持つ公開リポジトリの `show` は、Ruleset への書き込みのアクセスを持たないトークンではエラーになります。GitHub が、そのトークンには迂回できる主体を返さないためです。
+Ruleset は、ルールを迂回できる主体（`bypass_actors`）も含めて `rulesets` に表示します。Ruleset を持つ公開リポジトリの `show` は、Ruleset への書き込みのアクセスを持たないトークンではエラーになります。GitHub が、そのトークンには迂回できる主体を返さないためです。
 
 Repository Variables と Environment Variables は、名前と値をそのまま表示します。改行や制御文字を含む値は、`\n` のようなエスケープで1行に示し、長い値も省略しません。表示は stdout に出るため、CI で `show` を実行すると値がログに残ります。`plan` と `apply` が表示する変更計画にも、設定ファイルに書いた Repository Variables と Environment Variables のうち、GitHub 上にないものは書いた値が、値が違うものは今の値と書いた値が、`state: absent` を書いたものは消える今の値が出ます。パスワードやトークンのような秘密情報は、Variables ではなく Secrets に入れてください。
 
@@ -124,6 +124,8 @@ Repositories checked: 1
 | `environments.<名前>.deployment_branch_policy:` の下に、今の値の行と `-> <書いた値>` の行 | 今の値か書いた値が `selected` の `deployment_branch_policy`。読み方は1行の形と同じで、`selected` のパターンは `selected [branch "main"]` のように角括弧の中に並ぶ |
 | `Applicability: not applicable (<理由>)` | 安全に変えるための条件が成り立たないため、reco はすぐ上の変更をしない。括弧の中は、何が成り立っていないかと、設定ファイルの直し方 |
 | `Patterns to remove:`、`Patterns to add:` | Environment のデプロイを許可するパターンのうち、設定ファイルにないものと、GitHub 上にないもの |
+| `rulesets.<名前>: absent -> present` と、その下の `target:` から `rules:` までの行 | 設定ファイルに書いた Ruleset が GitHub 上にない。下の行は、作成する Ruleset の内容 |
+| `rulesets.<名前>:` と、その下の変わる部分の行 | Ruleset の内容が設定ファイルと違う。`... to remove:` の行は、設定ファイルにないためなくなるパターン、迂回できる主体、ルール。`... to add:` の行は加わるもの。`enforcement: disabled -> active` や `Rule pull_request: ...` の行は、値が変わる項目。`conditions: {} -> ref_name` の行は、GitHub 上の Ruleset が対象のブランチの条件を持たないことを示す |
 | `Side effect:` | この変更に伴って GitHub が消すか変える値 |
 | `Previous settings:` | Actions を有効に戻すと、設定ファイルに書いていない設定は、無効にする前の値で再開すること |
 | `Plan:` | 変える予定のリポジトリの数と、変える設定の数 |
@@ -171,6 +173,8 @@ Repositories updated: 1
 | `Apply complete.` | すべてのリポジトリが `updated` か `no change` だった |
 
 変更計画に `Plan cannot be applied.` が出たときは、承認を求めず、どのリポジトリの設定も変えずにエラーで終わります。直し方は [Troubleshooting](troubleshooting.md#plan-cannot-be-applied-と表示された) にあります。
+
+Ruleset の作成と変更は、まだ `apply` で実行できません。変更計画に `rulesets.<名前>` の変更があるときも、承認を求めず、どのリポジトリの設定も変えずにエラーで終わります。ほかの設定を変えるには、その Ruleset の宣言を設定ファイルから外します。
 
 リポジトリのすべての変更が完了すれば、結果はリポジトリの行の `updated` だけです。変更が2件以上あり、完了しなかったものがあるときは、リポジトリの行の下に変更ごとの結果が出ます。
 

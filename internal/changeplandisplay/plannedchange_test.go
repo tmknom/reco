@@ -335,7 +335,7 @@ func TestPlannedChangeText_EnvironmentVariables(t *testing.T) {
 	variable := func(observed github.SettingObservation[setting.Value], desired string, result changeplan.ReconciliationResult, applicability changeplan.Applicability) changeplan.SettingPlan {
 		return changeplan.SettingPlan{Unit: unit, Observed: observed, Desired: setting.VariableValue(desired), Result: result, Applicability: applicability}
 	}
-	undetermined := variable(github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined), "ap-northeast-1", changeplan.NotComparable, changeplan.NotApplicable(changeplan.NotApplicableEnvironmentNameUndetermined))
+	undetermined := variable(github.Unavailable[setting.Value](github.UnavailableNameUndetermined), "ap-northeast-1", changeplan.NotComparable, changeplan.NotApplicable(changeplan.NotApplicableNameUndetermined))
 	cases := []struct {
 		name string
 		s    changeplan.SettingPlan
@@ -475,16 +475,16 @@ func TestPlannedChangeText_Environments(t *testing.T) {
 		{
 			name: "environment whose existence is unknown shows the state and why it is not applicable",
 			s: changeplan.SettingPlan{
-				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined), Desired: setting.Present(), Result: changeplan.NotComparable,
-				Applicability: changeplan.NotApplicable(changeplan.NotApplicableEnvironmentNameUndetermined),
+				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableNameUndetermined), Desired: setting.Present(), Result: changeplan.NotComparable,
+				Applicability: changeplan.NotApplicable(changeplan.NotApplicableNameUndetermined),
 			},
 			want: "  environments.production: (existence unknown) -> present\n" + notApplicable,
 		},
 		{
 			name: "mode of an environment whose existence is unknown shows the same state",
 			s: changeplan.SettingPlan{
-				Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined),
-				Desired: protected, Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable(changeplan.NotApplicableEnvironmentNameUndetermined),
+				Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableNameUndetermined),
+				Desired: protected, Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable(changeplan.NotApplicableNameUndetermined),
 			},
 			want: "  environments.production.deployment_branch_policy: (existence unknown) -> protected_branches\n" + notApplicable,
 		},

@@ -19,6 +19,7 @@ Only settings you declare are managed. Omitted settings are left untouched.
 - Security: enabling or disabling Dependabot alerts and Dependabot security updates; `plan` shows that disabling Dependabot alerts also disables the dependency graph and Dependabot security updates on GitHub
 - Secret scanning: enabling or disabling Secret scanning and repository push protection on public repositories; `plan` shows that disabling Secret scanning also disables push protection on GitHub
 - Private vulnerability reporting: enabling or disabling private vulnerability reporting on public repositories
+- Rulesets (plan only): the whole of each declared branch ruleset on public repositories (enforcement, target branches, bypass actors, and the `pull_request` and `deletion` rules); `plan` shows the rules and bypass actors that would be removed, and `apply` does not create or change rulesets yet
 
 reco targets repositories owned by personal accounts on GitHub.com.
 Organization-owned repositories and GitHub Enterprise Server are not supported.

@@ -32,7 +32,7 @@ type UpdateOperation struct {
 	Kind UpdateOperationKind
 	// Unit は、この更新操作が更新要求を送る先の管理の単位。MergeMethodsUpdate では、送る管理設定の先頭である。
 	Unit setting.Unit
-	// Value は、SettingUpdate が送る設定の値と、Repository Variable と Environment Variable の作成と値の変更が送る変数の値。
+	// Value は、SettingUpdate が送る設定の値と、Repository Variable と Environment Variable の作成と値の変更が送る変数の値と、Ruleset の作成と値の変更が送る Ruleset の値。
 	Value setting.Value
 	// Mode は、EnvironmentCreationWithMode と DeploymentBranchPolicyModeUpdate が送るデプロイ元制限の方式。
 	Mode setting.DeploymentBranchPolicyMode
@@ -76,6 +76,10 @@ const (
 	EnvironmentVariableValueUpdate
 	// EnvironmentVariableDeletion は、存在する Environment Variable を消す。値を送らない。
 	EnvironmentVariableDeletion
+	// RulesetCreation は、Ruleset を名前と値で作る。
+	RulesetCreation
+	// RulesetValueUpdate は、存在する Ruleset の値を置き換える。
+	RulesetValueUpdate
 )
 
 // RelevantSetting は、変更前提で比べる関係する現在値の設定と、その承認時に予定した値。
@@ -181,6 +185,9 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 			if operation, ok := r.environmentVariableOperationOf(s); ok {
 				changes = append(changes, LogicalChange{DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}}, Operations: []UpdateOperation{operation}})
 			}
+			continue
+		case s.Unit.Key == setting.RulesetResource:
+			changes = append(changes, rulesetChangeOf(s))
 			continue
 		}
 		operation := operationOf(s)
@@ -306,7 +313,7 @@ func targetsSelectedPolicy(s SettingPlan) bool {
 // 設定の更新操作は更新エンドポイントを引き、更新要求を持たない設定なら UpdateEndpointOf が panic する。戻り値を使わないのは、引けることの検査だけを目的とするため。
 // マージ方式は一つずつ送る更新要求を持たず、まとめた更新操作でだけ送るため、一つの設定の更新操作なら承認の前に panic する。
 // まとめた更新操作が送る設定が空か、マージ方式でない設定を含む場合も同じく panic する。どちらも、承認のあと先行する変更を送ってから止まらないようにするため。
-// 関連リソース (Environment、Repository Variable、Environment Variable) の更新操作は、更新エンドポイントが名前ごとに別で、設定の識別だけでは引けないため、引かずに通す。
+// 関連リソース (Environment、Repository Variable、Environment Variable、Ruleset) の更新操作は、更新エンドポイントが名前ごとに別で、設定の識別だけでは引けないため、引かずに通す。
 // 未定義の種類は宛先が決まらないため、不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func checkUpdateEndpoint(operation UpdateOperation) {
 	switch operation.Kind {
@@ -327,7 +334,8 @@ func checkUpdateEndpoint(operation UpdateOperation) {
 	case EnvironmentCreation, EnvironmentCreationWithMode, DeploymentBranchPolicyModeUpdate,
 		DeploymentPatternAddition, DeploymentPatternRemoval,
 		RepositoryVariableCreation, RepositoryVariableValueUpdate, RepositoryVariableDeletion,
-		EnvironmentVariableCreation, EnvironmentVariableValueUpdate, EnvironmentVariableDeletion:
+		EnvironmentVariableCreation, EnvironmentVariableValueUpdate, EnvironmentVariableDeletion,
+		RulesetCreation, RulesetValueUpdate:
 		return
 	}
 	panic(fmt.Sprintf("changeplan: undefined kind %d of an update operation", int(operation.Kind)))

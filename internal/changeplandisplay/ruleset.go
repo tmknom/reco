@@ -1,0 +1,217 @@
+package changeplandisplay
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/tmknom/reco/internal/changeplan"
+	"github.com/tmknom/reco/internal/setting"
+)
+
+// changedPair は、外れる要素と加わる要素のうち、同じものとして一行にまとめる組。
+type changedPair[T any] struct {
+	from, to T
+}
+
+// rulesetChangeText は、Ruleset の変更予定を CLI 仕様の形で返す。値は1行に収まらないため、期待値の位置に present を置き、値を続く行に示す。
+// 現在が値でない (作成と比較不能) なら宣言の値の全体を、値なら値の差だけを示す。
+// 解釈しなかったものは、理由が解釈しない部分であることと一つ以上あることが一致しなければ、扱えない部分を示さずに承認を求め得るため、不変条件の破れとして panic する。
+func rulesetChangeText(s changeplan.SettingPlan) string {
+	var b strings.Builder
+	switch s.Result {
+	case changeplan.Match:
+		return ""
+	case changeplan.Mismatch:
+		observed, _ := s.Observed.Value()
+		if observed.Equal(setting.Absent()) {
+			fmt.Fprintf(&b, "  %s: absent -> present\n%s", s.Unit.String(), rulesetValueLines(s.Desired.Ruleset()))
+		} else {
+			fmt.Fprintf(&b, "  %s:\n%s", s.Unit.String(), rulesetDifferenceLines(observed.Ruleset(), s.Desired.Ruleset()))
+		}
+	case changeplan.NotComparable:
+		fmt.Fprintf(&b, "  %s: %s -> present\n%s", s.Unit.String(), repositoryStateText(s.Observed.UnavailableReason()), rulesetValueLines(s.Desired.Ruleset()))
+	}
+	if s.Applicability.IsNotApplicable() {
+		fmt.Fprintf(&b, "    Applicability: not applicable (%s)\n", notApplicableReasonText(s))
+	}
+	if (s.Applicability.Reason() == changeplan.NotApplicableUninterpretedParts) != (len(s.UninterpretedParts) > 0) {
+		panic(fmt.Sprintf("changeplandisplay: %s has %d uninterpreted parts for not-applicable reason %d", s.Unit.String(), len(s.UninterpretedParts), int(s.Applicability.Reason())))
+	}
+	for _, part := range s.UninterpretedParts {
+		fmt.Fprintf(&b, "      %s\n", part.String())
+	}
+	return b.String()
+}
+
+// rulesetValueLines は、宣言の値の全体を CLI 仕様の順で1行ずつ返す。
+// 宣言の値は必ず ref_name を持ち、ref_name のない値の表記は CLI 仕様にないため、不変条件の破れとして panic する。
+func rulesetValueLines(r setting.Ruleset) string {
+	ref := r.Conditions.RefName
+	if ref == nil {
+		panic("changeplandisplay: declared ruleset value has no ref_name")
+	}
+	return fmt.Sprintf("    target: %s\n    enforcement: %s\n    include: %s\n    exclude: %s\n    bypass_actors: %s\n    rules: %s\n",
+		r.Target, r.Enforcement, patternsText(ref.Include), patternsText(ref.Exclude), bypassActorsText(r.BypassActors), rulesText(r.Rules))
+}
+
+// rulesetDifferenceLines は、現在の値 observed を宣言の値 desired に変えるときの値の差を、CLI 仕様の行の表の順で返す。
+// 差のない不一致は示す行がなく、変更の中身を示さずに承認を求め得るため、不変条件の破れとして panic する。
+// 宣言の値は必ず ref_name を持つため、ref_name がなくなる向きの差も不変条件の破れとして panic する。
+func rulesetDifferenceLines(observed, desired setting.Ruleset) string {
+	d := observed.DifferenceTo(desired)
+	if d.Empty() {
+		panic("changeplandisplay: mismatched ruleset has no difference to show")
+	}
+	var b strings.Builder
+	if d.TargetChanged {
+		fmt.Fprintf(&b, "    target: %s -> %s\n", observed.Target, desired.Target)
+	}
+	if d.EnforcementChanged {
+		fmt.Fprintf(&b, "    enforcement: %s -> %s\n", observed.Enforcement, desired.Enforcement)
+	}
+	if d.RefNameChanged {
+		if desired.Conditions.RefName == nil {
+			panic("changeplandisplay: declared ruleset value has no ref_name")
+		}
+		b.WriteString("    conditions: {} -> ref_name\n")
+	}
+	b.WriteString(elementsLine("Include patterns to remove", d.IncludeRemoved, patternsText))
+	b.WriteString(elementsLine("Include patterns to add", d.IncludeAdded, patternsText))
+	b.WriteString(elementsLine("Exclude patterns to remove", d.ExcludeRemoved, patternsText))
+	b.WriteString(elementsLine("Exclude patterns to add", d.ExcludeAdded, patternsText))
+	actorsRemoved, actorsAdded, modeChanges := pairChanged(d.BypassActorsRemoved, d.BypassActorsAdded, setting.BypassActor.SameActor)
+	b.WriteString(elementsLine("Bypass actors to remove", actorsRemoved, bypassActorsText))
+	b.WriteString(elementsLine("Bypass actors to add", actorsAdded, bypassActorsText))
+	for _, change := range modeChanges {
+		fmt.Fprintf(&b, "    Bypass actor %s: %s -> %s\n", bypassActorIdentityText(change.to), change.from.BypassMode, change.to.BypassMode)
+	}
+	sameType := func(x, y setting.RulesetRule) bool { return x.Type() == y.Type() }
+	rulesRemoved, rulesAdded, parameterChanges := pairChanged(d.RulesRemoved, d.RulesAdded, sameType)
+	b.WriteString(elementsLine("Rules to remove", rulesRemoved, rulesText))
+	b.WriteString(elementsLine("Rules to add", rulesAdded, rulesText))
+	for _, change := range parameterChanges {
+		// 同じ型で値の違う二つのルールはパラメータを持つ型に限り、パラメータのない型の組は PullRequest の panic で検出する
+		fmt.Fprintf(&b, "    Rule %s: %s\n", change.to.Type(), pullRequestParameterChangesText(change.from.PullRequest(), change.to.PullRequest()))
+	}
+	return b.String()
+}
+
+// elementsLine は、要素が一つ以上あるときだけ、要素の一覧の行を返す。CLI 仕様は該当する要素のない行を示さない。
+func elementsLine[T any](label string, elements []T, text func([]T) string) string {
+	if len(elements) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("    %s: %s\n", label, text(elements))
+}
+
+// pairChanged は、外れる要素 removed と加わる要素 added のうち、same で同じものとする要素がどちらにもちょうど一つずつある組を、加わる要素の並びで返す。
+// 残りは外れる要素と加わる要素のまま、それぞれの並びで返す。
+// 二つ以上あるときにまとめると、どれがどれに変わるかを reco が決めて示すことになるため、まとめない。
+// 同じものの判定を same 一つに保つため map で引かずに探す。時間は外れる要素の数と加わる要素の数の積で、reco が大きさを制御しない観測値 (外れる要素) には比例するだけになる。
+func pairChanged[T any](removed, added []T, same func(T, T) bool) (restRemoved, restAdded []T, pairs []changedPair[T]) {
+	paired := make([]bool, len(removed))
+	for _, to := range added {
+		i := onlySameIndex(removed, to, same)
+		if i < 0 || onlySameIndex(added, to, same) < 0 {
+			restAdded = append(restAdded, to)
+			continue
+		}
+		paired[i] = true
+		pairs = append(pairs, changedPair[T]{from: removed[i], to: to})
+	}
+	for i, from := range removed {
+		if !paired[i] {
+			restRemoved = append(restRemoved, from)
+		}
+	}
+	return restRemoved, restAdded, pairs
+}
+
+// onlySameIndex は、elements のうち same で e と同じものがちょうど一つなら、その位置を返す。なければ、または二つ以上あれば -1 を返す。
+func onlySameIndex[T any](elements []T, e T, same func(T, T) bool) int {
+	found := -1
+	for i, other := range elements {
+		if !same(e, other) {
+			continue
+		}
+		if found >= 0 {
+			return -1
+		}
+		found = i
+	}
+	return found
+}
+
+// patternsText は、パターンの一覧を、二重引用符で囲んでエスケープした要素の並びで返す。パターンの改行や制御文字が変更計画の行を偽装しないようにするため。
+func patternsText(patterns []string) string {
+	quoted := make([]string, len(patterns))
+	for i, p := range patterns {
+		quoted[i] = strconv.Quote(p)
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
+}
+
+// bypassActorsText は、Bypass の一覧を、主体と方式の並びで返す。
+func bypassActorsText(actors []setting.BypassActor) string {
+	texts := make([]string, len(actors))
+	for i, a := range actors {
+		texts[i] = bypassActorIdentityText(a) + " " + string(a.BypassMode)
+	}
+	return "[" + strings.Join(texts, ", ") + "]"
+}
+
+// bypassActorIdentityText は、Bypass の主体を返す。DeployKey は ID を持たず、0 を ID として示さない。
+func bypassActorIdentityText(a setting.BypassActor) string {
+	if a.ActorType == setting.BypassActorDeployKey {
+		return string(a.ActorType)
+	}
+	return string(a.ActorType) + " " + strconv.FormatInt(a.ActorID, 10)
+}
+
+// rulesText は、ルールの一覧を、パラメータを含めた要素の並びで返す。
+func rulesText(rules []setting.RulesetRule) string {
+	texts := make([]string, len(rules))
+	for i, r := range rules {
+		texts[i] = ruleText(r)
+	}
+	return "[" + strings.Join(texts, ", ") + "]"
+}
+
+// ruleText は、ルール一つを返す。
+// パラメータを持つルール型を足して case を足し忘れ、パラメータを黙って省かないよう、lint の exhaustive が検出する形にし、default を置かず、定義にない型は panic する。
+func ruleText(r setting.RulesetRule) string {
+	switch r.Type() {
+	case setting.RulesetRulePullRequest:
+		p := r.PullRequest()
+		return fmt.Sprintf("%s (required_approving_review_count: %d, dismiss_stale_reviews_on_push: %t, require_code_owner_review: %t, "+
+			"require_last_push_approval: %t, required_review_thread_resolution: %t)",
+			r.Type(), p.RequiredApprovingReviewCount, p.DismissStaleReviewsOnPush, p.RequireCodeOwnerReview, p.RequireLastPushApproval, p.RequiredReviewThreadResolution)
+	case setting.RulesetRuleDeletion:
+		return string(r.Type())
+	}
+	panic(fmt.Sprintf("changeplandisplay: undefined ruleset rule type %q", r.Type()))
+}
+
+// pullRequestParameterChangesText は、pull_request のパラメータのうち変わるものだけを、パラメータの順に現在値 -> 期待値で返す。
+func pullRequestParameterChangesText(from, to setting.PullRequestParameters) string {
+	var changes []string
+	if from.RequiredApprovingReviewCount != to.RequiredApprovingReviewCount {
+		changes = append(changes, fmt.Sprintf("required_approving_review_count: %d -> %d", from.RequiredApprovingReviewCount, to.RequiredApprovingReviewCount))
+	}
+	flags := []struct {
+		name     string
+		from, to bool
+	}{
+		{"dismiss_stale_reviews_on_push", from.DismissStaleReviewsOnPush, to.DismissStaleReviewsOnPush},
+		{"require_code_owner_review", from.RequireCodeOwnerReview, to.RequireCodeOwnerReview},
+		{"require_last_push_approval", from.RequireLastPushApproval, to.RequireLastPushApproval},
+		{"required_review_thread_resolution", from.RequiredReviewThreadResolution, to.RequiredReviewThreadResolution},
+	}
+	for _, f := range flags {
+		if f.from != f.to {
+			changes = append(changes, fmt.Sprintf("%s: %t -> %t", f.name, f.from, f.to))
+		}
+	}
+	return strings.Join(changes, ", ")
+}

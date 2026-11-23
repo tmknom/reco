@@ -100,30 +100,6 @@ func writeRefNamePatterns(b *strings.Builder, key string, patterns []string) {
 func writeUninterpretedParts(b *strings.Builder, parts []github.UninterpretedPart) {
 	b.WriteString("        # unavailable (the ruleset contains parts that reco does not interpret)\n")
 	for _, part := range parts {
-		fmt.Fprintf(b, "        #   %s\n", uninterpretedPartText(part))
+		fmt.Fprintf(b, "        #   %s\n", part.String())
 	}
-}
-
-// uninterpretedPartText は解釈しなかったもの一つの行の形を返す。
-// 種類を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かず、定義にない値は panic する。
-func uninterpretedPartText(p github.UninterpretedPart) string {
-	switch p.Kind {
-	case github.UninterpretedTarget:
-		return "target: " + quote(p.Name)
-	case github.UninterpretedConditionsKey:
-		return "conditions key: " + quote(p.Name)
-	case github.UninterpretedBypassActorType:
-		return "bypass actor type: " + quote(p.Name)
-	case github.UninterpretedBypassMode:
-		return "bypass mode: " + quote(p.Name)
-	case github.UninterpretedBypassActorKey:
-		return "bypass actor key: " + quote(p.Name)
-	case github.UninterpretedRuleType:
-		return "rule type: " + quote(p.Name)
-	case github.UninterpretedRuleKey:
-		return string(p.Rule) + " key: " + quote(p.Name)
-	case github.UninterpretedRuleParameter:
-		return string(p.Rule) + " parameter: " + quote(p.Name)
-	}
-	panic(fmt.Sprintf("show: undefined uninterpreted kind %d", int(p.Kind)))
 }

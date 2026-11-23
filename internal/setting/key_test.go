@@ -48,6 +48,7 @@ func TestKeyArea(t *testing.T) {
 		{key: SecretScanningEnabled, want: AreaSecretScanning},
 		{key: RepositoryPushProtection, want: AreaSecretScanning},
 		{key: PrivateVulnerabilityReportingEnabled, want: AreaPrivateVulnerabilityReporting},
+		{key: RulesetResource, want: AreaRulesets},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.key), func(t *testing.T) {
@@ -68,6 +69,7 @@ func TestKey_HasEnvironmentName(t *testing.T) {
 		{key: EnvironmentVariable, want: true},
 		{key: RepositoryVariable, want: false},
 		{key: AllowAutoMerge, want: false},
+		{key: RulesetResource, want: false},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.key), func(t *testing.T) {

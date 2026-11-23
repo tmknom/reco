@@ -14,6 +14,7 @@ func TestUnit_String(t *testing.T) {
 		{name: "setting in an environment follows the environment path", unit: Unit{Key: EnvironmentDeploymentBranchPolicy, Environment: production}, want: "environments.production.deployment_branch_policy"},
 		{name: "repository variable follows the variables path", unit: Unit{Key: RepositoryVariable, Variable: mustVariableName(t, "GO_VERSION")}, want: "actions.variables.GO_VERSION"},
 		{name: "environment variable follows the environment path", unit: Unit{Key: EnvironmentVariable, Environment: production, Variable: mustVariableName(t, "REGION")}, want: "environments.production.variables.REGION"},
+		{name: "ruleset follows the rulesets path with the declared spelling", unit: Unit{Key: RulesetResource, Ruleset: mustRulesetName(t, "Protect main")}, want: "rulesets.Protect main"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -48,6 +49,25 @@ func TestUnit_Same(t *testing.T) {
 	}
 }
 
+func TestUnit_SameRuleset(t *testing.T) {
+	base := Unit{Key: RulesetResource, Ruleset: mustRulesetName(t, "protect")}
+	cases := []struct {
+		name  string
+		other Unit
+		want  bool
+	}{
+		{name: "ruleset name differing only in case is the same", other: Unit{Key: RulesetResource, Ruleset: mustRulesetName(t, "Protect")}, want: true},
+		{name: "different ruleset name is another unit", other: Unit{Key: RulesetResource, Ruleset: mustRulesetName(t, "release")}, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := base.Same(tc.other); got != tc.want {
+				t.Errorf("Same(%v) = %t, want %t", tc.other, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestUnit_StringPanicsOnMismatchedName(t *testing.T) {
 	cases := []struct {
 		name string
@@ -60,6 +80,8 @@ func TestUnit_StringPanicsOnMismatchedName(t *testing.T) {
 		{name: "environment variable key without an environment name", unit: Unit{Key: EnvironmentVariable, Variable: mustVariableName(t, "X")}},
 		{name: "environment variable key without a variable name", unit: Unit{Key: EnvironmentVariable, Environment: mustEnvironmentName(t, "production")}},
 		{name: "environment key with a variable name", unit: Unit{Key: EnvironmentResource, Environment: mustEnvironmentName(t, "production"), Variable: mustVariableName(t, "X")}},
+		{name: "ruleset key without a name", unit: Unit{Key: RulesetResource}},
+		{name: "repository setting with a ruleset name", unit: Unit{Key: AllowAutoMerge, Ruleset: mustRulesetName(t, "protect")}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

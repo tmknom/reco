@@ -34,7 +34,7 @@ type RepositoryPlan struct {
 // SettingPlan は、一つの管理設定についての計画。
 // Result は Observed と Desired から決まる。判定は Result で行い、Observed は値と理由の取り出しに使う。
 type SettingPlan struct {
-	// Unit は、この計画の管理の単位。Environment の名前の綴りは宣言のまま。
+	// Unit は、この計画の管理の単位。Environment と Ruleset の名前の綴りは宣言のまま。
 	Unit setting.Unit
 	// Observed は計画時の設定の観測結果。関連リソースそのものの計画では、存在の観測結果である。
 	// 観測不能のときだけ比較不能になり、その理由が比較できない理由になる。
@@ -51,6 +51,9 @@ type SettingPlan struct {
 	SettingsWithoutSideEffect []SettingWithoutSideEffect
 	// ResumedSettings は、Actions を有効にする変更予定に添える再開する設定。当たらなければ nil。
 	ResumedSettings []setting.Key
+	// UninterpretedParts は、値が解釈しない部分を含むことを理由に比較不能な計画でだけ、その解釈しなかったものを観測の並びで持つ。ほかの計画では nil。
+	// 比較できない理由に伴うもので、適用可能性の判断の産物ではないため、Applicability ではなくここに置く。
+	UninterpretedParts []github.UninterpretedPart
 }
 
 // Generate は、selection で選んだ対象の変更計画を生成する。selection が nil なら宣言された全リポジトリを選ぶ。
@@ -138,7 +141,8 @@ func (s SettingPlan) IsPlannedChange() bool {
 
 // generateRepositoryPlan は、一つの対象リポジトリを計画時に観測し、リポジトリの計画を生成する。
 func generateRepositoryPlan(ctx context.Context, client *github.Client, target configuration.RepositoryDeclaration) (RepositoryPlan, error) {
-	observed, err := client.ObserveRepositoryForEnvironments(ctx, target.Reference, managedEnvironments(target.Desired), managedAreas(target.Desired)...)
+	named := github.NamedResources{Environments: managedEnvironments(target.Desired), Rulesets: managedRulesets(target.Desired)}
+	observed, err := client.ObserveRepositoryForNamedResources(ctx, target.Reference, named, managedAreas(target.Desired)...)
 	if err != nil {
 		return RepositoryPlan{}, err
 	}

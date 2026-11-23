@@ -44,9 +44,16 @@ type General struct {
 	AllowUpdateBranch   bool
 }
 
+// NamedResources は、観測を使う側が名指した関連リソースの名前を種類ごとに持つ。関連リソースごとの読み取りを送る範囲を決める。
+type NamedResources struct {
+	Environments []setting.EnvironmentName
+	Rulesets     []setting.RulesetName
+}
+
 // Setting は、管理の単位 unit の設定の観測結果を返す。取得条件を持たない設定は、常に観測値になる。
 // o は unit の設定の領域を読み取った観測の結果に限り、読み取らなかった領域の値は補わずに nil 参照で止まる。
 // unit が Environment の中の設定か変数なら、その Environment を読む範囲に含めた観測に限り、含めなかった Environment の値は補わずに panic で止まる。
+// unit が Ruleset なら、その名前を読む範囲に含めた観測に限り、値を読まなかった Ruleset の値は補わずに panic で止まる。
 // 未知の設定は不変条件の破れとして panic する。
 // 設定を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting.Value] {
@@ -95,6 +102,8 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 		return o.Environments.Lookup(unit.Environment).Variable(unit.Variable)
 	case setting.EnvironmentResource:
 		return o.Environments.Lookup(unit.Environment).Existence()
+	case setting.RulesetResource:
+		return o.Rulesets.Lookup(unit.Ruleset).SettingObservation()
 	}
 	panic(fmt.Sprintf("unknown setting %q", unit.Key))
 }
@@ -104,17 +113,18 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 // 読み取り要求は areas の並びによらず、設計で定めた固定の順に送る。
 // Environment ごとの読み取りと Ruleset ごとの詳細の読み取りは、一覧のすべての Environment と Ruleset に送る。
 func (c *Client) ObserveRepository(ctx context.Context, reference repository.Reference, areas ...setting.Area) (ObservationResult, error) {
-	return c.observe(ctx, reference, allEnvironments(), areas)
+	return c.observe(ctx, reference, allResources(), areas)
 }
 
-// ObserveRepositoryForEnvironments は、ObserveRepository と同じく観測し、Environment ごとの読み取りを environments のどれかと同じ名前の Environment に限る。
+// ObserveRepositoryForNamedResources は、ObserveRepository と同じく観測し、関連リソースごとの読み取りを、種類ごとに named が名指したどれかと同じ名前の関連リソースに限る。
 // 範囲の外の Environment は、存在と一覧の要素の値だけを持ち、個別パターンと変数を読んでいない状態になる。
-// Ruleset ごとの詳細の読み取りは限らず、AreaRulesets を選べば一覧のすべての Ruleset に送る。
-func (c *Client) ObserveRepositoryForEnvironments(ctx context.Context, reference repository.Reference, environments []setting.EnvironmentName, areas ...setting.Area) (ObservationResult, error) {
-	return c.observe(ctx, reference, namedEnvironments(environments), areas)
+// 範囲の外の Ruleset は、存在と ID と名前だけを持ち、値を読んでいない状態になる。
+// どの種類の一覧も、範囲によらず、その設定の領域を選べば読む。
+func (c *Client) ObserveRepositoryForNamedResources(ctx context.Context, reference repository.Reference, named NamedResources, areas ...setting.Area) (ObservationResult, error) {
+	return c.observe(ctx, reference, scopeOfNamed(named), areas)
 }
 
-func (c *Client) observe(ctx context.Context, reference repository.Reference, scope environmentScope, areas []setting.Area) (ObservationResult, error) {
+func (c *Client) observe(ctx context.Context, reference repository.Reference, scope resourceScope, areas []setting.Area) (ObservationResult, error) {
 	o, attributes, err := c.observeRepository(ctx, reference)
 	if err != nil {
 		return ObservationResult{}, fmt.Errorf("fetch repository %s: %w", reference, err)
@@ -192,7 +202,7 @@ func (c *Client) observe(ctx context.Context, reference repository.Reference, sc
 		o.PrivateVulnerabilityReporting = &privateVulnerabilityReporting
 	}
 	if slices.Contains(areas, setting.AreaRulesets) {
-		rulesets, err := c.observeRulesets(ctx, reference, attributes.private)
+		rulesets, err := c.observeRulesets(ctx, reference, attributes.private, scope)
 		if err != nil {
 			return ObservationResult{}, fmt.Errorf("fetch rulesets %s: %w", reference, err)
 		}

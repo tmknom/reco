@@ -141,3 +141,23 @@ func TestRulesetRule(t *testing.T) {
 		DeletionRule().PullRequest()
 	})
 }
+
+func TestBypassActor_SameActor(t *testing.T) {
+	admin := BypassActor{ActorType: BypassActorRepositoryRole, ActorID: 5, BypassMode: BypassModeAlways}
+	cases := []struct {
+		name  string
+		other BypassActor
+		want  bool
+	}{
+		{name: "same type and ID with a different mode is the same actor", other: BypassActor{ActorType: BypassActorRepositoryRole, ActorID: 5, BypassMode: BypassModePullRequest}, want: true},
+		{name: "different ID is another actor", other: BypassActor{ActorType: BypassActorRepositoryRole, ActorID: 2, BypassMode: BypassModeAlways}, want: false},
+		{name: "different type is another actor", other: BypassActor{ActorType: BypassActorUser, ActorID: 5, BypassMode: BypassModeAlways}, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := admin.SameActor(tc.other); got != tc.want {
+				t.Errorf("SameActor(%+v) = %t, want %t", tc.other, got, tc.want)
+			}
+		})
+	}
+}

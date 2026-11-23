@@ -636,6 +636,39 @@ func TestObservationResult_SettingOfEnvironmentResource(t *testing.T) {
 	}
 }
 
+// Ruleset の名前を使わずに最初の Ruleset を引く誤りを検出するため、別の名前の Ruleset を先に置く。
+//
+//trace:checks FR-004
+func TestObservationResult_SettingOfRulesetResource(t *testing.T) {
+	observed := ObservationResult{Rulesets: &Rulesets{Existing: Observed([]Ruleset{
+		InterpretedRuleset(1, "release", setting.Ruleset{Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementDisabled}),
+		InterpretedRuleset(2, "Protect", interpretedRulesetValue()),
+	})}}
+	cases := []struct {
+		name string
+		unit setting.Unit
+		want SettingObservation[setting.Value]
+	}{
+		{
+			name: "declared name differing in ASCII case observes the value of the ruleset",
+			unit: setting.Unit{Key: setting.RulesetResource, Ruleset: mustRulesetName(t, "protect")},
+			want: Observed(setting.RulesetValue(interpretedRulesetValue())),
+		},
+		{
+			name: "unlisted name observes the ruleset as absent",
+			unit: setting.Unit{Key: setting.RulesetResource, Ruleset: mustRulesetName(t, "tags")},
+			want: Observed(setting.Absent()),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := observed.Setting(tc.unit); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Setting(%v) = %+v, want %+v", tc.unit.String(), got, tc.want)
+			}
+		})
+	}
+}
+
 func TestObservationResult_SettingOfUnknownSettingPanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {

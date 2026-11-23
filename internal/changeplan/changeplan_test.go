@@ -58,7 +58,7 @@ func TestPlan_NotApplicableError(t *testing.T) {
 			name: "not-applicable environment is named with its environment name",
 			repositories: []RepositoryPlan{{Target: zeta, Settings: []SettingPlan{{
 				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "cafe")}, Result: NotComparable,
-				Applicability: NotApplicable(NotApplicableEnvironmentNameUndetermined),
+				Applicability: NotApplicable(NotApplicableNameUndetermined),
 			}}}},
 			want: "plan cannot be applied: owner/zeta: environments.cafe is not applicable",
 		},
@@ -646,6 +646,113 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 		}
 		if !reflect.DeepEqual(got, Plan{}) {
 			t.Errorf("Generate() = %+v, want the zero plan", got)
+		}
+	})
+}
+
+const rulesetsSource = `repositories:
+  - name: owner/repo
+    general:
+      allow_auto_merge: true
+    rulesets:
+      - name: protect
+        target: branch
+        enforcement: active
+        conditions:
+          ref_name:
+            include: ["~DEFAULT_BRANCH"]
+            exclude: []
+        bypass_actors:
+          - actor_type: RepositoryRole
+            actor_id: 5
+            bypass_mode: always
+        rules:
+          - type: deletion
+`
+
+// TestGenerate_Rulesets は、入口が宣言した Ruleset の名前を観測の読む範囲に渡し、Ruleset の計画を照合と適用可能性まで生成することを確かめる。
+//
+//trace:checks FR-004 FR-005
+func TestGenerate_Rulesets(t *testing.T) {
+	file := func(src string) configuration.File {
+		return configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(src)}}, Name: "reco.yaml", Path: "./reco.yaml"}
+	}
+	type planned struct {
+		unit          string
+		result        ReconciliationResult
+		applicability Applicability
+	}
+	plansOf := func(p Plan) []planned {
+		var plans []planned
+		for _, s := range p.Repositories[0].Settings {
+			plans = append(plans, planned{s.Unit.String(), s.Result, s.Applicability})
+		}
+		return plans
+	}
+
+	t.Run("declared ruleset is read in detail only for the same name and planned with its applicability", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo": githubtest.OK(githubtest.RepositoryBody{ID: 7, AllowAutoMerge: true}.JSON()),
+			"GET /repos/owner/repo/rulesets": githubtest.OK(githubtest.RulesetsBody{
+				{ID: 2, Name: "undeclared"}, {ID: 1, Name: "Protect"},
+			}.JSON()),
+			"GET /repos/owner/repo/rulesets/1": githubtest.OK(githubtest.RulesetBody{
+				ID: 1, Name: "Protect", Target: "branch", Enforcement: "disabled", Include: []string{"~DEFAULT_BRANCH"},
+				BypassActors: []githubtest.BypassActorBody{{ActorType: "RepositoryRole", ActorID: 5, BypassMode: "always"}}, Rules: []string{githubtest.DeletionRuleBody},
+			}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+		got, err := Generate(context.Background(), client, file(rulesetsSource), nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		if want := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/rulesets", "GET /repos/owner/repo/rulesets/1"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		want := []planned{
+			{"general.allow_auto_merge", Match, Applicability{}},
+			{"rulesets.protect", Mismatch, Applicable()},
+		}
+		if got := plansOf(got); !reflect.DeepEqual(got, want) {
+			t.Errorf("plans = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("repository without declared rulesets sends no ruleset request", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo": githubtest.OK(githubtest.RepositoryBody{ID: 7}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+		const src = "repositories:\n  - name: owner/repo\n    general:\n      allow_auto_merge: true\n"
+
+		if _, err := Generate(context.Background(), client, file(src), nil); err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		if want := []string{"GET /repos/owner/repo"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+	})
+
+	t.Run("private repository sends no ruleset request and plans the other settings", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo": githubtest.OK(githubtest.RepositoryBody{ID: 7, Private: true}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+		got, err := Generate(context.Background(), client, file(rulesetsSource), nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		if want := []string{"GET /repos/owner/repo"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		want := []planned{
+			{"general.allow_auto_merge", Mismatch, Applicable()},
+			{"rulesets.protect", NotComparable, NotApplicable(NotApplicablePrivateRepository)},
+		}
+		if got := plansOf(got); !reflect.DeepEqual(got, want) {
+			t.Errorf("plans = %+v, want %+v", got, want)
 		}
 	})
 }

@@ -48,9 +48,18 @@ func TestUnavailableReasonText(t *testing.T) {
 				t.Error("unavailableReasonText() did not panic for an undetermined environment name")
 			}
 		}()
-		_ = unavailableReasonText(github.UnavailableEnvironmentNameUndetermined)
+		_ = unavailableReasonText(github.UnavailableNameUndetermined)
 	})
 
+	// 解釈しない部分を含む観測不能は Ruleset にだけ生じ、apply は Ruleset の変更予定を承認の前に拒否するため、期待状態の確認に届かない
+	t.Run("uninterpreted parts panic", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("unavailableReasonText() did not panic for uninterpreted parts")
+			}
+		}()
+		_ = unavailableReasonText(github.UnavailableUninterpretedParts)
+	})
 }
 
 //trace:checks FR-013 INV-005
@@ -700,7 +709,7 @@ func TestWriteChangeReport_Environments(t *testing.T) {
 		},
 		{
 			name:    "creation whose existence cannot be determined after the update is not confirmed",
-			records: []changeRecord{{change: creation, operations: succeeded, confirmation: desiredStateUnavailable, desiredUnavailableReason: github.UnavailableEnvironmentNameUndetermined}},
+			records: []changeRecord{{change: creation, operations: succeeded, confirmation: desiredStateUnavailable, desiredUnavailableReason: github.UnavailableNameUndetermined}},
 			want:    "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not confirmed (environment existence unknown)\n\n" + rollbackNote,
 		},
 		{
@@ -851,7 +860,7 @@ func TestWriteChangeReport_DeploymentPatterns(t *testing.T) {
 
 	t.Run("undefined kind of an update operation panics", func(t *testing.T) {
 		change := deploymentPatternsChange(t, "production", selectedEnvironment(7, "production", []setting.DeploymentPattern{main}, 10), selectedPolicy(main, release, version))
-		change.Operations[0].Kind = changeplan.EnvironmentVariableDeletion + 1
+		change.Operations[0].Kind = changeplan.RulesetValueUpdate + 1
 		defer func() {
 			if recover() == nil {
 				t.Error("updateRequestLines() did not panic")
@@ -1029,6 +1038,26 @@ func TestUpdateRequestLabel_EnvironmentVariables(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if got, want := updateRequestLabel(tc.operation, nil), "environments.production.variables.REGION"; got != want {
+				t.Errorf("updateRequestLabel() = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// TestUpdateRequestLabel_Rulesets は、Ruleset の更新操作を、Ruleset の宣言の名前で示すことを確かめる。
+//
+//trace:checks FR-013
+func TestUpdateRequestLabel_Rulesets(t *testing.T) {
+	cases := []struct {
+		name      string
+		operation changeplan.UpdateOperation
+	}{
+		{name: "creation is named by the ruleset", operation: rulesetCreationChange(t, "protect").Operations[0]},
+		{name: "value update is named by the ruleset", operation: rulesetValueUpdateChange(t, "protect").Operations[0]},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got, want := updateRequestLabel(tc.operation, nil), "rulesets.protect"; got != want {
 				t.Errorf("updateRequestLabel() = %q, want %q", got, want)
 			}
 		})

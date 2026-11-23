@@ -137,6 +137,29 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 			},
 		},
 		{
+			name: "public repository with interpretable rulesets reads back with escaped names and patterns",
+			routes: map[string]githubtest.Response{
+				"GET /repos/owner/repo":                                 githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowSquashMerge: true, Admin: true}.JSON()),
+				"GET /repos/owner/repo/actions/permissions":             githubtest.OK(`{"enabled": false}`),
+				"GET /repos/owner/repo/actions/permissions/workflow":    githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
+				"GET /repos/owner/repo/actions/variables":               githubtest.OK(githubtest.VariablesBody{}.JSON()),
+				"GET /repos/owner/repo/environments":                    githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
+				"GET /repos/owner/repo/vulnerability-alerts":            {Status: http.StatusNotFound},
+				"GET /repos/owner/repo/automated-security-fixes":        githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),
+				"GET /repos/owner/repo/private-vulnerability-reporting": githubtest.OK(githubtest.PrivateVulnerabilityReportingBody{}.JSON()),
+				"GET /repos/owner/repo/rulesets":                        githubtest.OK(githubtest.RulesetsBody{{ID: 10, Name: `protect "main" #1: x`}, {ID: 11, Name: "empty"}}.JSON()),
+				// 名前とパターンの引用符、#、: も、エスケープした値として読み戻せる。並びは GitHub が返した順のまま
+				"GET /repos/owner/repo/rulesets/10": githubtest.OK(githubtest.RulesetBody{
+					ID: 10, Name: `protect "main" #1: x`, Target: "branch", Enforcement: "active",
+					Include: []string{"~DEFAULT_BRANCH", `refs/heads/a"b #c: d`}, Exclude: []string{"refs/heads/wip/*"},
+					BypassActors: []githubtest.BypassActorBody{{ActorType: "DeployKey", BypassMode: "always"}, {ActorType: "RepositoryRole", ActorID: 5, BypassMode: "pull_request"}},
+					Rules:        []string{githubtest.DeletionRuleBody, githubtest.PullRequestRuleBody{RequiredApprovingReviewCount: 1, RequiredReviewThreadResolution: true}.JSON()},
+				}.JSON()),
+				// 空の集合の [] も、設定宣言として読める
+				"GET /repos/owner/repo/rulesets/11": githubtest.OK(githubtest.RulesetBody{ID: 11, Name: "empty", Target: "branch", Enforcement: "disabled", Include: []string{}, Exclude: []string{}}.JSON()),
+			},
+		},
+		{
 			name: "local_only policy without selected actions reads back",
 			routes: map[string]githubtest.Response{
 				"GET /repos/owner/repo":                              githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowSquashMerge: true, AllowMergeCommit: true, AllowRebaseMerge: true, Private: true, Admin: true}.JSON()),

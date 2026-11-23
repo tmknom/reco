@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -120,9 +121,15 @@ func (d document) sequenceContent(n *yaml.Node, path string) ([]*yaml.Node, erro
 }
 
 // patternsAllowedValue は、許可パターンの並びを宣言の順のまま返す。
-// 空のシーケンスは「許可パターンなし」の期待値で、省略 (nil) と区別するため、空でも nil にしない。
-// yaml.Node.Value はエスケープを解釈した後の文字列のため、重複はそのまま比べる。
 func (d document) patternsAllowedValue(n *yaml.Node, path string) ([]string, error) {
+	return d.uniquePatterns(n, path, func(*yaml.Node, string, string) error { return nil })
+}
+
+// uniquePatterns は、パターンの並びを宣言の順のまま返す。
+// 空のシーケンスは「パターンなし」の期待値で、省略 (nil) と区別するため、空でも nil にしない。
+// yaml.Node.Value はエスケープを解釈した後の文字列のため、重複はそのまま比べる。
+// 誤りは要素ごとに、文字列であること、空や前後の空白、accept が示す個別の規則、重複の順に示す。
+func (d document) uniquePatterns(n *yaml.Node, path string, accept func(item *yaml.Node, itemPath, pattern string) error) ([]string, error) {
 	items, err := d.sequenceContent(n, path)
 	if err != nil {
 		return nil, err
@@ -137,6 +144,9 @@ func (d document) patternsAllowedValue(n *yaml.Node, path string) ([]string, err
 		}
 		if s == "" || strings.TrimSpace(s) != s {
 			return nil, invalid(item, itemPath, "must not be empty or have leading or trailing whitespace; got %q", s)
+		}
+		if err := accept(item, itemPath, s); err != nil {
+			return nil, err
 		}
 		if j, ok := seen[s]; ok {
 			return nil, invalid(item, itemPath, "duplicate pattern %q; same as %s[%d]", s, path, j)
@@ -158,6 +168,31 @@ func (d document) boolValue(n *yaml.Node, path string) (bool, error) {
 		return false, invalidBool(n, path)
 	}
 	return n.Value == "true", nil
+}
+
+// intValue は、タグを明示しない引用符なしの 10 進の整数 (0、または 0 以外の数字で始まる数字の列) だけを受理する。
+// ライブラリは 0x5、05、+5、1_000 も !!int に解決するため、タグに加えて表記を比べる。
+// 引用符付きのスカラーは !!str に、小数は !!float に解決されるため、スタイルは見なくてよい。
+func (d document) intValue(n *yaml.Node, path string) (int, error) {
+	if err := d.checkNode(n, path); err != nil {
+		return 0, err
+	}
+	if n.Kind != yaml.ScalarNode {
+		return 0, invalid(n, path, "must be an integer")
+	}
+	v, err := strconv.Atoi(n.Value)
+	if n.Tag != "!!int" || !isDecimalInteger(n.Value) || err != nil {
+		return 0, invalid(n, path, "must be an integer; got %q", n.Value)
+	}
+	return v, nil
+}
+
+// isDecimalInteger は、s が 0 か、0 以外の数字で始まる数字だけの列かを返す。
+func isDecimalInteger(s string) bool {
+	if s == "0" {
+		return true
+	}
+	return s != "" && s[0] != '0' && !strings.ContainsFunc(s, func(r rune) bool { return r < '0' || r > '9' })
 }
 
 // permissionLevelValue は、文字列のうち定義された権限の値に完全一致するものだけを受理する。

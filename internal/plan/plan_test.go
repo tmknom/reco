@@ -151,6 +151,26 @@ func TestPresentPlan(t *testing.T) {
 		}
 	})
 
+	// apply がまだ実行しない Ruleset の変更予定でも、plan は変更計画を示して終える (CLI 仕様の apply のエラー終了と plan の終了コード)
+	t.Run("ruleset creation returns no error", func(t *testing.T) {
+		name, err := setting.ParseRulesetName("protect")
+		if err != nil {
+			t.Fatalf("ParseRulesetName() error = %v", err)
+		}
+		creation := changeplan.SettingPlan{
+			Unit: setting.Unit{Key: setting.RulesetResource, Ruleset: name}, Observed: github.Observed(setting.Absent()),
+			Desired: setting.RulesetValue(setting.Ruleset{
+				Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive,
+				Conditions:   setting.RulesetConditions{RefName: &setting.RefNameCondition{Include: []string{"~DEFAULT_BRANCH"}, Exclude: []string{}}},
+				BypassActors: []setting.BypassActor{}, Rules: []setting.RulesetRule{setting.DeletionRule()},
+			}),
+			Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
+		}
+		if err := presentPlan(cfg, plan(creation)); err != nil {
+			t.Errorf("presentPlan() error = %v, want nil", err)
+		}
+	})
+
 	// 遷移先が selected のポリシーの変更予定を伴わない、比較不能な選択方式の Actions 許可条件の変更予定は、
 	// 表示はできるが、論理的な設定変更を導くと対になるポリシーの変更予定がなく panic する
 	t.Run("planned change that cannot form a logical change panics", func(t *testing.T) {

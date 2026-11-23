@@ -174,6 +174,21 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			after:  stagingWith(withVariables(stagingAll, github.Variable{Name: "REGION", Value: "b"}), 10),
 			want:   nil,
 		},
+		{
+			// Ruleset の更新操作は管理の単位である Ruleset の全体を送るため、同じ観測のほかの設定が変わっても比べない
+			name:   "ruleset creation compares no setting",
+			change: rulesetCreationChange(t, "protect"),
+			before: []github.ObservationResult{general(func(*github.General) {})},
+			after:  general(func(g *github.General) { g.AllowAutoMerge = true }),
+			want:   nil,
+		},
+		{
+			name:   "ruleset value update compares no setting",
+			change: rulesetValueUpdateChange(t, "protect"),
+			before: []github.ObservationResult{general(func(*github.General) {})},
+			after:  general(func(g *github.General) { g.AllowAutoMerge = true }),
+			want:   nil,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -190,7 +205,7 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			}
 		}()
 		change := allowAutoMergeChange()
-		change.Operations[0].Kind = changeplan.EnvironmentVariableDeletion + 1
+		change.Operations[0].Kind = changeplan.RulesetValueUpdate + 1
 		unexpectedOutsideChanges(change, []github.ObservationResult{{}}, github.ObservationResult{})
 	})
 }

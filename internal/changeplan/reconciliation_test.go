@@ -298,6 +298,129 @@ func TestManagedEnvironments(t *testing.T) {
 	}
 }
 
+//trace:checks FR-004
+func TestManagedRulesets(t *testing.T) {
+	protect, release := mustRulesetName(t, "protect"), mustRulesetName(t, "release")
+	value := setting.RulesetValue(protectRuleset())
+	cases := []struct {
+		name    string
+		desired configuration.DesiredState
+		want    []setting.RulesetName
+	}{
+		{
+			name: "no ruleset declared names no ruleset even with environments",
+			desired: configuration.DesiredState{
+				General:      configuration.General{AllowAutoMerge: new(true)},
+				Environments: []configuration.EnvironmentDeclaration{{Name: mustEnvironmentName(t, "production")}},
+			},
+		},
+		{
+			name:    "declared rulesets are named in the declared order",
+			desired: configuration.DesiredState{Rulesets: []configuration.RulesetDeclaration{{Name: release, Desired: value}, {Name: protect, Desired: value}}},
+			want:    []setting.RulesetName{release, protect},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := managedRulesets(tc.desired); !slices.Equal(got, tc.want) {
+				t.Errorf("managedRulesets() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestReconcile_Rulesets は、宣言した Ruleset を同じ名前の観測と照合し、解釈しない部分を理由に比較不能な計画にだけ解釈しなかったものを持たせることを確かめる。
+//
+//trace:checks FR-005 INV-001
+func TestReconcile_Rulesets(t *testing.T) {
+	unit := rulesetUnit(t, "protect")
+	desired := setting.RulesetValue(protectRuleset())
+	evaluate := protectRuleset()
+	evaluate.Enforcement = setting.RulesetEnforcementEvaluate
+	parts := []github.UninterpretedPart{{Kind: github.UninterpretedRuleType, Name: "required_status_checks"}}
+	observed := func(rulesets ...github.Ruleset) *github.Rulesets {
+		return &github.Rulesets{Existing: github.Observed(rulesets)}
+	}
+	cases := []struct {
+		name     string
+		rulesets *github.Rulesets
+		desired  setting.Value
+		want     SettingPlan
+	}{
+		{
+			name:     "absent ruleset is a mismatch with its absence",
+			rulesets: observed(github.InterpretedRuleset(1, "release", protectRuleset())),
+			desired:  desired,
+			want:     SettingPlan{Unit: unit, Observed: github.Observed(setting.Absent()), Desired: desired, Result: Mismatch},
+		},
+		{
+			name:     "same value under a name differing only in letter case is a match",
+			rulesets: observed(github.InterpretedRuleset(1, "Protect", protectRuleset())),
+			desired:  desired,
+			want:     SettingPlan{Unit: unit, Observed: github.Observed(desired), Desired: desired, Result: Match},
+		},
+		{
+			name:     "value that the declaration cannot write is a mismatch with the observed value",
+			rulesets: observed(github.InterpretedRuleset(1, "protect", evaluate)),
+			desired:  desired,
+			want:     SettingPlan{Unit: unit, Observed: github.Observed(setting.RulesetValue(evaluate)), Desired: desired, Result: Mismatch},
+		},
+		{
+			name:     "ruleset with uninterpreted parts is not comparable and carries the parts",
+			rulesets: observed(github.UninterpretedRuleset(1, "protect", parts)),
+			desired:  desired,
+			want: SettingPlan{
+				Unit: unit, Observed: github.Unavailable[setting.Value](github.UnavailableUninterpretedParts), Desired: desired, Result: NotComparable,
+				UninterpretedParts: parts,
+			},
+		},
+		{
+			name:     "private repository is not comparable without uninterpreted parts",
+			rulesets: &github.Rulesets{Existing: github.Unavailable[[]github.Ruleset](github.UnavailablePrivateRepository)},
+			desired:  desired,
+			want:     SettingPlan{Unit: unit, Observed: github.Unavailable[setting.Value](github.UnavailablePrivateRepository), Desired: desired, Result: NotComparable},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			state := configuration.DesiredState{Rulesets: []configuration.RulesetDeclaration{{Name: unit.Ruleset, Desired: tc.desired}}}
+			got := reconcile(state, github.ObservationResult{Rulesets: tc.rulesets})
+			if want := []SettingPlan{tc.want}; !reflect.DeepEqual(got, want) {
+				t.Errorf("reconcile() = %+v, want %+v", got, want)
+			}
+		})
+	}
+}
+
+//trace:checks FR-005 INV-001
+func TestReconcile_RulesetsOrder(t *testing.T) {
+	value := setting.RulesetValue(protectRuleset())
+	desired := configuration.DesiredState{
+		Rulesets: []configuration.RulesetDeclaration{
+			{Name: mustRulesetName(t, "zeta"), Desired: value},
+			{Name: mustRulesetName(t, "alpha"), Desired: value},
+		},
+		Environments:                  []configuration.EnvironmentDeclaration{{Name: mustEnvironmentName(t, "production")}},
+		PrivateVulnerabilityReporting: configuration.PrivateVulnerabilityReporting{Enabled: new(true)},
+	}
+	observed := github.ObservationResult{
+		Environments:                  &github.Environments{Existing: []github.Environment{{Name: "production"}}},
+		PrivateVulnerabilityReporting: &github.PrivateVulnerabilityReporting{Enabled: github.Observed(true)},
+		Rulesets: &github.Rulesets{Existing: github.Observed([]github.Ruleset{
+			github.InterpretedRuleset(1, "undeclared", protectRuleset()), github.InterpretedRuleset(2, "alpha", protectRuleset()),
+		})},
+	}
+	var units []string
+	for _, s := range reconcile(desired, observed) {
+		units = append(units, s.Unit.String())
+	}
+	// YAML 設定仕様の章の並びで Security のあとに、宣言の並びで続き、宣言していない Ruleset は現れない
+	want := []string{"environments.production", "security.private_vulnerability_reporting", "rulesets.zeta", "rulesets.alpha"}
+	if !reflect.DeepEqual(units, want) {
+		t.Errorf("reconcile() units = %v, want %v", units, want)
+	}
+}
+
 //trace:checks FR-005
 func TestReconcile_RepositoryVariables(t *testing.T) {
 	cases := []struct {
@@ -444,7 +567,7 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 	matchedExistence := SettingPlan{Unit: existence, Observed: github.Observed(setting.Present()), Desired: setting.Present(), EnvironmentIdentity: ObservedEnvironmentIdentity(7), Result: Match}
 	creation := SettingPlan{Unit: existence, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch}
 	undeterminedExistence := SettingPlan{
-		Unit: existence, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined), Desired: setting.Present(), Result: NotComparable,
+		Unit: existence, Observed: github.Unavailable[setting.Value](github.UnavailableNameUndetermined), Desired: setting.Present(), Result: NotComparable,
 	}
 	cases := []struct {
 		name     string
@@ -489,7 +612,7 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 			observed: []github.Environment{existing("prodüction", all.Mode)},
 			want: []SettingPlan{
 				undeterminedExistence,
-				{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined), Desired: setting.DeploymentBranchPolicyValue(protected), Result: NotComparable},
+				{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableNameUndetermined), Desired: setting.DeploymentBranchPolicyValue(protected), Result: NotComparable},
 			},
 		},
 		{

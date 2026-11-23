@@ -1,6 +1,9 @@
 package setting
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 // Ruleset は、Ruleset の値。名前は同一性の基準で、値に含めない。
 // 値は、Ruleset の値を変える更新が置き換える範囲の全体で、その全体を解釈できた Ruleset にだけ作る。
@@ -11,6 +14,17 @@ type Ruleset struct {
 	// BypassActors と Rules は受け取った順のまま持つ。順は意味を持たないが、表示に使う。
 	BypassActors []BypassActor
 	Rules        []RulesetRule
+}
+
+// clone は、スライスと ref_name の条件を共有しない写しを返す。Value が持つ値を、作った側と読んだ側の書き換えから切り離すため。
+func (r Ruleset) clone() Ruleset {
+	if r.Conditions.RefName != nil {
+		refName := RefNameCondition{Include: slices.Clone(r.Conditions.RefName.Include), Exclude: slices.Clone(r.Conditions.RefName.Exclude)}
+		r.Conditions.RefName = &refName
+	}
+	r.BypassActors = slices.Clone(r.BypassActors)
+	r.Rules = slices.Clone(r.Rules)
+	return r
 }
 
 // RulesetTarget は、Ruleset が効く対象の種類。値は GitHub REST API の文字列で、表示にもそのまま使う。
@@ -66,6 +80,11 @@ type BypassActor struct {
 	// ActorID は、DeployKey では ID を持たないため 0 になる。
 	ActorID    int64
 	BypassMode BypassMode
+}
+
+// SameActor は、a と other が同じ主体か (actor_type と actor_id が同じか) を返す。方式は比べない。
+func (a BypassActor) SameActor(other BypassActor) bool {
+	return a.ActorType == other.ActorType && a.ActorID == other.ActorID
 }
 
 // BypassActorType は、Bypass の主体の種類。値は GitHub REST API の文字列で、表示にもそのまま使う。

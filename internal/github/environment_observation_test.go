@@ -28,7 +28,7 @@ func TestEnvironmentObservation(t *testing.T) {
 		}{
 			{observation: existing, want: Observed(setting.Present())},
 			{observation: absent, want: Observed(setting.Absent())},
-			{observation: unavailable, want: Unavailable[setting.Value](UnavailableEnvironmentNameUndetermined)},
+			{observation: unavailable, want: Unavailable[setting.Value](UnavailableNameUndetermined)},
 		}
 		for _, tc := range cases {
 			if got := tc.observation.Existence(); !reflect.DeepEqual(got, tc.want) {
@@ -67,8 +67,8 @@ func TestEnvironmentObservation(t *testing.T) {
 		if _, ok := o.Value(); ok {
 			t.Fatal("Value() ok = true, want false")
 		}
-		if got := o.UnavailableReason(); got != UnavailableEnvironmentNameUndetermined {
-			t.Errorf("UnavailableReason() = %v, want %v", got, UnavailableEnvironmentNameUndetermined)
+		if got := o.UnavailableReason(); got != UnavailableNameUndetermined {
+			t.Errorf("UnavailableReason() = %v, want %v", got, UnavailableNameUndetermined)
 		}
 	})
 
@@ -89,7 +89,7 @@ func TestEnvironmentObservation(t *testing.T) {
 	})
 
 	t.Run("unavailable environment makes its variable unavailable with the same reason", func(t *testing.T) {
-		got, want := unavailable.Variable(mustVariableName(t, "REGION")), Unavailable[setting.Value](UnavailableEnvironmentNameUndetermined)
+		got, want := unavailable.Variable(mustVariableName(t, "REGION")), Unavailable[setting.Value](UnavailableNameUndetermined)
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("Variable(REGION) = %+v, want %+v", got, want)
 		}

@@ -324,3 +324,38 @@ func createdEnvironmentVariableChange(t *testing.T, environment, name, desired s
 	}
 	return changes[1]
 }
+
+// protectRuleset は、全体を解釈できた Ruleset の値として、既定のブランチの削除を制限し、Repository の admin に常に迂回を許す値を返す。
+// 値の変更の前後は enforcement で作り分ける。
+func protectRuleset(enforcement setting.RulesetEnforcement) setting.Ruleset {
+	return setting.Ruleset{
+		Target:       setting.RulesetTargetBranch,
+		Enforcement:  enforcement,
+		Conditions:   setting.RulesetConditions{RefName: &setting.RefNameCondition{Include: []string{"~DEFAULT_BRANCH"}, Exclude: []string{}}},
+		BypassActors: []setting.BypassActor{{ActorType: setting.BypassActorRepositoryRole, ActorID: 5, BypassMode: setting.BypassModeAlways}},
+		Rules:        []setting.RulesetRule{setting.DeletionRule()},
+	}
+}
+
+// rulesetMismatch は、計画時に observed と観測した、宣言の名前 name の Ruleset を、enforcement が active の protectRuleset にする適用可能な変更予定。
+func rulesetMismatch(t *testing.T, name string, observed setting.Value) changeplan.SettingPlan {
+	t.Helper()
+	return changeplan.SettingPlan{
+		Unit: setting.Unit{Key: setting.RulesetResource, Ruleset: mustRulesetName(t, name)}, Observed: github.Observed(observed),
+		Desired: setting.RulesetValue(protectRuleset(setting.RulesetEnforcementActive)), Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
+	}
+}
+
+// rulesetCreationChange は、計画時に存在しなかった name の Ruleset を作成する論理的な設定変更。
+// 変更前提の基準を手で写さず、changeplan が導いた論理的な設定変更を使う。
+func rulesetCreationChange(t *testing.T, name string) changeplan.LogicalChange {
+	t.Helper()
+	return onlyLogicalChange(t, newRepositoryPlan(t, rulesetMismatch(t, name, setting.Absent())))
+}
+
+// rulesetValueUpdateChange は、計画時に enforcement が disabled と観測した name の Ruleset の値を、宣言の値に置き換える論理的な設定変更。
+// 変更前提の基準を手で写さず、changeplan が導いた論理的な設定変更を使う。
+func rulesetValueUpdateChange(t *testing.T, name string) changeplan.LogicalChange {
+	t.Helper()
+	return onlyLogicalChange(t, newRepositoryPlan(t, rulesetMismatch(t, name, setting.RulesetValue(protectRuleset(setting.RulesetEnforcementDisabled)))))
+}

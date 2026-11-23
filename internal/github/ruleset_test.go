@@ -59,6 +59,125 @@ func TestRuleset(t *testing.T) {
 		}()
 		UninterpretedRuleset(2, "tags", nil)
 	})
+	// 読んでいない Ruleset の値を、解釈しない部分を含む値と取り違えて偽で返さないことを確かめる
+	t.Run("value of an unread ruleset panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("Value() did not panic")
+			}
+		}()
+		_, _ = unreadRuleset(3, "protect").Value()
+	})
+	t.Run("value of the zero value panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("Value() did not panic")
+			}
+		}()
+		_, _ = Ruleset{}.Value()
+	})
+}
+
+//trace:checks FR-004 FR-005
+func TestRulesets_Lookup(t *testing.T) {
+	declared := mustRulesetName(t, "protect")
+	const undetermined = "Protéct"
+	interpreted := InterpretedRuleset(2, "Protect", interpretedRulesetValue())
+	uninterpreted := UninterpretedRuleset(2, "PROTECT", []UninterpretedPart{{Kind: UninterpretedRuleType, Name: "non_fast_forward"}})
+	observed := func(rulesets ...Ruleset) Rulesets {
+		return Rulesets{Existing: Observed(rulesets)}
+	}
+
+	cases := []struct {
+		name     string
+		rulesets Rulesets
+		want     RulesetObservation
+	}{
+		{
+			name:     "a list unavailable for a private repository is unavailable for the same reason",
+			rulesets: Rulesets{Existing: Unavailable[[]Ruleset](UnavailablePrivateRepository)},
+			want:     RulesetObservation{state: resourceUnavailable, reason: UnavailablePrivateRepository},
+		},
+		{
+			name:     "the same name with different case exists as the observed ruleset",
+			rulesets: observed(InterpretedRuleset(1, "other", interpretedRulesetValue()), interpreted),
+			want:     RulesetObservation{state: resourceExisting, ruleset: interpreted},
+		},
+		{
+			name:     "the same name with uninterpreted parts exists as the observed ruleset",
+			rulesets: observed(uninterpreted),
+			want:     RulesetObservation{state: resourceExisting, ruleset: uninterpreted},
+		},
+		{
+			name:     "an undetermined name before the same name does not hide the same name",
+			rulesets: observed(unreadRuleset(1, undetermined), interpreted),
+			want:     RulesetObservation{state: resourceExisting, ruleset: interpreted},
+		},
+		{
+			name:     "an undetermined name after the same name does not hide the same name",
+			rulesets: observed(interpreted, unreadRuleset(3, undetermined)),
+			want:     RulesetObservation{state: resourceExisting, ruleset: interpreted},
+		},
+		{
+			name:     "only an undetermined name is unavailable as the name undetermined",
+			rulesets: observed(unreadRuleset(1, undetermined)),
+			want:     RulesetObservation{state: resourceUnavailable, reason: UnavailableNameUndetermined},
+		},
+		{
+			name:     "a different name after an undetermined name is still unavailable",
+			rulesets: observed(unreadRuleset(1, undetermined), unreadRuleset(3, "release")),
+			want:     RulesetObservation{state: resourceUnavailable, reason: UnavailableNameUndetermined},
+		},
+		{
+			name:     "only different names is absent",
+			rulesets: observed(unreadRuleset(1, "release"), unreadRuleset(3, "protect-tags")),
+			want:     RulesetObservation{state: resourceAbsent},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.rulesets.Lookup(declared); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Lookup(%q) = %+v, want %+v", declared, got, tc.want)
+			}
+		})
+	}
+}
+
+// 種類ごとの行の形は CLI 仕様の解釈しなかったものの表に従う。
+//
+//trace:checks FR-004 QR-002
+func TestUninterpretedPart_String(t *testing.T) {
+	cases := []struct {
+		part UninterpretedPart
+		want string
+	}{
+		{part: UninterpretedPart{Kind: UninterpretedTarget, Name: "tag"}, want: `target: "tag"`},
+		{part: UninterpretedPart{Kind: UninterpretedConditionsKey, Name: "ref_name.extra"}, want: `conditions key: "ref_name.extra"`},
+		{part: UninterpretedPart{Kind: UninterpretedBypassActorType, Name: "Team"}, want: `bypass actor type: "Team"`},
+		{part: UninterpretedPart{Kind: UninterpretedBypassMode, Name: "never"}, want: `bypass mode: "never"`},
+		{part: UninterpretedPart{Kind: UninterpretedBypassActorKey, Name: "note"}, want: `bypass actor key: "note"`},
+		{part: UninterpretedPart{Kind: UninterpretedRuleType, Name: "tag_name_pattern"}, want: `rule type: "tag_name_pattern"`},
+		{part: UninterpretedPart{Kind: UninterpretedRuleKey, Rule: setting.RulesetRuleDeletion, Name: "extra"}, want: `deletion key: "extra"`},
+		{part: UninterpretedPart{Kind: UninterpretedRuleParameter, Rule: setting.RulesetRulePullRequest, Name: "allowed_merge_methods"}, want: `pull_request parameter: "allowed_merge_methods"`},
+		// GitHub が返した任意の名前を、行の区切りや表示の向きを変えずに一行に収める
+		{part: UninterpretedPart{Kind: UninterpretedRuleType, Name: "x\n\"y\"\u202e"}, want: `rule type: "x\n\"y\"\u202e"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.want, func(t *testing.T) {
+			if got := tc.part.String(); got != tc.want {
+				t.Errorf("String() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("an undefined kind panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("String() did not panic")
+			}
+		}()
+		_ = UninterpretedPart{Kind: UninterpretedKind(99), Name: "x"}.String()
+	})
 }
 
 //trace:checks FR-004 QR-002

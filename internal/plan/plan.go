@@ -35,7 +35,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 // presentPlan は、変更計画 p を Out に書く。
 // 適用不能な変更予定があれば、利用者がすべての理由を読めるよう変更計画を最後まで書いてから error を返す。
-// なければ、apply が承認の前に行うのと同じく論理的な設定変更を導き、plan が通った変更計画は apply でも承認の要求まで進むようにする。
+// なければ、apply が承認の前に行うのと同じく論理的な設定変更を導き、導けない変更計画を plan でも失敗にする。
 func presentPlan(cfg Config, p changeplan.Plan) error {
 	if _, err := io.WriteString(cfg.Out, changeplandisplay.Text(cfg.Configuration.Path, p)); err != nil {
 		return err

@@ -406,6 +406,34 @@ func TestRepositoryPlan_LogicalChangesOfRepositoryVariables(t *testing.T) {
 	}
 }
 
+// TestRepositoryPlan_LogicalChangesOfRulesets は、Ruleset の変更予定が、Ruleset ごとに一つの更新操作からなる別々の論理的な設定変更になり、計画の並びで実行されることを確かめる。
+//
+//trace:checks INV-002 INV-004 FR-011
+func TestRepositoryPlan_LogicalChangesOfRulesets(t *testing.T) {
+	desired := setting.RulesetValue(protectRuleset())
+	disabled := protectRuleset()
+	disabled.Enforcement = setting.RulesetEnforcementDisabled
+	mismatch := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable()}
+	creation := SettingPlan{Unit: rulesetUnit(t, "zeta"), Observed: github.Observed(setting.Absent()), Desired: desired, Result: Mismatch, Applicability: Applicable()}
+	// 値が一致した Ruleset は、変更予定がないため論理的な設定変更にならない
+	matched := SettingPlan{Unit: rulesetUnit(t, "matched"), Observed: github.Observed(desired), Desired: desired, Result: Match}
+	valueChange := SettingPlan{Unit: rulesetUnit(t, "alpha"), Observed: github.Observed(setting.RulesetValue(disabled)), Desired: desired, Result: Mismatch, Applicability: Applicable()}
+	plan := RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: []SettingPlan{mismatch, creation, matched, valueChange}}
+
+	got, err := plan.LogicalChanges()
+	if err != nil {
+		t.Fatalf("LogicalChanges() error = %v", err)
+	}
+	want := []LogicalChange{
+		{DesiredState: []DesiredSetting{{Unit: mismatch.Unit, Value: mismatch.Desired}}, Operations: []UpdateOperation{operationOf(mismatch)}},
+		rulesetChangeOf(creation),
+		rulesetChangeOf(valueChange),
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
+	}
+}
+
 // TestRepositoryPlan_LogicalChangesOfEnvironmentVariables は、Environment Variable の変更予定を、変数ごとに一つの更新操作からなる論理的な設定変更にし、
 // 計画時に存在した Environment では Environment、変数の順に、作成する Environment では変数が存在しないことだけを基準に載せることを確かめる。
 //
@@ -831,14 +859,14 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 		{
 			name: "applicable not comparable existence panics",
 			settings: []SettingPlan{{
-				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined), Desired: setting.Present(),
+				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableNameUndetermined), Desired: setting.Present(),
 				Result: NotComparable, Applicability: Applicable(),
 			}},
 		},
 		{
 			name: "applicable mode not comparable for another reason panics",
 			settings: []SettingPlan{creation, {
-				Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined),
+				Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableNameUndetermined),
 				Desired: protected, Result: NotComparable, Applicability: Applicable(),
 			}},
 		},
@@ -877,7 +905,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 	})
 
 	t.Run("not-applicable environment is rejected naming the environment", func(t *testing.T) {
-		undetermined := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Result: NotComparable, Applicability: NotApplicable(NotApplicableEnvironmentNameUndetermined)}
+		undetermined := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Result: NotComparable, Applicability: NotApplicable(NotApplicableNameUndetermined)}
 		_, err := newRepositoryPlan(undetermined).LogicalChanges()
 		if want := "owner/repo: environments.production cannot be applied"; err == nil || err.Error() != want {
 			t.Errorf("LogicalChanges() error = %v, want %q", err, want)
@@ -1147,6 +1175,8 @@ func TestCheckUpdateEndpoint(t *testing.T) {
 			name:      "environment variable creation passes without looking up an endpoint",
 			operation: UpdateOperation{Kind: EnvironmentVariableCreation, Unit: setting.Unit{Key: setting.EnvironmentVariable, Environment: production, Variable: region}, Value: setting.VariableValue("a")},
 		},
+		{name: "ruleset creation passes without looking up an endpoint", operation: UpdateOperation{Kind: RulesetCreation, Unit: rulesetUnit(t, "protect"), Value: setting.RulesetValue(protectRuleset())}},
+		{name: "ruleset value update passes without looking up an endpoint", operation: UpdateOperation{Kind: RulesetValueUpdate, Unit: rulesetUnit(t, "protect"), Value: setting.RulesetValue(protectRuleset())}},
 	}
 	for _, tc := range passing {
 		t.Run(tc.name, func(t *testing.T) {

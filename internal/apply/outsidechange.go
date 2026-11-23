@@ -22,6 +22,7 @@ type unexpectedOutsideChange struct {
 // 個別パターンの更新操作は、その更新エンドポイントで reco が観測するのが個別パターンの集合だけのため、比べない。
 // Repository Variable と Environment Variable の更新操作も、その更新エンドポイントで reco が観測するのがその変数だけのため、比べない。
 // Environment Variable の更新操作は Environment を宛先に含むが、Environment の保護設定は別の更新エンドポイントの設定である。
+// Ruleset の更新操作も、管理の単位である Ruleset の全体を送り、その更新エンドポイントに変更対象外の設定がないため、比べない。
 // 比べる範囲はアーキテクチャ設計の未管理設定を保全する更新方式と、設定ごとの設計の更新方式に従う。
 // 未定義の種類は比べる範囲が決まらないため、不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.ObservationResult, after github.ObservationResult) []unexpectedOutsideChange {
@@ -42,7 +43,8 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.O
 			continue
 		case changeplan.DeploymentPatternAddition, changeplan.DeploymentPatternRemoval,
 			changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate, changeplan.RepositoryVariableDeletion,
-			changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate, changeplan.EnvironmentVariableDeletion:
+			changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate, changeplan.EnvironmentVariableDeletion,
+			changeplan.RulesetCreation, changeplan.RulesetValueUpdate:
 			continue
 		}
 		panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))

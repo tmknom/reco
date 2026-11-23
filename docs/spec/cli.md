@@ -42,7 +42,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 ### 2.3 リポジトリ指定と対象選択
 
-`--repo` の値は、[YAML 設定仕様](configuration.md) の第10.2節で定めるリポジトリ指定です。
+`--repo` の値は、[YAML 設定仕様](configuration.md) の第11.2節で定めるリポジトリ指定です。
 
 `plan` / `apply` の `--repo` には、設定ファイルで宣言したリポジトリだけを指定できます。設定宣言全体は対象選択の有無にかかわらず検証します。
 
@@ -98,11 +98,11 @@ $ GH_TOKEN=$(gh auth token) reco plan
 
 一つのリポジトリに複数の変更予定があるときは、[YAML 設定仕様](configuration.md) の章と表の並びで表示します。設定宣言での記述順には従いません。
 
-関連リソースの変更予定も YAML 設定仕様の章の並びに従い、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。たとえば Repository Variables（7章）の変更予定は、Environments（8章）の変更予定より前に、Environments の変更予定は Security（9章）の変更予定より前に表示します。Environment Variable の変更予定は、属する Environment の存在と `deployment_branch_policy` の変更予定の直後に、`variables` に書いた順で表示し、次の Environment の変更予定はそのあとに表示します（YAML 設定仕様 8章）。
+関連リソースの変更予定も YAML 設定仕様の章の並びに従い、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。たとえば Repository Variables（7章）の変更予定は、Environments（8章）の変更予定より前に、Environments の変更予定は Security（9章）の変更予定より前に、Ruleset（10章）の変更予定は Security の変更予定のあとに表示します。Environment Variable の変更予定は、属する Environment の存在と `deployment_branch_policy` の変更予定の直後に、`variables` に書いた順で表示し、次の Environment の変更予定はそのあとに表示します（YAML 設定仕様 8章）。
 
 関連リソースの作成と削除は、確認済みの差分として示し、集計の変更予定数に数えます。存在しないと確認できたことは、比較できる事実だからです。作成と削除は、設定の値の変更と見分けられる形で示し、削除では失われる値を示します。宣言に名前のない関連リソースは、変更計画に示しません。
 
-関連リソースの作成は、現在値の位置に `absent` を置いて示します。期待値の位置には、値を持たない種類（Environment）では `present` を、値を持つ種類（Repository Variable、Environment Variable）では宣言した値を置きます。`absent` は確かめた事実であり、比較不能の印である括弧には入れません。関連リソースとその中の設定は、`<種類のキー>.<名前>` と `<種類のキー>.<名前>.<設定>` の形で示し、名前は設定宣言に書いた綴りのまま示します。GitHub が大文字小文字の違う綴りで返しても、設定ファイルの行と対応づけられるようにするためです。
+関連リソースの作成は、現在値の位置に `absent` を置いて示します。期待値の位置には、値を持たない種類（Environment）では `present` を、値を持つ種類（Repository Variable、Environment Variable）では宣言した値を置きます。値が1行に収まらない Ruleset では `present` を置き、値を続く行に示します。`absent` は確かめた事実であり、比較不能の印である括弧には入れません。関連リソースとその中の設定は、`<種類のキー>.<名前>` と `<種類のキー>.<名前>.<設定>` の形で示し、名前は設定宣言に書いた綴りのまま示します。GitHub が大文字小文字の違う綴りで返しても、設定ファイルの行と対応づけられるようにするためです。
 
 Environment では、存在しない Environment の作成と、その Environment の `deployment_branch_policy` を、別の変更予定として示し、集計でもそれぞれ数えます。作成する Environment の `deployment_branch_policy` は、属する先が存在しないため比較不能な設定予定であり、現在値の位置に `(environment absent)` を示します。`deployment_branch_policy` の値は、方式が `selected` なら個別パターンを含めて `selected [<種類> "<名前>", ...]` の形で示します。現在値は GitHub が返した順、期待値は設定宣言の順に並べ、個別パターンのない `selected` は `selected []` と示します。現在値か期待値のどちらかが `selected` の変更予定は、個別パターンを並べた値が長くなるため、設定の行の下に現在値（比較不能なら現在の状態）と、`->` に続けて期待値を1行ずつ示します。どちらも `selected` でない変更予定は1行で示します。
 
@@ -165,6 +165,58 @@ Repository: example/project-a
 Plan: 1 repository to update, 5 changes
 Repositories checked: 1
 ```
+
+Ruleset の変更予定は、`rulesets.<名前>` の形で示し、集計では Ruleset 一つを一つの変更予定として数えます。Ruleset の値は1行に収まらないため、期待値の位置に `present` を置き、値を続く行に示します。
+
+作成は、`absent -> present` の行の下に、宣言した値の全体を `target`、`enforcement`、`include`、`exclude`、`bypass_actors`、`rules` の順で1行ずつ示します。パターンは `["~DEFAULT_BRANCH", "refs/heads/main"]` のように二重引用符で囲んでエスケープし、Bypass は `<actor_type> <actor_id> <bypass_mode>`（`DeployKey` は `DeployKey <bypass_mode>`）、ルールは `deletion` か、`pull_request (<パラメータ>: <値>, ...)` の形で、どれも宣言の順に並べます。
+
+```text
+Repository: example/project-a
+  rulesets.protect-default-branch: absent -> present
+    target: branch
+    enforcement: active
+    include: ["~DEFAULT_BRANCH"]
+    exclude: []
+    bypass_actors: [RepositoryRole 5 always]
+    rules: [pull_request (required_approving_review_count: 0, dismiss_stale_reviews_on_push: false, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false), deletion]
+
+Plan: 1 repository to update, 1 change
+Repositories checked: 1
+```
+
+値の変更は、設定の行に値を置かず、変わる部分だけを続く行に示します。宣言が Ruleset の全体であり、宣言にないルールや Bypass も外すため、利用者が何が外れるかを全体を見比べずに読めるようにするためです。行は次の順に示し、該当するものがない行は示しません。
+
+| 行 | 示すもの |
+|---|---|
+| `target: <現在値> -> <期待値>` | `target` が変わる |
+| `enforcement: <現在値> -> <期待値>` | `enforcement` が変わる |
+| `conditions: {} -> ref_name` | 現在の Ruleset が対象の条件を持たない（`conditions: {}`） |
+| `Include patterns to remove:`、`Include patterns to add:` | なくなる `include` のパターン、加わるパターン |
+| `Exclude patterns to remove:`、`Exclude patterns to add:` | なくなる `exclude` のパターン、加わるパターン |
+| `Bypass actors to remove:`、`Bypass actors to add:` | なくなる Bypass、加わる Bypass |
+| `Bypass actor <actor_type> <actor_id>: <現在の方式> -> <期待する方式>` | 同じ主体の Bypass で、`bypass_mode` だけが変わる |
+| `Rules to remove:`、`Rules to add:` | なくなるルール、加わるルール |
+| `Rule pull_request: <パラメータ>: <現在値> -> <期待値>, ...` | 同じ型のルールで、パラメータだけが変わる。変わるパラメータだけを示す |
+
+なくなる要素は現在値の順、加わる要素は期待値の順に並べ、要素の表記は作成と同じです。なくなるルールはパラメータを含めて示します。集合として比べるため、順序だけの違いと、GitHub 上の重複した要素は示しません。
+
+```text
+Repository: example/project-a
+  rulesets.protect-default-branch:
+    enforcement: disabled -> active
+    Include patterns to remove: ["refs/heads/main"]
+    Include patterns to add: ["~DEFAULT_BRANCH"]
+    Bypass actors to remove: [DeployKey always]
+    Bypass actors to add: [User 583231 pull_request]
+    Bypass actor RepositoryRole 5: always -> pull_request
+    Rules to remove: [deletion]
+    Rule pull_request: required_approving_review_count: 0 -> 1, require_code_owner_review: false -> true
+
+Plan: 1 repository to update, 1 change
+Repositories checked: 1
+```
+
+比較不能な Ruleset の変更予定は、現在の状態を括弧で示し、作成と同じく宣言した値の全体を続く行に示します（表示例は後述の適用不能の例）。
 
 ```text
 $ reco plan
@@ -231,6 +283,9 @@ Repositories checked: 1
 | リポジトリが非公開（Secret scanning の有効状態、リポジトリの push protection、Private vulnerability reporting の有効状態に当たる） | `(private repository)` | この設定は非公開リポジトリでは利用できない |
 | 属する先の Environment が存在しない（Environment の中の設定と Environment Variable に当たる） | `(environment absent)` | Environment がないため、この設定や変数もない |
 | 宣言した名前と同じかどうかを判定できない名前の Environment がある（Environment、その中の設定、Environment Variable に当たる） | `(existence unknown)` | その名前の Environment が存在するかを確かめられない |
+| 宣言した名前と同じかどうかを判定できない名前の Ruleset があり、同じ名前の Ruleset はない（Ruleset に当たる） | `(existence unknown)` | その名前の Ruleset が存在するかを確かめられない |
+| リポジトリが非公開（Ruleset に当たる） | `(private repository)` | reco は非公開リポジトリの Ruleset を扱わない |
+| Ruleset の値が reco の解釈しない部分を含む（Ruleset に当たる） | `(uninterpreted parts)` | Ruleset は存在するが、reco はその値の全体を読み取れない |
 
 括弧の状態は、観測したリポジトリの状態から決まり、推測した値ではありません。GitHub が保存している値を示すものでもありません。利用者が知りたいのは承認すると何が起きるかであり、その判断には、いま効いている状態と宣言した値があれば足ります。確認済みの差分とは、現在値が括弧で示されることで区別します。
 
@@ -298,6 +353,47 @@ Plan: 1 repository to update, 1 change
 Repositories checked: 1
 
 Plan cannot be applied.
+```
+
+Ruleset の値が解釈しない部分を含むことによる適用不能では、`Applicability:` の行の下に、解釈しなかったものを6章の `show` と同じ形と並びで1行に一つずつ示します。利用者が、既存の Ruleset のどこを reco が扱えないかを、承認を求められる前に読めるようにするためです。
+
+```text
+Repository: example/project-a
+  rulesets.strict-review: (uninterpreted parts) -> present
+    target: branch
+    enforcement: active
+    include: ["~DEFAULT_BRANCH"]
+    exclude: []
+    bypass_actors: []
+    rules: [deletion]
+    Applicability: not applicable (the ruleset on GitHub contains parts that reco does not interpret; remove this ruleset from the configuration)
+      pull_request parameter: "allowed_merge_methods"
+      rule type: "non_fast_forward"
+  rulesets.legacy: (existence unknown) -> present
+    target: branch
+    enforcement: disabled
+    include: ["~ALL"]
+    exclude: []
+    bypass_actors: []
+    rules: []
+    Applicability: not applicable (a ruleset on GitHub has a name reco cannot compare, such as one with non-ASCII characters; remove this ruleset from the configuration)
+
+Plan: 1 repository to update, 2 changes
+Repositories checked: 1
+
+Plan cannot be applied.
+```
+
+```text
+Repository: example/private-project
+  rulesets.protect-default-branch: (private repository) -> present
+    target: branch
+    enforcement: active
+    include: ["~DEFAULT_BRANCH"]
+    exclude: []
+    bypass_actors: []
+    rules: [deletion]
+    Applicability: not applicable (the repository is private; remove rulesets, which reco manages only on public repositories)
 ```
 
 ```text
@@ -409,6 +505,12 @@ Plan cannot be applied.
 
 ```text
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-b: actions.permissions.sha_pinning_required is not applicable; example/project-c: actions.permissions.sha_pinning_required is not applicable; no changes made"}
+```
+
+Ruleset の変更予定（作成と値の変更）は、`apply` がまだ実行しません。適用不能な変更予定がなく、Ruleset の変更予定が一つでもあれば、変更計画を4章の `plan` と同じ形で stdout へ最後まで表示し、承認を求めず、どのリポジトリも更新せずにエラー終了します。stderr のエラーは、Ruleset の変更予定のすべてを変更計画の並びで対象と設定を挙げ、`no changes made` を添えます。`plan` は同じ変更計画を表示して終了コード `0` で終えます。Ruleset がすべて宣言と一致するリポジトリは、ほかの変更予定を通常どおり承認と更新へ進めます。
+
+```text
+{"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-a: rulesets.protect-default-branch is a ruleset change, which apply does not support yet; no changes made"}
 ```
 
 すべて変更不要の場合の表示例は次のとおりです。
@@ -783,7 +885,7 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 
 `show` は設定宣言を使用せず、指定リポジトリについて GitHub から確認できた管理設定の値と関連リソースを表示します。認証・権限・通信による観測操作の失敗は、正常な観測結果ではなくエラーとします。GitHub の設定は変更しません。
 
-表示は、YAML 設定仕様の設定宣言と同じ構造の YAML です。ルートの `repositories` に、`name` を指定したリポジトリとする要素を一つ置き、その下に `general`、`actions`（`permissions`、`workflow`、`access`、`variables`）、`environments`、`security`、`rulesets` の順で、確認できた値を設定宣言のキーで示します。`name` には、GitHub が返す名前ではなく、`--repo` に指定したリポジトリ指定を示します。観測操作の失敗の文言と同じ名前で対象を示すためです。設定宣言と同じ構造にするのは、表示から設定宣言のどこに何を書けばよいかを読み取れるようにし、表示をそのまま設定宣言の出発点にできるようにするためです。観測した値が設定宣言の入力検証を通り、Ruleset が一つもない場合（この章の末尾）、表示を変えずに設定宣言として読むと、管理範囲は表示したすべての管理設定と Environment と Repository Variable と Environment Variable になり、期待値は観測時点の値と一致します。
+表示は、YAML 設定仕様の設定宣言と同じ構造の YAML です。ルートの `repositories` に、`name` を指定したリポジトリとする要素を一つ置き、その下に `general`、`actions`（`permissions`、`workflow`、`access`、`variables`）、`environments`、`security`、`rulesets` の順で、確認できた値を設定宣言のキーで示します。`name` には、GitHub が返す名前ではなく、`--repo` に指定したリポジトリ指定を示します。観測操作の失敗の文言と同じ名前で対象を示すためです。設定宣言と同じ構造にするのは、表示から設定宣言のどこに何を書けばよいかを読み取れるようにし、表示をそのまま設定宣言の出発点にできるようにするためです。観測した値が設定宣言の入力検証を通る場合（この章の末尾）、表示を変えずに設定宣言として読むと、管理範囲は表示したすべての管理設定と Environment と Repository Variable と Environment Variable と Ruleset になり、期待値は観測時点の値と一致します。
 
 ```text
 $ reco show --repo example/project-a
@@ -817,7 +919,7 @@ repositories:
     # rulesets: none
 ```
 
-表示するのは、設定宣言に書ける管理設定と関連リソースに限ります。Environment の保護設定（`wait_timer`、`required_reviewers`、`can_admins_bypass`）のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。ただし、`rulesets` は、設定宣言のキーとしてまだ受け付けていませんが、表示します。
+表示するのは、設定宣言に書ける管理設定と関連リソースに限ります。Environment の保護設定（`wait_timer`、`required_reviewers`、`can_admins_bypass`）のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
 
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
@@ -846,14 +948,14 @@ Actions が無効のリポジトリでは、`enabled` だけを示します。
         enabled: false
 ```
 
-公開リポジトリでは、`access` とその下の行をコメントとして示します。`access` の下に設定のない空のマッピングは、設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 10.1節）。
+公開リポジトリでは、`access` とその下の行をコメントとして示します。`access` の下に設定のない空のマッピングは、設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 11.1節）。
 
 ```text
       # access:
       #   access_level: unavailable (the repository is public)
 ```
 
-関連リソースは、種類ごとに、存在するものをすべて示します。並びは GitHub が一覧で返した順で、reco は並べ替えません。名前は二重引用符で囲み、制御文字をエスケープして示します。エスケープは YAML の二重引用符のスカラーとして読める表記です。一つもないときは、種類のキーを省かず、YAML のコメントとして `none` と示します。キーを省くと、存在しないと確かめたことと、reco がその種類を表示しないことを区別できないためです。コメントにするのは、空のシーケンスを設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 10.1節）。
+関連リソースは、種類ごとに、存在するものをすべて示します。並びは GitHub が一覧で返した順で、reco は並べ替えません。名前は二重引用符で囲み、制御文字をエスケープして示します。エスケープは YAML の二重引用符のスカラーとして読める表記です。一つもないときは、種類のキーを省かず、YAML のコメントとして `none` と示します。キーを省くと、存在しないと確かめたことと、reco がその種類を表示しないことを区別できないためです。コメントにするのは、空のシーケンスを設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 11.1節）。
 
 Repository Variables は `actions` の `variables` に示します。変数ごとに、`name` と `value` を示します。どちらも Environment の名前と同じく二重引用符で囲んでエスケープし、1行で示します。改行や制御文字を含む値も1行になります。値は省略せず、長い値もそのまま示します。省略した値を設定宣言として読むと、省略した値への変更を宣言することになるためです。値が空文字列の変数は、存在する変数として `value: ""` と示します。
 
@@ -983,7 +1085,7 @@ Ruleset が一つもないときは `# rulesets: none` と示します。非公�
 
 GitHub は、Ruleset への書き込みのアクセスを持たない利用者には Bypass を返しません（[GitHub Rules API 仕様](../research/rules.md) 3.2）。この場合は、下に述べる権限の不足による欠落として、`bypass_actors` を示してエラーとします。
 
-表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通り、Ruleset が一つもない場合に限ります。Ruleset が一つでもあるリポジトリの表示は、`rulesets` が未定義のキーとして拒否されます。`organization` の `access_level`、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable や Environment Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 10章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
+表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。解釈しない部分を含む Ruleset（`name` だけが値として残り、必須のキーの欠落になる）、`enforcement: evaluate` や `conditions: {}` の Ruleset、`2`・`4`・`5` 以外の `RepositoryRole` の Bypass、GitHub が重複して返した Ruleset のパターンや Bypass の主体、ASCII 以外の文字を含む Ruleset の名前、`organization` の `access_level`、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable や Environment Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 11章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
 
 権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。行を省かず、欠けた項目を示してエラーとします。
 
@@ -1013,7 +1115,7 @@ GitHub は、Ruleset への書き込みのアクセスを持たない利用者�
 | `apply`：変更完了、または変更不要 | `0` |
 | `show`：観測成功（観測不能な値を含み得る） | `0` |
 | `plan`：適用不能な変更・観測操作の失敗 | `1` |
-| `apply`：適用不能な変更・承認拒否・承認不能・変更失敗・更新操作の成否不明・変更前提の不成立 | `1` |
+| `apply`：適用不能な変更・まだ実行しない変更（Ruleset の変更予定）・承認拒否・承認不能・変更失敗・更新操作の成否不明・変更前提の不成立 | `1` |
 | 入力不正、認証・権限・API 通信の失敗、対象の不一致や確認不能 | `1` |
 | GitHub API の HTTP リダイレクト応答（読み取り・更新） | `1` |
 | 更新成功応答後の再観測失敗・期待状態との不一致・変更対象外の設定の予期しない変化 | `1` |
