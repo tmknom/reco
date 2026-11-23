@@ -25,6 +25,8 @@ OPERATIONS='{
   "/repos/{owner}/{repo}/environments/{environment_name}/variables": ["get", "post"],
   "/repos/{owner}/{repo}/environments/{environment_name}/variables/{name}": ["get", "patch", "delete"],
   "/repos/{owner}/{repo}/private-vulnerability-reporting": ["get", "put", "delete"],
+  "/repos/{owner}/{repo}/rulesets": ["get", "post"],
+  "/repos/{owner}/{repo}/rulesets/{ruleset_id}": ["get", "put"],
   "/repos/{owner}/{repo}/vulnerability-alerts": ["get", "put", "delete"]
 }'
 

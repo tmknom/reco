@@ -38,3 +38,4 @@ GitHub は REST API の OpenAPI 3.0 記述を [github/rest-api-description](http
 | [GitHub Actions 変数 API 仕様](actions-variables.md) | Repository Variables と Environment Variables の一覧・取得・作成・更新・削除、名前と値の規則、利用できるリポジトリ |
 | [GitHub デプロイ環境 API 仕様](deployment-environments.md) | Environment の一覧・取得・作成と更新、名前の扱い、利用できる料金プラン |
 | [GitHub デプロイ元パターン API 仕様](deployment-branch-policies.md) | Environment のデプロイ元パターンの一覧・取得・作成・削除 |
+| [GitHub Rules API 仕様](rules.md) | リポジトリの Ruleset の一覧・取得・作成・更新、名前と ID、対象の条件、Bypass、ルール（`pull_request`、`deletion`）、利用できるリポジトリ |
