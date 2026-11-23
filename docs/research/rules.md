@@ -47,6 +47,7 @@ Ruleset は、GitHub が付ける整数の `id` と、作成で必須の `name` 
 >
 > - 同じ名前：すでにある名前で作成すると `422` を返し、本文の `errors` は `["Name must be unique"]` だった。Ruleset は作られなかった
 > - 大文字小文字：大文字小文字だけが違う名前（`reco-check-001-a` に対する `RECO-CHECK-001-A`、`reco-check-001-ÄÖ` に対する `reco-check-001-äö`）の作成も、同じ `422` だった。ほかの Ruleset と大文字小文字だけが違う名前への名前の変更も `422` だった。自分自身の名前の大文字小文字を変える名前の変更は `200` で反映された
+> - `target` の違い：`target` が `branch` の Ruleset と同じ名前と、大文字だけが違う名前で、`target` が `tag` の Ruleset を作ると、どちらも同じ `422` を返した
 > - 前後の空白：先頭か末尾に半角空白を付けた名前は、空白を除いた名前で作られた。空白を除くとすでにある名前と同じになる名前の作成は `422`（`Name must be unique`）だった。途中の連続した半角空白は、送ったとおりに保存された
 > - 空の名前：`422` を返し、`errors` は `["Name cannot be empty"]` だった
 > - `id`：作成の応答の `id` は、直後の取得、一覧と一致した。`enforcement` だけの更新と、名前の変更の前後で、`id` は変わらなかった。Ruleset を削除して同じ名前で作り直すと、別の `id` になり、元の `id` の取得は `404` を返した
@@ -157,6 +158,7 @@ Ruleset は、GitHub が付ける整数の `id` と、作成で必須の `name` 
 > - `evaluate`：個人アカウント所有のリポジトリで `enforcement: evaluate` を送ると `422` を返し、`errors` は `["Enforcement evaluate option is not supported on this plan. Please upgrade to Enterprise to enable it."]` だった
 > - 同じ種類のルール：`deletion` を二つ送ると `200` を返し、一つにまとめて保存した。`pull_request` を二つ送ると `422` を返し、`errors` は `["Invalid rule 'pull_request': "]` だった
 > - 未知のルールの種類：`type: no_such_rule` のルールは `422` を返し、`message` は `Invalid request.\n\nInvalid property /rules/0: data matches no possible input. See \`documentation_url\`.` だった
+> - リポジトリのほかの設定：`pull_request` の `allowed_merge_methods` を `["squash"]` にする更新と、`enforcement` を `active` にして `deletion` だけを送る更新の前後で、`GET /repos/{owner}/{repo}` のマージ方式（`allow_squash_merge`、`allow_merge_commit`、`allow_rebase_merge`）、`allow_auto_merge`、`delete_branch_on_merge`、`allow_update_branch`、マージメッセージの4つのフィールドと、デフォルトブランチの Branch protection の取得の本文は変わらなかった
 > - `target` の変更：`target` を `branch` から `tag`（`conditions` を `refs/tags/` の名前に変えて）へ、`tag` から `branch` へ変える更新は、どちらも `200` で反映され、`id` は変わらなかった。`refs/heads/` の名前の `conditions` のまま `tag` に変える更新と、`deletion` と `pull_request` を持つまま `push` に変える更新は `422` だった
 
 | Relationship | Target | Target Type |
