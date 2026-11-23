@@ -132,6 +132,47 @@ type VariableBody struct {
 	Value string
 }
 
+// RulesetsBody は、Ruleset の一覧の応答本文である。GitHub と同じく total_count を持たない配列で返す。
+type RulesetsBody []RulesetSummaryBody
+
+// RulesetSummaryBody は、Ruleset の一覧の要素のうち、reco が読む項目である。
+type RulesetSummaryBody struct {
+	ID   int64
+	Name string
+}
+
+// RulesetBody は、Ruleset の取得の応答本文である。conditions は ref_name に Include と Exclude を持つ形で返す。
+// Rules はルールの要素の JSON で、型ごとに形が違い、解釈しない部分を持つ要素もテストに使うため、各テストが書く。
+type RulesetBody struct {
+	ID           int64
+	Name         string
+	Target       string
+	Enforcement  string
+	Include      []string
+	Exclude      []string
+	BypassActors []BypassActorBody
+	Rules        []string
+}
+
+// BypassActorBody は、Ruleset の Bypass の要素である。ActorType が DeployKey の要素は、GitHub と同じく actor_id を null で返す。
+type BypassActorBody struct {
+	ActorType  string
+	ActorID    int64
+	BypassMode string
+}
+
+// PullRequestRuleBody は、pull_request のルールの要素である。GitHub と同じく、任意の3項目を既定値で返す。
+type PullRequestRuleBody struct {
+	RequiredApprovingReviewCount   int
+	DismissStaleReviewsOnPush      bool
+	RequireCodeOwnerReview         bool
+	RequireLastPushApproval        bool
+	RequiredReviewThreadResolution bool
+}
+
+// DeletionRuleBody は、deletion のルールの要素である。
+const DeletionRuleBody = `{"type": "deletion"}`
+
 // JSON は応答本文を返す。
 func (b RepositoryBody) JSON() string {
 	securityAndAnalysis := ""
@@ -239,6 +280,51 @@ func (b VariablesBody) JSON() string {
 // JSON は変数の1件の応答本文を返す。
 func (b VariableBody) JSON() string {
 	return fmt.Sprintf(`{"name": %s, "value": %s}`, jsonString(b.Name), jsonString(b.Value))
+}
+
+// JSON は応答本文を返す。
+func (b RulesetsBody) JSON() string {
+	rulesets := make([]string, len(b))
+	for i, r := range b {
+		rulesets[i] = fmt.Sprintf(`{"id": %d, "name": %s}`, r.ID, jsonString(r.Name))
+	}
+	return "[" + strings.Join(rulesets, ", ") + "]"
+}
+
+// JSON は応答本文を返す。
+func (b RulesetBody) JSON() string {
+	actors := make([]string, len(b.BypassActors))
+	for i, a := range b.BypassActors {
+		actors[i] = a.JSON()
+	}
+	return fmt.Sprintf(`{"id": %d, "name": %s, "target": %q, "enforcement": %q, "conditions": {"ref_name": {"include": %s, "exclude": %s}}, "bypass_actors": [%s], "rules": [%s]}`,
+		b.ID, jsonString(b.Name), b.Target, b.Enforcement, jsonStrings(b.Include), jsonStrings(b.Exclude), strings.Join(actors, ", "), strings.Join(b.Rules, ", "))
+}
+
+// JSON は Bypass の要素を返す。
+func (b BypassActorBody) JSON() string {
+	id := "null"
+	if b.ActorType != "DeployKey" {
+		id = fmt.Sprint(b.ActorID)
+	}
+	return fmt.Sprintf(`{"actor_type": %q, "actor_id": %s, "bypass_mode": %q}`, b.ActorType, id, b.BypassMode)
+}
+
+// JSON はルールの要素を返す。
+func (b PullRequestRuleBody) JSON() string {
+	return fmt.Sprintf(`{"type": "pull_request", "parameters": {"required_approving_review_count": %d, "dismiss_stale_reviews_on_push": %t, `+
+		`"require_code_owner_review": %t, "require_last_push_approval": %t, "required_review_thread_resolution": %t, `+
+		`"allowed_merge_methods": ["merge", "squash", "rebase"], "require_extra_approval_for_unattributed_changes": true, "required_reviewers": []}}`,
+		b.RequiredApprovingReviewCount, b.DismissStaleReviewsOnPush, b.RequireCodeOwnerReview, b.RequireLastPushApproval, b.RequiredReviewThreadResolution)
+}
+
+// jsonStrings は ss を JSON の文字列の配列として返す。nil も空の配列にする。
+func jsonStrings(ss []string) string {
+	quoted := make([]string, len(ss))
+	for i, s := range ss {
+		quoted[i] = jsonString(s)
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
 }
 
 // jsonString は s を JSON の文字列として返す。

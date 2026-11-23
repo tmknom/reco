@@ -70,9 +70,10 @@ repositories:
       # secret_scanning: unavailable (the repository is private)
       # secret_scanning_push_protection: unavailable (the repository is private)
       # private_vulnerability_reporting: unavailable (the repository is private)
+    # rulesets: unavailable (the repository is private)
 ```
 
-表示は設定ファイルと同じ構造で、それぞれの値の位置が、設定ファイルにその設定を書く位置です。表示は、設定ファイルを書く出発点に使えます。管理したい設定だけを残し、値を書き換えて使います。
+表示は設定ファイルと同じ構造で、それぞれの値の位置が、設定ファイルにその設定を書く位置です。表示は、設定ファイルを書く出発点に使えます。管理したい設定だけを残し、値を書き換えて使います。ただし、Ruleset はまだ設定ファイルに書けないため、Ruleset を一つでも持つリポジトリの表示は、そのままでは設定ファイルとして読めません。`rulesets` を消してから使ってください。
 
 表示には、次の行も出ます。`#` から行末まではコメントで、設定ファイルとしては読まれません。
 
@@ -83,8 +84,13 @@ repositories:
 | `# access:` と `#   access_level: unavailable (the repository is public)` | 公開リポジトリのため、`access_level` を読み取れない。この設定は非公開リポジトリにだけ書ける |
 | `dependabot_security_updates: true # paused by GitHub (still enabled)` | Dependabot security updates は有効だが、GitHub が一時停止している。設定ファイルでは `true` と書いたのと同じ |
 | `# secret_scanning: unavailable (the repository is private)` / `# secret_scanning_push_protection: unavailable (the repository is private)` / `# private_vulnerability_reporting: unavailable (the repository is private)` | 非公開リポジトリのため、Secret scanning、リポジトリの push protection、Private vulnerability reporting の値を読み取れない |
+| `# rulesets: none` | Ruleset が一つもない |
+| `# rulesets: unavailable (the repository is private)` | 非公開リポジトリのため、Ruleset を読み取れない |
+| `# unavailable (the ruleset contains parts that reco does not interpret)` | 直前の `- name:` の行の Ruleset が、reco の解釈しない部分（ルール型、キー、パラメータなど）を含む。続くコメントの行が、解釈しなかったものを1行に一つずつ示す |
 
 Environment の `wait_timer`、`required_reviewers`、`can_admins_bypass` のように、設定ファイルに書けない設定は表示しません。
+
+Ruleset は、まだ設定ファイルに書けませんが、ルールを迂回できる主体（`bypass_actors`）も含めて `rulesets` に表示します。Ruleset を持つ公開リポジトリの `show` は、Ruleset への書き込みのアクセスを持たないトークンではエラーになります。GitHub が、そのトークンには迂回できる主体を返さないためです。
 
 Repository Variables と Environment Variables は、名前と値をそのまま表示します。改行や制御文字を含む値は、`\n` のようなエスケープで1行に示し、長い値も省略しません。表示は stdout に出るため、CI で `show` を実行すると値がログに残ります。`plan` と `apply` が表示する変更計画にも、設定ファイルに書いた Repository Variables と Environment Variables のうち、GitHub 上にないものは書いた値が、値が違うものは今の値と書いた値が、`state: absent` を書いたものは消える今の値が出ます。パスワードやトークンのような秘密情報は、Variables ではなく Secrets に入れてください。
 

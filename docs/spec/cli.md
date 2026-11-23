@@ -783,7 +783,7 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 
 `show` は設定宣言を使用せず、指定リポジトリについて GitHub から確認できた管理設定の値と関連リソースを表示します。認証・権限・通信による観測操作の失敗は、正常な観測結果ではなくエラーとします。GitHub の設定は変更しません。
 
-表示は、YAML 設定仕様の設定宣言と同じ構造の YAML です。ルートの `repositories` に、`name` を指定したリポジトリとする要素を一つ置き、その下に `general`、`actions`（`permissions`、`workflow`、`access`、`variables`）、`environments`、`security` の順で、確認できた値を設定宣言のキーで示します。`name` には、GitHub が返す名前ではなく、`--repo` に指定したリポジトリ指定を示します。観測操作の失敗の文言と同じ名前で対象を示すためです。設定宣言と同じ構造にするのは、表示から設定宣言のどこに何を書けばよいかを読み取れるようにし、表示をそのまま設定宣言の出発点にできるようにするためです。観測した値が設定宣言の入力検証を通る場合（この章の末尾）、表示を変えずに設定宣言として読むと、管理範囲は表示したすべての管理設定と Environment と Repository Variable と Environment Variable になり、期待値は観測時点の値と一致します。
+表示は、YAML 設定仕様の設定宣言と同じ構造の YAML です。ルートの `repositories` に、`name` を指定したリポジトリとする要素を一つ置き、その下に `general`、`actions`（`permissions`、`workflow`、`access`、`variables`）、`environments`、`security`、`rulesets` の順で、確認できた値を設定宣言のキーで示します。`name` には、GitHub が返す名前ではなく、`--repo` に指定したリポジトリ指定を示します。観測操作の失敗の文言と同じ名前で対象を示すためです。設定宣言と同じ構造にするのは、表示から設定宣言のどこに何を書けばよいかを読み取れるようにし、表示をそのまま設定宣言の出発点にできるようにするためです。観測した値が設定宣言の入力検証を通り、Ruleset が一つもない場合（この章の末尾）、表示を変えずに設定宣言として読むと、管理範囲は表示したすべての管理設定と Environment と Repository Variable と Environment Variable になり、期待値は観測時点の値と一致します。
 
 ```text
 $ reco show --repo example/project-a
@@ -814,14 +814,15 @@ repositories:
       secret_scanning: true
       secret_scanning_push_protection: true
       private_vulnerability_reporting: false
+    # rulesets: none
 ```
 
-表示するのは、設定宣言に書ける管理設定と関連リソースに限ります。Environment の保護設定（`wait_timer`、`required_reviewers`、`can_admins_bypass`）のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
+表示するのは、設定宣言に書ける管理設定と関連リソースに限ります。Environment の保護設定（`wait_timer`、`required_reviewers`、`can_admins_bypass`）のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。ただし、`rulesets` は、設定宣言のキーとしてまだ受け付けていませんが、表示します。
 
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
 - **ほかの行から分かる**：行ごと示さない。上位の設定によってその設定が効いていない状態（Actions が無効、Actions 許可ポリシーが `selected` でない）がこれに当たり、その状態は上位の設定の行で示されるためである
-- **ほかの行から分からない**：行を省かず、YAML のコメントとして、値の位置に `unavailable (<理由>)` と示す。行を省くと、確認できなかった設定と reco が表示しない設定を区別できないためである。コメントにするのは、確認できなかった値を期待値として読ませないためである。公開リポジトリの `access_level` と、非公開リポジトリの Secret scanning の有効状態、リポジトリの push protection、Private vulnerability reporting の有効状態がこれに当たる
+- **ほかの行から分からない**：行を省かず、YAML のコメントとして、値の位置に `unavailable (<理由>)` と示す。行を省くと、確認できなかった設定と reco が表示しない設定を区別できないためである。コメントにするのは、確認できなかった値を期待値として読ませないためである。公開リポジトリの `access_level` と、非公開リポジトリの Secret scanning の有効状態、リポジトリの push protection、Private vulnerability reporting の有効状態、Rulesets がこれに当たる
 
 `allowed_actions` が `selected` のときは、`selected_actions` の3項目を `sha_pinning_required` の前に示します。`patterns_allowed` は、パターンを関連リソースの名前と同じく二重引用符で囲んでエスケープし、GitHub が返した順に1行に一つずつ並べます。空の集合は `[]` と示します。
 
@@ -919,7 +920,70 @@ Secret scanning の有効状態を `secret_scanning` に、リポジトリの pu
       # private_vulnerability_reporting: unavailable (the repository is private)
 ```
 
-表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。`organization` の `access_level`、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable や Environment Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 10章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
+Ruleset は `rulesets` に示します。リポジトリに属する Ruleset をすべて示し、リポジトリより上位（Organization など）で構成された Ruleset は示しません。Ruleset ごとに、`name`、`target`、`enforcement`、`conditions`、`bypass_actors`、`rules` を示し、GitHub が付ける ID は示しません。`name` と、`include`・`exclude` のパターンは、Environment の名前と同じく二重引用符で囲んでエスケープして示します。`include`、`exclude`、`bypass_actors`、`rules` は GitHub が返した順に並べ、空の集合は `[]` と示します。
+
+```text
+    rulesets:
+      - name: "protect-default-branch"
+        target: branch
+        enforcement: active
+        conditions:
+          ref_name:
+            include:
+              - "~DEFAULT_BRANCH"
+            exclude: []
+        bypass_actors:
+          - actor_type: RepositoryRole
+            actor_id: 5
+            bypass_mode: always
+          - actor_type: DeployKey
+            bypass_mode: always
+        rules:
+          - type: pull_request
+            parameters:
+              required_approving_review_count: 1
+              dismiss_stale_reviews_on_push: false
+              require_code_owner_review: false
+              require_last_push_approval: false
+              required_review_thread_resolution: false
+          - type: deletion
+```
+
+`actor_type` が `DeployKey` の Bypass は `actor_id` を持たないため、その行を示しません。`ref_name` を持たない Ruleset は `conditions: {}` と示します。`pull_request` のパラメータは、上の5項目だけを示します。
+
+Ruleset が reco の解釈しない部分を含むときは、`name` だけを示し、続く行を YAML のコメントにして、`unavailable (the ruleset contains parts that reco does not interpret)` と、解釈しなかったものを1行に一つずつ示します。解釈できた部分だけを値として示すことはしません。一部だけを設定宣言に書き写すと、書かなかった部分を外す宣言になるためです。解釈しなかったものの名前は GitHub が返した文字列で、二重引用符で囲んでエスケープして示します。どの部分を解釈するかは [Rulesets の設計](../design/settings/rulesets.md) の観測が定めます。
+
+```text
+      - name: "release-tags"
+        # unavailable (the ruleset contains parts that reco does not interpret)
+        #   target: "tag"
+        #   rule type: "tag_name_pattern"
+      - name: "strict-review"
+        # unavailable (the ruleset contains parts that reco does not interpret)
+        #   pull_request parameter: "allowed_merge_methods"
+        #   rule type: "required_status_checks"
+```
+
+| 行の形 | 解釈しなかったもの |
+|---|---|
+| `target: "<値>"` | `branch` 以外の `target` |
+| `conditions key: "<キー>"` | `conditions` か `ref_name` の、reco が読まないキー（`ref_name` の中のキーは `ref_name.<キー>`） |
+| `bypass actor type: "<値>"` | reco が扱わない `actor_type` |
+| `bypass mode: "<値>"` | reco が扱わない `bypass_mode` |
+| `bypass actor key: "<キー>"` | Bypass の要素の、reco が読まないキー |
+| `rule type: "<値>"` | reco が扱わないルール型 |
+| `<ルール型> key: "<キー>"` | reco が扱うルール型の要素の、reco が読まないキー |
+| `<ルール型> parameter: "<名前>"` | reco が扱うルール型の、既定値と異なるか reco が読まないパラメータ |
+
+Ruleset が一つもないときは `# rulesets: none` と示します。非公開リポジトリでは、Ruleset を読み取らず、次のとおり示します。
+
+```text
+    # rulesets: unavailable (the repository is private)
+```
+
+GitHub は、Ruleset への書き込みのアクセスを持たない利用者には Bypass を返しません（[GitHub Rules API 仕様](../research/rules.md) 3.2）。この場合は、下に述べる権限の不足による欠落として、`bypass_actors` を示してエラーとします。
+
+表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通り、Ruleset が一つもない場合に限ります。Ruleset が一つでもあるリポジトリの表示は、`rulesets` が未定義のキーとして拒否されます。`organization` の `access_level`、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable や Environment Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 10章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
 
 権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。行を省かず、欠けた項目を示してエラーとします。
 
@@ -928,6 +992,7 @@ Secret scanning の有効状態を `secret_scanning` に、リポジトリの pu
 | `alignment` | `FR-004` | Functional Requirement |
 | `alignment` | `QR-002` | Quality Requirement |
 | `grounding` | [GitHub Actions 変数 API 仕様](../research/actions-variables.md) | Repository File |
+| `grounding` | [GitHub Rules API 仕様](../research/rules.md) | Repository File |
 
 ## 7. 出力と終了コード
 
@@ -946,7 +1011,7 @@ Secret scanning の有効状態を `secret_scanning` に、リポジトリの pu
 | 使い方・バージョンの表示 (`--help`、`--version`、コマンドを伴わない `reco`) | `0` |
 | `plan`：変更不要、または適用可能な変更予定（比較不能な設定予定を含む） | `0` |
 | `apply`：変更完了、または変更不要 | `0` |
-| `show`：観測成功（取得条件による観測不能な値を含み得る） | `0` |
+| `show`：観測成功（観測不能な値を含み得る） | `0` |
 | `plan`：適用不能な変更・観測操作の失敗 | `1` |
 | `apply`：適用不能な変更・承認拒否・承認不能・変更失敗・更新操作の成否不明・変更前提の不成立 | `1` |
 | 入力不正、認証・権限・API 通信の失敗、対象の不一致や確認不能 | `1` |
@@ -997,3 +1062,4 @@ GitHub は、名前変更前の名前で指定したリポジトリへの要求�
 - [GitHub REST API 共通仕様](../research/rest-api.md)
 - [GitHub リポジトリ API 仕様](../research/repositories.md)
 - [GitHub Actions 変数 API 仕様](../research/actions-variables.md)
+- [GitHub Rules API 仕様](../research/rules.md)

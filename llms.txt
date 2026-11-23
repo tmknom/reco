@@ -35,6 +35,7 @@ Find the sections that match the task below, then pick documents within them by 
 - [Actions Design](docs/design/settings/actions.md): Actions permissions, allowed and selected actions, `sha_pinning_required`, workflow permissions, access from outside workflows, and Repository Variables - Use when changing how any of these is observed, judged applicable, ordered, or updated, including creating and deleting Repository Variables
 - [Environments Design](docs/design/settings/environments.md): Environments, deployment branch policies and their patterns, and Environment Variables - Use when changing environment creation or name matching, which environments are read, the order of policy and pattern updates, or how Environment Variables are applied to a new or existing environment
 - [Security Design](docs/design/settings/security.md): Dependabot alerts and security updates, Secret scanning and push protection, and private vulnerability reporting - Use when changing how these are observed or updated, their dependencies on each other, the dependency graph side effect, or what is unavailable on private repositories
+- [Rulesets Design](docs/design/settings/rulesets.md): Repository rulesets, read from the list and per-ruleset get endpoints, and which parts of a ruleset reco interprets - Use when changing how rulesets are observed or shown, such as unavailability on private repositories, the single-page list, what counts as a contract violation versus an uninterpreted part, or `pull_request` default parameters
 
 ## Research
 

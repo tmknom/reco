@@ -3,8 +3,6 @@ package github
 import (
 	"context"
 	"fmt"
-	"strings"
-	"unicode"
 
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
@@ -108,7 +106,7 @@ func (c *Client) observeEnvironments(ctx context.Context, reference repository.R
 		}
 		// GitHub は大文字小文字だけが違う名前を同じ Environment とみなすため、二つ並ぶと照合と更新の相手が決まらない。
 		// strings.EqualFold が同じとみなす名前は GitHub も同じとみなす（GitHub の同一判定はより広い）ため、別の Environment を重複と誤らない。
-		key := environmentNameFoldKey(existing[i].Name)
+		key := simpleFoldKey(existing[i].Name)
 		if _, duplicate := seen[key]; duplicate {
 			return Environments{}, fmt.Errorf("environments: %w: duplicate environment name %q", ErrUnexpectedResponse, existing[i].Name)
 		}
@@ -156,17 +154,4 @@ func (c *Client) observeDeploymentPatterns(ctx context.Context, reference reposi
 		ids[pattern] = id
 	}
 	return DeploymentPatterns{Existing: patterns, IDs: ids}, nil
-}
-
-// environmentNameFoldKey は、strings.EqualFold が同じとみなす名前どうしで、またそのときに限って一致する鍵を返す。
-// 一覧の要素数の2乗にならずに重複を検査するため。EqualFold は rune ごとに unicode.SimpleFold の軌道が同じかで比べるため、
-// 各 rune を軌道の最小の rune に置き換える。大文字化と小文字化の往復では、軌道の違う U+0131（LATIN SMALL LETTER DOTLESS I）と i が同じになり、使えない。
-func environmentNameFoldKey(name string) string {
-	return strings.Map(func(r rune) rune {
-		smallest := r
-		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
-			smallest = min(smallest, f)
-		}
-		return smallest
-	}, name)
 }

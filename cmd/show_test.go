@@ -132,6 +132,8 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 				"GET /repos/owner/repo/vulnerability-alerts":            {Status: http.StatusNotFound},
 				"GET /repos/owner/repo/automated-security-fixes":        githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),
 				"GET /repos/owner/repo/private-vulnerability-reporting": githubtest.OK(githubtest.PrivateVulnerabilityReportingBody{Enabled: true}.JSON()),
+				// Ruleset が一つもないときのコメントの行も、設定宣言として読むことを妨げない
+				"GET /repos/owner/repo/rulesets": githubtest.OK(githubtest.RulesetsBody{}.JSON()),
 			},
 		},
 		{

@@ -137,3 +137,18 @@ func (c *Client) privateVulnerabilityReportingURL(reference repository.Reference
 	u.Path += "/private-vulnerability-reporting"
 	return u
 }
+
+// rulesetsURL は、Ruleset の一覧の URL を返す。Organization 所有のリポジトリで、上位で構成された Ruleset を一覧に加えないよう includes_parents=false を付ける。
+func (c *Client) rulesetsURL(reference repository.Reference) *url.URL {
+	u := c.repositoryURL(reference)
+	u.Path += "/rulesets"
+	u.RawQuery = "includes_parents=false"
+	return u
+}
+
+// rulesetURL は、ID が id の Ruleset の URL を返す。
+func (c *Client) rulesetURL(reference repository.Reference, id RulesetID) *url.URL {
+	u := c.repositoryURL(reference)
+	u.Path += "/rulesets/" + strconv.FormatInt(int64(id), 10)
+	return u
+}
