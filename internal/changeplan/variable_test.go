@@ -30,7 +30,7 @@ func TestVariableOperationOf(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			s := SettingPlan{Unit: tc.unit, Desired: desired, Result: Mismatch, Applicability: Applicable}
+			s := SettingPlan{Unit: tc.unit, Desired: desired, Result: Mismatch, Applicability: Applicable()}
 			want := UpdateOperation{
 				Kind: tc.wantKind, Unit: tc.unit, Value: desired,
 				RelevantSettings: []RelevantSetting{{Unit: tc.unit, AnticipatedValue: github.Observed(tc.anticipated)}},
@@ -54,7 +54,7 @@ func TestVariableOperationOf(t *testing.T) {
 	}
 	for _, tc := range deletions {
 		t.Run(tc.name, func(t *testing.T) {
-			s := SettingPlan{Unit: tc.unit, Desired: setting.Absent(), Result: Mismatch, Applicability: Applicable}
+			s := SettingPlan{Unit: tc.unit, Desired: setting.Absent(), Result: Mismatch, Applicability: Applicable()}
 			want := UpdateOperation{
 				Kind: tc.wantKind, Unit: tc.unit,
 				RelevantSettings: []RelevantSetting{{Unit: tc.unit, AnticipatedValue: github.Observed(tc.anticipated)}},
@@ -83,7 +83,7 @@ func TestVariableOperationOf(t *testing.T) {
 					t.Error("variableOperationOf() did not panic")
 				}
 			}()
-			variableOperationOf(SettingPlan{Unit: tc.unit, Desired: tc.desired, Result: Mismatch, Applicability: Applicable}, tc.anticipated)
+			variableOperationOf(SettingPlan{Unit: tc.unit, Desired: tc.desired, Result: Mismatch, Applicability: Applicable()}, tc.anticipated)
 		})
 	}
 }

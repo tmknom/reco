@@ -24,15 +24,25 @@ type Config struct {
 }
 
 // Run は変更計画を生成し、Out に書く。GitHub の設定は更新しない。
-// 適用不能な変更予定があれば、利用者がすべての理由を読めるよう変更計画を最後まで書いてから error を返す。
 func Run(ctx context.Context, cfg Config) error {
 	client := github.New(cfg.Token, cfg.GitHubOptions...)
 	p, err := changeplan.Generate(ctx, client, cfg.Configuration, cfg.Selection)
 	if err != nil {
 		return err
 	}
+	return presentPlan(cfg, p)
+}
+
+// presentPlan は、変更計画 p を Out に書く。
+// 適用不能な変更予定があれば、利用者がすべての理由を読めるよう変更計画を最後まで書いてから error を返す。
+// なければ、apply が承認の前に行うのと同じく論理的な設定変更を導き、plan が通った変更計画は apply でも承認の要求まで進むようにする。
+func presentPlan(cfg Config, p changeplan.Plan) error {
 	if _, err := io.WriteString(cfg.Out, changeplandisplay.Text(cfg.Configuration.Path, p)); err != nil {
 		return err
 	}
-	return p.NotApplicableError()
+	if err := p.NotApplicableError(); err != nil {
+		return err
+	}
+	_, err := p.LogicalChanges()
+	return err
 }

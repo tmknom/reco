@@ -34,12 +34,10 @@ var lostCriteria = setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, Pat
 // 3項目とも異ならせる。許可パターンは2つ持ち、順序だけの違いを作れるようにする。
 var declaredCriteria = setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{"a/*", "b/*"}}
 
-// unknownKey は、更新要求を持たない設定。
-const unknownKey setting.Key = "general.unknown"
-
-// TestExecutableChanges は、承認を求める前に、論理的な設定変更とその更新操作を確定する規則を確かめる。
+// TestExecutableChanges は、変更計画から導いた論理的な設定変更を、同じ並びのリポジトリの計画と組にすることを確かめる。
+// 導出の規則は changeplan が持つため、ここでは組にすることと、導けないときに変更していないことを添えることだけを確かめる。
 //
-//trace:checks INV-002 FR-009
+//trace:checks FR-009
 func TestExecutableChanges(t *testing.T) {
 	match := changeplan.SettingPlan{Unit: setting.Unit{Key: setting.DeleteBranchOnMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: changeplan.Match}
 	// 宣言の並びを名前順と逆にし、名前順に並べ替える実装を失敗させる
@@ -53,29 +51,14 @@ func TestExecutableChanges(t *testing.T) {
 		return p
 	}
 
-	t.Run("repositories are returned in the declared order with their own plans and logical changes", func(t *testing.T) {
-		p := plans(t, []changeplan.SettingPlan{allowedActionsMismatch()}, []changeplan.SettingPlan{allowAutoMergeMismatch()})
+	t.Run("each repository plan is paired with its own logical changes in the declared order", func(t *testing.T) {
+		p := plans(t, []changeplan.SettingPlan{allowedActionsMismatch()}, []changeplan.SettingPlan{match}, []changeplan.SettingPlan{allowAutoMergeMismatch()})
 		got, err := executableChanges(p)
 		if err != nil {
 			t.Fatalf("executableChanges() error = %v", err)
 		}
 		want := []repositoryChanges{
 			{plan: p.Repositories[0], changes: []changeplan.LogicalChange{allowedActionsChange()}},
-			{plan: p.Repositories[1], changes: []changeplan.LogicalChange{allowAutoMergeChange()}},
-		}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("executableChanges() = %+v, want %+v", got, want)
-		}
-	})
-
-	t.Run("repository without changes between two keeps its position", func(t *testing.T) {
-		p := plans(t, []changeplan.SettingPlan{allowAutoMergeMismatch()}, []changeplan.SettingPlan{match}, []changeplan.SettingPlan{allowAutoMergeMismatch()})
-		got, err := executableChanges(p)
-		if err != nil {
-			t.Fatalf("executableChanges() error = %v", err)
-		}
-		want := []repositoryChanges{
-			{plan: p.Repositories[0], changes: []changeplan.LogicalChange{allowAutoMergeChange()}},
 			{plan: p.Repositories[1]},
 			{plan: p.Repositories[2], changes: []changeplan.LogicalChange{allowAutoMergeChange()}},
 		}
@@ -84,149 +67,12 @@ func TestExecutableChanges(t *testing.T) {
 		}
 	})
 
-	t.Run("not applicable planned change in the second repository returns an error", func(t *testing.T) {
-		got, err := executableChanges(plans(t, []changeplan.SettingPlan{allowAutoMergeMismatch()}, []changeplan.SettingPlan{shaPinningRequiredNotApplicable()}))
-		if err == nil {
-			t.Errorf("executableChanges() = %+v, want an error", got)
+	t.Run("change plan whose logical changes cannot be derived returns an error saying no changes were made", func(t *testing.T) {
+		got, err := executableChanges(plans(t, []changeplan.SettingPlan{shaPinningRequiredNotApplicable()}))
+		if err == nil || !strings.HasSuffix(err.Error(), "; no changes made") {
+			t.Errorf("executableChanges() = %+v, %v, want an error ending with ; no changes made", got, err)
 		}
 	})
-
-	// Environment の更新操作は UpdateEndpointOf で引けないため、引くと panic で失敗する
-	t.Run("environment changes are executable without looking up an update endpoint", func(t *testing.T) {
-		production := mustEnvironmentName(t, "production")
-		creation := changeplan.SettingPlan{
-			Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Observed(setting.Absent()), Desired: setting.Present(),
-			Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
-		}
-		p := plans(t, []changeplan.SettingPlan{creation})
-		got, err := executableChanges(p)
-		if err != nil {
-			t.Fatalf("executableChanges() error = %v", err)
-		}
-		want := []repositoryChanges{{plan: p.Repositories[0], changes: []changeplan.LogicalChange{creationChange(t, "production")}}}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("executableChanges() = %+v, want %+v", got, want)
-		}
-	})
-
-	// Repository Variable の更新操作は UpdateEndpointOf で引けないため、引くと panic で失敗する
-	t.Run("variable changes are executable without looking up an update endpoint", func(t *testing.T) {
-		p := plans(t, []changeplan.SettingPlan{variableMismatch(t, "GO_VERSION", setting.Absent(), "1.27"), variableMismatch(t, "NODE_VERSION", setting.VariableValue("20"), "22")})
-		got, err := executableChanges(p)
-		if err != nil {
-			t.Fatalf("executableChanges() error = %v", err)
-		}
-		want := []repositoryChanges{{plan: p.Repositories[0], changes: []changeplan.LogicalChange{
-			variableCreationChange(t, "GO_VERSION", "1.27"), variableValueChange(t, "NODE_VERSION", "20", "22"),
-		}}}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("executableChanges() = %+v, want %+v", got, want)
-		}
-	})
-
-	t.Run("update operation for a setting without an update request after an executable one panics before approval", func(t *testing.T) {
-		defer func() {
-			if recover() == nil {
-				t.Error("executableChanges() did not panic")
-			}
-		}()
-		_, _ = executableChanges(plans(t, []changeplan.SettingPlan{allowAutoMergeMismatch(), unknownMismatch()}))
-	})
-
-	t.Run("update operation for a setting without an update request in the second repository panics before approval", func(t *testing.T) {
-		defer func() {
-			if recover() == nil {
-				t.Error("executableChanges() did not panic")
-			}
-		}()
-		_, _ = executableChanges(plans(t, []changeplan.SettingPlan{allowAutoMergeMismatch()}, []changeplan.SettingPlan{unknownMismatch()}))
-	})
-}
-
-// TestCheckUpdateEndpoint_UndefinedKindPanics は、宛先を決められない未定義の種類の更新操作を、承認の前に不変条件の破れとして止めることを確かめる。
-//
-//trace:checks INV-002
-func TestCheckUpdateEndpoint_UndefinedKindPanics(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Error("checkUpdateEndpoint() did not panic")
-		}
-	}()
-	checkUpdateEndpoint(changeplan.UpdateOperation{Unit: setting.Unit{Key: setting.AllowAutoMerge}})
-}
-
-// TestCheckUpdateEndpoint_EnvironmentVariables は、Environment Variable の更新操作を、更新エンドポイントを引かずに通すことを確かめる。
-// 設定の識別だけでは引けないため、引くと panic で失敗する。
-//
-//trace:checks INV-002
-func TestCheckUpdateEndpoint_EnvironmentVariables(t *testing.T) {
-	approved := withVariables(observedEnvironment(7, "production", setting.DeploymentBranchPolicyAll), github.Variable{Name: "REGION", Value: "a"})
-	cases := []struct {
-		name      string
-		operation changeplan.UpdateOperation
-	}{
-		{name: "creation passes", operation: createdEnvironmentVariableChange(t, "production", "REGION", "a").Operations[0]},
-		{name: "value change passes", operation: environmentVariableValueChange(t, "production", approved, "REGION", "a", "b").Operations[0]},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			defer func() {
-				if r := recover(); r != nil {
-					t.Errorf("checkUpdateEndpoint() panicked: %v", r)
-				}
-			}()
-			checkUpdateEndpoint(tc.operation)
-		})
-	}
-}
-
-// TestCheckUpdateEndpoint_MergeMethods は、マージ方式をまとめた更新操作を、リポジトリの更新エンドポイントへ送るものとして通すことを確かめる。
-//
-//trace:checks INV-002
-func TestCheckUpdateEndpoint_MergeMethods(t *testing.T) {
-	defer func() {
-		if r := recover(); r != nil {
-			t.Errorf("checkUpdateEndpoint() panicked: %v", r)
-		}
-	}()
-	checkUpdateEndpoint(mergeMethodSwapChange(t).Operations[0])
-}
-
-// TestCheckUpdateEndpoint_MergeMethodOnItsOwnPanics は、マージ方式を一つずつ送る更新操作を、承認の前に不変条件の破れとして止めることを確かめる。
-//
-//trace:checks INV-002 INV-005
-func TestCheckUpdateEndpoint_MergeMethodOnItsOwnPanics(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Error("checkUpdateEndpoint() did not panic")
-		}
-	}()
-	checkUpdateEndpoint(singleUpdate(setting.AllowSquashMerge, setting.BoolValue(true), relevantTo(setting.AllowSquashMerge, setting.BoolValue(false))).Operations[0])
-}
-
-// TestCheckUpdateEndpoint_MergeMethodsUpdateWithoutOnlyMergeMethodsPanics は、送る設定が空か、マージ方式でない設定を含む、まとめた更新操作を、承認の前に止めることを確かめる。
-//
-//trace:checks INV-002 INV-005
-func TestCheckUpdateEndpoint_MergeMethodsUpdateWithoutOnlyMergeMethodsPanics(t *testing.T) {
-	squash := changeplan.DesiredSetting{Unit: setting.Unit{Key: setting.AllowSquashMerge}, Value: setting.BoolValue(true)}
-	autoMerge := changeplan.DesiredSetting{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Value: setting.BoolValue(true)}
-	cases := []struct {
-		name     string
-		settings []changeplan.DesiredSetting
-	}{
-		{name: "no setting to send panics", settings: nil},
-		{name: "a setting other than a merge method panics", settings: []changeplan.DesiredSetting{squash, autoMerge}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			defer func() {
-				if recover() == nil {
-					t.Error("checkUpdateEndpoint() did not panic")
-				}
-			}()
-			checkUpdateEndpoint(changeplan.UpdateOperation{Kind: changeplan.MergeMethodsUpdate, Unit: squash.Unit, Settings: tc.settings})
-		})
-	}
 }
 
 // failAfterWriter は、n 回の書き込みに成功したあとの書き込みを失敗させる。
@@ -406,7 +252,7 @@ func TestApplyPlan(t *testing.T) {
 		var out bytes.Buffer
 		calls := 0
 		notJudged := allowAutoMergeMismatch()
-		notJudged.Applicability = changeplan.ApplicabilityNotJudged
+		notJudged.Applicability = changeplan.Applicability{}
 
 		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, notJudged))
 
@@ -1316,7 +1162,7 @@ func allowAutoMergeMismatch() changeplan.SettingPlan {
 		Observed:      github.Observed(setting.BoolValue(false)),
 		Desired:       setting.BoolValue(true),
 		Result:        changeplan.Mismatch,
-		Applicability: changeplan.Applicable,
+		Applicability: changeplan.Applicable(),
 	}
 }
 
@@ -1327,7 +1173,7 @@ func deleteBranchOnMergeMismatch() changeplan.SettingPlan {
 		Observed:      github.Observed(setting.BoolValue(false)),
 		Desired:       setting.BoolValue(true),
 		Result:        changeplan.Mismatch,
-		Applicability: changeplan.Applicable,
+		Applicability: changeplan.Applicable(),
 	}
 }
 
@@ -1335,7 +1181,7 @@ func deleteBranchOnMergeMismatch() changeplan.SettingPlan {
 func allowedActionsMismatch() changeplan.SettingPlan {
 	operation := allowedActionsChange().Operations[0]
 	return changeplan.SettingPlan{
-		Unit: operation.Unit, Observed: operation.RelevantSettings[0].AnticipatedValue, Desired: operation.Value, Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+		Unit: operation.Unit, Observed: operation.RelevantSettings[0].AnticipatedValue, Desired: operation.Value, Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 	}
 }
 
@@ -1353,7 +1199,7 @@ func selectedToAllChange() changeplan.LogicalChange {
 func enableActionsNotComparable() changeplan.SettingPlan {
 	return changeplan.SettingPlan{
 		Unit: setting.Unit{Key: setting.AllowedActions}, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled),
-		Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
+		Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly), Result: changeplan.NotComparable, Applicability: changeplan.Applicable(),
 		SideEffects: []changeplan.SideEffect{{Kind: changeplan.SideEffectSelectedActionsDiscarded, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)}},
 	}
 }
@@ -1392,18 +1238,13 @@ func toSelectedChange() changeplan.LogicalChange {
 func shaPinningRequiredNotApplicable() changeplan.SettingPlan {
 	return changeplan.SettingPlan{
 		Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
-		Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable, NotApplicableReason: changeplan.NotApplicableActionsRemainDisabled,
+		Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable(changeplan.NotApplicableActionsRemainDisabled),
 	}
 }
 
 func newPlan(t *testing.T, settings ...changeplan.SettingPlan) changeplan.Plan {
 	t.Helper()
 	return changeplan.Plan{Repositories: []changeplan.RepositoryPlan{newRepositoryPlan(t, settings...)}}
-}
-
-// unknownMismatch は、更新要求を持たない設定の適用可能な変更予定。
-func unknownMismatch() changeplan.SettingPlan {
-	return changeplan.SettingPlan{Unit: setting.Unit{Key: unknownKey}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch, Applicability: changeplan.Applicable}
 }
 
 func mustVariableName(t *testing.T, name string) setting.VariableName {

@@ -117,6 +117,21 @@ func (o UpdateOperation) CreatesEnvironment() bool {
 	return o.Kind == EnvironmentCreation || o.Kind == EnvironmentCreationWithMode
 }
 
+// LogicalChanges は、選択したすべての対象リポジトリについて、論理的な設定変更を実行順で導く。
+// 戻り値は Repositories と同じ長さ、同じ並びで、変更不要のリポジトリの計画の位置は空になる。
+// INV-002 のため、先の対象リポジトリを更新したあとではなく、承認を求める前にすべての対象リポジトリを導き切る。
+func (p Plan) LogicalChanges() ([][]LogicalChange, error) {
+	all := make([][]LogicalChange, len(p.Repositories))
+	for i, r := range p.Repositories {
+		changes, err := r.LogicalChanges()
+		if err != nil {
+			return nil, err
+		}
+		all[i] = changes
+	}
+	return all, nil
+}
+
 // LogicalChanges は、変更予定から論理的な設定変更を、executionOrder の実行順で導く。
 // 適用可能でない変更予定があれば、承認の対象にしないため error にする。
 // 副作用を伴う変更予定の更新操作は、operationOf が副作用として提示した設定のうち reco が観測するものを必ず基準に載せる。載せずに受け付けると承認の前に示していない値を失わせ得るため。
@@ -127,9 +142,10 @@ func (o UpdateOperation) CreatesEnvironment() bool {
 // Actions の有効状態と Actions 許可ポリシーの計画が、照合結果によらず同じリポジトリの計画に並ぶ形も、
 // 設定宣言の組み合わせの規則が破れたときにしか生じないため panic する。
 // 有効状態の変更予定とポリシーの組を実行すると、有効状態の更新操作が無効にする前のポリシーで Actions を有効にし、宣言していない状態を残し得るため。
+// 導いた更新操作は、承認のあと先行する変更を送ってから止まらないよう、宛先を決められるかを checkUpdateEndpoint で確かめる。
 func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 	for _, s := range r.Settings {
-		if s.IsPlannedChange() && s.Applicability != Applicable {
+		if s.IsPlannedChange() && !s.Applicability.IsApplicable() {
 			return nil, fmt.Errorf("%s: %s cannot be applied", r.Target, s.Unit.String())
 		}
 	}
@@ -196,6 +212,11 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 		}
 		changes = append(changes, change)
 	}
+	for _, change := range changes {
+		for _, operation := range change.Operations {
+			checkUpdateEndpoint(operation)
+		}
+	}
 	return changes, nil
 }
 
@@ -230,11 +251,9 @@ func (r RepositoryPlan) criteriaFollowingPolicy() (SettingPlan, bool) {
 }
 
 // settingPlanOf は、管理の単位 unit の計画を返す。管理範囲になければ偽を返す。
-// Environment の名前は、GitHub が同じ Environment とみなす名前どうしを同じ単位にするため、EqualFold で比べる。
-// 変数の名前は英小文字を含まないため、== で比べれば足りる。
 func (r RepositoryPlan) settingPlanOf(unit setting.Unit) (SettingPlan, bool) {
 	for _, s := range r.Settings {
-		if s.Unit.Key == unit.Key && s.Unit.Environment.EqualFold(unit.Environment) && s.Unit.Variable == unit.Variable {
+		if s.Unit.Same(unit) {
 			return s, true
 		}
 	}
@@ -281,4 +300,35 @@ func sideEffectSettingsOf(s SettingPlan) []setting.Unit {
 
 func targetsSelectedPolicy(s SettingPlan) bool {
 	return s.Unit.Key == setting.AllowedActions && s.Desired.AllowedActionsPolicy() == setting.AllowedActionsSelected
+}
+
+// checkUpdateEndpoint は、operation の更新要求の宛先を承認の前に決められるかを確かめ、決められなければ panic する。
+// 設定の更新操作は更新エンドポイントを引き、更新要求を持たない設定なら UpdateEndpointOf が panic する。戻り値を使わないのは、引けることの検査だけを目的とするため。
+// マージ方式は一つずつ送る更新要求を持たず、まとめた更新操作でだけ送るため、一つの設定の更新操作なら承認の前に panic する。
+// まとめた更新操作が送る設定が空か、マージ方式でない設定を含む場合も同じく panic する。どちらも、承認のあと先行する変更を送ってから止まらないようにするため。
+// 関連リソース (Environment、Repository Variable、Environment Variable) の更新操作は、更新エンドポイントが名前ごとに別で、設定の識別だけでは引けないため、引かずに通す。
+// 未定義の種類は宛先が決まらないため、不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+func checkUpdateEndpoint(operation UpdateOperation) {
+	switch operation.Kind {
+	case SettingUpdate:
+		if slices.Contains(setting.MergeMethods(), operation.Unit.Key) {
+			panic("changeplan: " + operation.Unit.String() + " is a merge method updated on its own")
+		}
+		github.UpdateEndpointOf(operation.Unit.Key)
+		return
+	case MergeMethodsUpdate:
+		if len(operation.Settings) == 0 || slices.ContainsFunc(operation.Settings, func(s DesiredSetting) bool {
+			return !slices.Contains(setting.MergeMethods(), s.Unit.Key)
+		}) {
+			panic("changeplan: merge methods update of " + operation.Unit.String() + " does not send only merge methods")
+		}
+		github.UpdateEndpointOf(operation.Unit.Key)
+		return
+	case EnvironmentCreation, EnvironmentCreationWithMode, DeploymentBranchPolicyModeUpdate,
+		DeploymentPatternAddition, DeploymentPatternRemoval,
+		RepositoryVariableCreation, RepositoryVariableValueUpdate, RepositoryVariableDeletion,
+		EnvironmentVariableCreation, EnvironmentVariableValueUpdate, EnvironmentVariableDeletion:
+		return
+	}
+	panic(fmt.Sprintf("changeplan: undefined kind %d of an update operation", int(operation.Kind)))
 }

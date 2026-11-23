@@ -14,7 +14,6 @@ import (
 	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
-	"github.com/tmknom/reco/internal/setting"
 )
 
 // Config は Run の入力。
@@ -85,55 +84,17 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 	return errors.Join(repositoriesError(records), writeErr)
 }
 
-// executableChanges は、選択したすべての対象リポジトリについて、論理的な設定変更を実行順で返す。
+// executableChanges は、選択したすべての対象リポジトリについて、リポジトリの計画とその論理的な設定変更の実行順の並びを組にして返す。
 // 戻り値は変更計画のリポジトリの計画と同じ長さ、同じ並びで、変更不要の対象リポジトリも changes が空の要素として含む。
-// 論理的な設定変更にできない変更予定の拒否は、論理的な設定変更を導く changeplan が持つ。
-// INV-002 のため、すべての対象リポジトリの更新操作を承認の前に checkUpdateEndpoint で確かめ、
-// 宛先を決められない更新操作があれば、先の対象リポジトリを更新したあとではなく、更新要求を一つも送る前に止める。
+// 論理的な設定変更の導出と、承認の前の更新の宛先の確認は changeplan が持つ。
 func executableChanges(p changeplan.Plan) ([]repositoryChanges, error) {
+	all, err := p.LogicalChanges()
+	if err != nil {
+		return nil, fmt.Errorf("%w; no changes made", err)
+	}
 	repositories := make([]repositoryChanges, len(p.Repositories))
 	for i, r := range p.Repositories {
-		changes, err := r.LogicalChanges()
-		if err != nil {
-			return nil, fmt.Errorf("%w; no changes made", err)
-		}
-		for _, change := range changes {
-			for _, operation := range change.Operations {
-				checkUpdateEndpoint(operation)
-			}
-		}
-		repositories[i] = repositoryChanges{plan: r, changes: changes}
+		repositories[i] = repositoryChanges{plan: r, changes: all[i]}
 	}
 	return repositories, nil
-}
-
-// checkUpdateEndpoint は、operation の更新要求の宛先を承認の前に決められるかを確かめ、決められなければ panic する。
-// 設定の更新操作は更新エンドポイントを引き、更新要求を持たない設定なら UpdateEndpointOf が panic する。戻り値を使わないのは、引けることの検査だけを目的とするため。
-// マージ方式は一つずつ送る更新要求を持たず、まとめた更新操作でだけ送るため、一つの設定の更新操作なら承認の前に panic する。
-// まとめた更新操作が送る設定が空か、マージ方式でない設定を含む場合も同じく panic する。どちらも、承認のあと先行する変更を送ってから止まらないようにするため。
-// 関連リソース (Environment、Repository Variable、Environment Variable) の更新操作は、更新エンドポイントが名前ごとに別で、設定の識別だけでは引けないため、引かずに通す。
-// 未定義の種類は宛先が決まらないため、不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
-func checkUpdateEndpoint(operation changeplan.UpdateOperation) {
-	switch operation.Kind {
-	case changeplan.SettingUpdate:
-		if slices.Contains(setting.MergeMethods(), operation.Unit.Key) {
-			panic("apply: " + operation.Unit.String() + " is a merge method updated on its own")
-		}
-		github.UpdateEndpointOf(operation.Unit.Key)
-		return
-	case changeplan.MergeMethodsUpdate:
-		if len(operation.Settings) == 0 || slices.ContainsFunc(operation.Settings, func(s changeplan.DesiredSetting) bool {
-			return !slices.Contains(setting.MergeMethods(), s.Unit.Key)
-		}) {
-			panic("apply: merge methods update of " + operation.Unit.String() + " does not send only merge methods")
-		}
-		github.UpdateEndpointOf(operation.Unit.Key)
-		return
-	case changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate,
-		changeplan.DeploymentPatternAddition, changeplan.DeploymentPatternRemoval,
-		changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate, changeplan.RepositoryVariableDeletion,
-		changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate, changeplan.EnvironmentVariableDeletion:
-		return
-	}
-	panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))
 }

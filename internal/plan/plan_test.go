@@ -10,10 +10,12 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/githubtest"
 	"github.com/tmknom/reco/internal/repository"
+	"github.com/tmknom/reco/internal/setting"
 )
 
 var errWrite = errors.New("write failed")
@@ -126,6 +128,42 @@ func TestRun(t *testing.T) {
 		if out.Len() != 0 {
 			t.Errorf("got Out %q, want empty", out.String())
 		}
+	})
+}
+
+// TestPresentPlan は、apply が承認の前に行う論理的な設定変更の導出を、plan も通すことを確かめる。
+// 導けない変更計画は Change Planning の不変条件が破れたときにしか生じないため、計画を直接組み立てて渡す。
+//
+//trace:checks FR-007
+func TestPresentPlan(t *testing.T) {
+	cfg := Config{Configuration: configuration.File{Path: "./reco.yaml"}, Out: &bytes.Buffer{}}
+	plan := func(s changeplan.SettingPlan) changeplan.Plan {
+		return changeplan.Plan{Repositories: []changeplan.RepositoryPlan{{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: []changeplan.SettingPlan{s}}}}
+	}
+
+	// 適用可能性の判断がない変更予定は、適用不能として挙がらず、導出で error になる
+	t.Run("planned change without an applicability judgment returns the error of the derivation", func(t *testing.T) {
+		unjudged := changeplan.SettingPlan{
+			Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: changeplan.Mismatch,
+		}
+		if err := presentPlan(cfg, plan(unjudged)); err == nil {
+			t.Error("presentPlan() error = nil, want an error")
+		}
+	})
+
+	// 遷移先が selected のポリシーの変更予定を伴わない、比較不能な選択方式の Actions 許可条件の変更予定は、
+	// 表示はできるが、論理的な設定変更を導くと対になるポリシーの変更予定がなく panic する
+	t.Run("planned change that cannot form a logical change panics", func(t *testing.T) {
+		criteria := changeplan.SettingPlan{
+			Unit: setting.Unit{Key: setting.SelectedActions}, Observed: github.Unavailable[setting.Value](github.UnavailableNotSelected),
+			Desired: setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{VerifiedAllowed: true}), Result: changeplan.NotComparable, Applicability: changeplan.Applicable(),
+		}
+		defer func() {
+			if recover() == nil {
+				t.Error("presentPlan() did not panic")
+			}
+		}()
+		_ = presentPlan(cfg, plan(criteria))
 	})
 }
 

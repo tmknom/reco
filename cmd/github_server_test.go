@@ -20,6 +20,9 @@ var (
 	selectedActionsBody     = githubtest.SelectedActionsBody{GitHubOwnedAllowed: true, PatternsAllowed: []string{"example/*"}}.JSON()
 )
 
+// mismatchedRepositoryBody は、宣言の期待値 true と異なる現在値 false を返す観測結果。
+var mismatchedRepositoryBody = githubtest.RepositoryBody{ID: 1, Admin: true}.JSON()
+
 // newGitHubServer は、handler に応答させる GitHub の stub を立て、execute に渡す接続先の Option を組む。
 func newGitHubServer(t *testing.T, handler http.Handler) (*githubtest.Server, []github.Option) {
 	t.Helper()
