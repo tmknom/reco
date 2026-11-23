@@ -24,6 +24,30 @@ func TestUnit_String(t *testing.T) {
 	}
 }
 
+func TestUnit_Same(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	region := mustVariableName(t, "REGION")
+	base := Unit{Key: EnvironmentVariable, Environment: production, Variable: region}
+	cases := []struct {
+		name  string
+		other Unit
+		want  bool
+	}{
+		{name: "identical unit is the same", other: base, want: true},
+		{name: "environment name differing only in case is the same", other: Unit{Key: EnvironmentVariable, Environment: mustEnvironmentName(t, "Production"), Variable: region}, want: true},
+		{name: "different environment name is another unit", other: Unit{Key: EnvironmentVariable, Environment: mustEnvironmentName(t, "staging"), Variable: region}, want: false},
+		{name: "different variable name is another unit", other: Unit{Key: EnvironmentVariable, Environment: production, Variable: mustVariableName(t, "ZONE")}, want: false},
+		{name: "different key is another unit", other: Unit{Key: RepositoryVariable, Variable: region}, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := base.Same(tc.other); got != tc.want {
+				t.Errorf("Same(%v) = %t, want %t", tc.other, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestUnit_StringPanicsOnMismatchedName(t *testing.T) {
 	cases := []struct {
 		name string

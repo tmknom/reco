@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/tmknom/reco/internal/github"
+	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
 )
 
@@ -75,7 +76,7 @@ func TestLogicalChange_SettingsToChange(t *testing.T) {
 //trace:checks INV-001 INV-002 INV-004 FR-008 FR-011
 func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	match := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: Match}
-	mismatch := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
+	mismatch := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable()}
 	newRepositoryPlan := func(settings ...SettingPlan) RepositoryPlan {
 		return RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
 	}
@@ -92,9 +93,9 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	}
 
 	t.Run("merge method changes are one logical change at the first one and allow_update_branch is another", func(t *testing.T) {
-		squash := SettingPlan{Unit: setting.Unit{Key: setting.AllowSquashMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
-		rebase := SettingPlan{Unit: setting.Unit{Key: setting.AllowRebaseMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false), Result: Mismatch, Applicability: Applicable}
-		updateBranch := SettingPlan{Unit: setting.Unit{Key: setting.AllowUpdateBranch}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
+		squash := SettingPlan{Unit: setting.Unit{Key: setting.AllowSquashMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable()}
+		rebase := SettingPlan{Unit: setting.Unit{Key: setting.AllowRebaseMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false), Result: Mismatch, Applicability: Applicable()}
+		updateBranch := SettingPlan{Unit: setting.Unit{Key: setting.AllowUpdateBranch}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable()}
 		got, err := newRepositoryPlan(mismatch, squash, rebase, updateBranch).LogicalChanges()
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
@@ -128,7 +129,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	})
 
 	t.Run("applicable mismatches of both settings become logical changes in the plan order", func(t *testing.T) {
-		deleteBranch := SettingPlan{Unit: setting.Unit{Key: setting.DeleteBranchOnMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
+		deleteBranch := SettingPlan{Unit: setting.Unit{Key: setting.DeleteBranchOnMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable()}
 		got, err := newRepositoryPlan(deleteBranch, mismatch).LogicalChanges()
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
@@ -142,7 +143,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 		}
 	})
 
-	enabling := SettingPlan{Unit: setting.Unit{Key: setting.ActionsEnabled}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
+	enabling := SettingPlan{Unit: setting.Unit{Key: setting.ActionsEnabled}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable()}
 
 	t.Run("applicable change of the enabled state becomes a logical change relevant only to its own observed value", func(t *testing.T) {
 		got, err := newRepositoryPlan(enabling).LogicalChanges()
@@ -161,7 +162,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	policyChange := func(observed, desired setting.AllowedActionsPolicy, effects ...SideEffect) SettingPlan {
 		return SettingPlan{
 			Unit: setting.Unit{Key: setting.AllowedActions}, Observed: github.Observed(policy(observed)), Desired: policy(desired),
-			Result: Mismatch, Applicability: Applicable, SideEffects: effects,
+			Result: Mismatch, Applicability: Applicable(), SideEffects: effects,
 		}
 	}
 
@@ -195,7 +196,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 
 	t.Run("policy not comparable because actions is disabled is relevant to the unavailable values", func(t *testing.T) {
 		enable := SettingPlan{
-			Unit: setting.Unit{Key: setting.AllowedActions}, Observed: disabled, Desired: policy(setting.AllowedActionsLocalOnly), Result: NotComparable, Applicability: Applicable,
+			Unit: setting.Unit{Key: setting.AllowedActions}, Observed: disabled, Desired: policy(setting.AllowedActionsLocalOnly), Result: NotComparable, Applicability: Applicable(),
 			SideEffects: []SideEffect{{Kind: SideEffectSelectedActionsDiscarded, Observed: disabled}},
 		}
 		got, err := newRepositoryPlan(enable).LogicalChanges()
@@ -212,7 +213,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	notComparableCriteria := func(reason github.UnavailableReason) SettingPlan {
 		return SettingPlan{
 			Unit: setting.Unit{Key: setting.SelectedActions}, Observed: github.Unavailable[setting.Value](reason),
-			Desired: criteria, Result: NotComparable, Applicability: Applicable,
+			Desired: criteria, Result: NotComparable, Applicability: Applicable(),
 		}
 	}
 	// toSelected は、ポリシーを selected にする更新操作のあとに続く、選択方式の Actions 許可条件の更新操作。
@@ -222,7 +223,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	toSelectedDesired := []DesiredSetting{{Unit: setting.Unit{Key: setting.AllowedActions}, Value: policy(setting.AllowedActionsSelected)}, {Unit: setting.Unit{Key: setting.SelectedActions}, Value: criteria}}
 	workflow := SettingPlan{
 		Unit: setting.Unit{Key: setting.DefaultWorkflowPermissions}, Observed: github.Observed(setting.PermissionLevelValue(setting.PermissionWrite)),
-		Desired: setting.PermissionLevelValue(setting.PermissionRead), Result: Mismatch, Applicability: Applicable,
+		Desired: setting.PermissionLevelValue(setting.PermissionRead), Result: Mismatch, Applicability: Applicable(),
 	}
 
 	t.Run("policy to selected and the criteria not comparable become one logical change of two updates at the policy position", func(t *testing.T) {
@@ -244,7 +245,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	})
 
 	t.Run("policy enabling actions with selected and the criteria not comparable become one logical change of two updates", func(t *testing.T) {
-		enableSelected := SettingPlan{Unit: setting.Unit{Key: setting.AllowedActions}, Observed: disabled, Desired: policy(setting.AllowedActionsSelected), Result: NotComparable, Applicability: Applicable}
+		enableSelected := SettingPlan{Unit: setting.Unit{Key: setting.AllowedActions}, Observed: disabled, Desired: policy(setting.AllowedActionsSelected), Result: NotComparable, Applicability: Applicable()}
 		got, err := newRepositoryPlan(enableSelected, notComparableCriteria(github.UnavailableActionsDisabled)).LogicalChanges()
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
@@ -283,12 +284,12 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			name: "policy to selected with the criteria mismatch panics",
 			settings: []SettingPlan{
 				policyChange(setting.AllowedActionsAll, setting.AllowedActionsSelected),
-				{Unit: setting.Unit{Key: setting.SelectedActions}, Observed: github.Observed(criteria), Desired: criteria, Result: Mismatch, Applicability: Applicable},
+				{Unit: setting.Unit{Key: setting.SelectedActions}, Observed: github.Observed(criteria), Desired: criteria, Result: Mismatch, Applicability: Applicable()},
 			},
 		},
 		{
 			name:     "enabled state with a policy panics",
-			settings: []SettingPlan{enabling, {Unit: setting.Unit{Key: setting.AllowedActions}, Observed: disabled, Desired: policy(setting.AllowedActionsLocalOnly), Result: NotComparable, Applicability: Applicable}},
+			settings: []SettingPlan{enabling, {Unit: setting.Unit{Key: setting.AllowedActions}, Observed: disabled, Desired: policy(setting.AllowedActionsLocalOnly), Result: NotComparable, Applicability: Applicable()}},
 		},
 	}
 	for _, tc := range panicCases {
@@ -305,7 +306,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	t.Run("not-applicable criteria paired with an applicable policy to selected is an error", func(t *testing.T) {
 		// 対の1つ目が適用可能でも、2つ目の適用可能性も確かめる
 		notApplicable := notComparableCriteria(github.UnavailableNotSelected)
-		notApplicable.Applicability = NotApplicable
+		notApplicable.Applicability = NotApplicable(NotApplicableActionsRemainDisabled)
 		if got, err := newRepositoryPlan(mismatch, policyChange(setting.AllowedActionsAll, setting.AllowedActionsSelected), notApplicable).LogicalChanges(); err == nil {
 			t.Errorf("LogicalChanges() = %+v, error = nil, want an error", got)
 		}
@@ -317,11 +318,11 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	}{
 		{
 			name:    "not-applicable mismatch is an error",
-			setting: SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: NotApplicable},
+			setting: SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: NotApplicable(NotApplicablePublicRepository)},
 		},
 		{
 			name:    "mismatch without an applicability judgment is an error",
-			setting: SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: ApplicabilityNotJudged},
+			setting: SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicability{}},
 		},
 	}
 	for _, tc := range errorCases {
@@ -334,7 +335,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	}
 
 	shaPinningMismatch := SettingPlan{
-		Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable,
+		Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable(),
 	}
 	actionsEnabled := relevant(setting.ActionsEnabled, github.Observed(setting.BoolValue(true)))
 	shaPinningChange := settingChange(setting.SHAPinningRequired, setting.BoolValue(true), relevant(setting.SHAPinningRequired, github.Observed(setting.BoolValue(false))), actionsEnabled)
@@ -350,7 +351,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	})
 
 	t.Run("sha_pinning_required not comparable after enabling is a separate logical change relevant only to actions being enabled", func(t *testing.T) {
-		shaPinningNotComparable := SettingPlan{Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: disabled, Desired: setting.BoolValue(true), Result: NotComparable, Applicability: Applicable}
+		shaPinningNotComparable := SettingPlan{Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: disabled, Desired: setting.BoolValue(true), Result: NotComparable, Applicability: Applicable()}
 		got, err := newRepositoryPlan(enabling, shaPinningNotComparable).LogicalChanges()
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
@@ -379,12 +380,12 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 //
 //trace:checks INV-005 FR-011
 func TestRepositoryPlan_LogicalChangesOfRepositoryVariables(t *testing.T) {
-	mismatch := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
-	creation := SettingPlan{Unit: variableUnit(t, "ZETA"), Observed: github.Observed(setting.Absent()), Desired: setting.VariableValue("z"), Result: Mismatch, Applicability: Applicable}
-	valueChange := SettingPlan{Unit: variableUnit(t, "ALPHA"), Observed: github.Observed(setting.VariableValue("1")), Desired: setting.VariableValue("2"), Result: Mismatch, Applicability: Applicable}
+	mismatch := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable()}
+	creation := SettingPlan{Unit: variableUnit(t, "ZETA"), Observed: github.Observed(setting.Absent()), Desired: setting.VariableValue("z"), Result: Mismatch, Applicability: Applicable()}
+	valueChange := SettingPlan{Unit: variableUnit(t, "ALPHA"), Observed: github.Observed(setting.VariableValue("1")), Desired: setting.VariableValue("2"), Result: Mismatch, Applicability: Applicable()}
 	// 値が一致した変数は、変更予定がないため論理的な設定変更にならない
 	matched := SettingPlan{Unit: variableUnit(t, "MATCHED"), Observed: github.Observed(setting.VariableValue("m")), Desired: setting.VariableValue("m"), Result: Match}
-	deletion := SettingPlan{Unit: variableUnit(t, "LEGACY"), Observed: github.Observed(setting.VariableValue("old")), Desired: setting.Absent(), Result: Mismatch, Applicability: Applicable}
+	deletion := SettingPlan{Unit: variableUnit(t, "LEGACY"), Observed: github.Observed(setting.VariableValue("old")), Desired: setting.Absent(), Result: Mismatch, Applicability: Applicable()}
 	plan := RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: []SettingPlan{mismatch, creation, deletion, matched, valueChange}}
 
 	got, err := plan.LogicalChanges()
@@ -418,11 +419,11 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 	}
 	stagingEnvironment := RelevantSetting{Unit: stagingExistence.Unit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedIdentity: ObservedEnvironmentIdentity(7)}
 	productionUnit := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
-	productionCreation := SettingPlan{Unit: productionUnit, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch, Applicability: Applicable}
+	productionCreation := SettingPlan{Unit: productionUnit, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch, Applicability: Applicable()}
 	dev := mustEnvironmentName(t, "dev")
 	devUnit := setting.Unit{Key: setting.EnvironmentResource, Environment: dev}
 	variablePlan := func(unit setting.Unit, observed github.SettingObservation[setting.Value], result ReconciliationResult) SettingPlan {
-		return SettingPlan{Unit: unit, Observed: observed, Desired: setting.VariableValue("eu"), Result: result, Applicability: Applicable}
+		return SettingPlan{Unit: unit, Observed: observed, Desired: setting.VariableValue("eu"), Result: result, Applicability: Applicable()}
 	}
 	variableChange := func(kind UpdateOperationKind, unit setting.Unit, relevant ...RelevantSetting) LogicalChange {
 		return LogicalChange{
@@ -461,7 +462,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 		{
 			name: "deletion in an existing environment is based on the environment and then the planned value",
 			settings: []SettingPlan{stagingExistence, {
-				Unit: environmentVariableUnit(staging, region), Observed: github.Observed(setting.VariableValue("us")), Desired: setting.Absent(), Result: Mismatch, Applicability: Applicable,
+				Unit: environmentVariableUnit(staging, region), Observed: github.Observed(setting.VariableValue("us")), Desired: setting.Absent(), Result: Mismatch, Applicability: Applicable(),
 			}},
 			want: []LogicalChange{{
 				DesiredState: []DesiredSetting{{Unit: environmentVariableUnit(staging, region), Value: setting.Absent()}},
@@ -476,9 +477,9 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 			settings: []SettingPlan{
 				productionCreation,
 				variablePlan(environmentVariableUnit(production, region), github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), NotComparable),
-				{Unit: environmentVariableUnit(production, debug), Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.Absent(), Result: NotComparable, Applicability: Applicable},
-				{Unit: devUnit, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch, Applicability: Applicable},
-				{Unit: environmentVariableUnit(dev, region), Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.Absent(), Result: NotComparable, Applicability: Applicable},
+				{Unit: environmentVariableUnit(production, debug), Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.Absent(), Result: NotComparable, Applicability: Applicable()},
+				{Unit: devUnit, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch, Applicability: Applicable()},
+				{Unit: environmentVariableUnit(dev, region), Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.Absent(), Result: NotComparable, Applicability: Applicable()},
 			},
 			want: []LogicalChange{
 				{
@@ -498,9 +499,9 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 				productionCreation,
 				{
 					Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
-					Desired: setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}), Result: NotComparable, Applicability: Applicable,
+					Desired: setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}), Result: NotComparable, Applicability: Applicable(),
 				},
-				{Unit: environmentVariableUnit(production, debug), Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.Absent(), Result: NotComparable, Applicability: Applicable},
+				{Unit: environmentVariableUnit(production, debug), Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.Absent(), Result: NotComparable, Applicability: Applicable()},
 			},
 			want: []LogicalChange{{
 				DesiredState: []DesiredSetting{
@@ -569,19 +570,19 @@ func TestRepositoryPlan_SettingPlanOf(t *testing.T) {
 func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 	production := mustEnvironmentName(t, "production")
 	staging := mustEnvironmentName(t, "staging")
-	mismatch := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
+	mismatch := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable()}
 	all := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll})
 	protected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches})
-	creation := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch, Applicability: Applicable}
+	creation := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch, Applicability: Applicable()}
 	creationMode := SettingPlan{
 		Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
-		Desired: protected, Result: NotComparable, Applicability: Applicable,
+		Desired: protected, Result: NotComparable, Applicability: Applicable(),
 	}
 	existing := SettingPlan{
 		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, Observed: github.Observed(setting.Present()), Desired: setting.Present(),
 		EnvironmentIdentity: ObservedEnvironmentIdentity(7), Result: Match,
 	}
-	modeChange := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}, Observed: github.Observed(all), Desired: protected, Result: Mismatch, Applicability: Applicable}
+	modeChange := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}, Observed: github.Observed(all), Desired: protected, Result: Mismatch, Applicability: Applicable()}
 	newRepositoryPlan := func(settings ...SettingPlan) RepositoryPlan {
 		return RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
 	}
@@ -639,12 +640,12 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 	}
 	selectedMain := selectedOf(branch("main"))
 	selectedPolicyPlan := func(environment setting.EnvironmentName, observed, desired setting.Value, result ReconciliationResult) SettingPlan {
-		return SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}, Observed: github.Observed(observed), Desired: desired, Result: result, Applicability: Applicable}
+		return SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}, Observed: github.Observed(observed), Desired: desired, Result: result, Applicability: Applicable()}
 	}
 	creationSelected := func(environment setting.EnvironmentName, desired setting.Value) SettingPlan {
 		return SettingPlan{
 			Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
-			Desired: desired, Result: NotComparable, Applicability: Applicable,
+			Desired: desired, Result: NotComparable, Applicability: Applicable(),
 		}
 	}
 	// patternStep は、個別パターンの更新操作一つと、その更新操作の基準のデプロイ元制限の値。
@@ -821,7 +822,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 		},
 		{
 			name:     "creation followed by a mode mismatch of the same name panics",
-			settings: []SettingPlan{creation, {Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Observed(all), Desired: protected, Result: Mismatch, Applicability: Applicable}},
+			settings: []SettingPlan{creation, {Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Observed(all), Desired: protected, Result: Mismatch, Applicability: Applicable()}},
 		},
 		{
 			name:     "creation followed by a matched mode of the same name panics",
@@ -831,14 +832,14 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 			name: "applicable not comparable existence panics",
 			settings: []SettingPlan{{
 				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined), Desired: setting.Present(),
-				Result: NotComparable, Applicability: Applicable,
+				Result: NotComparable, Applicability: Applicable(),
 			}},
 		},
 		{
 			name: "applicable mode not comparable for another reason panics",
 			settings: []SettingPlan{creation, {
 				Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined),
-				Desired: protected, Result: NotComparable, Applicability: Applicable,
+				Desired: protected, Result: NotComparable, Applicability: Applicable(),
 			}},
 		},
 	}
@@ -876,7 +877,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 	})
 
 	t.Run("not-applicable environment is rejected naming the environment", func(t *testing.T) {
-		undetermined := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Result: NotComparable, Applicability: NotApplicable}
+		undetermined := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Result: NotComparable, Applicability: NotApplicable(NotApplicableEnvironmentNameUndetermined)}
 		_, err := newRepositoryPlan(undetermined).LogicalChanges()
 		if want := "owner/repo: environments.production cannot be applied"; err == nil || err.Error() != want {
 			t.Errorf("LogicalChanges() error = %v, want %q", err, want)
@@ -906,7 +907,7 @@ func TestRepositoryPlan_LogicalChangesOfSecretScanning(t *testing.T) {
 	mismatch := func(key setting.Key, observed, desired bool) SettingPlan {
 		return SettingPlan{
 			Unit: setting.Unit{Key: key}, Observed: github.Observed(setting.BoolValue(observed)), Desired: setting.BoolValue(desired),
-			Result: Mismatch, Applicability: Applicable,
+			Result: Mismatch, Applicability: Applicable(),
 		}
 	}
 	keys := func(changes []LogicalChange) []setting.Key {
@@ -918,12 +919,12 @@ func TestRepositoryPlan_LogicalChangesOfSecretScanning(t *testing.T) {
 	}
 	dependabotAlertsDisabled := SettingPlan{
 		Unit: setting.Unit{Key: setting.DependabotAlerts}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false),
-		Result: Mismatch, Applicability: Applicable,
+		Result: Mismatch, Applicability: Applicable(),
 	}
 	dependabotUpdatesDisabled := SettingPlan{
 		Unit:     setting.Unit{Key: setting.DependabotSecurityUpdates},
 		Observed: github.Observed(setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesEnabled)),
-		Desired:  setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesDisabled), Result: Mismatch, Applicability: Applicable,
+		Desired:  setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesDisabled), Result: Mismatch, Applicability: Applicable(),
 	}
 	orders := []struct {
 		name     string
@@ -1000,7 +1001,7 @@ func TestRepositoryPlan_LogicalChangesOfDependabot(t *testing.T) {
 	alerts := func(observed, desired bool, without ...SettingWithoutSideEffect) SettingPlan {
 		return SettingPlan{
 			Unit: setting.Unit{Key: setting.DependabotAlerts}, Observed: github.Observed(setting.BoolValue(observed)), Desired: setting.BoolValue(desired),
-			Result: Mismatch, Applicability: Applicable, SettingsWithoutSideEffect: without,
+			Result: Mismatch, Applicability: Applicable(), SettingsWithoutSideEffect: without,
 		}
 	}
 	updates := func(observed, desired setting.DependabotSecurityUpdatesState) SettingPlan {
@@ -1010,7 +1011,7 @@ func TestRepositoryPlan_LogicalChangesOfDependabot(t *testing.T) {
 		}
 		plan := SettingPlan{Unit: setting.Unit{Key: setting.DependabotSecurityUpdates}, Observed: github.Observed(updatesValue(observed)), Desired: updatesValue(desired), Result: result}
 		if result == Mismatch {
-			plan.Applicability = Applicable
+			plan.Applicability = Applicable()
 		}
 		return plan
 	}
@@ -1085,4 +1086,97 @@ func TestRepositoryPlan_LogicalChangesOfDependabot(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestPlan_LogicalChanges は、変更計画の全体から論理的な設定変更を、承認の前に導き切る規則を確かめる。
+//
+//trace:checks INV-002 FR-009
+func TestPlan_LogicalChanges(t *testing.T) {
+	match := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: Match}
+	mismatch := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable()}
+	notApplicable := mismatch
+	notApplicable.Applicability = NotApplicable(NotApplicablePublicRepository)
+	plan := func(settings ...[]SettingPlan) Plan {
+		var p Plan
+		for i, s := range settings {
+			p.Repositories = append(p.Repositories, RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: repository.ID(i + 1), Settings: s})
+		}
+		return p
+	}
+
+	t.Run("each repository plan has its logical changes at the same position, empty without planned changes", func(t *testing.T) {
+		p := plan([]SettingPlan{mismatch}, []SettingPlan{match}, []SettingPlan{mismatch})
+		got, err := p.LogicalChanges()
+		if err != nil {
+			t.Fatalf("LogicalChanges() error = %v", err)
+		}
+		first, _ := p.Repositories[0].LogicalChanges()
+		want := [][]LogicalChange{first, nil, first}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("not applicable planned change in the second repository returns an error", func(t *testing.T) {
+		if got, err := plan([]SettingPlan{mismatch}, []SettingPlan{notApplicable}).LogicalChanges(); err == nil {
+			t.Errorf("LogicalChanges() = %+v, want an error", got)
+		}
+	})
+}
+
+// TestCheckUpdateEndpoint は、更新操作の更新要求の宛先を承認の前に決められるかの規則を確かめる。
+//
+//trace:checks INV-002 INV-005
+func TestCheckUpdateEndpoint(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	region := mustVariableName(t, "REGION")
+	squash := DesiredSetting{Unit: setting.Unit{Key: setting.AllowSquashMerge}, Value: setting.BoolValue(true)}
+	rebase := DesiredSetting{Unit: setting.Unit{Key: setting.AllowRebaseMerge}, Value: setting.BoolValue(false)}
+	autoMerge := DesiredSetting{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Value: setting.BoolValue(true)}
+
+	passing := []struct {
+		name      string
+		operation UpdateOperation
+	}{
+		{name: "setting update with an update endpoint passes", operation: UpdateOperation{Kind: SettingUpdate, Unit: autoMerge.Unit, Value: autoMerge.Value}},
+		{name: "merge methods update sending only merge methods passes", operation: UpdateOperation{Kind: MergeMethodsUpdate, Unit: squash.Unit, Settings: []DesiredSetting{squash, rebase}}},
+		// 関連リソースの更新エンドポイントは名前ごとに別で、設定の識別だけでは引けないため、引くと panic で失敗する
+		{name: "environment creation passes without looking up an endpoint", operation: UpdateOperation{Kind: EnvironmentCreation, Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}}},
+		{name: "repository variable creation passes without looking up an endpoint", operation: UpdateOperation{Kind: RepositoryVariableCreation, Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: region}, Value: setting.VariableValue("a")}},
+		{
+			name:      "environment variable creation passes without looking up an endpoint",
+			operation: UpdateOperation{Kind: EnvironmentVariableCreation, Unit: setting.Unit{Key: setting.EnvironmentVariable, Environment: production, Variable: region}, Value: setting.VariableValue("a")},
+		},
+	}
+	for _, tc := range passing {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("checkUpdateEndpoint() panicked: %v", r)
+				}
+			}()
+			checkUpdateEndpoint(tc.operation)
+		})
+	}
+
+	panicking := []struct {
+		name      string
+		operation UpdateOperation
+	}{
+		{name: "undefined kind panics", operation: UpdateOperation{Unit: autoMerge.Unit}},
+		{name: "setting without an update request panics", operation: UpdateOperation{Kind: SettingUpdate, Unit: setting.Unit{Key: "general.unknown"}}},
+		{name: "merge method updated on its own panics", operation: UpdateOperation{Kind: SettingUpdate, Unit: squash.Unit, Value: squash.Value}},
+		{name: "merge methods update without a setting to send panics", operation: UpdateOperation{Kind: MergeMethodsUpdate, Unit: squash.Unit}},
+		{name: "merge methods update with a setting other than a merge method panics", operation: UpdateOperation{Kind: MergeMethodsUpdate, Unit: squash.Unit, Settings: []DesiredSetting{squash, autoMerge}}},
+	}
+	for _, tc := range panicking {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Error("checkUpdateEndpoint() did not panic")
+				}
+			}()
+			checkUpdateEndpoint(tc.operation)
+		})
+	}
 }

@@ -1,6 +1,7 @@
 package changeplan
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 
@@ -40,115 +41,105 @@ func TestJudgeApplicability(t *testing.T) {
 		name string
 		in   SettingPlan
 		// settings は、in と同じリポジトリの計画に並ぶ管理設定の計画。in を含む。
-		settings   []SettingPlan
-		want       Applicability
-		wantReason NotApplicableReason
+		settings []SettingPlan
+		want     Applicability
 	}{
 		{
 			name: "match is not judged",
 			in:   SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: Match},
-			want: ApplicabilityNotJudged,
+			want: Applicability{},
 		},
 		{
 			name: "mismatch is applicable",
 			in:   SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch},
-			want: Applicable,
+			want: Applicable(),
 		},
 		{
 			name: "allowed_actions not comparable because actions is disabled is applicable",
 			in:   notComparable(setting.AllowedActions, github.UnavailableActionsDisabled),
-			want: Applicable,
+			want: Applicable(),
 		},
 		{
 			name: "selected_actions not comparable because the policy is not selected is applicable",
 			in:   notComparable(setting.SelectedActions, github.UnavailableNotSelected),
-			want: Applicable,
+			want: Applicable(),
 		},
 		{
 			name: "selected_actions not comparable because actions is disabled is applicable",
 			in:   notComparable(setting.SelectedActions, github.UnavailableActionsDisabled),
-			want: Applicable,
+			want: Applicable(),
 		},
 		{
 			name: "sha_pinning_required mismatch is applicable without a declaration enabling actions",
 			in:   SettingPlan{Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch},
-			want: Applicable,
+			want: Applicable(),
 		},
 		{
-			name:       "sha_pinning_required not comparable because actions is disabled is not applicable when actions stays disabled",
-			in:         shaPinningDisabled,
-			settings:   []SettingPlan{generalMismatch, shaPinningDisabled},
-			want:       NotApplicable,
-			wantReason: NotApplicableActionsRemainDisabled,
+			name:     "sha_pinning_required not comparable because actions is disabled is not applicable when actions stays disabled",
+			in:       shaPinningDisabled,
+			settings: []SettingPlan{generalMismatch, shaPinningDisabled},
+			want:     NotApplicable(NotApplicableActionsRemainDisabled),
 		},
 		{
 			name:     "sha_pinning_required not comparable because actions is disabled is applicable when the same plan enables actions",
 			in:       shaPinningDisabled,
 			settings: []SettingPlan{enablesActions, shaPinningDisabled},
-			want:     Applicable,
+			want:     Applicable(),
 		},
 		{
-			name:       "access_level not comparable because the repository is public is not applicable",
-			in:         accessLevelPublic,
-			want:       NotApplicable,
-			wantReason: NotApplicablePublicRepository,
+			name: "access_level not comparable because the repository is public is not applicable",
+			in:   accessLevelPublic,
+			want: NotApplicable(NotApplicablePublicRepository),
 		},
 		{
-			name:       "access_level not comparable because the repository is public stays not applicable when the same plan enables actions",
-			in:         accessLevelPublic,
-			settings:   []SettingPlan{enablesActions, accessLevelPublic},
-			want:       NotApplicable,
-			wantReason: NotApplicablePublicRepository,
+			name:     "access_level not comparable because the repository is public stays not applicable when the same plan enables actions",
+			in:       accessLevelPublic,
+			settings: []SettingPlan{enablesActions, accessLevelPublic},
+			want:     NotApplicable(NotApplicablePublicRepository),
 		},
 		{
-			name:       "environment whose existence cannot be determined is not applicable",
-			in:         undeterminedEnvironment,
-			want:       NotApplicable,
-			wantReason: NotApplicableEnvironmentNameUndetermined,
+			name: "environment whose existence cannot be determined is not applicable",
+			in:   undeterminedEnvironment,
+			want: NotApplicable(NotApplicableEnvironmentNameUndetermined),
 		},
 		{
-			name:       "mode of an environment whose existence cannot be determined is not applicable",
-			in:         environmentPolicy(production, github.UnavailableEnvironmentNameUndetermined),
-			settings:   []SettingPlan{undeterminedEnvironment, environmentPolicy(production, github.UnavailableEnvironmentNameUndetermined)},
-			want:       NotApplicable,
-			wantReason: NotApplicableEnvironmentNameUndetermined,
+			name:     "mode of an environment whose existence cannot be determined is not applicable",
+			in:       environmentPolicy(production, github.UnavailableEnvironmentNameUndetermined),
+			settings: []SettingPlan{undeterminedEnvironment, environmentPolicy(production, github.UnavailableEnvironmentNameUndetermined)},
+			want:     NotApplicable(NotApplicableEnvironmentNameUndetermined),
 		},
 		{
-			name:       "secret_scanning not comparable because the repository is private is not applicable",
-			in:         notComparable(setting.SecretScanningEnabled, github.UnavailablePrivateRepository),
-			want:       NotApplicable,
-			wantReason: NotApplicablePrivateRepository,
+			name: "secret_scanning not comparable because the repository is private is not applicable",
+			in:   notComparable(setting.SecretScanningEnabled, github.UnavailablePrivateRepository),
+			want: NotApplicable(NotApplicablePrivateRepository),
 		},
 		{
-			name:       "push protection not comparable because the repository is private is not applicable",
-			in:         notComparable(setting.RepositoryPushProtection, github.UnavailablePrivateRepository),
-			want:       NotApplicable,
-			wantReason: NotApplicablePrivateRepository,
+			name: "push protection not comparable because the repository is private is not applicable",
+			in:   notComparable(setting.RepositoryPushProtection, github.UnavailablePrivateRepository),
+			want: NotApplicable(NotApplicablePrivateRepository),
 		},
 		{
-			name:       "private_vulnerability_reporting not comparable because the repository is private is not applicable",
-			in:         notComparable(setting.PrivateVulnerabilityReportingEnabled, github.UnavailablePrivateRepository),
-			want:       NotApplicable,
-			wantReason: NotApplicablePrivateRepository,
+			name: "private_vulnerability_reporting not comparable because the repository is private is not applicable",
+			in:   notComparable(setting.PrivateVulnerabilityReportingEnabled, github.UnavailablePrivateRepository),
+			want: NotApplicable(NotApplicablePrivateRepository),
 		},
 		{
 			name:     "mode of an absent environment created in the same plan is applicable",
 			in:       environmentPolicy(production, github.UnavailableEnvironmentAbsent),
 			settings: []SettingPlan{creation(production), environmentPolicy(production, github.UnavailableEnvironmentAbsent)},
-			want:     Applicable,
+			want:     Applicable(),
 		},
 		{
 			name:     "variable of an absent environment created in the same plan is applicable",
 			in:       environmentVariable(production, github.UnavailableEnvironmentAbsent),
 			settings: []SettingPlan{creation(production), environmentVariable(production, github.UnavailableEnvironmentAbsent)},
-			want:     Applicable,
+			want:     Applicable(),
 		},
 		{
-			name:       "variable of an environment whose existence cannot be determined is not applicable",
-			in:         environmentVariable(production, github.UnavailableEnvironmentNameUndetermined),
-			settings:   []SettingPlan{undeterminedEnvironment, environmentVariable(production, github.UnavailableEnvironmentNameUndetermined)},
-			want:       NotApplicable,
-			wantReason: NotApplicableEnvironmentNameUndetermined,
+			name:     "variable of an environment whose existence cannot be determined is not applicable",
+			in:       environmentVariable(production, github.UnavailableEnvironmentNameUndetermined),
+			settings: []SettingPlan{undeterminedEnvironment, environmentVariable(production, github.UnavailableEnvironmentNameUndetermined)},
+			want:     NotApplicable(NotApplicableEnvironmentNameUndetermined),
 		},
 	}
 	for _, tc := range cases {
@@ -157,9 +148,9 @@ func TestJudgeApplicability(t *testing.T) {
 			if settings == nil {
 				settings = []SettingPlan{tc.in}
 			}
-			got, reason := judgeApplicability(tc.in, settings, github.ObservationResult{})
-			if got != tc.want || reason != tc.wantReason {
-				t.Errorf("judgeApplicability() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)
+			got := judgeApplicability(tc.in, settings, github.ObservationResult{})
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("judgeApplicability() = %+v, want %+v", got, tc.want)
 			}
 		})
 	}
@@ -201,7 +192,7 @@ func TestJudgeApplicability(t *testing.T) {
 					t.Error("judgeApplicability() did not panic")
 				}
 			}()
-			_, _ = judgeApplicability(tc.in, settings, github.ObservationResult{})
+			_ = judgeApplicability(tc.in, settings, github.ObservationResult{})
 		})
 	}
 }
@@ -218,68 +209,64 @@ func TestJudgeApplicability_DependabotSecurityUpdates(t *testing.T) {
 		return github.ObservationResult{Dependabot: &github.Dependabot{Alerts: alerts, SecurityUpdates: updates}}
 	}
 	cases := []struct {
-		name       string
-		in         SettingPlan
-		alerts     []SettingPlan
-		observed   github.ObservationResult
-		want       Applicability
-		wantReason NotApplicableReason
+		name     string
+		in       SettingPlan
+		alerts   []SettingPlan
+		observed github.ObservationResult
+		want     Applicability
 	}{
 		{
 			name:     "enabling with alerts enabled and undeclared is applicable",
 			in:       updatesPlan(setting.DependabotSecurityUpdatesDisabled, true),
 			observed: observation(true, setting.DependabotSecurityUpdatesDisabled),
-			want:     Applicable,
+			want:     Applicable(),
 		},
 		{
 			name:     "disabling with alerts enabled and to be disabled is applicable",
 			in:       updatesPlan(setting.DependabotSecurityUpdatesEnabled, false),
 			alerts:   []SettingPlan{alertsPlan(true, false)},
 			observed: observation(true, setting.DependabotSecurityUpdatesEnabled),
-			want:     Applicable,
+			want:     Applicable(),
 		},
 		{
 			name:     "enabling with alerts disabled and declared true is applicable",
 			in:       updatesPlan(setting.DependabotSecurityUpdatesDisabled, true),
 			alerts:   []SettingPlan{alertsPlan(false, true)},
 			observed: observation(false, setting.DependabotSecurityUpdatesDisabled),
-			want:     Applicable,
+			want:     Applicable(),
 		},
 		{
-			name:       "enabling with alerts disabled and undeclared is not applicable because alerts remain disabled",
-			in:         updatesPlan(setting.DependabotSecurityUpdatesDisabled, true),
-			observed:   observation(false, setting.DependabotSecurityUpdatesDisabled),
-			want:       NotApplicable,
-			wantReason: NotApplicableDependabotAlertsRemainDisabled,
+			name:     "enabling with alerts disabled and undeclared is not applicable because alerts remain disabled",
+			in:       updatesPlan(setting.DependabotSecurityUpdatesDisabled, true),
+			observed: observation(false, setting.DependabotSecurityUpdatesDisabled),
+			want:     NotApplicable(NotApplicableDependabotAlertsRemainDisabled),
 		},
 		{
-			name:       "disabling with alerts disabled and undeclared is not applicable because GitHub rejects it too",
-			in:         updatesPlan(setting.DependabotSecurityUpdatesEnabled, false),
-			observed:   observation(false, setting.DependabotSecurityUpdatesEnabled),
-			want:       NotApplicable,
-			wantReason: NotApplicableDependabotAlertsRemainDisabled,
+			name:     "disabling with alerts disabled and undeclared is not applicable because GitHub rejects it too",
+			in:       updatesPlan(setting.DependabotSecurityUpdatesEnabled, false),
+			observed: observation(false, setting.DependabotSecurityUpdatesEnabled),
+			want:     NotApplicable(NotApplicableDependabotAlertsRemainDisabled),
 		},
 		{
-			name:       "disabling with alerts disabled and declared false is not applicable",
-			in:         updatesPlan(setting.DependabotSecurityUpdatesEnabled, false),
-			alerts:     []SettingPlan{alertsPlan(false, false)},
-			observed:   observation(false, setting.DependabotSecurityUpdatesEnabled),
-			want:       NotApplicable,
-			wantReason: NotApplicableDependabotAlertsRemainDisabled,
+			name:     "disabling with alerts disabled and declared false is not applicable",
+			in:       updatesPlan(setting.DependabotSecurityUpdatesEnabled, false),
+			alerts:   []SettingPlan{alertsPlan(false, false)},
+			observed: observation(false, setting.DependabotSecurityUpdatesEnabled),
+			want:     NotApplicable(NotApplicableDependabotAlertsRemainDisabled),
 		},
 		{
 			name:     "alerts mismatch is applicable",
 			in:       alertsPlan(true, false),
 			observed: observation(true, setting.DependabotSecurityUpdatesEnabled),
-			want:     Applicable,
+			want:     Applicable(),
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			settings := slices.Concat(tc.alerts, []SettingPlan{tc.in})
-			got, reason := judgeApplicability(tc.in, settings, tc.observed)
-			if got != tc.want || reason != tc.wantReason {
-				t.Errorf("judgeApplicability() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)
+			got := judgeApplicability(tc.in, settings, tc.observed)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("judgeApplicability() = %+v, want %+v", got, tc.want)
 			}
 		})
 	}
@@ -299,47 +286,45 @@ func TestJudgeApplicability_RepositoryPushProtection(t *testing.T) {
 		secretScanning []SettingPlan
 		observed       github.ObservationResult
 		want           Applicability
-		wantReason     NotApplicableReason
 	}{
 		{
 			name:     "enabling with secret scanning enabled and undeclared is applicable",
 			in:       boolPlan(setting.RepositoryPushProtection, false, true),
 			observed: observation(true, false),
-			want:     Applicable,
+			want:     Applicable(),
 		},
 		{
 			name:           "enabling with secret scanning disabled and declared true is applicable",
 			in:             boolPlan(setting.RepositoryPushProtection, false, true),
 			secretScanning: []SettingPlan{boolPlan(setting.SecretScanningEnabled, false, true)},
 			observed:       observation(false, false),
-			want:           Applicable,
+			want:           Applicable(),
 		},
 		{
-			name:       "enabling with secret scanning disabled and undeclared is not applicable because GitHub does not apply it",
-			in:         boolPlan(setting.RepositoryPushProtection, false, true),
-			observed:   observation(false, false),
-			want:       NotApplicable,
-			wantReason: NotApplicableSecretScanningRemainsDisabled,
+			name:     "enabling with secret scanning disabled and undeclared is not applicable because GitHub does not apply it",
+			in:       boolPlan(setting.RepositoryPushProtection, false, true),
+			observed: observation(false, false),
+			want:     NotApplicable(NotApplicableSecretScanningRemainsDisabled),
 		},
 		{
 			name:     "disabling with secret scanning disabled and undeclared is applicable because only enabling is not applied",
 			in:       boolPlan(setting.RepositoryPushProtection, true, false),
 			observed: observation(false, true),
-			want:     Applicable,
+			want:     Applicable(),
 		},
 		{
 			name:     "secret scanning mismatch is applicable",
 			in:       boolPlan(setting.SecretScanningEnabled, true, false),
 			observed: observation(true, true),
-			want:     Applicable,
+			want:     Applicable(),
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			settings := slices.Concat(tc.secretScanning, []SettingPlan{tc.in})
-			got, reason := judgeApplicability(tc.in, settings, tc.observed)
-			if got != tc.want || reason != tc.wantReason {
-				t.Errorf("judgeApplicability() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)
+			got := judgeApplicability(tc.in, settings, tc.observed)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("judgeApplicability() = %+v, want %+v", got, tc.want)
 			}
 		})
 	}
@@ -372,28 +357,83 @@ func TestExpectsActionsEnabled(t *testing.T) {
 func TestJudgeApplicability_MergeMethods(t *testing.T) {
 	disableSquash := newSettingPlan(setting.Unit{Key: setting.AllowSquashMerge}, github.Observed(setting.BoolValue(true)), setting.BoolValue(false))
 	cases := []struct {
-		name       string
-		observed   github.ObservationResult
-		want       Applicability
-		wantReason NotApplicableReason
+		name     string
+		observed github.ObservationResult
+		want     Applicability
 	}{
 		{
 			name:     "disabling with another merge method left enabled is applicable",
 			observed: github.ObservationResult{General: github.General{AllowSquashMerge: true, AllowRebaseMerge: true}},
-			want:     Applicable,
+			want:     Applicable(),
 		},
 		{
-			name:       "disabling the last enabled merge method is not applicable",
-			observed:   github.ObservationResult{General: github.General{AllowSquashMerge: true}},
-			want:       NotApplicable,
-			wantReason: NotApplicableNoMergeMethodEnabled,
+			name:     "disabling the last enabled merge method is not applicable",
+			observed: github.ObservationResult{General: github.General{AllowSquashMerge: true}},
+			want:     NotApplicable(NotApplicableNoMergeMethodEnabled, setting.AllowMergeCommit, setting.AllowRebaseMerge),
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, reason := judgeApplicability(disableSquash, []SettingPlan{disableSquash}, tc.observed)
-			if got != tc.want || reason != tc.wantReason {
-				t.Errorf("judgeApplicability() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)
+			got := judgeApplicability(disableSquash, []SettingPlan{disableSquash}, tc.observed)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("judgeApplicability() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNotApplicable_PanicsOnInconsistentReason(t *testing.T) {
+	cases := []struct {
+		name      string
+		reason    NotApplicableReason
+		unmanaged []setting.Key
+	}{
+		{name: "missing reason", reason: 0},
+		{name: "no merge method enabled without merge methods left disabled", reason: NotApplicableNoMergeMethodEnabled},
+		{name: "reason without unmanaged settings given unmanaged settings", reason: NotApplicablePublicRepository, unmanaged: []setting.Key{setting.AllowRebaseMerge}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Error("NotApplicable() did not panic")
+				}
+			}()
+			_ = NotApplicable(tc.reason, tc.unmanaged...)
+		})
+	}
+}
+
+func TestApplicability(t *testing.T) {
+	cases := []struct {
+		name              string
+		in                Applicability
+		wantApplicable    bool
+		wantNotApplicable bool
+		wantReason        NotApplicableReason
+		wantUnmanaged     []setting.Key
+	}{
+		{name: "no judgment is neither applicable nor not applicable", in: Applicability{}},
+		{name: "applicable has no reason", in: Applicable(), wantApplicable: true},
+		{name: "not applicable has its reason", in: NotApplicable(NotApplicablePublicRepository), wantNotApplicable: true, wantReason: NotApplicablePublicRepository},
+		{
+			name: "no merge method enabled has the merge methods left disabled", in: NotApplicable(NotApplicableNoMergeMethodEnabled, setting.AllowRebaseMerge),
+			wantNotApplicable: true, wantReason: NotApplicableNoMergeMethodEnabled, wantUnmanaged: []setting.Key{setting.AllowRebaseMerge},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.in.IsApplicable(); got != tc.wantApplicable {
+				t.Errorf("IsApplicable() = %t, want %t", got, tc.wantApplicable)
+			}
+			if got := tc.in.IsNotApplicable(); got != tc.wantNotApplicable {
+				t.Errorf("IsNotApplicable() = %t, want %t", got, tc.wantNotApplicable)
+			}
+			if got := tc.in.Reason(); got != tc.wantReason {
+				t.Errorf("Reason() = %d, want %d", got, tc.wantReason)
+			}
+			if got := tc.in.UnmanagedSettings(); !slices.Equal(got, tc.wantUnmanaged) {
+				t.Errorf("UnmanagedSettings() = %v, want %v", got, tc.wantUnmanaged)
 			}
 		})
 	}

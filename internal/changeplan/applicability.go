@@ -9,14 +9,14 @@ import (
 )
 
 // Applicability は、変更予定 (不一致または比較不能と照合した設定) を安全に変更できるかの判断。
-// ゼロ値の ApplicabilityNotJudged は、一致した設定に判断がないことを表し、三つ目の判断ではない。
-type Applicability int
-
-const (
-	ApplicabilityNotJudged Applicability = iota
-	Applicable
-	NotApplicable
-)
+// ゼロ値は、一致した設定に判断がないことを表し、三つ目の判断ではない。
+// フィールドを公開しないのは、適用不能だけが理由を伴い、理由に添える未管理設定は伴う理由のときだけ持つ状態を、
+// Applicable と NotApplicable を通してしか作れなくするため。
+type Applicability struct {
+	applicable        bool
+	reason            NotApplicableReason
+	unmanagedSettings []setting.Key
+}
 
 // NotApplicableReason は、変更予定が適用不能である理由。文言は表示が決める。
 // ゼロ値は適用不能でないことを表し、定義済みの理由と取り違えないよう定数は 1 から始める。
@@ -39,57 +39,92 @@ const (
 	NotApplicableNoMergeMethodEnabled
 )
 
+// Applicable は、適用可能の判断を返す。
+func Applicable() Applicability {
+	return Applicability{applicable: true}
+}
+
+// NotApplicable は、理由 reason による適用不能の判断を返す。unmanagedSettings は、理由に添える、成り立っていない条件に関わる未管理設定。
+// 未管理設定を伴う理由は NotApplicableNoMergeMethodEnabled (無効のまま残るマージ方式) だけで、そのときは一つ以上を伴う。
+// 理由がないか、理由と未管理設定の有無が食い違う判断は、表示が対処を示せないため不変条件の破れとして panic する。
+func NotApplicable(reason NotApplicableReason, unmanagedSettings ...setting.Key) Applicability {
+	if reason == 0 || (reason == NotApplicableNoMergeMethodEnabled) != (len(unmanagedSettings) > 0) {
+		panic(fmt.Sprintf("changeplan: not-applicable reason %d with %d unmanaged settings", int(reason), len(unmanagedSettings)))
+	}
+	return Applicability{reason: reason, unmanagedSettings: unmanagedSettings}
+}
+
+// IsApplicable は、適用可能と判断したかを返す。
+func (a Applicability) IsApplicable() bool {
+	return a.applicable
+}
+
+// IsNotApplicable は、適用不能と判断したかを返す。
+func (a Applicability) IsNotApplicable() bool {
+	return a.reason != 0
+}
+
+// Reason は、適用不能の理由を返す。適用不能でなければゼロ値を返す。
+func (a Applicability) Reason() NotApplicableReason {
+	return a.reason
+}
+
+// UnmanagedSettings は、適用不能の理由に添える未管理設定を返す。伴わなければ nil を返す。
+func (a Applicability) UnmanagedSettings() []setting.Key {
+	return a.unmanagedSettings
+}
+
 // judgeApplicability は、管理設定の計画 s の観測結果と、同じリポジトリの管理設定の計画 settings の期待値と、
-// 計画時の観測結果 observed (同じ設定の領域の未管理設定の値) から、変更予定を安全に適用できるかを判断し、適用不能ならその理由を返す。
+// 計画時の観測結果 observed (同じ設定の領域の未管理設定の値) から、変更予定を安全に適用できるかを判断する。
 // 不一致は、設定ごとの設計の更新方式で、前提の設定を持つ依存する設定を除いて追加の条件なしに適用できる。
 // 比較不能は、設定ごとの設計の遷移表に挙がる観測不能に限って判断する。
 // 遷移表にない観測不能を適用可能として黙って通さないよう、不変条件の破れとして panic する。
-func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.ObservationResult) (Applicability, NotApplicableReason) {
+func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.ObservationResult) Applicability {
 	switch s.Result {
 	case Match:
-		return ApplicabilityNotJudged, 0
+		return Applicability{}
 	case Mismatch:
 		// GitHub は Dependabot alerts が無効のあいだ、Dependabot security updates の更新を向きによらず拒否する
 		if s.Unit.Key == setting.DependabotSecurityUpdates && !prerequisiteAvailable(setting.DependabotAlerts, settings, observed) {
-			return NotApplicable, NotApplicableDependabotAlertsRemainDisabled
+			return NotApplicable(NotApplicableDependabotAlertsRemainDisabled)
 		}
 		// GitHub は Secret scanning が無効のあいだ、push protection を有効にする更新に成功を応答して値を変えない
 		if s.Unit.Key == setting.RepositoryPushProtection && s.Desired.Bool() && !prerequisiteAvailable(setting.SecretScanningEnabled, settings, observed) {
-			return NotApplicable, NotApplicableSecretScanningRemainsDisabled
+			return NotApplicable(NotApplicableSecretScanningRemainsDisabled)
 		}
-		if len(mergeMethodsLeftDisabled(s, settings, observed)) > 0 {
-			return NotApplicable, NotApplicableNoMergeMethodEnabled
+		if left := mergeMethodsLeftDisabled(s, settings, observed); len(left) > 0 {
+			return NotApplicable(NotApplicableNoMergeMethodEnabled, left...)
 		}
-		return Applicable, 0
+		return Applicable()
 	case NotComparable:
 	}
 	reason := s.Observed.UnavailableReason()
 	switch {
 	case s.Unit.Key.HasEnvironmentName() && reason == github.UnavailableEnvironmentNameUndetermined:
 		// 作成すれば、GitHub が同じとみなす既存の Environment を変え得る。同じリポジトリのほかの宣言では解消しない
-		return NotApplicable, NotApplicableEnvironmentNameUndetermined
+		return NotApplicable(NotApplicableEnvironmentNameUndetermined)
 	case s.Unit.Key.HasEnvironmentName() && s.Unit.Key != setting.EnvironmentResource && reason == github.UnavailableEnvironmentAbsent:
 		// Environment の宣言は、方式や変数だけを書いても存在の宣言を兼ねるため、同じ変更計画が先にその Environment を作成する
 		if !createsEnvironment(settings, s.Unit.Environment) {
 			panic(fmt.Sprintf("changeplan: %s is not comparable without the creation of its environment", s.Unit.String()))
 		}
-		return Applicable, 0
+		return Applicable()
 	case s.Unit.Key == setting.AllowedActions && reason == github.UnavailableActionsDisabled:
-		return Applicable, 0
+		return Applicable()
 	case s.Unit.Key == setting.SelectedActions && (reason == github.UnavailableNotSelected || reason == github.UnavailableActionsDisabled):
-		return Applicable, 0
+		return Applicable()
 	case s.Unit.Key == setting.SHAPinningRequired && reason == github.UnavailableActionsDisabled:
 		if expectsActionsEnabled(settings) {
-			return Applicable, 0
+			return Applicable()
 		}
-		return NotApplicable, NotApplicableActionsRemainDisabled
+		return NotApplicable(NotApplicableActionsRemainDisabled)
 	case s.Unit.Key == setting.ActionsAccessLevel && reason == github.UnavailablePublicRepository:
 		// 公開範囲は reco が変える設定ではないため、同じリポジトリのほかの宣言では解消しない
-		return NotApplicable, NotApplicablePublicRepository
+		return NotApplicable(NotApplicablePublicRepository)
 	case reason == github.UnavailablePrivateRepository &&
 		(s.Unit.Key.Area() == setting.AreaSecretScanning || s.Unit.Key == setting.PrivateVulnerabilityReportingEnabled):
 		// 公開範囲は reco が変える設定ではないため、同じリポジトリのほかの宣言では解消しない
-		return NotApplicable, NotApplicablePrivateRepository
+		return NotApplicable(NotApplicablePrivateRepository)
 	}
 	panic(fmt.Sprintf("changeplan: %s is not comparable for an unexpected reason %d", s.Unit.String(), int(reason)))
 }

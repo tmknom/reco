@@ -162,11 +162,11 @@ func deploymentPatternsChange(t *testing.T, name string, approved github.Environ
 	return onlyLogicalChange(t, newRepositoryPlan(t,
 		changeplan.SettingPlan{
 			Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, Observed: observed.Existence(), Desired: setting.Present(),
-			EnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID), Result: changeplan.Match, Applicability: changeplan.Applicable,
+			EnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID), Result: changeplan.Match, Applicability: changeplan.Applicable(),
 		},
 		changeplan.SettingPlan{
 			Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}, Observed: observed.DeploymentBranchPolicy(),
-			Desired: setting.DeploymentBranchPolicyValue(desired), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+			Desired: setting.DeploymentBranchPolicyValue(desired), Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 		},
 	))
 }
@@ -180,11 +180,11 @@ func creationWithPatternsChange(t *testing.T, name string, desired setting.Deplo
 	return onlyLogicalChange(t, newRepositoryPlan(t,
 		changeplan.SettingPlan{
 			Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, Observed: observed.Existence(), Desired: setting.Present(),
-			Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+			Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 		},
 		changeplan.SettingPlan{
 			Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}, Observed: observed.DeploymentBranchPolicy(),
-			Desired: setting.DeploymentBranchPolicyValue(desired), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
+			Desired: setting.DeploymentBranchPolicyValue(desired), Result: changeplan.NotComparable, Applicability: changeplan.Applicable(),
 		},
 	))
 }
@@ -193,7 +193,7 @@ func creationWithPatternsChange(t *testing.T, name string, desired setting.Deplo
 func mergeMethodMismatch(key setting.Key, observed, desired bool) changeplan.SettingPlan {
 	return changeplan.SettingPlan{
 		Unit: setting.Unit{Key: key}, Observed: github.Observed(setting.BoolValue(observed)), Desired: setting.BoolValue(desired),
-		Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+		Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 	}
 }
 
@@ -219,7 +219,7 @@ func variableMismatch(t *testing.T, name string, observed setting.Value, desired
 	t.Helper()
 	return changeplan.SettingPlan{
 		Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, name)}, Observed: github.Observed(observed),
-		Desired: setting.VariableValue(desired), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+		Desired: setting.VariableValue(desired), Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 	}
 }
 
@@ -244,7 +244,7 @@ func variableDeletionChange(t *testing.T, name, observed string) changeplan.Logi
 	t.Helper()
 	return onlyLogicalChange(t, newRepositoryPlan(t, changeplan.SettingPlan{
 		Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, name)}, Observed: github.Observed(setting.VariableValue(observed)),
-		Desired: setting.Absent(), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+		Desired: setting.Absent(), Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 	}))
 }
 
@@ -254,7 +254,7 @@ func environmentVariablePlan(t *testing.T, environment, name string, observed gi
 	t.Helper()
 	return changeplan.SettingPlan{
 		Unit:     setting.Unit{Key: setting.EnvironmentVariable, Environment: mustEnvironmentName(t, environment), Variable: mustVariableName(t, name)},
-		Observed: observed, Desired: setting.VariableValue(desired), Result: result, Applicability: changeplan.Applicable,
+		Observed: observed, Desired: setting.VariableValue(desired), Result: result, Applicability: changeplan.Applicable(),
 	}
 }
 
@@ -266,7 +266,7 @@ func environmentVariableValueChange(t *testing.T, environment string, approved g
 	return onlyLogicalChange(t, newRepositoryPlan(t,
 		changeplan.SettingPlan{
 			Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, environment)}, Observed: github.Observed(setting.Present()), Desired: setting.Present(),
-			EnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID), Result: changeplan.Match, Applicability: changeplan.Applicable,
+			EnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID), Result: changeplan.Match, Applicability: changeplan.Applicable(),
 		},
 		environmentVariablePlan(t, environment, name, github.Observed(setting.VariableValue(observed)), desired, changeplan.Mismatch),
 	))
@@ -280,11 +280,11 @@ func environmentVariableDeletionChange(t *testing.T, environment string, approve
 	return onlyLogicalChange(t, newRepositoryPlan(t,
 		changeplan.SettingPlan{
 			Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, environment)}, Observed: github.Observed(setting.Present()), Desired: setting.Present(),
-			EnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID), Result: changeplan.Match, Applicability: changeplan.Applicable,
+			EnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID), Result: changeplan.Match, Applicability: changeplan.Applicable(),
 		},
 		changeplan.SettingPlan{
 			Unit:     setting.Unit{Key: setting.EnvironmentVariable, Environment: mustEnvironmentName(t, environment), Variable: mustVariableName(t, name)},
-			Observed: github.Observed(setting.VariableValue(observed)), Desired: setting.Absent(), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+			Observed: github.Observed(setting.VariableValue(observed)), Desired: setting.Absent(), Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 		},
 	))
 }
@@ -297,11 +297,11 @@ func environmentCreationWithAbsentVariableChange(t *testing.T, environment, name
 	return onlyLogicalChange(t, newRepositoryPlan(t,
 		changeplan.SettingPlan{
 			Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, environment)}, Observed: github.Observed(setting.Absent()), Desired: setting.Present(),
-			Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+			Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 		},
 		changeplan.SettingPlan{
 			Unit:     setting.Unit{Key: setting.EnvironmentVariable, Environment: mustEnvironmentName(t, environment), Variable: mustVariableName(t, name)},
-			Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.Absent(), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
+			Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.Absent(), Result: changeplan.NotComparable, Applicability: changeplan.Applicable(),
 		},
 	))
 }
@@ -315,7 +315,7 @@ func createdEnvironmentVariableChange(t *testing.T, environment, name, desired s
 	changes, err := newRepositoryPlan(t,
 		changeplan.SettingPlan{
 			Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environmentName}, Observed: github.Observed(setting.Absent()), Desired: setting.Present(),
-			Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+			Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 		},
 		environmentVariablePlan(t, environment, name, github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), desired, changeplan.NotComparable),
 	).LogicalChanges()

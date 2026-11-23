@@ -32,10 +32,10 @@ const twoRepositoriesSource = `repositories:
 func TestPlan_NotApplicableError(t *testing.T) {
 	zeta, alpha := mustReference(t, "owner/zeta"), mustReference(t, "owner/alpha")
 	match := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true), Result: Match}
-	applicable := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable}
+	applicable := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable()}
 	notApplicable := SettingPlan{
 		Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
-		Result: NotComparable, Applicability: NotApplicable, NotApplicableReason: NotApplicableActionsRemainDisabled,
+		Result: NotComparable, Applicability: NotApplicable(NotApplicableActionsRemainDisabled),
 	}
 	cases := []struct {
 		name         string
@@ -58,7 +58,7 @@ func TestPlan_NotApplicableError(t *testing.T) {
 			name: "not-applicable environment is named with its environment name",
 			repositories: []RepositoryPlan{{Target: zeta, Settings: []SettingPlan{{
 				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "cafe")}, Result: NotComparable,
-				Applicability: NotApplicable, NotApplicableReason: NotApplicableEnvironmentNameUndetermined,
+				Applicability: NotApplicable(NotApplicableEnvironmentNameUndetermined),
 			}}}},
 			want: "plan cannot be applied: owner/zeta: environments.cafe is not applicable",
 		},
@@ -154,9 +154,9 @@ func TestRepositoryPlan_HasPlannedChanges(t *testing.T) {
 func TestRepositoryPlan_NotApplicableChanges(t *testing.T) {
 	notApplicable := SettingPlan{
 		Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
-		Result: NotComparable, Applicability: NotApplicable, NotApplicableReason: NotApplicableActionsRemainDisabled,
+		Result: NotComparable, Applicability: NotApplicable(NotApplicableActionsRemainDisabled),
 	}
-	applicable := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Result: Mismatch, Applicability: Applicable}
+	applicable := SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Result: Mismatch, Applicability: Applicable()}
 	match := SettingPlan{Unit: setting.Unit{Key: setting.DeleteBranchOnMerge}, Result: Match}
 	cases := []struct {
 		name     string
@@ -264,8 +264,8 @@ func TestGenerate(t *testing.T) {
 			Target:       mustReference(t, "owner/second"),
 			RepositoryID: 7,
 			Settings: []SettingPlan{
-				{Unit: setting.Unit{Key: setting.DeleteBranchOnMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
-				{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
+				{Unit: setting.Unit{Key: setting.DeleteBranchOnMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable()},
+				{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable()},
 			},
 		}}
 		if !reflect.DeepEqual(got.Repositories, want) {
@@ -374,7 +374,7 @@ func TestGenerate_MergeMethods(t *testing.T) {
 	disabled := func(key setting.Key) SettingPlan {
 		return SettingPlan{
 			Unit: setting.Unit{Key: key}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false), Result: Mismatch,
-			Applicability: NotApplicable, NotApplicableReason: NotApplicableNoMergeMethodEnabled, MergeMethodsLeftDisabled: []setting.Key{setting.AllowRebaseMerge},
+			Applicability: NotApplicable(NotApplicableNoMergeMethodEnabled, setting.AllowRebaseMerge),
 		}
 	}
 	want := []SettingPlan{disabled(setting.AllowSquashMerge), disabled(setting.AllowMergeCommit)}
@@ -422,10 +422,10 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}
 		want := []SettingPlan{
-			{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable},
+			{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable()},
 			{
 				Unit: setting.Unit{Key: setting.DefaultWorkflowPermissions}, Observed: github.Observed(setting.PermissionLevelValue(setting.PermissionWrite)), Desired: setting.PermissionLevelValue(setting.PermissionRead),
-				Result: Mismatch, Applicability: Applicable,
+				Result: Mismatch, Applicability: Applicable(),
 			},
 		}
 		if len(got.Repositories) != 1 {
@@ -486,9 +486,9 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 			plans = append(plans, planned{s.Unit.String(), s.Result, s.Applicability})
 		}
 		want := []planned{
-			{"environments.production", Mismatch, Applicable},
-			{"environments.production.deployment_branch_policy", NotComparable, Applicable},
-			{"environments.staging", Match, ApplicabilityNotJudged},
+			{"environments.production", Mismatch, Applicable()},
+			{"environments.production.deployment_branch_policy", NotComparable, Applicable()},
+			{"environments.staging", Match, Applicability{}},
 		}
 		if !reflect.DeepEqual(plans, want) {
 			t.Errorf("plans = %+v, want %+v", plans, want)
@@ -529,10 +529,10 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 			plans = append(plans, planned{s.Unit.String(), s.Result, s.Applicability})
 		}
 		wantPlans := []planned{
-			{"environments.production", Match, ApplicabilityNotJudged},
-			{"environments.production.variables.REGION", Mismatch, Applicable},
-			{"environments.staging", Mismatch, Applicable},
-			{"environments.staging.variables.REGION", NotComparable, Applicable},
+			{"environments.production", Match, Applicability{}},
+			{"environments.production.variables.REGION", Mismatch, Applicable()},
+			{"environments.staging", Mismatch, Applicable()},
+			{"environments.staging.variables.REGION", NotComparable, Applicable()},
 		}
 		if !reflect.DeepEqual(plans, wantPlans) {
 			t.Errorf("plans = %+v, want %+v", plans, wantPlans)
@@ -609,8 +609,8 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}
 		want := []SettingPlan{
-			{Unit: variableUnit(t, "GO_VERSION"), Observed: github.Observed(setting.VariableValue("1.26")), Desired: setting.VariableValue("1.27"), Result: Mismatch, Applicability: Applicable},
-			{Unit: variableUnit(t, "GO_ARCH"), Observed: github.Observed(setting.Absent()), Desired: setting.VariableValue("amd64"), Result: Mismatch, Applicability: Applicable},
+			{Unit: variableUnit(t, "GO_VERSION"), Observed: github.Observed(setting.VariableValue("1.26")), Desired: setting.VariableValue("1.27"), Result: Mismatch, Applicability: Applicable()},
+			{Unit: variableUnit(t, "GO_ARCH"), Observed: github.Observed(setting.Absent()), Desired: setting.VariableValue("amd64"), Result: Mismatch, Applicability: Applicable()},
 		}
 		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
 			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
@@ -681,7 +681,7 @@ func TestGenerate_ActionsPermissions(t *testing.T) {
 		criteria := setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, PatternsAllowed: []string{"example/*"}}
 		want := []SettingPlan{{
 			Unit: setting.Unit{Key: setting.AllowedActions}, Observed: github.Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected)),
-			Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), Result: Mismatch, Applicability: Applicable,
+			Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), Result: Mismatch, Applicability: Applicable(),
 			SideEffects: []SideEffect{{Kind: SideEffectSelectedActionsDiscarded, Observed: github.Observed(setting.SelectedActionsCriteriaValue(criteria))}},
 		}}
 		if len(got.Repositories) != 1 {
@@ -705,7 +705,7 @@ func TestGenerate_ActionsPermissions(t *testing.T) {
 			t.Fatalf("Generate() error = %v", err)
 		}
 		want := []SettingPlan{{
-			Unit: setting.Unit{Key: setting.ActionsEnabled}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false), Result: Mismatch, Applicability: Applicable,
+			Unit: setting.Unit{Key: setting.ActionsEnabled}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false), Result: Mismatch, Applicability: Applicable(),
 		}}
 		if len(got.Repositories) != 1 {
 			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
@@ -749,7 +749,7 @@ func TestGenerate_ActionsPermissions(t *testing.T) {
 		}
 		want := []SettingPlan{{
 			Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true),
-			Result: NotComparable, Applicability: NotApplicable, NotApplicableReason: NotApplicableActionsRemainDisabled,
+			Result: NotComparable, Applicability: NotApplicable(NotApplicableActionsRemainDisabled),
 		}}
 		if len(got.Repositories) != 1 {
 			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
@@ -773,10 +773,10 @@ func TestGenerate_ActionsPermissions(t *testing.T) {
 		}
 		want := []SettingPlan{
 			{
-				Unit: setting.Unit{Key: setting.ActionsEnabled}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable,
+				Unit: setting.Unit{Key: setting.ActionsEnabled}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable(),
 				ResumedSettings: []setting.Key{setting.AllowedActions, setting.SelectedActions},
 			},
-			{Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true), Result: NotComparable, Applicability: Applicable},
+			{Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true), Result: NotComparable, Applicability: Applicable()},
 		}
 		if len(got.Repositories) != 1 {
 			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
@@ -830,7 +830,7 @@ func TestGenerate_ActionsAccess(t *testing.T) {
 		}
 		want := []SettingPlan{{
 			Unit: setting.Unit{Key: setting.ActionsAccessLevel}, Observed: github.Observed(setting.AccessLevelValue(setting.AccessOrganization)), Desired: setting.AccessLevelValue(setting.AccessNone),
-			Result: Mismatch, Applicability: Applicable,
+			Result: Mismatch, Applicability: Applicable(),
 		}}
 		if len(got.Repositories) != 1 {
 			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)

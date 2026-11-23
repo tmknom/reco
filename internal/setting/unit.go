@@ -4,12 +4,20 @@ import "fmt"
 
 // Unit は管理の単位の識別。リポジトリ設定は Key だけで定まり、関連リソースに関わる管理の単位は、
 // 形を表す Key と関連リソースの名前の組で定まる (アーキテクチャ設計の package の分け方)。
+// Environment の名前を持つ単位どうしでは、== は綴りの違う同じ Environment を別の単位とするため、同じ管理の単位かは Same で判定する。
 type Unit struct {
 	Key Key
 	// Environment は、Key が Environment か、Environment に属する Environment Variable の形のときだけ持つ。ほかの形ではゼロ値。
 	Environment EnvironmentName
 	// Variable は、Key が Repository Variable か Environment Variable の形のときだけ持つ。ほかの形ではゼロ値。
 	Variable VariableName
+}
+
+// Same は、u と other が同じ管理の単位かを返す。
+// Environment の名前は、GitHub が同じ Environment とみなす名前どうしを同じ単位にするため、EqualFold で比べる。
+// 変数の名前は英小文字を含まないため、== で比べれば足りる。
+func (u Unit) Same(other Unit) bool {
+	return u.Key == other.Key && u.Environment.EqualFold(other.Environment) && u.Variable == other.Variable
 }
 
 // String は、CLI 仕様の表示の形で識別を返す。

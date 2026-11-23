@@ -36,7 +36,7 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 		fmt.Fprintf(&b, "  %s: %s -> %s\n", s.Unit.String(), current, desired)
 	}
 	b.WriteString(deploymentPatternChangesText(s))
-	if s.Applicability == changeplan.NotApplicable {
+	if s.Applicability.IsNotApplicable() {
 		fmt.Fprintf(&b, "    Applicability: not applicable (%s)\n", notApplicableReasonText(s))
 	}
 	if len(s.ResumedSettings) > 0 {
@@ -73,7 +73,7 @@ func repositoryStateText(reason github.UnavailableReason) string {
 // 未定義の理由は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func notApplicableReasonText(s changeplan.SettingPlan) string {
 	key := s.Unit.Key
-	switch s.NotApplicableReason {
+	switch s.Applicability.Reason() {
 	case changeplan.NotApplicableActionsRemainDisabled:
 		return "GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it"
 	case changeplan.NotApplicablePublicRepository:
@@ -87,9 +87,9 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 	case changeplan.NotApplicableSecretScanningRemainsDisabled:
 		return "Secret scanning is disabled; declare secret_scanning: true to enable it"
 	case changeplan.NotApplicableNoMergeMethodEnabled:
-		return noMergeMethodEnabledText(s.MergeMethodsLeftDisabled)
+		return noMergeMethodEnabledText(s.Applicability.UnmanagedSettings())
 	}
-	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(s.NotApplicableReason)))
+	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(s.Applicability.Reason())))
 }
 
 // noMergeMethodEnabledText は、更新後に有効なマージ方式が残らない理由を、無効のまま残るマージ方式と、そのどれかを有効にする宣言で返す。

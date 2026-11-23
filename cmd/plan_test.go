@@ -9,9 +9,6 @@ import (
 	"github.com/tmknom/reco/internal/githubtest"
 )
 
-// mismatchedRepositoryBody は、宣言の期待値 true と異なる現在値 false を返す観測結果。
-var mismatchedRepositoryBody = githubtest.RepositoryBody{ID: 1, Admin: true}.JSON()
-
 //trace:checks FR-002 FR-003 FR-007 QR-001
 func TestPlan_Success(t *testing.T) {
 	cases := []struct {
