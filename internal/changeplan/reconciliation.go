@@ -57,6 +57,18 @@ func managedAreas(desired configuration.DesiredState) []setting.Area {
 	return areas
 }
 
+// managedEnvironments は、管理範囲内の管理設定が名指す Environment の名前を、管理設定の列挙の並びで一度ずつ返す。
+// reconcile と同じ管理設定の列挙から決めるため、照合で引く Environment は必ず読まれる。
+func managedEnvironments(desired configuration.DesiredState) []setting.EnvironmentName {
+	var names []setting.EnvironmentName
+	for _, managed := range desired.ManagedSettings() {
+		if managed.Unit.Key.HasEnvironmentName() && !slices.Contains(names, managed.Unit.Environment) {
+			names = append(names, managed.Unit.Environment)
+		}
+	}
+	return names
+}
+
 // newSettingPlan は、観測値があれば期待値と比べ、観測不能なら Equal に渡さずに比較不能とする。
 func newSettingPlan(unit setting.Unit, observed github.SettingObservation[setting.Value], desired setting.Value) SettingPlan {
 	result := NotComparable

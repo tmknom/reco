@@ -143,7 +143,7 @@ func (s SettingPlan) IsPlannedChange() bool {
 
 // generateRepositoryPlan は、一つの対象リポジトリを計画時に観測し、リポジトリの計画を生成する。
 func generateRepositoryPlan(ctx context.Context, client *github.Client, target configuration.RepositoryDeclaration) (RepositoryPlan, error) {
-	observed, err := client.ObserveRepository(ctx, target.Reference, managedAreas(target.Desired)...)
+	observed, err := client.ObserveRepositoryForEnvironments(ctx, target.Reference, managedEnvironments(target.Desired), managedAreas(target.Desired)...)
 	if err != nil {
 		return RepositoryPlan{}, err
 	}

@@ -1,6 +1,10 @@
 package github
 
-import "github.com/tmknom/reco/internal/setting"
+import (
+	"fmt"
+
+	"github.com/tmknom/reco/internal/setting"
+)
 
 // EnvironmentObservation は、同一性を判定できる名前で引いた一つの Environment の関連リソースの観測結果。存在する、存在しない、理由を伴う観測不能のいずれか一つを持つ。
 // 状態を取り違えた値を作れないよう、フィールドを公開せず Environments.Lookup でだけ作る。
@@ -60,7 +64,7 @@ func (o EnvironmentObservation) Existence() SettingObservation[setting.Value] {
 func (o EnvironmentObservation) DeploymentBranchPolicy() SettingObservation[setting.Value] {
 	switch o.state {
 	case environmentExisting:
-		return Observed(setting.DeploymentBranchPolicyValue(o.environment.DeploymentBranchPolicy))
+		return Observed(setting.DeploymentBranchPolicyValue(o.environment.DeploymentBranchPolicy()))
 	case environmentAbsent:
 		return Unavailable[setting.Value](UnavailableEnvironmentAbsent)
 	default:
@@ -71,10 +75,14 @@ func (o EnvironmentObservation) DeploymentBranchPolicy() SettingObservation[sett
 
 // Variable は、その Environment に属する、名前 name の Environment Variable の観測結果を返す。
 // 存在しない Environment の変数は値として読めないため、存在しないことを理由にした観測不能にする。
-// 存在する Environment の Variables が nil なのは変数の領域を読まなかった観測で、不変条件の破れとして panic する。
+// 存在する Environment の Variables が nil なのは、変数の領域を読まなかった観測か、その Environment を読む範囲に含めなかった観測である。
+// どちらも変数が一つもないこととは異なるため、不変条件の破れとして、どの Environment かを示して panic する。
 func (o EnvironmentObservation) Variable(name setting.VariableName) SettingObservation[setting.Value] {
 	switch o.state {
 	case environmentExisting:
+		if o.environment.Variables == nil {
+			panic(fmt.Sprintf("github: variables of environment %q were not read in this observation", o.environment.Name))
+		}
 		return o.environment.Variables.Lookup(name)
 	case environmentAbsent:
 		return Unavailable[setting.Value](UnavailableEnvironmentAbsent)

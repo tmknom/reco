@@ -74,7 +74,7 @@ repositories:
 | `allow_update_branch` | `true` / `false` | base ブランチより遅れた Pull Request に、ブランチの更新を常に提案するか |
 
 > [!NOTE]
-> GitHub の仕様上、GitHub Free のアカウントが所有するプライベートリポジトリでは、自動マージは使えません。
+> GitHub の仕様上、GitHub Free のアカウントが所有する非公開リポジトリでは、自動マージは使えません。
 
 `allow_squash_merge`、`allow_merge_commit`、`allow_rebase_merge` の3つは、Pull Request をマージする方法を許可する設定で、まとめて **マージ方式** と呼びます。GitHub は3つをすべて無効にすることを受け付けないため、3つとも `false` と書いた設定ファイルはエラーになります。一部を省き、書いたものをすべて `false` にした場合も、書いていないマージ方式が GitHub 上ですべて無効なら、`plan` が `Plan cannot be applied.` を表示します。reco は、書いていないマージ方式を代わりに有効にしません。有効にしておくマージ方式を `true` と書き足します。
 
@@ -145,9 +145,9 @@ repositories:
 |---|---|---|
 | `access_level` | `none` / `user` | ほかのリポジトリのワークフローが、このリポジトリの Actions と再利用可能なワークフローを使える範囲 |
 
-`none` はほかのリポジトリからのアクセスを許可しません。`user` は、同じユーザーが所有するほかのプライベートリポジトリのワークフローからのアクセスを許可します。
+`none` はほかのリポジトリからのアクセスを許可しません。`user` は、同じユーザーが所有するほかの非公開リポジトリのワークフローからのアクセスを許可します。
 
-- この設定はプライベートリポジトリにだけ適用される。パブリックリポジトリに書くと `apply` できない
+- この設定は非公開リポジトリにだけ適用される。公開リポジトリに書くと `apply` できない
 - `organization` は設定ファイルに書けない。Organization が所有するリポジトリのための値で、reco が扱うユーザー所有のリポジトリでは GitHub が受け付けないため。Organization から移転したリポジトリなどで `show` が `organization` を示したときは、`none` か `user` を書けば、書いた値に変わる
 - Actions が無効のリポジトリでも書ける
 
@@ -218,7 +218,7 @@ repositories:
 | `patterns[].type` | `branch` / `tag`（必須） | パターンがブランチとタグのどちらに一致するか |
 | `patterns[].name` | 文字列（必須） | ブランチ名またはタグ名のパターン（`release/*` など） |
 
-- 書いた名前の Environment がなければ、reco は作成する。`deployment_branch_policy` を省いた Environment は、あるかどうかだけを管理する
+- 書いた名前の Environment がなければ、reco は作成する。`deployment_branch_policy` も `variables` も省いた Environment は、あるかどうかだけを管理する
 - 書かなかった Environment は、変更も削除もしない。設定ファイルから名前を消しても、GitHub 上の Environment は残る
 - 名前は、半角の英数字、空白、記号だけで書く。大文字と小文字だけが違う名前は同じ Environment とみなすため、同じリポジトリに並べられない
 - 保護ルールのあるブランチが一つもなければ、`protected_branches` でもすべてのブランチからデプロイできる（GitHub の仕様）。ブランチの保護ルールは reco では作れない

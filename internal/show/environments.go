@@ -17,9 +17,10 @@ func writeEnvironments(b *strings.Builder, e github.Environments) {
 	b.WriteString("    environments:\n")
 	for _, environment := range e.Existing {
 		// 名前は任意の文字を含み得るため、制御文字をエスケープして一行に収める
-		fmt.Fprintf(b, "      - name: %s\n        deployment_branch_policy:\n          mode: %s\n", quote(environment.Name), environment.DeploymentBranchPolicy.Mode)
-		if environment.DeploymentBranchPolicy.Mode == setting.DeploymentBranchPolicySelected {
-			writeDeploymentPatterns(b, environment.DeploymentBranchPolicy.Patterns)
+		policy := environment.DeploymentBranchPolicy()
+		fmt.Fprintf(b, "      - name: %s\n        deployment_branch_policy:\n          mode: %s\n", quote(environment.Name), policy.Mode)
+		if policy.Mode == setting.DeploymentBranchPolicySelected {
+			writeDeploymentPatterns(b, policy.Patterns)
 		}
 		writeEnvironmentVariables(b, *environment.Variables)
 	}

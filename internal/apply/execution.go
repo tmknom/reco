@@ -135,7 +135,7 @@ func observeBeforeUpdate(ctx context.Context, client *github.Client, r changepla
 		return github.ObservationResult{}, operationRecord{precondition: preconditionUnconfirmed}, fmt.Errorf("wait for the interval between update requests before reading %s: %w", r.Target, err)
 	}
 	for i := 0; ; i++ {
-		observed, err := client.ObserveRepository(ctx, r.Target, areas...)
+		observed, err := client.ObserveRepositoryForEnvironments(ctx, r.Target, observationEnvironments(change), areas...)
 		if err != nil {
 			return github.ObservationResult{}, operationRecord{precondition: preconditionUnconfirmed}, err
 		}
@@ -201,7 +201,7 @@ func environmentDestination(name setting.EnvironmentName, observed github.Observ
 // Environment が存在しない観測は ID の対応を持たないため、同じ分岐で panic になる。
 func deploymentPatternIDOf(name setting.EnvironmentName, pattern setting.DeploymentPattern, observed github.ObservationResult) github.DeploymentPatternID {
 	existing, _ := observed.Environments.Lookup(name).Existing()
-	id, ok := existing.DeploymentPatternIDs[pattern]
+	id, ok := existing.DeploymentPatternID(pattern)
 	if !ok {
 		panic(fmt.Sprintf("apply: deployment pattern %s %q to remove is not in the read of environment %q before the update", pattern.Type, pattern.Name, name.String()))
 	}
@@ -213,25 +213,46 @@ var reobservationDelays = [...]time.Duration{1 * time.Second, 2 * time.Second, 4
 
 // observationAreas は、change の更新直前と更新後の観測で読む設定の領域を返す。
 // 変更前提で比べる設定、期待値と比べる設定、比べる変更対象外の設定の領域を読まないと、観測結果にその値がないため、
-// 更新操作の宛先とその更新エンドポイントで観測する設定、基準の設定、期待状態の設定から導く。
+// 比べる管理の単位と、更新操作の更新エンドポイントで観測する設定から導く。
 // 一つの更新エンドポイントが複数の設定の領域の設定を受け付けることがある (General と Secret scanning)。
 func observationAreas(change changeplan.LogicalChange) []setting.Area {
 	var areas []setting.Area
+	for _, unit := range comparedUnits(change) {
+		areas = appendArea(areas, unit.Key.Area())
+	}
 	for _, operation := range change.Operations {
-		areas = appendArea(areas, operation.Unit.Key.Area())
 		if operation.Kind == changeplan.SettingUpdate || operation.Kind == changeplan.MergeMethodsUpdate {
 			for _, key := range github.UpdateEndpointOf(operation.Unit.Key).ObservedSettings() {
 				areas = appendArea(areas, key.Area())
 			}
 		}
-		for _, relevant := range operation.RelevantSettings {
-			areas = appendArea(areas, relevant.Unit.Key.Area())
-		}
-	}
-	for _, unit := range change.Units() {
-		areas = appendArea(areas, unit.Key.Area())
 	}
 	return areas
+}
+
+// observationEnvironments は、change の更新直前と更新後の観測で、Environment ごとの読み取り（個別パターンと変数の一覧）を送る Environment の名前を返す。
+// 変更前提、期待状態の確認、変更対象外の設定の比較、更新要求の宛先は、どれもこの名前の Environment しか引かないため、ほかの Environment を読まなくても判断は変わらない。
+func observationEnvironments(change changeplan.LogicalChange) []setting.EnvironmentName {
+	var names []setting.EnvironmentName
+	for _, unit := range comparedUnits(change) {
+		if unit.Key.HasEnvironmentName() && !slices.Contains(names, unit.Environment) {
+			names = append(names, unit.Environment)
+		}
+	}
+	return names
+}
+
+// comparedUnits は、change の更新直前と更新後の観測で比べる管理の単位を、重複を除かずに返す。
+// observationAreas と observationEnvironments が同じ単位から読む範囲を導き、片方だけに単位を足して範囲が食い違わないようにするため。
+func comparedUnits(change changeplan.LogicalChange) []setting.Unit {
+	var units []setting.Unit
+	for _, operation := range change.Operations {
+		units = append(units, operation.Unit)
+		for _, relevant := range operation.RelevantSettings {
+			units = append(units, relevant.Unit)
+		}
+	}
+	return append(units, change.Units()...)
 }
 
 func appendArea(areas []setting.Area, area setting.Area) []setting.Area {
@@ -246,7 +267,7 @@ func appendArea(areas []setting.Area, area setting.Area) []setting.Area {
 // retryDelays の時間ずつ待って、retryDelays を使い切るまで観測し直す。
 func observeAfterUpdate(ctx context.Context, client *github.Client, r changeplan.RepositoryPlan, change changeplan.LogicalChange, areas []setting.Area, retryDelays []time.Duration, after func(time.Duration) <-chan time.Time) (github.ObservationResult, desiredStateConfirmation, github.UnavailableReason, error) {
 	for i := 0; ; i++ {
-		observed, err := client.ObserveRepository(ctx, r.Target, areas...)
+		observed, err := client.ObserveRepositoryForEnvironments(ctx, r.Target, observationEnvironments(change), areas...)
 		if err != nil {
 			return github.ObservationResult{}, desiredStateUnconfirmed, 0, err
 		}

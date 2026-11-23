@@ -539,6 +539,41 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 		}
 	})
 
+	t.Run("undeclared environments are listed but their patterns and variables are not read", func(t *testing.T) {
+		const src = "repositories:\n  - name: owner/repo\n    environments:\n" +
+			"      - name: production\n        variables:\n          - name: REGION\n            value: eu\n"
+		selected := &githubtest.DeploymentBranchPolicyBody{CustomBranchPolicies: true}
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo": githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/environments": githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 2, Environments: []githubtest.EnvironmentBody{
+				{ID: 1, Name: "undeclared", DeploymentBranchPolicy: selected},
+				{ID: 2, Name: "production", DeploymentBranchPolicy: selected},
+			}}.JSON()),
+			"GET /repos/owner/repo/environments/production/deployment-branch-policies": githubtest.OK(githubtest.DeploymentBranchPoliciesBody{}.JSON()),
+			"GET /repos/owner/repo/environments/production/variables": githubtest.OK(githubtest.VariablesBody{TotalCount: 1, Variables: []githubtest.VariableBody{
+				{Name: "REGION", Value: "eu"},
+			}}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+		got, err := Generate(context.Background(), client, file(src), nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		want := []string{
+			"GET /repos/owner/repo", "GET /repos/owner/repo/environments",
+			"GET /repos/owner/repo/environments/production/deployment-branch-policies", "GET /repos/owner/repo/environments/production/variables",
+		}
+		if !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		for _, s := range got.Repositories[0].Settings {
+			if s.Result != Match {
+				t.Errorf("%s result = %v, want %v", s.Unit, s.Result, Match)
+			}
+		}
+	})
+
 	t.Run("environments observation failure is returned without planning a creation", func(t *testing.T) {
 		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
 			"GET /repos/owner/repo":              githubtest.OK(repositoryBody),

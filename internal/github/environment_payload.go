@@ -56,10 +56,10 @@ func decodeEnvironment(data json.RawMessage) (Environment, error) {
 		return Environment{}, err
 	}
 	return Environment{
-		ID:                     EnvironmentID(*p.ID),
-		Name:                   *p.Name,
-		DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: mode},
-		Protection:             protection,
+		ID:                         EnvironmentID(*p.ID),
+		Name:                       *p.Name,
+		DeploymentBranchPolicyMode: mode,
+		Protection:                 protection,
 	}, nil
 }
 

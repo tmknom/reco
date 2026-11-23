@@ -29,7 +29,7 @@ flowchart TB
 ```
 
 - **`plan`**：設定ファイルと GitHub 上の現在の設定を比べ、変更計画を表示する。GitHub の設定は変えない
-- **`apply`**：変更計画を作り直して表示し、承認を求める。承認されたら、設定ファイルに書いた順にリポジトリを更新し、更新後の設定が設定ファイルのとおりになったことを確かめて結果を示す
+- **`apply`**：実行した時点の値から変更計画を作り直して表示し、承認を求める。承認されたら、設定ファイルに書いた順にリポジトリを更新し、更新後の設定が設定ファイルのとおりになったことを確かめて結果を示す
 - **`show`**：設定ファイルを使わずに、一つのリポジトリの現在の設定を表示する。設定ファイルを書く前に今の値を確かめるときに使う
 
 ## 始め方
@@ -58,7 +58,7 @@ reco が管理可能な設定は、次のとおりです。具体的な設定方
 | Actions を完全な長さのコミット SHA に固定することを必須にするか | 「Actions」の「General」ページの「Actions permissions」の欄の「Require actions to be pinned to a full-length commit SHA」 |
 | `GITHUB_TOKEN` のデフォルト権限を、読み書きにするか、読み取りに限るか | 「Actions」の「General」ページの「Workflow permissions」の欄 |
 | GitHub Actions に Pull Request の作成と承認を許すか | 「Actions」の「General」ページの「Workflow permissions」の欄の「Allow GitHub Actions to create and approve pull requests」 |
-| ほかのリポジトリのワークフローに、このリポジトリの Actions と再利用可能なワークフローを使わせるか（プライベートリポジトリだけ） | 「Actions」の「General」ページの「Access」の欄 |
+| ほかのリポジトリのワークフローに、このリポジトリの Actions と再利用可能なワークフローを使わせるか（非公開リポジトリだけ） | 「Actions」の「General」ページの「Access」の欄 |
 | ワークフローから読む Repository Variables の名前と値 | 「Secrets and variables」の「Actions」ページの「Variables」タブ |
 | デプロイ先の Environment があるか（なければ作成する） | 「Environments」ページの Environment の一覧 |
 | Environment へデプロイできるブランチとタグを、制限しないか、保護ルールのあるブランチに限るか、選んだパターンに限るか | 「Environments」ページの Environment の「Deployment branches and tags」の欄の「No restriction」、「Protected branches only」、「Selected branches and tags」 |

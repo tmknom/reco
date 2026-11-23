@@ -62,15 +62,15 @@ func TestDecodeEnvironment(t *testing.T) {
 		{
 			name: "null policy and no rules is all without protection",
 			body: environmentJSON(nil),
-			want: Environment{ID: 161088068, Name: "production", DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}},
+			want: Environment{ID: 161088068, Name: "production", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyAll},
 		},
 		{
 			name: "actual shape with unread fields is read",
 			body: actualShape,
 			want: Environment{
-				ID:                     161088068,
-				Name:                   "Prod/Eu",
-				DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected},
+				ID:                         161088068,
+				Name:                       "Prod/Eu",
+				DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
 				Protection: setting.EnvironmentProtection{
 					WaitTimer: &wait,
 					RequiredReviewers: &setting.RequiredReviewers{
