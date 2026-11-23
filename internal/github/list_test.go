@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -326,6 +327,133 @@ func TestListAll(t *testing.T) {
 		}
 		if len(items) != maxListPages || int(count.Load()) != maxListPages {
 			t.Errorf("listAll() returned %d items with %d requests, want %d of each", len(items), count.Load(), maxListPages)
+		}
+	})
+}
+
+//trace:checks FR-004 QR-002
+func TestDecodeArrayPage(t *testing.T) {
+	t.Run("items are returned in the order they arrived", func(t *testing.T) {
+		items, err := decodeArrayPage([]byte(`[{"n": 2}, {"n": 1}]`))
+		if err != nil {
+			t.Fatalf("decodeArrayPage() error = %v", err)
+		}
+		if len(items) != 2 || string(items[0]) != `{"n": 2}` || string(items[1]) != `{"n": 1}` {
+			t.Errorf("decodeArrayPage() = %q, want the two items in the arrival order", items)
+		}
+	})
+
+	t.Run("empty array is no items", func(t *testing.T) {
+		items, err := decodeArrayPage([]byte(`[]`))
+		if err != nil || len(items) != 0 {
+			t.Errorf("decodeArrayPage() = %q, %v, want no items and nil", items, err)
+		}
+	})
+
+	failures := []struct {
+		name string
+		body string
+	}{
+		{name: "object body is unexpected response", body: `{"total_count": 0, "things": []}`},
+		{name: "null body is unexpected response", body: `null`},
+		{name: "non-JSON body is unexpected response", body: `<html>`},
+	}
+	for _, tc := range failures {
+		t.Run(tc.name, func(t *testing.T) {
+			items, err := decodeArrayPage([]byte(tc.body))
+			if !errors.Is(err, ErrUnexpectedResponse) {
+				t.Fatalf("decodeArrayPage() error = %v, want %v", err, ErrUnexpectedResponse)
+			}
+			if items != nil {
+				t.Errorf("decodeArrayPage() = %q, want none on failure", items)
+			}
+		})
+	}
+}
+
+// arrayPageBody は、n 件の要素を持つ配列の本文である。
+func arrayPageBody(n int) string {
+	items := make([]string, n)
+	for i := range n {
+		items[i] = fmt.Sprintf(`{"n": %d}`, i)
+	}
+	return "[" + strings.Join(items, ", ") + "]"
+}
+
+// TestListSinglePage は、total_count のない一覧を1ページだけ、元の検索条件に per_page を足して読むことを確かめる。
+//
+//trace:checks FR-004 QR-002
+func TestListSinglePage(t *testing.T) {
+	listURL := func(c *Client) *url.URL {
+		u := c.repositoryURL(mustReference(t, "owner/repo"))
+		u.Path += "/things"
+		u.RawQuery = "includes_parents=false"
+		return u
+	}
+
+	t.Run("a page short of per_page is the whole list read with one request", func(t *testing.T) {
+		var requests []string
+		c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			requests = append(requests, r.URL.Path+"?"+r.URL.RawQuery)
+			_, _ = w.Write([]byte(arrayPageBody(listPerPage - 1)))
+		})
+		items, err := c.listSinglePage(t.Context(), listURL(c))
+		if err != nil {
+			t.Fatalf("listSinglePage() error = %v", err)
+		}
+		if len(items) != listPerPage-1 || string(items[0]) != `{"n": 0}` {
+			t.Errorf("listSinglePage() returned %d items starting with %q, want %d items in order", len(items), items[0], listPerPage-1)
+		}
+		want := []string{"/repos/owner/repo/things?includes_parents=false&per_page=100"}
+		if !slices.Equal(requests, want) {
+			t.Errorf("listSinglePage() requests = %q, want %q", requests, want)
+		}
+	})
+
+	t.Run("a page of exactly per_page items is unexpected response because the last page is not reached", func(t *testing.T) {
+		var count atomic.Int32
+		c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			count.Add(1)
+			_, _ = w.Write([]byte(arrayPageBody(listPerPage)))
+		})
+		items, err := c.listSinglePage(t.Context(), listURL(c))
+		if !errors.Is(err, ErrUnexpectedResponse) {
+			t.Fatalf("listSinglePage() error = %v, want %v", err, ErrUnexpectedResponse)
+		}
+		if items != nil || count.Load() != 1 {
+			t.Errorf("listSinglePage() returned %d items with %d requests, want none with 1 request", len(items), count.Load())
+		}
+	})
+
+	t.Run("a page over maxResponseBytes is unexpected response", func(t *testing.T) {
+		body := "[" + strings.Repeat(" ", maxResponseBytes) + "]"
+		c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(body))
+		})
+		items, err := c.listSinglePage(t.Context(), listURL(c))
+		if !errors.Is(err, ErrUnexpectedResponse) {
+			t.Fatalf("listSinglePage() error = %v, want %v", err, ErrUnexpectedResponse)
+		}
+		if items != nil {
+			t.Errorf("listSinglePage() = %q, want none", items)
+		}
+	})
+
+	t.Run("a failed request returns its error", func(t *testing.T) {
+		c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+		})
+		if _, err := c.listSinglePage(t.Context(), listURL(c)); !errors.Is(err, ErrForbidden) {
+			t.Errorf("listSinglePage() error = %v, want %v", err, ErrForbidden)
+		}
+	})
+
+	t.Run("a non-array page is unexpected response", func(t *testing.T) {
+		c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{}`))
+		})
+		if _, err := c.listSinglePage(t.Context(), listURL(c)); !errors.Is(err, ErrUnexpectedResponse) {
+			t.Errorf("listSinglePage() error = %v, want %v", err, ErrUnexpectedResponse)
 		}
 	})
 }

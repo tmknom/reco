@@ -206,7 +206,7 @@ Ruleset は、GitHub が付ける整数の `id` と、作成で必須の `name` 
 > - `Team` と `OrganizationAdmin`：`Team` は `422`（`Actor  team must be part of the ruleset source or owner organization` ほか）、`OrganizationAdmin` は `actor_id` の有無によらず `422`（`ruleset source must be in an organization`）だった
 > - `bypass_mode`：`RepositoryRole` の `pull_request` と `exempt` は `200` で保存された。`bypass_mode` を省略すると `always` で保存された
 > - 重複：同じ `actor_type` と `actor_id` の要素を二つ送ると、`bypass_mode` が同じでも違っても `200` を返し、先の要素だけを保存した
-> - 順序：3つの要素は、送った順のまま返った（1例）
+> - 順序：3つの要素は、送った順のまま返った（1例）。`RepositoryRole`（`5`）、`DeployKey` の順で作成した Ruleset の取得は、`DeployKey`、`RepositoryRole` の順で返した（1例）。送った順を保つとは限らない
 
 | Relationship | Target | Target Type |
 |---|---|---|

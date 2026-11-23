@@ -16,6 +16,7 @@
 | [Actions の設計](actions.md) | `actions` | Actions の実行許可、ワークフロー権限、リポジトリ外のワークフローからのアクセス、Repository Variables |
 | [Environments の設計](environments.md) | `environments` | Environments、Environment Variables |
 | [Security の設計](security.md) | `security` | Dependabot、Secret scanning、Private vulnerability reporting |
+| [Rulesets の設計](rulesets.md) | `rulesets`（宣言は未対応で、観測だけを扱う） | Rulesets |
 
 設定の領域ごとではなくトップレベルのキーごとに分けるのは、同じキーの設定どうしが、観測の条件や更新の順序で互いに依存し、一緒に変わるためです。Actions の各領域は Actions の有効状態と公開範囲を読み分ける条件を、Security の各領域は前提の設定と依存する設定の扱いと、公開範囲による観測不能を共有します。キーをまたぐ依存（General と Secret scanning が同じ更新エンドポイントを使うこと）は、それぞれの文書が自分の更新操作について書き（更新後に比べる、もう一方のキーの設定など）、もう一方の設定の規則は参照します。
 

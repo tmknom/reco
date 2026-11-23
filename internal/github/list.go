@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -103,6 +104,41 @@ func decodeListPage(data []byte, itemsField string) (total int, items []json.Raw
 		return 0, nil, fmt.Errorf("%w: %s: %w", ErrUnexpectedResponse, itemsField, err)
 	}
 	return total, items, nil
+}
+
+// listSinglePage は、total_count を返さず要素の配列だけを返す一覧 u を、1ページだけ読む。u の検索条件は保ち、listPerPage の件数を求める。
+// 公式資料の件数の上限が listPerPage より小さい一覧だけに使う。listPerPage ちょうどの要素を返したページは最後のページと言えず、
+// 次のページを読んでも読んでいるあいだの増減を検出できないため、ページ数の上限1まで読んでも最後のページに達しない失敗とする。
+func (c *Client) listSinglePage(ctx context.Context, u *url.URL) ([]json.RawMessage, error) {
+	paged := *u
+	query := paged.Query()
+	query.Set("per_page", strconv.Itoa(listPerPage))
+	paged.RawQuery = query.Encode()
+	_, body, err := c.send(ctx, http.MethodGet, &paged, nil, http.StatusOK)
+	if err != nil {
+		return nil, err
+	}
+	items, err := decodeArrayPage(body)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) >= listPerPage {
+		return nil, fmt.Errorf("%w: list not complete after 1 page", ErrUnexpectedResponse)
+	}
+	return items, nil
+}
+
+// decodeArrayPage は、要素の配列だけを返す一覧の1ページの応答本文から、要素を届いた順に取り出す。要素の中身は読まない。
+// null は配列でないため失敗とする。空の一覧と読むと、すべての要素を読んだと誤るため。
+func decodeArrayPage(data []byte) ([]json.RawMessage, error) {
+	var items *[]json.RawMessage
+	if err := json.Unmarshal(data, &items); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrUnexpectedResponse, err)
+	}
+	if items == nil {
+		return nil, fmt.Errorf("%w: the list is not an array", ErrUnexpectedResponse)
+	}
+	return *items, nil
 }
 
 // isAbsent は、キーの欠落か null の値かを返す。欠落した値は nil、null の値は "null" の RawMessage になる。

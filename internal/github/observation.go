@@ -30,6 +30,8 @@ type ObservationResult struct {
 	SecretScanning *SecretScanning
 	// PrivateVulnerabilityReporting は、その設定の領域を選ばなかった観測では nil になる。非公開リポジトリの観測不能と取り違えさせないため、値型にしない。
 	PrivateVulnerabilityReporting *PrivateVulnerabilityReporting
+	// Rulesets は、その設定の領域を選ばなかった観測では nil になる。Ruleset が一つもないことと、非公開リポジトリの観測不能と取り違えさせないため、値型にしない。
+	Rulesets *Rulesets
 }
 
 // General はリポジトリ一般設定のうち、reco が観測する値である。管理範囲を知らないため、未管理設定の値も含む。
@@ -100,13 +102,14 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 // ObserveRepository は reference のリポジトリを観測する。areas で、General に加えて読み取る設定の領域を選ぶ。
 // General は常に読み取るため、areas に AreaGeneral を含めても結果は変わらない。
 // 読み取り要求は areas の並びによらず、設計で定めた固定の順に送る。
-// Environment ごとの読み取りは、一覧のすべての Environment に送る。
+// Environment ごとの読み取りと Ruleset ごとの詳細の読み取りは、一覧のすべての Environment と Ruleset に送る。
 func (c *Client) ObserveRepository(ctx context.Context, reference repository.Reference, areas ...setting.Area) (ObservationResult, error) {
 	return c.observe(ctx, reference, allEnvironments(), areas)
 }
 
 // ObserveRepositoryForEnvironments は、ObserveRepository と同じく観測し、Environment ごとの読み取りを environments のどれかと同じ名前の Environment に限る。
 // 範囲の外の Environment は、存在と一覧の要素の値だけを持ち、個別パターンと変数を読んでいない状態になる。
+// Ruleset ごとの詳細の読み取りは限らず、AreaRulesets を選べば一覧のすべての Ruleset に送る。
 func (c *Client) ObserveRepositoryForEnvironments(ctx context.Context, reference repository.Reference, environments []setting.EnvironmentName, areas ...setting.Area) (ObservationResult, error) {
 	return c.observe(ctx, reference, namedEnvironments(environments), areas)
 }
@@ -187,6 +190,13 @@ func (c *Client) observe(ctx context.Context, reference repository.Reference, sc
 			return ObservationResult{}, fmt.Errorf("fetch private vulnerability reporting %s: %w", reference, err)
 		}
 		o.PrivateVulnerabilityReporting = &privateVulnerabilityReporting
+	}
+	if slices.Contains(areas, setting.AreaRulesets) {
+		rulesets, err := c.observeRulesets(ctx, reference, attributes.private)
+		if err != nil {
+			return ObservationResult{}, fmt.Errorf("fetch rulesets %s: %w", reference, err)
+		}
+		o.Rulesets = &rulesets
 	}
 	return o, nil
 }

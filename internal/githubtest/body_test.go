@@ -154,3 +154,67 @@ func TestBodies(t *testing.T) {
 		})
 	}
 }
+
+// Ruleset の一覧の応答本文は配列のため、オブジェクトの本文とは別に確かめる。
+func TestRulesetBodies(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want any
+	}{
+		{
+			name: "rulesets body is an array of id and name without total_count",
+			body: RulesetsBody{{ID: 1, Name: "protect"}, {ID: 2, Name: "tags"}}.JSON(),
+			want: []any{
+				map[string]any{"id": float64(1), "name": "protect"},
+				map[string]any{"id": float64(2), "name": "tags"},
+			},
+		},
+		{
+			name: "empty rulesets body is an empty array",
+			body: RulesetsBody{}.JSON(),
+			want: []any{},
+		},
+		{
+			name: "ruleset body has the fields, ref_name, bypass actors with null actor_id for DeployKey, and the rules as given",
+			body: RulesetBody{
+				ID: 1, Name: "protect", Target: "branch", Enforcement: "active",
+				Include: []string{"~DEFAULT_BRANCH"},
+				BypassActors: []BypassActorBody{
+					{ActorType: "RepositoryRole", ActorID: 5, BypassMode: "always"},
+					{ActorType: "DeployKey", BypassMode: "always"},
+				},
+				Rules: []string{DeletionRuleBody},
+			}.JSON(),
+			want: map[string]any{
+				"id": float64(1), "name": "protect", "target": "branch", "enforcement": "active",
+				"conditions": map[string]any{"ref_name": map[string]any{"include": []any{"~DEFAULT_BRANCH"}, "exclude": []any{}}},
+				"bypass_actors": []any{
+					map[string]any{"actor_type": "RepositoryRole", "actor_id": float64(5), "bypass_mode": "always"},
+					map[string]any{"actor_type": "DeployKey", "actor_id": nil, "bypass_mode": "always"},
+				},
+				"rules": []any{map[string]any{"type": "deletion"}},
+			},
+		},
+		{
+			name: "pull_request rule body has the five parameters and the three optional parameters at their defaults",
+			body: PullRequestRuleBody{RequiredApprovingReviewCount: 1, RequireCodeOwnerReview: true}.JSON(),
+			want: map[string]any{"type": "pull_request", "parameters": map[string]any{
+				"required_approving_review_count": float64(1), "dismiss_stale_reviews_on_push": false, "require_code_owner_review": true,
+				"require_last_push_approval": false, "required_review_thread_resolution": false,
+				"allowed_merge_methods": []any{"merge", "squash", "rebase"}, "require_extra_approval_for_unattributed_changes": true, "required_reviewers": []any{},
+			}},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got any
+			if err := json.Unmarshal([]byte(tc.body), &got); err != nil {
+				t.Fatalf("Unmarshal(%q) error = %v", tc.body, err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

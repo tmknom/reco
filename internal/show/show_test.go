@@ -37,7 +37,9 @@ func TestWriteObservationResult(t *testing.T) {
 	enabledDependabot := &github.Dependabot{Alerts: true, SecurityUpdates: setting.DependabotSecurityUpdatesEnabled}
 	enabledSecretScanning := &github.SecretScanning{Enabled: github.Observed(true), PushProtection: github.Observed(true)}
 	disabledPrivateVulnerabilityReporting := &github.PrivateVulnerabilityReporting{Enabled: github.Observed(false)}
+	emptyRulesets := &github.Rulesets{Existing: github.Observed([]github.Ruleset{})}
 	const (
+		noRulesets     = "    # rulesets: none\n"
 		header         = "repositories:\n  - name: owner/repo\n"
 		defaultGeneral = "    general:\n      delete_branch_on_merge: false\n      allow_auto_merge: false\n" +
 			"      allow_squash_merge: false\n      allow_merge_commit: false\n      allow_rebase_merge: false\n      allow_update_branch: false\n"
@@ -67,11 +69,12 @@ func TestWriteObservationResult(t *testing.T) {
 				Dependabot:                    enabledDependabot,
 				SecretScanning:                enabledSecretScanning,
 				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
+				Rulesets:                      emptyRulesets,
 			},
 			want: header +
 				"    general:\n      delete_branch_on_merge: true\n      allow_auto_merge: false\n" +
 				"      allow_squash_merge: true\n      allow_merge_commit: false\n      allow_rebase_merge: true\n      allow_update_branch: false\n" +
-				allPermissions + readOnlyWorkflow + notSharedAccess + noVariable + noEnvironment + enabledSecurity,
+				allPermissions + readOnlyWorkflow + notSharedAccess + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "opposite values are shown as observed",
@@ -86,6 +89,7 @@ func TestWriteObservationResult(t *testing.T) {
 				Dependabot:                    enabledDependabot,
 				SecretScanning:                enabledSecretScanning,
 				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
+				Rulesets:                      emptyRulesets,
 			},
 			want: header +
 				"    general:\n      delete_branch_on_merge: false\n      allow_auto_merge: true\n" +
@@ -93,7 +97,7 @@ func TestWriteObservationResult(t *testing.T) {
 				allPermissions +
 				"      workflow:\n        default_workflow_permissions: write\n        can_approve_pull_request_reviews: true\n" +
 				"      access:\n        access_level: user\n" +
-				noVariable + noEnvironment + enabledSecurity,
+				noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "selected policy shows the three criteria with one quoted pattern per line",
@@ -116,12 +120,13 @@ func TestWriteObservationResult(t *testing.T) {
 				Dependabot:                    enabledDependabot,
 				SecretScanning:                enabledSecretScanning,
 				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
+				Rulesets:                      emptyRulesets,
 			},
 			want: header + defaultGeneral +
 				"    actions:\n      permissions:\n        enabled: true\n        allowed_actions: selected\n        selected_actions:\n" +
 				"          github_owned_allowed: true\n          verified_allowed: false\n          patterns_allowed:\n" +
 				"            - \"actions/checkout@v4\"\n            - \"example/*\"\n        sha_pinning_required: false\n" +
-				readOnlyWorkflow + notSharedAccess + noVariable + noEnvironment + enabledSecurity,
+				readOnlyWorkflow + notSharedAccess + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "selected policy without patterns shows the empty sequence",
@@ -140,11 +145,12 @@ func TestWriteObservationResult(t *testing.T) {
 				Dependabot:                    enabledDependabot,
 				SecretScanning:                enabledSecretScanning,
 				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
+				Rulesets:                      emptyRulesets,
 			},
 			want: header + defaultGeneral +
 				"    actions:\n      permissions:\n        enabled: true\n        allowed_actions: selected\n        selected_actions:\n" +
 				"          github_owned_allowed: true\n          verified_allowed: true\n          patterns_allowed: []\n        sha_pinning_required: false\n" +
-				readOnlyWorkflow + notSharedAccess + noVariable + noEnvironment + enabledSecurity,
+				readOnlyWorkflow + notSharedAccess + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "disabled actions shows only enabled without the policy, the criteria, and sha_pinning_required",
@@ -162,10 +168,11 @@ func TestWriteObservationResult(t *testing.T) {
 				Dependabot:                    enabledDependabot,
 				SecretScanning:                enabledSecretScanning,
 				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
+				Rulesets:                      emptyRulesets,
 			},
 			want: header + defaultGeneral +
 				"    actions:\n      permissions:\n        enabled: false\n" +
-				readOnlyWorkflow + notSharedAccess + noVariable + noEnvironment + enabledSecurity,
+				readOnlyWorkflow + notSharedAccess + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "public repository shows access and the unavailable access level as comments",
@@ -179,10 +186,11 @@ func TestWriteObservationResult(t *testing.T) {
 				Dependabot:                    enabledDependabot,
 				SecretScanning:                enabledSecretScanning,
 				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
+				Rulesets:                      emptyRulesets,
 			},
 			want: header + defaultGeneral + allPermissions + readOnlyWorkflow +
 				"      # access:\n      #   access_level: unavailable (the repository is public)\n" +
-				noVariable + noEnvironment + enabledSecurity,
+				noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "organization access level is shown as observed",
@@ -196,10 +204,28 @@ func TestWriteObservationResult(t *testing.T) {
 				Dependabot:                    enabledDependabot,
 				SecretScanning:                enabledSecretScanning,
 				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
+				Rulesets:                      emptyRulesets,
 			},
 			want: header + defaultGeneral + allPermissions + readOnlyWorkflow +
 				"      access:\n        access_level: organization\n" +
-				noVariable + noEnvironment + enabledSecurity,
+				noVariable + noEnvironment + enabledSecurity + noRulesets,
+		},
+		{
+			name: "rulesets are shown after security",
+			observed: github.ObservationResult{
+				RepositoryID:                  1,
+				ActionsPermissions:            allPolicy,
+				WorkflowPermissions:           readOnly,
+				ActionsAccess:                 notShared,
+				RepositoryVariables:           noVariables,
+				Environments:                  noEnvironments,
+				Dependabot:                    enabledDependabot,
+				SecretScanning:                enabledSecretScanning,
+				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
+				Rulesets:                      &github.Rulesets{Existing: github.Unavailable[[]github.Ruleset](github.UnavailablePrivateRepository)},
+			},
+			want: header + defaultGeneral + allPermissions + readOnlyWorkflow + notSharedAccess +
+				noVariable + noEnvironment + enabledSecurity + "    # rulesets: unavailable (the repository is private)\n",
 		},
 	}
 	for _, tc := range cases {
@@ -224,6 +250,7 @@ func TestWriteObservationResult(t *testing.T) {
 			Dependabot:                    enabledDependabot,
 			SecretScanning:                enabledSecretScanning,
 			PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
+			Rulesets:                      emptyRulesets,
 		}
 		err := writeObservationResult(failingWriter{}, target, observed)
 		if !errors.Is(err, errWrite) {
@@ -299,6 +326,7 @@ func TestRun(t *testing.T) {
 			"default_workflow_permissions: write", `        - name: "GO_VERSION"`, `- name: "staging"`, `          - name: "REGION"`, "dependabot_security_updates: true # paused",
 			"# secret_scanning: unavailable (the repository is private)",
 			"# private_vulnerability_reporting: unavailable (the repository is private)",
+			"    # rulesets: unavailable (the repository is private)",
 		} {
 			if !strings.Contains(out.String(), observed) {
 				t.Errorf("got Out %q, want it to contain %q", out.String(), observed)
