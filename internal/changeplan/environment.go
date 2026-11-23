@@ -68,7 +68,7 @@ func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
 }
 
 // environmentVariableOperationOf は、Environment Variable の変更予定 s の更新操作を、同じ名前の Environment の存在の計画と組んで返す。
-// 基準は Environments の設計の論理的な設定変更と更新操作に従い、計画時に存在した Environment では Environment、変数の順、
+// 基準は Environments の設計の論理的な設定変更と更新操作に従い、計画時に存在した Environment では Environment (ID を含む)、変数の順、
 // 同じ変更計画が作成する Environment では変数が存在しないことだけである。
 // 作成する Environment の中で存在しないことを宣言した変数は、更新操作を持たずに作成の期待状態に加わるため (creationOf)、偽を返す。
 // 対にならない形 (存在の計画のない変数、存在が一致なのに比較不能な変数、作成なのに不一致の変数) は、

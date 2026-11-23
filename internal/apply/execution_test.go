@@ -364,7 +364,7 @@ func TestExecuteChange(t *testing.T) {
 	redirect := response{status: http.StatusTemporaryRedirect, location: "https://example.com/"}
 
 	noContent := response{status: http.StatusNoContent}
-	// allDelays は、アーキテクチャ設計が定める、期待状態と一致しないときに観測し直す前に待つ時間。
+	// allDelays は、変更の実行の設計が定める、期待状態と一致しないときに観測し直す前に待つ時間。
 	allDelays := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second}
 	cases := []struct {
 		name        string

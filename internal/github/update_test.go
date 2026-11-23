@@ -230,7 +230,7 @@ func TestClientUpdateMergeMethods(t *testing.T) {
 }
 
 // TestClientUpdateSecretScanningIgnoresSecurityAndAnalysisInResponse は、Secret scanning の更新の 200 の本文が
-// security_and_analysis を含まなくても成功とし、本文でこの項目を確かめないことを確かめる (アーキテクチャ設計の更新の契約)。
+// security_and_analysis を含まなくても成功とし、本文でこの項目を確かめないことを確かめる (GitHub API 通信の設計の更新の契約)。
 //
 //trace:checks FR-011
 func TestClientUpdateSecretScanningIgnoresSecurityAndAnalysisInResponse(t *testing.T) {

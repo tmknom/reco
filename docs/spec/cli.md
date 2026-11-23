@@ -470,7 +470,7 @@ Repositories updated: 2
 
 複数のリポジトリに変更予定があるときは、設定宣言の `repositories` の並びで一つずつ更新し、あるリポジトリのすべての論理的な設定変更が完了したときだけ、次のリポジトリへ進みます。完了しなかった論理的な設定変更があれば、残りのリポジトリの更新は開始しません。自動ロールバックは行いません。更新中に中断（`SIGINT`、`SIGTERM`）を受けた場合は、次の更新操作を開始しません。
 
-`apply` は、更新要求のあいだを空け、GitHub が更新を取得の結果に反映するまでの遅れに備えて確認し直すため、更新する変更予定や個別パターンの数が多いほど時間がかかります（[アーキテクチャ設計](../design/architecture.md) 6.2節）。
+`apply` は、更新要求のあいだを空け、GitHub が更新を取得の結果に反映するまでの遅れに備えて確認し直すため、更新する変更予定や個別パターンの数が多いほど時間がかかります（[変更の実行の設計](../design/execution.md)）。
 
 一つのリポジトリの論理的な設定変更は、原則として4章の変更予定の表示順に実行し、変更結果は実行した順に示します。どの変更予定を一つの論理的な設定変更にまとめるかと、表示順と異なる実行順（Dependabot alerts を無効にする変更より先に Dependabot security updates の変更を実行するなど）は、[設定ごとの設計](../design/settings/README.md) の各文書の「論理的な設定変更と更新操作」が定めます。
 
@@ -992,6 +992,7 @@ GitHub は、名前変更前の名前で指定したリポジトリへの要求�
 - [YAML 設定仕様](configuration.md)
 - [ドメインモデル](../design/domain.md)
 - [アーキテクチャ設計](../design/architecture.md)
+- [変更の実行の設計](../design/execution.md)
 - [設定ごとの設計](../design/settings/README.md)
 - [GitHub REST API 共通仕様](../research/rest-api.md)
 - [GitHub リポジトリ API 仕様](../research/repositories.md)

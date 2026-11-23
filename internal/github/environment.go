@@ -64,7 +64,7 @@ func (e Environment) DeploymentPatternID(pattern setting.DeploymentPattern) (Dep
 }
 
 // readDeploymentPatterns は、方式が selected の Environment の読んだ個別パターンを返す。
-// 読む範囲に含めなかった Environment は、個別パターンが一つもないことと取り違えないよう、不変条件の破れとして panic する（Environments の設計の観測）。
+// 読む範囲に含めなかった Environment は、個別パターンが一つもないことと取り違えないよう、不変条件の破れとして panic する（ドメインモデルの存在の観測）。
 func (e Environment) readDeploymentPatterns() DeploymentPatterns {
 	if e.DeploymentPatterns == nil {
 		panic(fmt.Sprintf("github: deployment patterns of environment %q were not read in this observation", e.Name))
