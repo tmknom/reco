@@ -2,6 +2,7 @@ package github
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/tmknom/reco/internal/setting"
@@ -11,10 +12,11 @@ import (
 func TestEnvironmentObservation(t *testing.T) {
 	declared := mustEnvironmentName(t, "production")
 	existing := Environments{Existing: []Environment{{
-		ID:                     7,
-		Name:                   "production",
-		DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected},
-		Variables:              &Variables{Existing: []Variable{{Name: "REGION", Value: "eu"}}},
+		ID:                         7,
+		Name:                       "production",
+		DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
+		DeploymentPatterns:         &DeploymentPatterns{},
+		Variables:                  &Variables{Existing: []Variable{{Name: "REGION", Value: "eu"}}},
 	}}}.Lookup(declared)
 	absent := Environments{}.Lookup(declared)
 	unavailable := Environments{Existing: []Environment{{Name: "café"}}}.Lookup(declared)
@@ -91,6 +93,17 @@ func TestEnvironmentObservation(t *testing.T) {
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("Variable(REGION) = %+v, want %+v", got, want)
 		}
+	})
+
+	t.Run("existing environment whose variables were not read panics naming the environment", func(t *testing.T) {
+		unread := Environments{Existing: []Environment{{ID: 7, Name: "production", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyAll}}}.Lookup(declared)
+		defer func() {
+			// 範囲の導き方の漏れを、nil 参照ではなくどの Environment で起きたかが分かる形で止めることを確かめる
+			if msg, ok := recover().(string); !ok || !strings.Contains(msg, `"production"`) {
+				t.Errorf("recovered %v, want a message naming the environment", msg)
+			}
+		}()
+		unread.Variable(mustVariableName(t, "REGION"))
 	})
 
 	t.Run("UnavailableReason panics when the environment exists", func(t *testing.T) {

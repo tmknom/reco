@@ -44,6 +44,7 @@ type General struct {
 
 // Setting は、管理の単位 unit の設定の観測結果を返す。取得条件を持たない設定は、常に観測値になる。
 // o は unit の設定の領域を読み取った観測の結果に限り、読み取らなかった領域の値は補わずに nil 参照で止まる。
+// unit が Environment の中の設定か変数なら、その Environment を読む範囲に含めた観測に限り、含めなかった Environment の値は補わずに panic で止まる。
 // 未知の設定は不変条件の破れとして panic する。
 // 設定を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting.Value] {
@@ -99,7 +100,18 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 // ObserveRepository は reference のリポジトリを観測する。areas で、General に加えて読み取る設定の領域を選ぶ。
 // General は常に読み取るため、areas に AreaGeneral を含めても結果は変わらない。
 // 読み取り要求は areas の並びによらず、設計で定めた固定の順に送る。
+// Environment ごとの読み取りは、一覧のすべての Environment に送る。
 func (c *Client) ObserveRepository(ctx context.Context, reference repository.Reference, areas ...setting.Area) (ObservationResult, error) {
+	return c.observe(ctx, reference, allEnvironments(), areas)
+}
+
+// ObserveRepositoryForEnvironments は、ObserveRepository と同じく観測し、Environment ごとの読み取りを environments のどれかと同じ名前の Environment に限る。
+// 範囲の外の Environment は、存在と一覧の要素の値だけを持ち、個別パターンと変数を読んでいない状態になる。
+func (c *Client) ObserveRepositoryForEnvironments(ctx context.Context, reference repository.Reference, environments []setting.EnvironmentName, areas ...setting.Area) (ObservationResult, error) {
+	return c.observe(ctx, reference, namedEnvironments(environments), areas)
+}
+
+func (c *Client) observe(ctx context.Context, reference repository.Reference, scope environmentScope, areas []setting.Area) (ObservationResult, error) {
 	o, attributes, err := c.observeRepository(ctx, reference)
 	if err != nil {
 		return ObservationResult{}, fmt.Errorf("fetch repository %s: %w", reference, err)
@@ -146,14 +158,14 @@ func (c *Client) ObserveRepository(ctx context.Context, reference repository.Ref
 	}
 	// Environment Variables は属する先の Environment を同じ観測で確かめてから読むため、Environments の領域も読む
 	if slices.Contains(areas, setting.AreaEnvironments) || slices.Contains(areas, setting.AreaEnvironmentVariables) {
-		environments, err := c.observeEnvironments(ctx, reference)
+		environments, err := c.observeEnvironments(ctx, reference, scope)
 		if err != nil {
 			return ObservationResult{}, fmt.Errorf("fetch environments %s: %w", reference, err)
 		}
 		o.Environments = &environments
 	}
 	if slices.Contains(areas, setting.AreaEnvironmentVariables) {
-		if err := c.observeEnvironmentVariables(ctx, reference, o.Environments.Existing); err != nil {
+		if err := c.observeEnvironmentVariables(ctx, reference, o.Environments.Existing, scope); err != nil {
 			return ObservationResult{}, fmt.Errorf("fetch environment variables %s: %w", reference, err)
 		}
 	}

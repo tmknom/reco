@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/tmknom/reco/internal/githubtest"
 	"github.com/tmknom/reco/internal/setting"
@@ -110,30 +111,30 @@ func TestObserveRepositoryEnvironments(t *testing.T) {
 		mainTag := setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: "main"}
 		versionTag := setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: "v*"}
 		want := &Environments{Existing: []Environment{
-			{ID: 1, Name: "open", DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}},
+			{ID: 1, Name: "open", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyAll},
 			{
-				ID:   2,
-				Name: "main-only",
-				DeploymentBranchPolicy: setting.DeploymentBranchPolicy{
-					Mode:     setting.DeploymentBranchPolicySelected,
-					Patterns: []setting.DeploymentPattern{mainBranch, mainTag, versionTag},
+				ID:                         2,
+				Name:                       "main-only",
+				DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
+				DeploymentPatterns: &DeploymentPatterns{
+					Existing: []setting.DeploymentPattern{mainBranch, mainTag, versionTag},
+					IDs:      map[setting.DeploymentPattern]DeploymentPatternID{mainBranch: 10, mainTag: 11, versionTag: 12},
 				},
-				DeploymentPatternIDs: map[setting.DeploymentPattern]DeploymentPatternID{mainBranch: 10, mainTag: 11, versionTag: 12},
 				Protection: setting.EnvironmentProtection{
 					WaitTimer:         &wait,
 					RequiredReviewers: &setting.RequiredReviewers{PreventSelfReview: true, Reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 7}}},
 					CanAdminsBypass:   true,
 				},
 			},
-			{ID: 3, Name: "guarded", DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}},
+			{ID: 3, Name: "guarded", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyProtectedBranches},
 			{
-				ID:   4,
-				Name: "Prod/Eu 100%",
-				DeploymentBranchPolicy: setting.DeploymentBranchPolicy{
-					Mode:     setting.DeploymentBranchPolicySelected,
-					Patterns: []setting.DeploymentPattern{},
+				ID:                         4,
+				Name:                       "Prod/Eu 100%",
+				DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
+				DeploymentPatterns: &DeploymentPatterns{
+					Existing: []setting.DeploymentPattern{},
+					IDs:      map[setting.DeploymentPattern]DeploymentPatternID{},
 				},
-				DeploymentPatternIDs: map[setting.DeploymentPattern]DeploymentPatternID{},
 			},
 		}}
 		if !reflect.DeepEqual(observed.Environments, want) {
@@ -253,6 +254,41 @@ func TestObserveRepositoryEnvironmentsFailure(t *testing.T) {
 	}
 }
 
+// TestEnvironmentNameFoldKey は、重複検査の鍵が一致することと、strings.EqualFold が同じとみなすことが、同じ判定になることを確かめる。
+func TestEnvironmentNameFoldKey(t *testing.T) {
+	t.Run("every rune shares its key with its simple fold and differs from its neighbor exactly when EqualFold does", func(t *testing.T) {
+		for r := range rune(unicode.MaxRune) {
+			a, folded, next := string(r), string(unicode.SimpleFold(r)), string(r+1)
+			if environmentNameFoldKey(a) != environmentNameFoldKey(folded) {
+				t.Fatalf("environmentNameFoldKey(%U) != environmentNameFoldKey(%U), want equal keys for a simple fold", r, unicode.SimpleFold(r))
+			}
+			if got, want := environmentNameFoldKey(a) == environmentNameFoldKey(next), strings.EqualFold(a, next); got != want {
+				t.Fatalf("keys of %U and %U equal = %v, want %v as strings.EqualFold", r, r+1, got, want)
+			}
+		}
+	})
+
+	// 1 文字ずつの比較では現れない複数の文字からなる名前と、大文字化と小文字化の往復で同じになる文字を確かめる
+	pairs := []struct {
+		name string
+		a, b string
+		want bool
+	}{
+		{name: "ASCII letter case is the same", a: "Prod", b: "prod", want: true},
+		{name: "dotless i is different from i although upper then lower case maps both to i", a: "\u0131", b: "i", want: false},
+		{name: "dotted capital I is different from i although lower case maps it to i", a: "\u0130", b: "i", want: false},
+		{name: "trailing space is different", a: "prod", b: "prod ", want: false},
+		{name: "precomposed and combining accents are different", a: "\u00e9", b: "e\u0301", want: false},
+	}
+	for _, p := range pairs {
+		t.Run(p.name, func(t *testing.T) {
+			if got := environmentNameFoldKey(p.a) == environmentNameFoldKey(p.b); got != p.want {
+				t.Errorf("keys of %q and %q equal = %v, want %v", p.a, p.b, got, p.want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-004
 func TestEnvironments_Lookup(t *testing.T) {
 	declared := mustEnvironmentName(t, "Production")
@@ -334,4 +370,85 @@ func TestEnvironments_Lookup(t *testing.T) {
 			}
 		})
 	}
+}
+
+//trace:checks FR-004
+func TestEnvironment_DeploymentBranchPolicy(t *testing.T) {
+	mainBranch := setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"}
+	versionTag := setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: "v*"}
+
+	tests := []struct {
+		name        string
+		environment Environment
+		want        setting.DeploymentBranchPolicy
+	}{
+		{
+			name:        "mode other than selected has the mode only",
+			environment: Environment{DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyProtectedBranches},
+			want:        setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches},
+		},
+		{
+			name: "selected with read patterns has the patterns in the read order",
+			environment: Environment{
+				DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
+				DeploymentPatterns:         &DeploymentPatterns{Existing: []setting.DeploymentPattern{versionTag, mainBranch}},
+			},
+			want: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{versionTag, mainBranch}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.environment.DeploymentBranchPolicy(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("DeploymentBranchPolicy() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+
+	t.Run("selected without read patterns panics instead of reading an empty set", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("DeploymentBranchPolicy() did not panic")
+			}
+		}()
+		Environment{Name: "unread", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected}.DeploymentBranchPolicy()
+	})
+}
+
+//trace:checks FR-004
+func TestEnvironment_DeploymentPatternID(t *testing.T) {
+	mainBranch := setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"}
+	mainTag := setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: "main"}
+	read := Environment{
+		DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
+		DeploymentPatterns:         &DeploymentPatterns{Existing: []setting.DeploymentPattern{mainBranch}, IDs: map[setting.DeploymentPattern]DeploymentPatternID{mainBranch: 10}},
+	}
+
+	tests := []struct {
+		name        string
+		environment Environment
+		pattern     setting.DeploymentPattern
+		wantID      DeploymentPatternID
+		wantOK      bool
+	}{
+		{name: "read pattern has its ID", environment: read, pattern: mainBranch, wantID: 10, wantOK: true},
+		{name: "pattern not in the read patterns has no ID", environment: read, pattern: mainTag},
+		{name: "mode other than selected has no ID", environment: Environment{DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyAll}, pattern: mainBranch},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			id, ok := tt.environment.DeploymentPatternID(tt.pattern)
+			if id != tt.wantID || ok != tt.wantOK {
+				t.Errorf("DeploymentPatternID() = (%d, %v), want (%d, %v)", id, ok, tt.wantID, tt.wantOK)
+			}
+		})
+	}
+
+	t.Run("selected without read patterns panics instead of having no ID", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("DeploymentPatternID() did not panic")
+			}
+		}()
+		Environment{Name: "unread", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected}.DeploymentPatternID(mainBranch)
+	})
 }

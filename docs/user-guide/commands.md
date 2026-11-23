@@ -72,7 +72,7 @@ repositories:
       # private_vulnerability_reporting: unavailable (the repository is private)
 ```
 
-表示は設定ファイルと同じ構造で、それぞれの値の位置が、設定ファイルにその設定を書く位置です。表示をそのまま設定ファイルにすると、`#` で始まる行で示した設定を除き、表示した設定を今の値のまま管理する設定ファイルになります。管理したい設定だけを残し、値を書き換えて使います。
+表示は設定ファイルと同じ構造で、それぞれの値の位置が、設定ファイルにその設定を書く位置です。表示は、設定ファイルを書く出発点に使えます。管理したい設定だけを残し、値を書き換えて使います。
 
 表示には、次の行も出ます。`#` から行末まではコメントで、設定ファイルとしては読まれません。
 
@@ -86,7 +86,7 @@ repositories:
 
 Environment の `wait_timer`、`required_reviewers`、`can_admins_bypass` のように、設定ファイルに書けない設定は表示しません。
 
-Repository Variables と Environment Variables は、名前と値をそのまま表示します。改行や制御文字を含む値は、`\n` のようなエスケープで1行に示し、長い値も省略しません。表示は stdout に出るため、CI で `show` を実行すると値がログに残ります。`plan` と `apply` が表示する変更計画にも、設定ファイルに書いた Repository Variables と Environment Variables のうち、GitHub 上にないものは書いた値が、値が違うものは今の値と書いた値が出ます。パスワードやトークンのような秘密情報は、Variables ではなく Secrets に入れてください。
+Repository Variables と Environment Variables は、名前と値をそのまま表示します。改行や制御文字を含む値は、`\n` のようなエスケープで1行に示し、長い値も省略しません。表示は stdout に出るため、CI で `show` を実行すると値がログに残ります。`plan` と `apply` が表示する変更計画にも、設定ファイルに書いた Repository Variables と Environment Variables のうち、GitHub 上にないものは書いた値が、値が違うものは今の値と書いた値が、`state: absent` を書いたものは消える今の値が出ます。パスワードやトークンのような秘密情報は、Variables ではなく Secrets に入れてください。
 
 ## `plan`
 
@@ -114,7 +114,7 @@ Repositories checked: 1
 | `actions.variables.<名前>: "<現在の値>" -> "<書いた値>"` | Repository Variable の値が設定ファイルの値と違う。値の示し方は `absent -> "<書いた値>"` の行と同じ |
 | `actions.variables.<名前>: "<現在の値>" -> absent` | `state: absent` を書いた Repository Variable が GitHub 上にある。承認すると削除する。左の値が、削除で失われる値である。引用符のない `absent` は「ない」ことを示し、値が文字列 `absent` の変数（`"absent"`）とは違う |
 | `environments.<Environment の名前>.variables.<名前>: ...` | Environment Variable の作成、値の変更、削除。読み方は `actions.variables.<名前>` の行と同じ。Environment がまだないときは `(environment absent) -> "<書いた値>"` と出て、承認すると Environment を作成してから変数を作る。`state: absent` の変数は `(environment absent) -> absent` と出て、Environment を作成したあとに変数がないことを確かめるだけで、削除はしない |
-| `<設定>: (<今の状態>) -> <書いた値>` | 今は効いていない設定（Actions が無効、Environment がまだない、など）。承認すると右の値に変える |
+| `<設定>: (<今の状態>) -> <書いた値>` | 今の値と比べられない設定。括弧の中は、比べられない理由となる今の状態（Actions が無効、Environment がまだない、Environment があるかを確かめられない、など）。承認すると右の値に変える |
 | `environments.<名前>.deployment_branch_policy:` の下に、今の値の行と `-> <書いた値>` の行 | 今の値か書いた値が `selected` の `deployment_branch_policy`。読み方は1行の形と同じで、`selected` のパターンは `selected [branch "main"]` のように角括弧の中に並ぶ |
 | `Applicability: not applicable (<理由>)` | 安全に変えるための条件が成り立たないため、reco はすぐ上の変更をしない。括弧の中は、何が成り立っていないかと、設定ファイルの直し方 |
 | `Patterns to remove:`、`Patterns to add:` | Environment のデプロイを許可するパターンのうち、設定ファイルにないものと、GitHub 上にないもの |
@@ -166,9 +166,11 @@ Repositories updated: 1
 
 変更計画に `Plan cannot be applied.` が出たときは、承認を求めず、どのリポジトリの設定も変えずにエラーで終わります。直し方は [Troubleshooting](troubleshooting.md#plan-cannot-be-applied-と表示された) にあります。
 
-マージ方式（`general.allow_squash_merge`、`general.allow_merge_commit`、`general.allow_rebase_merge`）の変更は、変更計画では設定ごとに出ますが、`apply` は変えるマージ方式をまとめて1回の更新で GitHub に送ります。下の段落のように結果が変更ごとに出るときは、`general.allow_squash_merge + general.allow_merge_commit: updated` のように、まとめた設定を ` + ` でつないだ1行になります。
+リポジトリのすべての変更が完了すれば、結果はリポジトリの行の `updated` だけです。変更が2件以上あり、完了しなかったものがあるときは、リポジトリの行の下に変更ごとの結果が出ます。
 
-Repository Variables と Environment Variables は、設定ファイルに書いた順に一つずつ作成するか値を変えます。Environment Variables は、その Environment の作成と `deployment_branch_policy` の変更のあとに変えます。リポジトリのすべての変更が完了すれば、結果はリポジトリの行の `updated` だけです。変更が2件以上あり、完了しなかったものがあるときは、リポジトリの行の下に `actions.variables.<名前>: updated` や `environments.<Environment の名前>.variables.<名前>: not attempted` のように変数ごとの結果が出ます。
+マージ方式（`general.allow_squash_merge`、`general.allow_merge_commit`、`general.allow_rebase_merge`）の変更は、変更計画では設定ごとに出ますが、`apply` は変えるマージ方式をまとめて1回の更新で GitHub に送ります。結果が変更ごとに出るときは、`general.allow_squash_merge + general.allow_merge_commit: updated` のように、まとめた設定を ` + ` でつないだ1行になります。
+
+Repository Variables と Environment Variables は、設定ファイルに書いた順に一つずつ作成するか、値を変えるか、削除します。Environment Variables は、その Environment の作成と `deployment_branch_policy` の変更のあとに変えます。変数の変更ごとの結果は、`actions.variables.<名前>: updated` や `environments.<Environment の名前>.variables.<名前>: not attempted` のように出ます。
 
 どこかの変更が完了しなかったら、reco は残りの変更を始めずに止まります。すでに反映した変更は元に戻りません。`failed` や `not attempted` が出たときにすることは [Troubleshooting](troubleshooting.md#apply-が途中で止まった) にあります。
 

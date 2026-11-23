@@ -262,6 +262,42 @@ func TestManagedAreas(t *testing.T) {
 	}
 }
 
+//trace:checks FR-004
+func TestManagedEnvironments(t *testing.T) {
+	production, staging, qa := mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging"), mustEnvironmentName(t, "qa")
+	protected := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}
+	region := []configuration.VariableDeclaration{{Name: mustVariableName(t, "REGION"), Desired: setting.VariableValue("eu")}}
+	cases := []struct {
+		name    string
+		desired configuration.DesiredState
+		want    []setting.EnvironmentName
+	}{
+		{
+			name: "no environment declared names no environment",
+			desired: configuration.DesiredState{
+				General:             configuration.General{AllowAutoMerge: new(true)},
+				RepositoryVariables: region,
+			},
+		},
+		{
+			name: "each declared environment is named once whether it declares a name only, a mode, or variables",
+			desired: configuration.DesiredState{Environments: []configuration.EnvironmentDeclaration{
+				{Name: production, DeploymentBranchPolicy: &protected, Variables: region},
+				{Name: staging},
+				{Name: qa, Variables: region},
+			}},
+			want: []setting.EnvironmentName{production, staging, qa},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := managedEnvironments(tc.desired); !slices.Equal(got, tc.want) {
+				t.Errorf("managedEnvironments() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-005
 func TestReconcile_RepositoryVariables(t *testing.T) {
 	cases := []struct {
@@ -332,7 +368,7 @@ func TestReconcile_EnvironmentVariablesOrder(t *testing.T) {
 	}
 	observed := github.ObservationResult{
 		RepositoryVariables: &github.Variables{},
-		Environments:        &github.Environments{Existing: []github.Environment{withVariables(github.Environment{Name: "production", DeploymentBranchPolicy: protected})}},
+		Environments:        &github.Environments{Existing: []github.Environment{withVariables(github.Environment{Name: "production", DeploymentBranchPolicyMode: protected.Mode})}},
 		Dependabot:          &github.Dependabot{Alerts: true},
 	}
 	var units []string
@@ -400,8 +436,8 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 	production := mustEnvironmentName(t, "production")
 	protected := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}
 	all := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}
-	existing := func(name string, policy setting.DeploymentBranchPolicy) github.Environment {
-		return github.Environment{ID: 7, Name: name, DeploymentBranchPolicy: policy}
+	existing := func(name string, mode setting.DeploymentBranchPolicyMode) github.Environment {
+		return github.Environment{ID: 7, Name: name, DeploymentBranchPolicyMode: mode}
 	}
 	region, debug, level := mustVariableName(t, "REGION"), mustVariableName(t, "DEBUG"), mustVariableName(t, "LEVEL")
 	existence := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
@@ -420,13 +456,13 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 		{
 			name:     "existing environment declared by name only matches",
 			declared: configuration.EnvironmentDeclaration{Name: production},
-			observed: []github.Environment{existing("production", all)},
+			observed: []github.Environment{existing("production", all.Mode)},
 			want:     []SettingPlan{matchedExistence},
 		},
 		{
 			name:     "existing environment with the declared mode matches both",
 			declared: configuration.EnvironmentDeclaration{Name: production, DeploymentBranchPolicy: &protected},
-			observed: []github.Environment{existing("production", protected)},
+			observed: []github.Environment{existing("production", protected.Mode)},
 			want: []SettingPlan{
 				matchedExistence,
 				{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Observed(setting.DeploymentBranchPolicyValue(protected)), Desired: setting.DeploymentBranchPolicyValue(protected), Result: Match},
@@ -435,7 +471,7 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 		{
 			name:     "absent environment declared by name only is a creation",
 			declared: configuration.EnvironmentDeclaration{Name: production},
-			observed: []github.Environment{existing("staging", all)},
+			observed: []github.Environment{existing("staging", all.Mode)},
 			want:     []SettingPlan{creation},
 		},
 		{
@@ -450,7 +486,7 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 		{
 			name:     "environment whose existence cannot be determined is not comparable",
 			declared: configuration.EnvironmentDeclaration{Name: production, DeploymentBranchPolicy: &protected},
-			observed: []github.Environment{existing("prodüction", all)},
+			observed: []github.Environment{existing("prodüction", all.Mode)},
 			want: []SettingPlan{
 				undeterminedExistence,
 				{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined), Desired: setting.DeploymentBranchPolicyValue(protected), Result: NotComparable},
@@ -463,7 +499,7 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 				{Name: debug, Desired: setting.VariableValue("true")},
 				{Name: level, Desired: setting.VariableValue("info")},
 			}},
-			observed: []github.Environment{withVariables(existing("production", protected), github.Variable{Name: "LEVEL", Value: "info"}, github.Variable{Name: "REGION", Value: "us"}, github.Variable{Name: "UNDECLARED", Value: "x"})},
+			observed: []github.Environment{withVariables(existing("production", protected.Mode), github.Variable{Name: "LEVEL", Value: "info"}, github.Variable{Name: "REGION", Value: "us"}, github.Variable{Name: "UNDECLARED", Value: "x"})},
 			want: []SettingPlan{
 				matchedExistence,
 				{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Observed(setting.DeploymentBranchPolicyValue(protected)), Desired: setting.DeploymentBranchPolicyValue(protected), Result: Match},
@@ -487,7 +523,7 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 				{Name: region, Desired: setting.Absent()},
 				{Name: debug, Desired: setting.Absent()},
 			}},
-			observed: []github.Environment{withVariables(existing("production", all), github.Variable{Name: "REGION", Value: "us"})},
+			observed: []github.Environment{withVariables(existing("production", all.Mode), github.Variable{Name: "REGION", Value: "us"})},
 			want: []SettingPlan{
 				matchedExistence,
 				{Unit: environmentVariableUnit(production, region), Observed: github.Observed(setting.VariableValue("us")), Desired: setting.Absent(), Result: Mismatch},

@@ -48,7 +48,7 @@ func environments(existing ...github.Environment) *github.Environments {
 
 // observedEnvironment は、ID id、GitHub の綴り name、方式 mode で、保護ルールのない Environment の観測結果。
 func observedEnvironment(id github.EnvironmentID, name string, mode setting.DeploymentBranchPolicyMode) github.Environment {
-	return github.Environment{ID: id, Name: name, DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: mode}}
+	return github.Environment{ID: id, Name: name, DeploymentBranchPolicyMode: mode}
 }
 
 // modeValue は、方式 mode のデプロイ元制限の値。
@@ -65,8 +65,8 @@ func selectedEnvironment(id github.EnvironmentID, name string, patterns []settin
 	}
 	return github.Environment{
 		ID: id, Name: name,
-		DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: slices.Clone(patterns)},
-		DeploymentPatternIDs:   identified,
+		DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
+		DeploymentPatterns:         &github.DeploymentPatterns{Existing: slices.Clone(patterns), IDs: identified},
 	}
 }
 

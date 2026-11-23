@@ -12,7 +12,7 @@ import (
 func TestWriteEnvironments(t *testing.T) {
 	waitTimer := func(minutes int) *int { return &minutes }
 	unprotected := setting.EnvironmentProtection{CanAdminsBypass: true}
-	allMode := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}
+	allMode := setting.DeploymentBranchPolicyAll
 	// 変数の行の規則は TestWriteEnvironmentVariables が確かめるため、ここでは一つもない Environment にする
 	noVariables := &github.Variables{Existing: []github.Variable{}}
 	cases := []struct {
@@ -28,8 +28,8 @@ func TestWriteEnvironments(t *testing.T) {
 		{
 			name: "environments are shown in the given order without sorting",
 			environments: github.Environments{Existing: []github.Environment{
-				{Name: "staging", DeploymentBranchPolicy: allMode, Protection: unprotected, Variables: noVariables},
-				{Name: "production", DeploymentBranchPolicy: allMode, Protection: unprotected, Variables: noVariables},
+				{Name: "staging", DeploymentBranchPolicyMode: allMode, Protection: unprotected, Variables: noVariables},
+				{Name: "production", DeploymentBranchPolicyMode: allMode, Protection: unprotected, Variables: noVariables},
 			}},
 			want: "    environments:\n" +
 				"      - name: \"staging\"\n        deployment_branch_policy:\n          mode: all\n        # variables: none\n" +
@@ -38,7 +38,7 @@ func TestWriteEnvironments(t *testing.T) {
 		{
 			name: "protected_branches shows only the mode",
 			environments: github.Environments{Existing: []github.Environment{
-				{Name: "staging", DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}, Protection: unprotected, Variables: noVariables},
+				{Name: "staging", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyProtectedBranches, Protection: unprotected, Variables: noVariables},
 			}},
 			want: "    environments:\n" +
 				"      - name: \"staging\"\n        deployment_branch_policy:\n          mode: protected_branches\n        # variables: none\n",
@@ -47,14 +47,12 @@ func TestWriteEnvironments(t *testing.T) {
 			name: "selected shows each pattern as the type and the quoted name",
 			environments: github.Environments{Existing: []github.Environment{
 				{
-					Name: "production",
-					DeploymentBranchPolicy: setting.DeploymentBranchPolicy{
-						Mode: setting.DeploymentBranchPolicySelected,
-						Patterns: []setting.DeploymentPattern{
-							{Type: setting.DeploymentPatternBranch, Name: "main"},
-							{Type: setting.DeploymentPatternTag, Name: "v*"},
-						},
-					},
+					Name:                       "production",
+					DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
+					DeploymentPatterns: &github.DeploymentPatterns{Existing: []setting.DeploymentPattern{
+						{Type: setting.DeploymentPatternBranch, Name: "main"},
+						{Type: setting.DeploymentPatternTag, Name: "v*"},
+					}},
 					Protection: unprotected,
 					Variables:  noVariables,
 				},
@@ -67,7 +65,7 @@ func TestWriteEnvironments(t *testing.T) {
 		{
 			name: "selected without patterns shows the empty sequence",
 			environments: github.Environments{Existing: []github.Environment{
-				{Name: "production", DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected}, Protection: unprotected, Variables: noVariables},
+				{Name: "production", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected, DeploymentPatterns: &github.DeploymentPatterns{}, Protection: unprotected, Variables: noVariables},
 			}},
 			want: "    environments:\n" +
 				"      - name: \"production\"\n        deployment_branch_policy:\n          mode: selected\n          patterns: []\n        # variables: none\n",
@@ -76,8 +74,8 @@ func TestWriteEnvironments(t *testing.T) {
 			name: "protection rules are not shown",
 			environments: github.Environments{Existing: []github.Environment{
 				{
-					Name:                   "production",
-					DeploymentBranchPolicy: allMode,
+					Name:                       "production",
+					DeploymentBranchPolicyMode: allMode,
 					Protection: setting.EnvironmentProtection{
 						WaitTimer: waitTimer(30),
 						RequiredReviewers: &setting.RequiredReviewers{
@@ -94,7 +92,7 @@ func TestWriteEnvironments(t *testing.T) {
 		{
 			name: "a name with a newline is escaped onto one line",
 			environments: github.Environments{Existing: []github.Environment{
-				{Name: "a\nb", DeploymentBranchPolicy: allMode, Protection: unprotected, Variables: noVariables},
+				{Name: "a\nb", DeploymentBranchPolicyMode: allMode, Protection: unprotected, Variables: noVariables},
 			}},
 			want: "    environments:\n" +
 				"      - name: \"a\\nb\"\n        deployment_branch_policy:\n          mode: all\n        # variables: none\n",
@@ -103,13 +101,11 @@ func TestWriteEnvironments(t *testing.T) {
 			name: "a pattern name with a newline is escaped onto one line",
 			environments: github.Environments{Existing: []github.Environment{
 				{
-					Name: "production",
-					DeploymentBranchPolicy: setting.DeploymentBranchPolicy{
-						Mode:     setting.DeploymentBranchPolicySelected,
-						Patterns: []setting.DeploymentPattern{{Type: setting.DeploymentPatternBranch, Name: "a\nb"}},
-					},
-					Protection: unprotected,
-					Variables:  noVariables,
+					Name:                       "production",
+					DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
+					DeploymentPatterns:         &github.DeploymentPatterns{Existing: []setting.DeploymentPattern{{Type: setting.DeploymentPatternBranch, Name: "a\nb"}}},
+					Protection:                 unprotected,
+					Variables:                  noVariables,
 				},
 			}},
 			want: "    environments:\n" +
@@ -120,15 +116,13 @@ func TestWriteEnvironments(t *testing.T) {
 			name: "variables follow the deployment patterns of their environment and precede the next environment",
 			environments: github.Environments{Existing: []github.Environment{
 				{
-					Name: "production",
-					DeploymentBranchPolicy: setting.DeploymentBranchPolicy{
-						Mode:     setting.DeploymentBranchPolicySelected,
-						Patterns: []setting.DeploymentPattern{{Type: setting.DeploymentPatternBranch, Name: "main"}},
-					},
-					Protection: unprotected,
-					Variables:  &github.Variables{Existing: []github.Variable{{Name: "REGION", Value: "eu"}}},
+					Name:                       "production",
+					DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
+					DeploymentPatterns:         &github.DeploymentPatterns{Existing: []setting.DeploymentPattern{{Type: setting.DeploymentPatternBranch, Name: "main"}}},
+					Protection:                 unprotected,
+					Variables:                  &github.Variables{Existing: []github.Variable{{Name: "REGION", Value: "eu"}}},
 				},
-				{Name: "staging", DeploymentBranchPolicy: allMode, Protection: unprotected, Variables: noVariables},
+				{Name: "staging", DeploymentBranchPolicyMode: allMode, Protection: unprotected, Variables: noVariables},
 			}},
 			want: "    environments:\n" +
 				"      - name: \"production\"\n        deployment_branch_policy:\n          mode: selected\n          patterns:\n" +

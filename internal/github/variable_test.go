@@ -273,9 +273,9 @@ func TestObserveRepositoryVariables(t *testing.T) {
 func TestObserveEnvironmentVariables(t *testing.T) {
 	t.Run("every environment whatever its mode gets its own variables in the list order", func(t *testing.T) {
 		environments := []Environment{
-			{ID: 1, Name: "open", DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}},
-			{ID: 2, Name: "main-only", DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected}},
-			{ID: 3, Name: "Prod/Eu 100%", DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}},
+			{ID: 1, Name: "open", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyAll},
+			{ID: 2, Name: "main-only", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected},
+			{ID: 3, Name: "Prod/Eu 100%", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyProtectedBranches},
 		}
 		routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{
 			environmentsPath + "/open/variables":      githubtest.OK(githubtest.VariablesBody{TotalCount: 1, Variables: []githubtest.VariableBody{{Name: "REGION", Value: "us"}}}.JSON()),
@@ -286,7 +286,7 @@ func TestObserveEnvironmentVariables(t *testing.T) {
 		}}
 		c := newTestClient(t, routes.ServeHTTP)
 
-		if err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), environments); err != nil {
+		if err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), environments, allEnvironments()); err != nil {
 			t.Fatalf("observeEnvironmentVariables() error = %v", err)
 		}
 		wantRequests := []string{
@@ -320,7 +320,7 @@ func TestObserveEnvironmentVariables(t *testing.T) {
 			_, _ = w.Write([]byte(githubtest.VariablesBody{TotalCount: 3000, Variables: variables}.JSON()))
 		})
 
-		err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), []Environment{{ID: 1, Name: "production"}})
+		err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), []Environment{{ID: 1, Name: "production"}}, allEnvironments())
 		if !errors.Is(err, ErrUnexpectedResponse) {
 			t.Fatalf("observeEnvironmentVariables() error = %v, want %v", err, ErrUnexpectedResponse)
 		}
@@ -337,7 +337,7 @@ func TestObserveEnvironmentVariables(t *testing.T) {
 		}}
 		c := newTestClient(t, routes.ServeHTTP)
 
-		err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), []Environment{{ID: 1, Name: "a"}, {ID: 2, Name: "b"}, {ID: 3, Name: "c"}})
+		err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), []Environment{{ID: 1, Name: "a"}, {ID: 2, Name: "b"}, {ID: 3, Name: "c"}}, allEnvironments())
 		if !errors.Is(err, ErrNotFound) {
 			t.Fatalf("observeEnvironmentVariables() error = %v, want %v", err, ErrNotFound)
 		}
@@ -357,7 +357,7 @@ func TestObserveEnvironmentVariables(t *testing.T) {
 		routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{}}
 		c := newTestClient(t, routes.ServeHTTP)
 
-		err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), []Environment{{ID: 1, Name: "."}})
+		err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), []Environment{{ID: 1, Name: "."}}, allEnvironments())
 		if !errors.Is(err, ErrUnexpectedResponse) {
 			t.Fatalf("observeEnvironmentVariables() error = %v, want %v", err, ErrUnexpectedResponse)
 		}

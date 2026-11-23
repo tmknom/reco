@@ -27,6 +27,10 @@ repositories:
     general:
       delete_branch_on_merge: false
       allow_auto_merge: false
+      allow_squash_merge: true
+      allow_merge_commit: true
+      allow_rebase_merge: true
+      allow_update_branch: false
     actions:
       permissions:
         enabled: true
@@ -47,7 +51,7 @@ repositories:
       # private_vulnerability_reporting: unavailable (the repository is private)
 ```
 
-表示は、設定ファイルと同じ構造です。本ドキュメントでは、`general` の `delete_branch_on_merge`（Pull Request をマージしたあと、head ブランチを自動で削除するか）を変えます。以後は、`delete_branch_on_merge` の設定が `false` の場合に、`true` へ変更するシナリオで説明します。
+表示は、設定ファイルと同じ構造です。ここでは、`general` の `delete_branch_on_merge`（Pull Request をマージしたあと、head ブランチを自動で削除するか）が `false` のリポジトリで、`true` に変えます。
 
 ## 最初の設定ファイルを書く
 
@@ -105,7 +109,7 @@ Apply complete.
 Repositories updated: 1
 ```
 
-承認を求められた際に、`y` 以外を入力すると、何も変更せずに終了します。
+承認を求められた際に、`y` か `yes` 以外を入力すると、何も変更せずに終了します。
 
 ## 適用を確かめる
 
@@ -117,7 +121,7 @@ No changes.
 Repositories checked: 1
 ```
 
-今度は現在の設定と、設定ファイルに差分がないため、`No changes.` が表示されます。
+今度は現在の設定と設定ファイルのあいだに差分がないため、`No changes.` が表示されます。
 
 ## 元に戻したいとき
 

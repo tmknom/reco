@@ -297,6 +297,66 @@ func TestObservationAreas(t *testing.T) {
 	}
 }
 
+//trace:checks INV-004 FR-012
+func TestObservationEnvironments(t *testing.T) {
+	production, staging := mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging")
+	stagingPolicy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}
+	cases := []struct {
+		name   string
+		change changeplan.LogicalChange
+		want   []setting.EnvironmentName
+	}{
+		{
+			name:   "repository setting change names no environment",
+			change: allowAutoMergeChange(),
+		},
+		{
+			name:   "creation with a mode and patterns names the destination once",
+			change: creationWithPatternsChange(t, "production", selectedPolicy(branchPattern("main"))),
+			want:   []setting.EnvironmentName{production},
+		},
+		{
+			name:   "variable creation in a created environment names the environment it belongs to",
+			change: createdEnvironmentVariableChange(t, "production", "REGION", "a"),
+			want:   []setting.EnvironmentName{production},
+		},
+		{
+			// どの変更予定にも生じない組。更新操作の宛先の Environment を、期待状態に頼らずに読むことを確かめる
+			name: "environment of an update destination is named without its relevant settings and desired state",
+			change: func() changeplan.LogicalChange {
+				change := creationChange(t, "production")
+				change.Operations[0].RelevantSettings = nil
+				change.DesiredState = nil
+				return change
+			}(),
+			want: []setting.EnvironmentName{production},
+		},
+		{
+			// どの変更予定にも生じない組。関係する現在値の Environment を読まないと、変更前提で個別パターンを比べられないことを確かめる
+			name:   "environment of a relevant setting is also named",
+			change: singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), []changeplan.RelevantSetting{{Unit: stagingPolicy, AnticipatedValue: github.Observed(modeValue(setting.DeploymentBranchPolicyAll))}}),
+			want:   []setting.EnvironmentName{staging},
+		},
+		{
+			// どの変更予定にも生じない組。期待状態の Environment を読まないと、更新後に個別パターンを比べられないことを確かめる
+			name: "environment of a desired setting is also named",
+			change: func() changeplan.LogicalChange {
+				change := allowAutoMergeChange()
+				change.DesiredState = append(change.DesiredState, changeplan.DesiredSetting{Unit: stagingPolicy, Value: modeValue(setting.DeploymentBranchPolicyAll)})
+				return change
+			}(),
+			want: []setting.EnvironmentName{staging},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := observationEnvironments(tc.change); !slices.Equal(got, tc.want) {
+				t.Errorf("observationEnvironments() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 //trace:checks INV-001 INV-004 INV-005 FR-010 FR-012 FR-013
 func TestExecuteChange(t *testing.T) {
 	disconnect := response{disconnect: true}
@@ -2146,6 +2206,7 @@ func TestExecuteChange_EnvironmentVariables(t *testing.T) {
 		putProduction   = "PUT /repos/owner/repo/environments/production"
 	)
 	production := githubtest.EnvironmentBody{ID: 8, Name: "production"}
+	staging := githubtest.EnvironmentBody{ID: 7, Name: "staging"}
 	creation := createdEnvironmentVariableChange(t, "production", "REGION", "ap-northeast-1")
 	other := githubtest.VariableBody{Name: "OTHER", Value: "a"}
 	approved := withVariables(observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll), github.Variable{Name: "REGION", Value: "us"})
@@ -2196,12 +2257,13 @@ func TestExecuteChange_EnvironmentVariables(t *testing.T) {
 			wantResult:   completed,
 		},
 		{
-			// 作られたばかりの Environment に消す変数はないため、変数への要求を送らず、作成のあとの一覧で存在しないことを確かめる
+			// 作られたばかりの Environment に消す変数はないため、変数への要求を送らず、作成のあとの一覧で存在しないことを確かめる。
+			// 一覧にある宣言していない staging の変数は、更新の前にも後にも読まない
 			name:   "creation with a declared absence sends only the creation and completes when the list of the created environment lacks the variable",
 			change: environmentCreationWithAbsentVariableChange(t, "production", "REGION"),
 			responses: []response{
-				okRepository(1, false, false), okEnvironments(), okEnvironment(production),
-				okRepository(1, false, false), okEnvironments(production), okVariables(),
+				okRepository(1, false, false), okEnvironments(staging), okEnvironment(production),
+				okRepository(1, false, false), okEnvironments(staging, production), okVariables(),
 			},
 			wantRequests: []string{getRepository, getEnvironments, putProduction, getRepository, getEnvironments, getVariables},
 			wantPrecond:  preconditionHolds,
@@ -2310,6 +2372,19 @@ func TestExecuteChange_DeploymentPatterns(t *testing.T) {
 			wantRequests:   [][]string{readSelected, {deletePattern("20")}, readSelected, {postPattern}, readSelected},
 			wantDelays:     []time.Duration{time.Second},
 			wantOperations: []operationRecord{succeeded, succeeded},
+			wantDesired:    desiredStateMatches,
+			wantResult:     completed,
+		},
+		{
+			name:   "undeclared selected environment in the list gets no patterns request before or after the update",
+			change: deploymentPatternsChange(t, "production", approvedMainFeature, selectedPolicy(main)),
+			responses: [][]response{
+				{okRepository(1, false, false), okEnvironments(githubtest.EnvironmentBody{ID: 9, Name: "undeclared", DeploymentBranchPolicy: selectedBody()}, selectedOf(7, nil)), okDeploymentPatterns(pattern(10, main), pattern(20, feature))},
+				{noContent()},
+				{okRepository(1, false, false), okEnvironments(githubtest.EnvironmentBody{ID: 9, Name: "undeclared", DeploymentBranchPolicy: selectedBody()}, selectedOf(7, nil)), okDeploymentPatterns(pattern(10, main))},
+			},
+			wantRequests:   [][]string{readSelected, {deletePattern("20")}, readSelected},
+			wantOperations: []operationRecord{succeeded},
 			wantDesired:    desiredStateMatches,
 			wantResult:     completed,
 		},

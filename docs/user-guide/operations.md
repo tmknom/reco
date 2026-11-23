@@ -38,7 +38,7 @@ Repositories checked: 1
 
 ## 一つのリポジトリに絞って実行する
 
-`plan` と `apply` に `--repo OWNER/REPO` を付けると、設定ファイルに書いたリポジトリのうち一つだけを対象にできます。reco が GitHub から読み取るのも、そのリポジトリだけです。ほかのリポジトリを権限の不足などで読み取れなくても、対象にしたリポジトリは進められます。設定ファイルのどこかに書き方の誤りがあると止まります。
+`plan` と `apply` に `--repo OWNER/REPO` を付けると、設定ファイルに書いたリポジトリのうち一つだけを対象にできます。reco が GitHub から読み取るのも、そのリポジトリだけです。ほかのリポジトリを権限の不足などで読み取れなくても、対象にしたリポジトリの `plan` と `apply` は実行できます。`--repo` を付けても、設定ファイルのどこかに書き方の誤りがあれば止まります。
 
 ## リポジトリを並べる順序
 
@@ -64,9 +64,9 @@ Repositories checked: 3
 
 reco で変えた設定を元の値に戻すには、設定ファイルにその設定の元の値を書き、`apply` します。設定ファイルから行を消すだけでは、GitHub の値は戻りません。
 
-元の値は、変更する前の変更計画で `->` の前に出ています。戻す可能性がある変更は、承認の前にこの値を控えておきます。
+戻す可能性がある変更は、承認の前に、変更計画で `->` の前に出ている元の値を控えておきます。`->` の前が括弧で示された変更は、reco がその値を読めていないため、変更計画からは控えられません。
 
-`allowed_actions` を `selected` から変えると GitHub が消す `selected_actions` の値は、`->` の前ではなく、変更計画の `Side effect:` の行に出ます。
+書いた設定を変えると GitHub が一緒に変える、書いていない設定の値（`allowed_actions` を `selected` から変えると消える `selected_actions` など）は、`->` の前ではなく、変更計画の `Side effect:` の行に出ます。
 
 ## 管理をやめる
 
@@ -77,12 +77,12 @@ reco で変えた設定を元の値に戻すには、設定ファイルにその
 
 消しても、GitHub の値はその時点のまま変わりません。値を戻してから管理をやめたいときは、先に元の値を書いて `apply` し、そのあとで消します。
 
-`environments` から名前を消しても、GitHub 上の Environment は残ります。reco が作成した Environment も同じです。不要な Environment は、GitHub の「Environments」ページで消します。
+`environments` から名前を消しても、GitHub 上の Environment は残ります。reco が作成した Environment も同じです。不要な Environment は、`environments` からその Environment を（変数の行も含めて）消してから、GitHub の「Environments」ページで消します。`environments` に名前が残っていると、次の `apply` で作成し直されます。
 
 Repository Variables と Environment Variables も、行を消しただけでは GitHub 上に残ります。変数を消すときは、行を消す前に `value` を `state: absent` に書き換えて `apply` します。`plan` が消える値を示すので、戻す可能性があるなら控えておきます。消えたことを確かめたら、その行を消して管理をやめられます（[Configuration](configuration.md) の Repository Variables）。
 
 ## References
 
-- [CLI 仕様](../spec/cli.md)：`--repo` で選べるリポジトリと、設定ファイル全体の検証（2.2節、2.3節）、変更計画の表示（4章）、更新の順序と、完了しなかったリポジトリのあとの扱い（5.1節）、`show`（6章）
+- [CLI 仕様](../spec/cli.md)：`apply` が今の値から変更計画を作り直すこと（2.1節）、`--repo` で選べるリポジトリと、設定ファイル全体の検証（2.2節、2.3節）、変更計画の表示（4章）、更新の順序と、完了しなかったリポジトリのあとの扱い（5.1節）、`show`（6章）
 - [要求定義](../spec/requirements.md)：設定ファイルに書いたリポジトリだけを対象にすること（FR-002）、異常のあとに更新を続けないこと（INV-005）
-- [YAML 設定仕様](../spec/configuration.md)：未記載の設定を管理しないこと（2章）、空の階層を拒否すること（1章、10.1節）、`allowed_actions` と `selected_actions` の組み合わせ（4.1節）、Environment を削除しないこと（8章）
+- [YAML 設定仕様](../spec/configuration.md)：未記載の設定を管理しないこと（2章）、空の階層を拒否すること（1章、10.1節）、`allowed_actions` と `selected_actions` の組み合わせ（4.1節）、存在しないことの宣言による変数の削除（7.3節）、Environment を削除しないこと（8章）

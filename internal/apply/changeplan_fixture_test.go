@@ -123,7 +123,7 @@ func modeChange(t *testing.T, name string, approved github.Environment, desired 
 				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, AnticipatedValue: github.Observed(setting.Present()),
 				AnticipatedIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID),
 			},
-			{Unit: policy, AnticipatedValue: github.Observed(setting.DeploymentBranchPolicyValue(approved.DeploymentBranchPolicy))},
+			{Unit: policy, AnticipatedValue: github.Observed(setting.DeploymentBranchPolicyValue(approved.DeploymentBranchPolicy()))},
 		},
 	}}}
 }

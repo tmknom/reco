@@ -333,8 +333,9 @@ func TestCheckPrecondition_Environments(t *testing.T) {
 	approvedStaging := observedEnvironment(7, "Staging", setting.DeploymentBranchPolicyAll)
 	selected := func(id github.EnvironmentID, patterns ...string) github.Environment {
 		e := observedEnvironment(id, "Staging", setting.DeploymentBranchPolicySelected)
+		e.DeploymentPatterns = &github.DeploymentPatterns{}
 		for _, p := range patterns {
-			e.DeploymentBranchPolicy.Patterns = append(e.DeploymentBranchPolicy.Patterns, setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: p})
+			e.DeploymentPatterns.Existing = append(e.DeploymentPatterns.Existing, setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: p})
 		}
 		return e
 	}

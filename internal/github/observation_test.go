@@ -551,8 +551,8 @@ func TestObservationResult_SettingOfEnvironmentDeploymentBranchPolicy(t *testing
 	patterns := []setting.DeploymentPattern{{Type: setting.DeploymentPatternBranch, Name: "main"}, {Type: setting.DeploymentPatternTag, Name: "v*"}}
 	selected := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: patterns}
 	observed := ObservationResult{Environments: &Environments{Existing: []Environment{
-		{ID: 1, Name: "staging", DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}},
-		{ID: 2, Name: "Production", DeploymentBranchPolicy: selected},
+		{ID: 1, Name: "staging", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyAll},
+		{ID: 2, Name: "Production", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected, DeploymentPatterns: &DeploymentPatterns{Existing: patterns}},
 	}}}
 	cases := []struct {
 		name string
