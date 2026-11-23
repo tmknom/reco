@@ -34,3 +34,26 @@ func mergeMethodsLeftDisabled(s SettingPlan, settings []SettingPlan, observed gi
 	}
 	return leftDisabled
 }
+
+// mergeMethodsChange は、同じリポジトリの管理設定の計画 settings のうちマージ方式の変更予定を、計画の並びで、一つの更新要求で送る一つの論理的な設定変更にまとめる
+// (General の設計の論理的な設定変更と更新操作)。
+// 基準は、まとめた各マージ方式の計画時の観測値だけで、宣言していないマージ方式と一致したマージ方式は含めない。
+// マージ方式の変更予定がなければ送るものがないため、不変条件の破れとして panic する。
+func mergeMethodsChange(settings []SettingPlan) LogicalChange {
+	var desired []DesiredSetting
+	var relevant []RelevantSetting
+	for _, s := range settings {
+		if !slices.Contains(setting.MergeMethods(), s.Unit.Key) || !s.IsPlannedChange() {
+			continue
+		}
+		desired = append(desired, DesiredSetting{Unit: s.Unit, Value: s.Desired})
+		relevant = append(relevant, RelevantSetting{Unit: s.Unit, AnticipatedValue: s.Observed})
+	}
+	if len(desired) == 0 {
+		panic("changeplan: no merge method change to bundle")
+	}
+	return LogicalChange{
+		DesiredState: desired,
+		Operations:   []UpdateOperation{{Kind: MergeMethodsUpdate, Unit: desired[0].Unit, Settings: desired, RelevantSettings: relevant}},
+	}
+}

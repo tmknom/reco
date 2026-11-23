@@ -30,6 +30,13 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 		e.Protection.WaitTimer = &wait
 		return github.ObservationResult{Environments: environments(e)}
 	}
+	// general は、merge commit と rebase merge が有効で、ほかの General の設定と Secret scanning の2設定が無効のリポジトリの観測を、change で変えたもの。
+	general := func(change func(*github.General)) github.ObservationResult {
+		g := github.General{AllowMergeCommit: true, AllowRebaseMerge: true}
+		change(&g)
+		return github.ObservationResult{General: g, SecretScanning: publicSecretScanning(false, false)}
+	}
+	swapped := func(g *github.General) { g.AllowSquashMerge, g.AllowMergeCommit = true, false }
 	cases := []struct {
 		name   string
 		change changeplan.LogicalChange
@@ -57,6 +64,27 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			before: []github.ObservationResult{localOnly(false)},
 			after:  selectedWith(true, setBack),
 			want:   []unexpectedOutsideChange{{Setting: string(setting.SHAPinningRequired), Before: "false", After: "true"}},
+		},
+		{
+			name:   "every bundled merge method is excluded from the comparison",
+			change: mergeMethodSwapChange(t),
+			before: []github.ObservationResult{general(func(*github.General) {})},
+			after:  general(swapped),
+			want:   nil,
+		},
+		{
+			name:   "settings not bundled at the same endpoint are compared",
+			change: mergeMethodSwapChange(t),
+			before: []github.ObservationResult{general(func(*github.General) {})},
+			after: general(func(g *github.General) {
+				swapped(g)
+				g.AllowAutoMerge, g.AllowRebaseMerge, g.AllowUpdateBranch = true, false, true
+			}),
+			want: []unexpectedOutsideChange{
+				{Setting: string(setting.AllowAutoMerge), Before: "false", After: "true"},
+				{Setting: string(setting.AllowRebaseMerge), Before: "true", After: "false"},
+				{Setting: string(setting.AllowUpdateBranch), Before: "false", After: "true"},
+			},
 		},
 		{
 			// 計画が作らない並び。同じ更新エンドポイントの更新操作が並んでも、後の直前の観測を基準にしないことを確かめる

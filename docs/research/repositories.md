@@ -143,14 +143,14 @@ Pull Request の自動マージは、GitHub Free と GitHub Free for organizatio
 >
 > - 4項目の保持と反映：`allow_squash_merge`、`allow_merge_commit`、`allow_rebase_merge`、`allow_update_branch` のどれか一つだけを `true` か `false` で送ると、`200` が返り、直後の `GET` は送った値を返す。ほかのマージ関連の9フィールド（1.1節）は変わらない（公開・非公開）
 > - `200` の応答本文：マージ関連の10フィールドを含み、値は直後の `GET` と一致する（公開・非公開）
-> - 3つのマージ方式をすべて無効にする要求：2方式を無効にしたあと、残る1方式に `false` を送ると `422` が返り、値は変わらない（公開・非公開）。3方式に `false` を一つの要求で送っても同じ `422` が返り、3つとも変わらない（公開）。本文は次のとおりで、`field` は送ったフィールドにかかわらず `merge_commit_allowed` だった
+> - 3つのマージ方式をすべて無効にする要求：2方式を無効にしたあと、残る1方式に `false` を送ると `422` が返り、値は変わらない（公開・非公開）。1方式を無効にしたあと、残る2方式に `false` を一つの要求で送っても同じ `422` が返り、2つとも変わらない（公開・非公開）。3方式に `false` を一つの要求で送っても同じ `422` が返り、3つとも変わらない（公開）。本文は次のとおりで、`field` は送ったフィールドにかかわらず `merge_commit_allowed` だった
 >
 >     ```json
 >     {"message":"Validation Failed","errors":[{"message":"Sorry, you need to allow at least one merge strategy. (no_merge_method)","resource":"Repository","field":"merge_commit_allowed","code":"invalid"}],"documentation_url":"https://docs.github.com/rest/repos/repos#update-a-repository","status":"422"}
 >     ```
 >
-> - 有効な方式の入れ替え：`allow_merge_commit` だけが有効のとき、`allow_merge_commit: false` と `allow_squash_merge: true` を一つの要求で送ると、`200` が返り、両方が反映される（公開）
-> - マージメッセージの設定への影響：squash merge と merge commit をそれぞれ無効にして有効に戻しても、`squash_merge_commit_title`、`squash_merge_commit_message`、`merge_commit_title`、`merge_commit_message` は変わらない。無効のあいだも `GET` は値を返す（公開）
+> - 有効な方式の入れ替え：`allow_merge_commit` だけが有効のとき、`allow_merge_commit: false` と `allow_squash_merge: true` を一つの要求で送ると、`200` が返り、両方が反映される（公開）。3方式がすべて有効のとき、`allow_squash_merge: false`、`allow_merge_commit: true`、`allow_rebase_merge: false` を一つの要求で送ると、`200` が返り、3つとも反映され、ほかのマージ関連のフィールドは変わらない（非公開）
+> - マージメッセージの設定への影響：squash merge と merge commit をそれぞれ無効にして有効に戻しても、`squash_merge_commit_title`、`squash_merge_commit_message`、`merge_commit_title`、`merge_commit_message` は変わらない。無効のあいだも `GET` は値を返す（公開・非公開）
 > - `allow_auto_merge` と `delete_branch_on_merge`：上のどの要求でも変わらない（公開・非公開）
 > - `use_squash_pr_title_as_default`：`GET` の応答にも `PATCH` の応答本文にも含まれない
 > - Organization 所有のリポジトリと、Rulesets や Branch protection がマージ方式を求めるリポジトリでの応答は確認していない

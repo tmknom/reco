@@ -429,8 +429,6 @@ Plan cannot be applied.
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-b: actions.permissions.sha_pinning_required is not applicable; example/project-c: actions.permissions.sha_pinning_required is not applicable; no changes made"}
 ```
 
-`general.allow_squash_merge`、`general.allow_merge_commit`、`general.allow_rebase_merge`、`general.allow_update_branch` の適用可能な変更予定を含む変更計画は、`apply` ではまだ実行できません。事前検証の問題として、変更計画を表示せず、承認を求めず、更新を開始せずに、`example/project-a: updating general.allow_squash_merge is not supported yet; no changes made` のように対象と設定を示してエラー終了します。適用不能な変更予定がほかにあれば、適用不能の報告を先に行い、このエラーは表示しません。`plan` では変更予定を確認できます。
-
 すべて変更不要の場合の表示例は次のとおりです。
 
 ```text
@@ -502,7 +500,7 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 一つの論理的な設定変更が複数の更新操作からなるときは、後続の更新操作の直前の確認にも同じ遅れが現れ得ます。先行する更新操作が成功したのに、その更新操作が変えた設定が更新前の値のままのときは、同じ間隔で確認し直します。合計約30秒が経っても変わらなければ、後続の更新操作を開始せずに `failed` とします。先行する更新操作の更新要求は再送しません。
 
-一つのリポジトリに複数の変更予定があるときは、承認の前に提示する順も、論理的な設定変更を実行する順も、4章が定める変更予定の表示順に従います。ただし、Dependabot alerts を無効にする変更と Dependabot security updates の変更がともにあるときは、Dependabot security updates の変更を先に実行します。Dependabot alerts を先に無効にすると、GitHub が Dependabot security updates も無効にし、宣言した変更の変更前提が成り立たなくなるためです（[Security の設計](../design/settings/security.md) の論理的な設定変更と更新操作）。Secret scanning を無効にする変更とリポジトリの push protection の変更がともにあるときも、同じ理由で、リポジトリの push protection の変更を先に実行します。変更結果は実行した順に示します。`allowed_actions` と `sha_pinning_required` の両方に変更予定があるときも、別々の論理的な設定変更として一つずつ更新します。
+一つのリポジトリに複数の変更予定があるときは、承認の前に提示する順も、論理的な設定変更を実行する順も、4章が定める変更予定の表示順に従います。ただし、Dependabot alerts を無効にする変更と Dependabot security updates の変更がともにあるときは、Dependabot security updates の変更を先に実行します。Dependabot alerts を先に無効にすると、GitHub が Dependabot security updates も無効にし、宣言した変更の変更前提が成り立たなくなるためです（[Security の設計](../design/settings/security.md) の論理的な設定変更と更新操作）。Secret scanning を無効にする変更とリポジトリの push protection の変更がともにあるときも、同じ理由で、リポジトリの push protection の変更を先に実行します。変更結果は実行した順に示します。`allowed_actions` と `sha_pinning_required` の両方に変更予定があるときも、別々の論理的な設定変更として一つずつ更新します。`general.allow_squash_merge`、`general.allow_merge_commit`、`general.allow_rebase_merge` の変更予定は、一つの更新要求で送る一つの論理的な設定変更にまとめ、そのうちで最初の変更予定の位置で実行します。変更予定ごとに送ると、有効なマージ方式を入れ替える変更の途中ですべてのマージ方式が無効になり、GitHub が拒否するためです（[General の設計](../design/settings/general.md) の論理的な設定変更と更新操作）。`general.allow_update_branch` の変更予定はまとめず、一つずつ更新します。
 
 ### 5.2 結果の表示区分
 
@@ -527,7 +525,7 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 選択方式の Actions 許可条件は、3項目を個別の変更として表示せず、一体の設定グループとして扱います。Actions 許可ポリシーを `selected` へ変える変更と組み合わせて一つの論理的な設定変更となる場合は、変更結果を管理設定ごとの行に分けず、その変更全体について一つ示します。承認の前に提示する変更予定は、管理設定ごとの行のままです。
 
-論理的な設定変更ごとに結果を表示するときは、論理的な設定変更を、それが変える管理設定の名前で示します。二つの管理設定を変える論理的な設定変更は、変更計画に示す順に ` + ` でつないで示します（`actions.permissions.allowed_actions + actions.permissions.selected_actions`）。同じ管理設定を変える更新操作が複数あっても、その管理設定の名前は一度だけ示します。
+論理的な設定変更ごとに結果を表示するときは、論理的な設定変更を、それが変える管理設定の名前で示します。二つ以上の管理設定を変える論理的な設定変更は、変更計画に示す順に ` + ` でつないで示します（`actions.permissions.allowed_actions + actions.permissions.selected_actions`、`general.allow_squash_merge + general.allow_merge_commit + general.allow_rebase_merge`）。同じ管理設定を変える更新操作が複数あっても、その管理設定の名前は一度だけ示します。
 
 Environment の作成も、完了すれば `updated` と示します。何を作成したかは、承認の前に提示した `absent -> present` が示します。`deployment_branch_policy` を宣言した Environment の作成は、一つの更新要求で Environment と方式を設定する一つの論理的な設定変更で、`environments.<名前> + environments.<名前>.deployment_branch_policy` と示します。方式を宣言していない作成は `environments.<名前>`、存在する Environment の方式の変更は `environments.<名前>.deployment_branch_policy` と示します。名前は設定宣言の綴りです。期待値の方式が `selected` の変更でなければ、更新操作は一つのため、`Update request` は1行です。
 
@@ -557,9 +555,13 @@ Environment Variable では、計画時に存在した Environment の変数な�
 
 再観測の失敗とリポジトリ ID の変化による期待状態の確認失敗は、`not confirmed` に確認できなかった理由を括弧で添えて示します（`not confirmed (read failed)`、`not confirmed (repository ID changed)`）。
 
+二つ以上の管理設定を変える論理的な設定変更が期待状態と一致しなかった場合は、期待値と異なる値を観測した管理設定を、変更計画に示す順に `, ` でつないで括弧で添えます（`does not match (general.allow_merge_commit)`）。一部の管理設定だけが一致しなくても、変更全体を `failed` とします。期待値と比べる設定が観測不能だった管理設定は、値を確認できていないため括弧に含めません。一つの管理設定を変える論理的な設定変更では、どの管理設定かが行の名前から分かるため添えません。
+
 期待値と比べる設定が GitHub の取得条件により観測不能だったことによる確認失敗は、`not in effect` に、宣言した設定が効いていない理由を括弧で添えて示します。理由は、Actions が無効なら `GitHub Actions is disabled`、Actions 許可ポリシーが `selected` でなければ `allowed_actions is not "selected"`、リポジトリが公開なら `the repository is public`、リポジトリが非公開なら `the repository is private` です。`allowed_actions` を宣言できるのは Actions を有効にする場合に限られ、`sha_pinning_required` は Actions を無効にする宣言と同時には宣言できず、`selected_actions` を宣言できるのは Actions 許可ポリシーを `selected` と宣言した場合に限られます（[YAML 設定仕様](configuration.md) 4章）。`access_level` は公開リポジトリには適用されず（[YAML 設定仕様](configuration.md) 6章）、Secret scanning の2設定と Private vulnerability reporting は、reco が公開リポジトリでだけ管理する設定です（[YAML 設定仕様](configuration.md) 9.2、9.3）。このため、この観測不能は、宣言した設定が効いていないことを意味します。値そのものは確認できていないため、`does not match` とは示しません。`not confirmed` とも示さないのは、reco が確認に失敗したと読ませず、利用者が確かめるべきリポジトリの状態を示すためです。
 
 Environment の方式の変更か Environment Variable の作成・値の変更のあとに Environment が存在しなかった場合は、`not in effect (the environment does not exist)` と示します。宣言した方式を持つ Environment がないためです。作成のあとに Environment が存在しなかった場合は、存在しないことを確認できているため、`does not match` と示します。作成、方式の変更、Environment Variable の変更のどれでも、宣言した名前と同じかどうかを判定できない名前の Environment が現れ、存在を確かめられなかった場合は、reco が確認できなかったことを示す `not confirmed (environment existence unknown)` と示します。
+
+マージ方式をまとめた更新要求を GitHub が拒否した場合は、更新操作の失敗として `failed` と示します。承認のあとに、宣言していないマージ方式が外部主体によって無効にされていて、送るとすべてのマージ方式が無効になる場合が当たります。reco は宣言していないマージ方式の値を更新直前に確かめないため、この場合を `not attempted` と `Precondition:` では示しません。GitHub はこの更新要求を拒否し、どのマージ方式の値も変えません（[General の設計](../design/settings/general.md) の適用可能性と副作用）。
 
 `general` の設定と Secret scanning の2設定は、同じ更新エンドポイント（`PATCH /repos/{owner}/{repo}`）で更新するため、互いに変更対象外の設定として比べます。`general` の設定の更新では Secret scanning の2設定を、Secret scanning の一方の更新では `general` の設定ともう一方を比べます。ただし、`Side effect:` で示したリポジトリの push protection は比べません。承認した変化であるためです。
 
@@ -685,7 +687,7 @@ Applying changes...
     Update request (actions.permissions.allowed_actions): succeeded
     Update request (actions.permissions.selected_actions): not started
     Precondition: actions.permissions.allowed_actions is not the value expected after the preceding update
-    Desired state: does not match
+    Desired state: does not match (actions.permissions.allowed_actions)
 
 Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
@@ -697,7 +699,7 @@ Applying changes...
   example/project-a: failed
     Update request (actions.permissions.allowed_actions): unknown
     Update request (actions.permissions.selected_actions): not started
-    Desired state: does not match
+    Desired state: does not match (actions.permissions.allowed_actions)
 
 Note: No automatic retry was performed. Run reco plan to see the remaining changes.
 ```
@@ -711,7 +713,7 @@ Applying changes...
     actions.permissions.allowed_actions + actions.permissions.selected_actions: failed
       Update request (actions.permissions.allowed_actions): succeeded
       Update request (actions.permissions.selected_actions): rejected
-      Desired state: does not match
+      Desired state: does not match (actions.permissions.selected_actions)
     actions.workflow.default_workflow_permissions: not attempted
       Stopped: a preceding change did not complete
 
@@ -804,9 +806,34 @@ Applying changes...
       Update request (environments.production): succeeded
       Update request (patterns to add [branch "main"]): unknown
       Update request (patterns to add [tag "v*"]): not started
-      Desired state: does not match
+      Desired state: does not match (environments.production.deployment_branch_policy)
 
 Note: No automatic retry was performed. Run reco plan to see the remaining changes.
+```
+
+マージ方式をまとめた変更で、`200` のあとに一方のマージ方式だけが期待値と違った場合は次のとおりです。`general.allow_update_branch` の変更は開始しません。
+
+```text
+Applying changes...
+  example/project-a
+    general.allow_squash_merge + general.allow_merge_commit: failed
+      Update request: succeeded
+      Desired state: does not match (general.allow_merge_commit)
+    general.allow_update_branch: not attempted
+      Stopped: a preceding change did not complete
+
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
+```
+
+承認のあとに宣言していないマージ方式が無効にされていて、マージ方式をまとめた更新要求を GitHub が拒否した場合は次のとおりです。
+
+```text
+Applying changes...
+  example/project-a: failed
+    Update request: rejected
+    Desired state: not checked
+
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
 
 異常時の表示では、確認済みの操作結果、成否が不明な範囲、未実行の変更を区別します。

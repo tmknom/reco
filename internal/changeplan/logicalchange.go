@@ -30,7 +30,7 @@ type DesiredSetting struct {
 // 送る内容のフィールドは Kind ごとに決まり、その種類が送らないフィールドはゼロ値にする。
 type UpdateOperation struct {
 	Kind UpdateOperationKind
-	// Unit は、この更新操作が更新要求を送る先の管理の単位。
+	// Unit は、この更新操作が更新要求を送る先の管理の単位。MergeMethodsUpdate では、送る管理設定の先頭である。
 	Unit setting.Unit
 	// Value は、SettingUpdate が送る設定の値と、Repository Variable と Environment Variable の作成と値の変更が送る変数の値。
 	Value setting.Value
@@ -38,6 +38,8 @@ type UpdateOperation struct {
 	Mode setting.DeploymentBranchPolicyMode
 	// Pattern は、DeploymentPatternAddition と DeploymentPatternRemoval が加えるか取り除く個別パターン。
 	Pattern setting.DeploymentPattern
+	// Settings は、MergeMethodsUpdate が一つの更新要求で送る管理設定とその値を、計画の並びで持つ。
+	Settings []DesiredSetting
 	// RelevantSettings は、この更新操作の変更前提の基準。変わっていたことを報告するときに優先する順に並べる。
 	RelevantSettings []RelevantSetting
 }
@@ -50,6 +52,8 @@ type UpdateOperationKind int
 const (
 	// SettingUpdate は、リポジトリ設定の値をその更新エンドポイントへ送る。
 	SettingUpdate UpdateOperationKind = iota + 1
+	// MergeMethodsUpdate は、マージ方式の値を一つの更新要求でまとめて送る。
+	MergeMethodsUpdate
 	// EnvironmentCreation は、デプロイ元制限を送らずに Environment を作る。
 	EnvironmentCreation
 	// EnvironmentCreationWithMode は、デプロイ元制限の方式を送って Environment を作る。
@@ -109,14 +113,12 @@ func (o UpdateOperation) CreatesEnvironment() bool {
 	return o.Kind == EnvironmentCreation || o.Kind == EnvironmentCreationWithMode
 }
 
-// notYetUpdatable は、更新要求をまだ持たず、変更予定を apply が実行できない設定である。
-var notYetUpdatable = []setting.Key{setting.AllowSquashMerge, setting.AllowMergeCommit, setting.AllowRebaseMerge, setting.AllowUpdateBranch}
-
 // LogicalChanges は、変更予定から論理的な設定変更を、executionOrder の実行順で導く。
 // 適用可能でない変更予定があれば、承認の対象にしないため error にする。
 // 副作用を伴う変更予定の更新操作は、operationOf が副作用として提示した設定のうち reco が観測するものを必ず基準に載せる。載せずに受け付けると承認の前に示していない値を失わせ得るため。
 // 遷移先が selected のポリシーの変更予定と、選択方式の Actions 許可条件の比較不能な変更予定は、ポリシーの位置で一つの論理的な設定変更にまとめ、
 // ポリシー、許可条件の順に二つの更新操作で実現する。
+// マージ方式の変更予定は、最初のマージ方式の位置で一つの論理的な設定変更にまとめる (mergeMethodsChange)。
 // 対にならない形は、設定宣言の組み合わせの規則と観測の取得条件のどちらかが破れたときにしか生じないため、不変条件の破れとして panic する。
 // Actions の有効状態と Actions 許可ポリシーの計画が、照合結果によらず同じリポジトリの計画に並ぶ形も、
 // 設定宣言の組み合わせの規則が破れたときにしか生じないため panic する。
@@ -127,20 +129,22 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 			return nil, fmt.Errorf("%s: %s cannot be applied", r.Target, s.Unit.String())
 		}
 	}
-	for _, s := range r.Settings {
-		if s.IsPlannedChange() && slices.Contains(notYetUpdatable, s.Unit.Key) {
-			return nil, fmt.Errorf("%s: updating %s is not supported yet", r.Target, s.Unit.String())
-		}
-	}
 	_, hasEnabled := r.settingPlanOf(setting.Unit{Key: setting.ActionsEnabled})
 	if _, hasPolicy := r.settingPlanOf(setting.Unit{Key: setting.AllowedActions}); hasEnabled && hasPolicy {
 		panic(fmt.Sprintf("changeplan: plans of %s and %s are in the same repository plan", setting.ActionsEnabled, setting.AllowedActions))
 	}
 	criteria, paired := r.criteriaFollowingPolicy()
 	var changes []LogicalChange
+	mergeMethodsBundled := false
 	for _, s := range r.executionOrder() {
 		switch {
 		case !s.IsPlannedChange():
+			continue
+		case slices.Contains(setting.MergeMethods(), s.Unit.Key):
+			if !mergeMethodsBundled {
+				changes = append(changes, mergeMethodsChange(r.Settings))
+				mergeMethodsBundled = true
+			}
 			continue
 		case s.Unit.Key == setting.SelectedActions && s.Result == NotComparable:
 			if !paired {

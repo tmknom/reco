@@ -114,6 +114,7 @@ Repositories checked: 1
 | `actions.variables.<名前>: "<現在の値>" -> "<書いた値>"` | Repository Variable の値が設定ファイルの値と違う。値の示し方は `absent -> "<書いた値>"` の行と同じ |
 | `environments.<Environment の名前>.variables.<名前>: ...` | Environment Variable の作成か値の変更。読み方は `actions.variables.<名前>` の行と同じ。Environment がまだないときは `(environment absent) -> "<書いた値>"` と出て、承認すると Environment を作成してから変数を作る |
 | `<設定>: (<今の状態>) -> <書いた値>` | 今は効いていない設定（Actions が無効、Environment がまだない、など）。承認すると右の値に変える |
+| `environments.<名前>.deployment_branch_policy:` の下に、今の値の行と `-> <書いた値>` の行 | 今の値か書いた値が `selected` の `deployment_branch_policy`。読み方は1行の形と同じで、`selected` のパターンは `selected [branch "main"]` のように角括弧の中に並ぶ |
 | `Applicability: not applicable (<理由>)` | 安全に変えるための条件が成り立たないため、reco はすぐ上の変更をしない。括弧の中は、何が成り立っていないかと、設定ファイルの直し方 |
 | `Patterns to remove:`、`Patterns to add:` | Environment のデプロイを許可するパターンのうち、設定ファイルにないものと、GitHub 上にないもの |
 | `Side effect:` | この変更に伴って GitHub が消すか変える値 |
@@ -164,7 +165,7 @@ Repositories updated: 1
 
 変更計画に `Plan cannot be applied.` が出たときは、承認を求めず、どのリポジトリの設定も変えずにエラーで終わります。直し方は [Troubleshooting](troubleshooting.md#plan-cannot-be-applied-と表示された) にあります。
 
-`general.allow_squash_merge`、`general.allow_merge_commit`、`general.allow_rebase_merge`、`general.allow_update_branch` の変更は、まだ `apply` で実行できません。これらの変更が適用可能で、ほかに `Applicability: not applicable` の変更がなければ、変更計画を表示せず、承認を求めず、`updating general.allow_squash_merge is not supported yet; no changes made` のようなエラーで終わります。
+マージ方式（`general.allow_squash_merge`、`general.allow_merge_commit`、`general.allow_rebase_merge`）の変更は、変更計画では設定ごとに出ますが、`apply` は変えるマージ方式をまとめて1回の更新で GitHub に送ります。下の段落のように結果が変更ごとに出るときは、`general.allow_squash_merge + general.allow_merge_commit: updated` のように、まとめた設定を ` + ` でつないだ1行になります。
 
 Repository Variables と Environment Variables は、設定ファイルに書いた順に一つずつ作成するか値を変えます。Environment Variables は、その Environment の作成と `deployment_branch_policy` の変更のあとに変えます。リポジトリのすべての変更が完了すれば、結果はリポジトリの行の `updated` だけです。変更が2件以上あり、完了しなかったものがあるときは、リポジトリの行の下に `actions.variables.<名前>: updated` や `environments.<Environment の名前>.variables.<名前>: not attempted` のように変数ごとの結果が出ます。
 

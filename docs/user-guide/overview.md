@@ -46,10 +46,10 @@ reco が管理可能な設定は、次のとおりです。具体的な設定方
 |---|---|
 | マージ後に head ブランチを自動で削除するか | 「General」ページの「Pull Requests」の欄の「Automatically delete head branches」 |
 | 自動マージを許可するか | 「General」ページの「Pull Requests」の欄の「Allow auto-merge」 |
-| Pull Request を squash merge でマージできるようにするか（まだ `apply` では変えられない） | 「General」ページの「Pull Requests」の欄の「Allow squash merging」 |
-| Pull Request を merge commit でマージできるようにするか（まだ `apply` では変えられない） | 「General」ページの「Pull Requests」の欄の「Allow merge commits」 |
-| Pull Request を rebase merge でマージできるようにするか（まだ `apply` では変えられない） | 「General」ページの「Pull Requests」の欄の「Allow rebase merging」 |
-| base ブランチより遅れた Pull Request に、ブランチの更新を常に提案するか（まだ `apply` では変えられない） | 「General」ページの「Pull Requests」の欄の「Always suggest updating pull request branches」 |
+| Pull Request を squash merge でマージできるようにするか | 「General」ページの「Pull Requests」の欄の「Allow squash merging」 |
+| Pull Request を merge commit でマージできるようにするか | 「General」ページの「Pull Requests」の欄の「Allow merge commits」 |
+| Pull Request を rebase merge でマージできるようにするか | 「General」ページの「Pull Requests」の欄の「Allow rebase merging」 |
+| base ブランチより遅れた Pull Request に、ブランチの更新を常に提案するか | 「General」ページの「Pull Requests」の欄の「Always suggest updating pull request branches」 |
 | Actions を有効にするか、無効にするか | 「Actions」の「General」ページの「Actions permissions」の欄 |
 | 実行を許可する Actions と再利用可能なワークフローの範囲（すべて、ローカルのものだけ、選んだものだけ） | 「Actions」の「General」ページの「Actions permissions」の欄。選んだものだけを許可する選択肢は「Allow *OWNER*, and select non-*OWNER*, actions and reusable workflows」 |
 | 選んだものだけを許可するときに、GitHub が作った Actions を許可するか | 「Allow actions created by GitHub」 |

@@ -15,8 +15,27 @@ type updateRequestFunc func(c *Client, ctx context.Context, reference repository
 
 // Update は、reference のリポジトリの key の設定を value にする更新要求を、UpdateEndpointOf(key) へ一度だけ送る。再送はしない。
 // error が nil になるのは UpdateSucceeded のときだけで、呼び出し側は error から結果を導かない。
+// マージ方式は一つずつ送る経路を持たず (UpdateMergeMethods)、渡されたら不変条件の破れとして要求を送る前に panic する。
 func (c *Client) Update(ctx context.Context, reference repository.Reference, key setting.Key, value setting.Value) (UpdateOutcome, error) {
-	return updateRequestOf(key).send(c, ctx, reference, value)
+	request := updateRequestOf(key)
+	if request.send == nil {
+		panic("github: " + string(key) + " has no update request of its own")
+	}
+	return request.send(c, ctx, reference, value)
+}
+
+// UpdateMergeMethods は、reference のリポジトリのマージ方式を allowed の値にする更新要求を、一つの PATCH で一度だけ送る。再送はしない。
+// allowed にないマージ方式は送らず、省略したフィールドの保持に依拠する。
+// 空の allowed と、マージ方式でない設定を含む allowed は、不変条件の破れとして要求を送る前に panic する。
+func (c *Client) UpdateMergeMethods(ctx context.Context, reference repository.Reference, allowed map[setting.Key]bool) (UpdateOutcome, error) {
+	if len(allowed) == 0 {
+		panic("github: no merge method to update")
+	}
+	fields := make(map[string]bool, len(allowed))
+	for key, allow := range allowed {
+		fields[mergeMethodField(key)] = allow
+	}
+	return c.updateRepository(ctx, reference, mustMarshalJSON(fields))
 }
 
 // updateAllowAutoMerge は reference のリポジトリの allow_auto_merge を allow に更新する。
@@ -27,6 +46,11 @@ func (c *Client) updateAllowAutoMerge(ctx context.Context, reference repository.
 // updateDeleteBranchOnMerge は reference のリポジトリの delete_branch_on_merge を enabled に更新する。
 func (c *Client) updateDeleteBranchOnMerge(ctx context.Context, reference repository.Reference, enabled bool) (UpdateOutcome, error) {
 	return c.updateRepository(ctx, reference, fmt.Appendf(nil, `{"delete_branch_on_merge":%t}`, enabled))
+}
+
+// updateAllowUpdateBranch は reference のリポジトリの allow_update_branch を allow に更新する。
+func (c *Client) updateAllowUpdateBranch(ctx context.Context, reference repository.Reference, allow bool) (UpdateOutcome, error) {
+	return c.updateRepository(ctx, reference, fmt.Appendf(nil, `{"allow_update_branch":%t}`, allow))
 }
 
 // updateSecretScanningEnabled は reference のリポジトリの Secret scanning の有効状態を enabled に更新する。
@@ -143,6 +167,7 @@ func enablementMethod(enabled bool) string {
 
 // updateRequest は、一つの設定を変える更新要求の、送り先の更新エンドポイントと送り方の組。
 // 送る更新要求と比べる設定の範囲を別々の場所で足し忘れないよう、同じ switch から返す。
+// 一つずつ送る経路を持たない設定 (マージ方式) では send が nil である。
 type updateRequest struct {
 	endpoint UpdateEndpoint
 	send     updateRequestFunc
@@ -157,6 +182,10 @@ func updateRequestOf(key setting.Key) updateRequest {
 		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateDeleteBranchOnMerge)}
 	case setting.AllowAutoMerge:
 		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateAllowAutoMerge)}
+	case setting.AllowUpdateBranch:
+		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateAllowUpdateBranch)}
+	case setting.AllowSquashMerge, setting.AllowMergeCommit, setting.AllowRebaseMerge:
+		return updateRequest{endpoint: RepositoryEndpoint}
 	case setting.ActionsEnabled:
 		return updateRequest{ActionsPermissionsEndpoint, boolUpdate((*Client).updateActionsEnabled)}
 	case setting.AllowedActions:
@@ -193,8 +222,6 @@ func updateRequestOf(key setting.Key) updateRequest {
 		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateRepositoryPushProtection)}
 	case setting.PrivateVulnerabilityReportingEnabled:
 		return updateRequest{PrivateVulnerabilityReportingEndpoint, boolUpdate((*Client).updatePrivateVulnerabilityReporting)}
-	case setting.AllowSquashMerge, setting.AllowMergeCommit, setting.AllowRebaseMerge, setting.AllowUpdateBranch:
-		// 更新要求をまだ持たない。
 	case setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentVariable:
 		// 関連リソースの更新要求は宛先に名前が要るため、設定の識別だけで引くこの関数では扱えない。
 	}
@@ -205,6 +232,21 @@ func updateRequestOf(key setting.Key) updateRequest {
 func boolUpdate(update func(*Client, context.Context, repository.Reference, bool) (UpdateOutcome, error)) updateRequestFunc {
 	return func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
 		return update(c, ctx, reference, value.Bool())
+	}
+}
+
+// mergeMethodField は、マージ方式 key の、更新要求の本文のフィールド名を返す。
+// マージ方式でない設定は、不変条件の破れとして panic する。
+func mergeMethodField(key setting.Key) string {
+	switch key {
+	case setting.AllowSquashMerge:
+		return "allow_squash_merge"
+	case setting.AllowMergeCommit:
+		return "allow_merge_commit"
+	case setting.AllowRebaseMerge:
+		return "allow_rebase_merge"
+	default:
+		panic("github: " + string(key) + " is not a merge method")
 	}
 }
 

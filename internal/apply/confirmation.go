@@ -4,6 +4,7 @@ import (
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
+	"github.com/tmknom/reco/internal/setting"
 )
 
 // desiredStateConfirmation は、更新後の観測で期待状態を確かめた結果。
@@ -31,12 +32,13 @@ func confirmDesiredState(approvedID repository.ID, change changeplan.LogicalChan
 	if observed.RepositoryID != approvedID {
 		return desiredStateIdentityMismatch, 0
 	}
+	// 不一致は mismatchedDesiredSettings から導き、不一致の確認結果が一致しなかった管理設定を必ず伴うようにする
+	if len(mismatchedDesiredSettings(change, observed)) > 0 {
+		return desiredStateMismatch, 0
+	}
 	var reason github.UnavailableReason
 	for _, desired := range change.DesiredState {
 		confirmation, settingReason := confirmDesiredSetting(desired, observed)
-		if confirmation == desiredStateMismatch {
-			return desiredStateMismatch, 0
-		}
 		if confirmation == desiredStateUnavailable && reason == 0 {
 			reason = settingReason
 		}
@@ -45,6 +47,17 @@ func confirmDesiredState(approvedID repository.ID, change changeplan.LogicalChan
 		return desiredStateUnavailable, reason
 	}
 	return desiredStateMatches, 0
+}
+
+// mismatchedDesiredSettings は、change の期待状態のうち、observed で期待値と異なる値を観測した管理設定を、期待状態の並びで返す。観測不能だった管理設定は含めない。
+func mismatchedDesiredSettings(change changeplan.LogicalChange, observed github.ObservationResult) []setting.Unit {
+	var mismatched []setting.Unit
+	for _, desired := range change.DesiredState {
+		if confirmation, _ := confirmDesiredSetting(desired, observed); confirmation == desiredStateMismatch {
+			mismatched = append(mismatched, desired.Unit)
+		}
+	}
+	return mismatched
 }
 
 // confirmDesiredSetting は、一つの管理設定の期待値を observed と比べ、一致、不一致、理由を伴う観測不能のいずれかを返す。
