@@ -2,11 +2,9 @@
 
 ## 1. 目的と適用範囲
 
-本ドキュメントは、reco のコマンド、オプション、認証情報の選択、対話承認、表示内容、終了コードを定めます。対象は利用者から観察できる操作とその結果です。設定の照合や更新を実現する内部構成・API 操作順序は規定しません。
+本ドキュメントは、reco のコマンド、オプション、認証情報の選択、対話承認、表示内容、終了コードを定めます。対象は利用者から観察できる操作とその結果です。設定の照合や更新を実現する内部構成・API 操作順序は規定しません。どの変更予定が適用不能になり、どの副作用を伴い、どの順に実行し、変更前提で何を比べるかは [設定ごとの設計](../design/settings/README.md) が定め、本ドキュメントはその結果の示し方を定めます。
 
 表示には、reco の実行が終わったあとも残る影響と、利用者が判断や行動を変えられる情報だけを示します。更新のあいだだけ生じて実行が完了すれば残らない状態や、更新を何回に分けて送るかといった内部の手順は示しません。利用者が何もできない情報は、判断に必要な情報を埋もれさせ、残り続ける影響だと読み違えさせるためです。実行が完了しなかった場合は、残った状態を確かめるのに要る範囲で、どの更新まで済んだかを示します（5.2節）。
-
-reco は GitHub.com の個人アカウント所有リポジトリを対象とします。利用者が対象を指定し、必要な権限を持つ認証情報を用意します。所有者と認証主体の一致検査は行いません。
 
 ## 2. コマンドとオプション
 
@@ -38,7 +36,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 `--log-level` はコマンド名の前後に指定できます。ログレベルは診断ログの出力を制御するものであり、コマンドの結果、承認に必要な情報、エラー理由を省略するためには使用しません。
 
-`--help` (`-h`) は `reco` と各コマンドに、`--version` (`-v`) はコマンドを伴わない `reco` に指定でき、使い方またはバージョンを表示して終了します。コマンドを指定せずに `reco` だけを実行した場合も使い方を表示します。これらと `help`、`completion` コマンドは [cobra](https://github.com/spf13/cobra) の標準機能として提供し、`--version` の出力を除いて、細かな振る舞いは本仕様で規定しません。`--version` は、ビルド時に埋め込んだバージョンだけを1行で表示し、埋め込まれていなければ `dev` を表示します。リリースの工程が、この出力をタグのバージョンと完全一致で照合するためです。
+`--help` (`-h`) は `reco` と各コマンドに、`--version` (`-v`) はコマンドを伴わない `reco` に指定でき、使い方またはバージョンを表示して終了します。コマンドを指定せずに `reco` だけを実行した場合も使い方を表示します。これらと `help`、`completion` コマンドの細かな振る舞いは、`--version` の出力を除いて本仕様で規定しません。`--version` は、ビルド時に埋め込んだバージョンだけを1行で表示し、埋め込まれていなければ `dev` を表示します。リリースの工程が、この出力をタグのバージョンと完全一致で照合するためです。
 
 未定義のコマンド・オプション、不要な位置引数、値のないオプション、不正なオプション値は、処理の開始前にエラーとします。`--repo` は一回の実行に一つだけ指定できます。`show` には `--config` を指定できません。指定した設定ファイルが存在しない、または読み取れない場合もエラーとします。
 
@@ -68,13 +66,13 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 環境変数の優先順位は [GitHub CLI の環境変数仕様](https://cli.github.com/manual/gh_help_environment) と同じですが、reco が GitHub CLI の認証機構を利用することは意味しません。
 
-reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章、[GitHub リポジトリ API 仕様](../research/repositories.md) 1章、[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章、[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章、[GitHub Actions 変数 API 仕様](../research/actions-variables.md) 1章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。`show` が読み取る Environment と個別パターンの一覧には、GitHub App の権限の分類で Actions の read に当たる権限が要ります。ほかのトークンがこの権限を持たず、GitHub が一覧の取得を拒んだときは、`show` は観測操作の失敗としてエラー終了します。`show` と、`actions.variables` を宣言したリポジトリの `plan` と `apply` が読み取る Repository Variables の一覧には、GitHub App の権限の分類で Variables の read に当たる権限が要り、GitHub が一覧の取得を拒んだときは、どのコマンドも観測操作の失敗としてエラー終了します。一覧を読めなければ、宣言した変数が存在しないとはみなさず、作成を計画しません。`apply` が変数を作成し、値を変え、削除するには、Variables の write に当たる権限が要ります。GitHub が更新要求を拒んだときは、その変数の更新操作の失敗になります。`show` と、`environments[].variables` を一つでも宣言したリポジトリの `plan` と `apply` が読み取る Environment Variables の一覧には、GitHub App の権限の分類で Environments の read に当たる権限が要り、GitHub が一覧の取得を拒んだときは、どのコマンドも観測操作の失敗としてエラー終了します。`apply` が Environment Variable を作成し、値を変え、削除するには、Environments の write に当たる権限が要ります。GitHub が更新要求を拒んだときは、その変数の更新操作の失敗になります。`show` と、`security` を宣言したリポジトリの `plan` と `apply` が読み取る Dependabot alerts と Dependabot security updates の取得には、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。トークンの所有者が admin のアクセスを持たないリポジトリでは、どのコマンドも観測操作の失敗としてエラー終了します。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合（Administration の read を持たない fine-grained personal access token など）の応答は確かめていません。この場合に GitHub が Dependabot alerts の取得へ `404` を返すなら、`show` は有効な Dependabot alerts を `false` と表示し、`plan` と `apply` は `dependabot_alerts: false` の宣言を変更不要と判断します（[Security の設計](../design/settings/security.md) の観測）。`show` と、`secret_scanning` か `secret_scanning_push_protection` を宣言したリポジトリの `plan` と `apply` が読み取る Secret scanning の有効状態とリポジトリの push protection も、リポジトリの admin のアクセスが要ります（GitHub リポジトリ API 仕様 5章）。`apply` は、`general` の設定を更新する前後にもこの二つを読み取ります。同じ更新エンドポイント（`PATCH /repos/{owner}/{repo}`）で変わり得る設定として比べるためです（5.2節）。公開リポジトリの応答がこれらの値を含まないときは、どのコマンドも観測操作の失敗としてエラー終了します。`general` の設定の更新にも admin のアクセスが要るため（GitHub リポジトリ API 仕様 1章）、確かめた範囲では、この読み取りが `general` だけを宣言したリポジトリの `apply` を新たに止めることはありません。所有者が Admin ロールを持っていても、トークン自体の権限が足りない場合の応答は確かめていません。`show` と、`private_vulnerability_reporting` を宣言したリポジトリの `plan` と `apply` が読み取る Private vulnerability reporting の有効状態は、admin のアクセスを要しませんが、その更新には admin のアクセスが要ります（GitHub リポジトリ API 仕様 1章）。非公開リポジトリでは、この設定を読み取りません。
+reco は、利用者が `gh auth token` で取得したトークンを `GH_TOKEN` に渡す使い方を主に想定し、必要な権限の確認と案内はこのトークンを前提にします（[GitHub REST API 共通仕様](../research/rest-api.md) 7章）。fine-grained personal access token など、ほかのトークンも同じ環境変数で渡せます。トークンの権限が足りず、GitHub が読み取り要求を拒んだときは観測操作の失敗としてエラー終了し、更新要求を拒んだときはその更新操作の失敗になります。
 
 ```text
 $ GH_TOKEN=$(gh auth token) reco plan
 ```
 
-このトークンの scope は利用者の権限を超えないため、操作できるかはトークン所有者の対象リポジトリでのロールで決まります。reco が動作を確認した条件は、トークン所有者が対象リポジトリの Admin ロールを持つことです。Write 以上のロールを持たないリポジトリでは、GitHub が General の値を応答に含めないため、`show`・`plan`・`apply` は観測操作の失敗としてエラー終了します。Write・Maintain ロールでの動作は確認していません。
+このトークンの scope は利用者の権限を超えないため、操作できるかはトークン所有者の対象リポジトリでのロールで決まります。reco が動作を確認した条件は、トークン所有者が対象リポジトリの Admin ロールを持つことです。Write 以上のロールを持たないリポジトリでは、`show`・`plan`・`apply` は観測操作の失敗としてエラー終了します（[GitHub リポジトリ API 仕様](../research/repositories.md) 1章）。Write・Maintain ロールでの動作は確認していません。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -82,10 +80,6 @@ $ GH_TOKEN=$(gh auth token) reco plan
 | `alignment` | `QR-001` | Quality Requirement |
 | `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Repository File |
 | `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
-| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
-| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
-| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Repository File |
-| `grounding` | [GitHub Actions 変数 API 仕様](../research/actions-variables.md) | Repository File |
 
 ## 4. `plan`：変更計画の確認
 
@@ -94,13 +88,13 @@ $ GH_TOKEN=$(gh auth token) reco plan
 | 表示区分 | 意味 | 利用者に示す情報 |
 |---|---|---|
 | 確認済みの差分 | 比較可能な現在値と期待値が異なる | リポジトリ、設定、現在値、期待値 |
-| 比較不能な設定予定 | 現在値が観測不能（GitHub の取得条件、属する先の Environment が存在しないこと、名前の同一性を判定できないことによる）で比較できず、期待状態の適用を検討する | リポジトリ、設定、取得条件から分かるリポジトリの状態、期待値 |
+| 比較不能な設定予定 | 現在値が観測不能で比較できず、期待状態の適用を検討する | リポジトリ、設定、取得条件から分かるリポジトリの状態、期待値 |
 | 適用不能 | 安全な変更に必要な条件を確認できない | 対象と理由。差分・比較不能の区分とは別に適用不能と示す |
 | 変更不要 | 管理範囲内の設定が期待状態と一致する | 確認した対象の件数 |
 
 照合結果と適用可能性は別に示します。不一致（Mismatch）でも適用不能な場合があり、比較不能（Not Comparable）でも条件を確認できれば適用可能な変更予定となります。観測操作そのものの失敗は比較不能に含めず、エラーとして報告します。
 
-集計では、変更予定のあるリポジトリ数と変更予定数を示します。変更予定のあるリポジトリ数は、そのすべてが適用可能であることを意味しません。変更予定数は、確認済みの差分と比較不能な設定予定を合わせて管理設定の単位で数えます。二つを区別するのは変更予定の行の現在値であり、集計では区別しません。比較不能な設定予定も、宣言した値へ変える変更として利用者が承認するものだからです。API 更新操作の数や論理的な設定変更の数とは同一視しません。選択方式の Actions 許可条件（Selected actions の3項目）は一つの設定グループとして集計し、上位の Actions 許可ポリシーとは区別します。変更の必要がないと確認できた場合に限り `No changes.` と表示します。
+集計では、変更予定のあるリポジトリ数と変更予定数を示します。変更予定のあるリポジトリ数は、そのすべてが適用可能であることを意味しません。変更予定数は、確認済みの差分と比較不能な設定予定を合わせて管理設定の単位で数えます。二つを区別するのは変更予定の行の現在値であり、集計では区別しません。比較不能な設定予定も、宣言した値へ変える変更として利用者が承認するものだからです。更新要求の数や論理的な設定変更の数とは同一視しません。選択方式の Actions 許可条件（Selected actions の3項目）は一つの設定グループとして集計し、上位の Actions 許可ポリシーとは区別します。変更の必要がないと確認できた場合に限り `No changes.` と表示します。
 
 一つのリポジトリに複数の変更予定があるときは、[YAML 設定仕様](configuration.md) の章と表の並びで表示します。設定宣言での記述順には従いません。
 
@@ -110,7 +104,7 @@ $ GH_TOKEN=$(gh auth token) reco plan
 
 関連リソースの作成は、現在値の位置に `absent` を置いて示します。期待値の位置には、値を持たない種類（Environment）では `present` を、値を持つ種類（Repository Variable、Environment Variable）では宣言した値を置きます。`absent` は確かめた事実であり、比較不能の印である括弧には入れません。関連リソースとその中の設定は、`<種類のキー>.<名前>` と `<種類のキー>.<名前>.<設定>` の形で示し、名前は設定宣言に書いた綴りのまま示します。GitHub が大文字小文字の違う綴りで返しても、設定ファイルの行と対応づけられるようにするためです。
 
-Environment では、存在しない Environment の作成と、その Environment の `deployment_branch_policy` を、別の変更予定として示し、集計でもそれぞれ数えます。作成する Environment の `deployment_branch_policy` は、属する先が存在しないため比較不能な設定予定であり、現在値の位置に `(environment absent)` を示します。`deployment_branch_policy` の値は、方式が `selected` なら個別パターンを含めて `selected [<種類> "<名前>", ...]` の形で示します。現在値は GitHub が返した順、期待値は設定宣言の順に並べ、個別パターンのない `selected` は `selected []` と示します。現在値か期待値のどちらかが `selected` の変更予定は、個別パターンを並べた値が長くなるため、設定の行の下に現在値（比較不能なら現在の状態）と、`->` に続けて期待値を1行ずつ示します。どちらも `selected` でない変更予定は1行で示します。`selected` から変えると GitHub は個別パターンを残しませんが、個別パターンは同じ管理設定の値の一部であり、現在値に示しているため、`Side effect:` は添えません。
+Environment では、存在しない Environment の作成と、その Environment の `deployment_branch_policy` を、別の変更予定として示し、集計でもそれぞれ数えます。作成する Environment の `deployment_branch_policy` は、属する先が存在しないため比較不能な設定予定であり、現在値の位置に `(environment absent)` を示します。`deployment_branch_policy` の値は、方式が `selected` なら個別パターンを含めて `selected [<種類> "<名前>", ...]` の形で示します。現在値は GitHub が返した順、期待値は設定宣言の順に並べ、個別パターンのない `selected` は `selected []` と示します。現在値か期待値のどちらかが `selected` の変更予定は、個別パターンを並べた値が長くなるため、設定の行の下に現在値（比較不能なら現在の状態）と、`->` に続けて期待値を1行ずつ示します。どちらも `selected` でない変更予定は1行で示します。
 
 現在値と期待値がどちらも `selected` の確認済みの差分には、`->` の行の下に、なくなるパターンを `Patterns to remove:`、加わるパターンを `Patterns to add:` の行で、この順に添えます。どちらも `[<種類> "<名前>", ...]` の形で、なくなるパターンは現在値の順、加わるパターンは期待値の順に並べ、該当するパターンがない行は示しません。二つの一覧の並びが違い、利用者が差を目で突き合わせなくて済むようにするためです。方式が変わる変更予定には添えません。現在値か期待値の一覧の全体が、そのままなくなるか加わるためです。
 
@@ -158,7 +152,7 @@ Repositories checked: 1
 
 存在しないことを宣言した Repository Variable と Environment Variable の削除は、期待値の位置に `absent` を置いて `"<現在値>" -> absent` と示します。削除で失われる値は、矢印の左の現在値です。値の示し方は作成と値の変更と同じで、長い値も省略しません。引用符のない `absent` は、値が文字列 `absent` の変数（`"absent"`）と見分けられます。存在しない変数に存在しないことを宣言した場合は一致であり、行を示しません。設定宣言から行を消した変数も、行を示しません。
 
-存在しない Environment に書いた、存在しないことを宣言した変数は、属する先が存在しないため比較不能な設定予定で、`(environment absent) -> absent` と示し、集計でも数えます。この変更予定に更新要求はなく、Environment を作成したあとに、その変数が存在しないことを確かめます（5.2節）。
+存在しない Environment に書いた、存在しないことを宣言した変数は、属する先が存在しないため比較不能な設定予定で、`(environment absent) -> absent` と示し、集計でも数えます。
 
 ```text
 Repository: example/project-a
@@ -183,7 +177,7 @@ Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
-選択方式の Actions 許可条件の確認済みの差分は、3項目を並べた値が長いため、設定の行の下に現在値と、`->` に続けて期待値を1行ずつ示します。
+選択方式の Actions 許可条件の変更予定は、3項目を並べた値が長いため、設定の行の下に現在値（比較不能なら現在の状態）と、`->` に続けて期待値を1行ずつ示します。
 
 ```text
 Repository: example/project-a
@@ -217,22 +211,11 @@ Plan: 2 repositories to update, 2 changes
 Repositories checked: 3
 ```
 
-Actions の有効状態は、Actions permissions を取得できれば必ず確認できるため、`enabled` の変更予定は確認済みの差分として示します。Actions を無効にしても、GitHub は `allowed_actions`、`sha_pinning_required`、Selected actions の値を残すため（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 3.2・4章）、`Side effect:` は添えません。`enabled: true` を `allowed_actions` とともに宣言した場合は、有効状態の行を示さず、表示と集計は `enabled` を省略した場合と同じです（[YAML 設定仕様](configuration.md) 4章）。
+`enabled: true` を `allowed_actions` とともに宣言した場合は、有効状態の行を示さず、表示と集計は `enabled` を省略した場合と同じです（[YAML 設定仕様](configuration.md) 4章）。
 
 ```text
 Repository: example/project-a
   actions.permissions.enabled: true -> false
-
-Plan: 1 repository to update, 1 change
-Repositories checked: 1
-```
-
-Actions を無効から有効にする変更予定には、再開する設定（[ドメインモデル](../design/domain.md) の照合結果と適用可能性）を `Previous settings:` の行で添えます。GitHub は無効にする前の `allowed_actions`、`sha_pinning_required`、Selected actions の値を残しており、有効に戻すとそれらの値で Actions を実行できるようになるためです（GitHub Actions 権限 API 仕様 3.2・4章）。`enabled` を `false` から `true` に変える変更予定では、この3つを挙げます。Actions が無効のリポジトリで `allowed_actions` を宣言した変更予定（`(enables GitHub Actions)`）では、`sha_pinning_required` だけを挙げます。ポリシーは宣言した値になり、Selected actions は宣言した値になるか、失われ得ることを `Side effect:` で示すためです。同じリポジトリで宣言している設定は挙げず、挙げる設定が残らなければ行を添えません。再開のあとで、同じ変更計画が宣言した値に変えるためです。無効のあいだは値を取得できないため、値は示さず、残っていた値で再開することと、値を示せない理由を示します。値が失われるわけではないため、`Side effect:` とは別の行で示します。再開するときのポリシーを利用者が決めるには、`allowed_actions` を宣言します（[YAML 設定仕様](configuration.md) 4章）。`Previous settings:` は `Side effect:` の前に示し、`apply` では承認プロンプトの前に表示します。
-
-```text
-Repository: example/project-a
-  actions.permissions.enabled: false -> true
-    Previous settings: GitHub Actions resumes with allowed_actions, selected_actions, and sha_pinning_required kept from before it was disabled (reco cannot read them while GitHub Actions is disabled)
 
 Plan: 1 repository to update, 1 change
 Repositories checked: 1
@@ -251,7 +234,7 @@ Repositories checked: 1
 
 括弧の状態は、観測したリポジトリの状態から決まり、推測した値ではありません。GitHub が保存している値を示すものでもありません。利用者が知りたいのは承認すると何が起きるかであり、その判断には、いま効いている状態と宣言した値があれば足ります。確認済みの差分とは、現在値が括弧で示されることで区別します。
 
-Actions が無効のリポジトリでは `allowed_actions` の現在値を取得できませんが、宣言したポリシーで Actions を有効にする変更として適用できます（[YAML 設定仕様](configuration.md) 4章）。この変更予定には、期待値に `(enables GitHub Actions)` を添えます。
+Actions が無効のリポジトリで `allowed_actions` を宣言し、宣言したポリシーで Actions を有効にする変更予定には、期待値に `(enables GitHub Actions)` を添えます（[YAML 設定仕様](configuration.md) 4章）。ほかの変更予定には添えません。次の例の `Previous settings:` と `Side effect:` は、変更予定に添える行（後述）です。
 
 ```text
 Repository: example/project-a
@@ -262,8 +245,6 @@ Repository: example/project-a
 Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
-
-`(enables GitHub Actions)` は、Actions が無効のリポジトリの `allowed_actions` にだけ添えます。選択方式の Actions 許可条件は、`allowed_actions` が `selected` でないリポジトリでは現在値を取得できないため、`allowed_actions` を `selected` へ変える変更予定と並べて、比較不能な設定予定として示します。選択方式の Actions 許可条件の比較不能な設定予定も、確認済みの差分と同じく、設定の行の下に現在の状態と、`->` に続けて期待値を1行ずつ示します。
 
 ```text
 Repository: example/project-a
@@ -276,7 +257,15 @@ Plan: 1 repository to update, 2 changes
 Repositories checked: 1
 ```
 
-安全な変更に必要な条件を確認できない変更予定には、変更予定の行のすぐ下に `Applicability: not applicable (<理由>)` を添えます。理由は、セミコロンの前に何が成り立っていないかを、後ろに設定ファイルの直し方を示します。適用不能な変更予定が一つでもあれば、`Repositories checked:` の後に空行を挟んで `Plan cannot be applied.` を一度だけ表示します。集計は、適用不能な変更予定と、適用不能な変更予定だけを持つリポジトリも数えます。現在は、Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言した場合と、公開リポジトリで `access_level` を宣言した場合と、宣言した名前と同じかどうかを判定できない名前の Environment があり、宣言した名前の Environment が存在するかを確かめられない場合と、Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を宣言せずに `dependabot_security_updates` を宣言し、その値を変える場合と、非公開リポジトリで `secret_scanning`、`secret_scanning_push_protection`、`private_vulnerability_reporting` のいずれかを宣言した場合と、Secret scanning が無効のリポジトリで、`secret_scanning: true` を宣言せずに `secret_scanning_push_protection: true` を宣言し、その値を変える場合と、マージ方式を無効にする変更で、更新後に3つのマージ方式がすべて無効になる場合が該当します（[設定ごとの設計](../design/settings/README.md) の各文書の「適用可能性と副作用」）。
+変更予定に添える行には、次の三つがあります。どれも変更予定の行の下に示し、変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。どの変更予定にどの行を添えるか（適用不能になる条件、変更に伴う副作用、再開する設定）は、[設定ごとの設計](../design/settings/README.md) の各文書の「適用可能性と副作用」が定めます。
+
+- **`Applicability: not applicable (<理由>)`**：安全な変更に必要な条件を確認できない変更予定に、変更予定の行のすぐ下に添える。理由は、セミコロンの前に何が成り立っていないかを、後ろに設定ファイルの直し方を示す
+- **`Previous settings:`**：再開する設定（[ドメインモデル](../design/domain.md) の計画）を示す。値を示せないときは、残っていた値で再開することと、値を示せない理由を示す。値が失われるわけではないため、`Side effect:` とは別の行にし、`Side effect:` の前に示す
+- **`Side effect:`**：宣言した変更に伴って GitHub が管理範囲外の設定を削除するか変える場合に、その設定と、reco が観測する設定なら現在値を示す。reco が観測しない設定は、起きる変化だけを示す。値を取得できず失われるかどうかが分からないときは、失われる可能性と値を示せない理由を示す。副作用を伴う変更予定の最後の行として示す
+
+`Side effect:` を添えた変更予定は適用可能であり、利用者が承認すれば実行します。`Side effect:` は、変更が完了したあとも残る影響だけを示します。一つの変更の更新操作のあいだだけ生じる中間状態（[アーキテクチャ設計](../design/architecture.md) 5.4）は示しません。完了すれば残らず、利用者が承認の前に避ける手段もないためです。中間状態が残るのは変更が完了しなかった場合で、そのときは変更結果が `failed` と注記で示します（5.2節）。
+
+適用不能な変更予定が一つでもあれば、`Repositories checked:` の後に空行を挟んで `Plan cannot be applied.` を一度だけ表示します。集計は、適用不能な変更予定と、適用不能な変更予定だけを持つリポジトリも数えます。適用不能の表示例は次のとおりです。
 
 ```text
 Repository: example/project-a
@@ -289,20 +278,6 @@ Repositories checked: 1
 Plan cannot be applied.
 ```
 
-同じリポジトリで `enabled: true` か `allowed_actions` を宣言していれば、`sha_pinning_required` の変更予定は比較不能でも適用可能で、`Applicability:` の行を添えません。
-
-```text
-Repository: example/project-a
-  actions.permissions.enabled: false -> true
-    Previous settings: GitHub Actions resumes with allowed_actions and selected_actions kept from before it was disabled (reco cannot read them while GitHub Actions is disabled)
-  actions.permissions.sha_pinning_required: (GitHub Actions disabled) -> true
-
-Plan: 1 repository to update, 2 changes
-Repositories checked: 1
-```
-
-公開リポジトリの `access_level` は、ほかの宣言によらず適用不能です（[Actions の設計](../design/settings/actions.md) の適用可能性と副作用）。直し方は、その宣言を設定ファイルから消すことです。
-
 ```text
 Repository: example/project-a
   actions.access.access_level: (public repository) -> none
@@ -313,8 +288,6 @@ Repositories checked: 1
 
 Plan cannot be applied.
 ```
-
-宣言した Environment が存在するかを確かめられない場合（[Environments の設計](../design/settings/environments.md) の適用可能性と副作用）、作成すると既存の Environment を変え得るため、その Environment とその中の設定と Environment Variable の変更予定は適用不能です。直し方は、その Environment の宣言を設定ファイルから消すことです。
 
 ```text
 Repository: example/project-a
@@ -327,46 +300,11 @@ Repositories checked: 1
 Plan cannot be applied.
 ```
 
-宣言した変更に伴って GitHub が管理範囲外の設定を削除するか変える場合は、変更予定に `Side effect:` として、その設定と、reco が観測する設定なら現在値を添えます。この変更は適用可能であり、利用者が承認すれば実行します。該当するのは、Actions 許可ポリシーを `selected` から `all` / `local_only` へ変え、既存の選択方式の Actions 許可条件が失われる場合と、Dependabot alerts の有効状態を変える場合と、Secret scanning を無効にする場合です（[設定ごとの設計](../design/settings/README.md) の各文書の「適用可能性と副作用」）。Actions が無効のリポジトリで `all` / `local_only` を宣言した場合は、無効にする前のポリシーが `selected` であれば同じく失われますが、無効の間は値もポリシーも取得できないため、失われる可能性があることと、値を示せない理由を示します。遷移先が `selected` の変更には添えません。3項目は宣言した値で上書きされ、管理範囲内の変更になるためです。`Side effect:` は、変更が完了したあとも残る影響だけを示します。一つの変更の更新操作のあいだだけ生じる中間状態（[アーキテクチャ設計](../design/architecture.md) 5.4）は示しません。完了すれば残らず、利用者が承認の前に避ける手段もないためです。中間状態が残るのは変更が完了しなかった場合で、そのときは変更結果が `failed` と注記で示します（5.2節）。`Side effect:` は、副作用を伴う変更予定の最後の行として示します。変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。
-
-```text
-Repository: example/project-a
-  actions.permissions.allowed_actions: selected -> all
-    Side effect: GitHub discards the current selected_actions (github_owned_allowed: true, verified_allowed: true, patterns_allowed: ["example/*"])
-```
-
-Dependabot alerts を無効にする変更予定には、GitHub が Dependency graph を無効にすることを `Side effect:` で示します。Dependency graph は reco が観測しない設定のため、現在値を示さず、「無効になる」とだけ示します。`dependabot_security_updates` を宣言しておらず、計画時に Dependabot security updates が有効（一時停止中を含む）なら、GitHub がそれも無効にすることを、現在値とともに続く行で示します（[GitHub リポジトリ API 仕様](../research/repositories.md) 6章）。`dependabot_security_updates` を宣言していれば示しません。宣言した値への変更として、同じ変更計画が扱うためです。Dependabot alerts を有効にする変更予定には、GitHub が Dependency graph を有効にすることを示します。Dependabot alerts をあとで有効に戻しても、無効になった Dependabot security updates は戻りません。
-
-```text
-Repository: example/project-a
-  security.dependabot_alerts: true -> false
-    Side effect: GitHub also disables the dependency graph
-    Side effect: GitHub also disables dependabot_security_updates, which is currently true (paused by GitHub)
-```
-
-Dependabot security updates の値は、一時停止中なら `true (paused by GitHub)` と示します。一時停止中も設定は有効のままのため、`dependabot_security_updates: true` と一致し、変更予定になりません（[YAML 設定仕様](configuration.md) 9章）。一致した設定は変更予定の行を持たないため、一時停止中であることは `show` で確かめます。
-
-Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を宣言せずに `dependabot_security_updates` の値を変える変更予定は、適用不能です。GitHub は、Dependabot alerts が無効のあいだ、Dependabot security updates の有効化も無効化も拒否するためです（GitHub リポジトリ API 仕様 7章）。
-
 ```text
 Repository: example/project-a
   security.dependabot_security_updates: false -> true
     Applicability: not applicable (Dependabot alerts is disabled; declare dependabot_alerts: true to enable it)
 ```
-
-Secret scanning を無効にする変更予定で、`secret_scanning_push_protection` を宣言しておらず、計画時にリポジトリの push protection が有効なら、GitHub がそれも無効にすることを、現在値とともに `Side effect:` で示します（[GitHub リポジトリ API 仕様](../research/repositories.md) 5章）。`secret_scanning_push_protection` を宣言していれば示しません。Secret scanning を有効にする変更予定には添えません。Secret scanning をあとで有効に戻しても、無効になったリポジトリの push protection は戻りません。
-
-```text
-Repository: example/project-a
-  security.secret_scanning: true -> false
-    Side effect: GitHub also disables secret_scanning_push_protection, which is currently true
-```
-
-非公開リポジトリで Secret scanning の2設定を宣言した変更予定と、Secret scanning が無効のリポジトリで、`secret_scanning: true` を宣言せずにリポジトリの push protection を有効にする変更予定は、適用不能です。前者は、非公開リポジトリでは2設定を利用できず、更新のあとに値を確かめられないためです。後者は、GitHub が、Secret scanning が無効のあいだ、リポジトリの push protection を有効にする更新に成功を応答しながら値を変えないためです（GitHub リポジトリ API 仕様 5章）。リポジトリの push protection を無効にする変更予定は、Secret scanning の状態によらず適用可能です。
-
-非公開リポジトリで `private_vulnerability_reporting` を宣言した変更予定も、更新のあとに値を確かめられないため適用不能です（[YAML 設定仕様](configuration.md) 9.3）。公開リポジトリでは、有効にする変更予定も無効にする変更予定も、ほかの設定の状態によらず適用可能です。
-
-非公開リポジトリによる適用不能の理由は、セミコロンの後ろに、その変更予定のキーだけを消す直し方を示します。
 
 ```text
 Repository: example/project-a
@@ -382,8 +320,6 @@ Repository: example/project-b
     Applicability: not applicable (Secret scanning is disabled; declare secret_scanning: true to enable it)
 ```
 
-マージ方式（`allow_squash_merge`、`allow_merge_commit`、`allow_rebase_merge`）を無効にする変更予定は、更新後に3つのマージ方式がすべて無効になるとき、適用不能です。GitHub は、3つのマージ方式をすべて無効にする更新を拒否するためです（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）。更新後の値は、宣言したマージ方式では期待値、宣言していないマージ方式では現在値です。無効にする変更予定が複数あれば、どれも適用不能です。理由は、セミコロンの前に、宣言しておらず現在無効のマージ方式を示し、後ろに、そのどれかを `true` と宣言する直し方を示します。reco は、宣言していないマージ方式を有効にしません。宣言していないマージ方式のどれかが有効なら、無効にする変更予定は適用可能です。`allow_update_branch` はマージ方式に数えません。
-
 ```text
 Repository: example/project-a
   general.allow_squash_merge: true -> false
@@ -397,13 +333,43 @@ Repositories checked: 1
 Plan cannot be applied.
 ```
 
-宣言していない無効のマージ方式が2つのときは、次のように示します。
-
 ```text
 Repository: example/project-a
   general.allow_squash_merge: true -> false
     Applicability: not applicable (allow_merge_commit and allow_rebase_merge are disabled, so no merge method would remain enabled; declare allow_merge_commit: true or allow_rebase_merge: true to enable one of them)
 ```
+
+`Previous settings:` と `Side effect:` の表示例は次のとおりです。
+
+```text
+Repository: example/project-a
+  actions.permissions.enabled: false -> true
+    Previous settings: GitHub Actions resumes with allowed_actions, selected_actions, and sha_pinning_required kept from before it was disabled (reco cannot read them while GitHub Actions is disabled)
+
+Plan: 1 repository to update, 1 change
+Repositories checked: 1
+```
+
+```text
+Repository: example/project-a
+  actions.permissions.allowed_actions: selected -> all
+    Side effect: GitHub discards the current selected_actions (github_owned_allowed: true, verified_allowed: true, patterns_allowed: ["example/*"])
+```
+
+```text
+Repository: example/project-a
+  security.dependabot_alerts: true -> false
+    Side effect: GitHub also disables the dependency graph
+    Side effect: GitHub also disables dependabot_security_updates, which is currently true (paused by GitHub)
+```
+
+```text
+Repository: example/project-a
+  security.secret_scanning: true -> false
+    Side effect: GitHub also disables secret_scanning_push_protection, which is currently true
+```
+
+Dependabot security updates の値は、一時停止中なら `true (paused by GitHub)` と示します。
 
 `plan` の終了コード `0` は、差分がないことも、後の `apply` が成功することも保証しません。
 
@@ -466,12 +432,6 @@ Repositories checked: 2
 | `alignment` | `INV-003` | Invariant |
 | `alignment` | `INV-004` | Invariant |
 | `alignment` | `INV-005` | Invariant |
-| `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Repository File |
-| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
-| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
-| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
-| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Repository File |
-| `grounding` | [GitHub Actions 変数 API 仕様](../research/actions-variables.md) | Repository File |
 
 ### 5.1 承認
 
@@ -506,17 +466,13 @@ Repositories updated: 2
 
 承認が得られなければ更新を開始せず、理由を表示して終了コード `1` とします。拒否した場合は `apply cancelled: approval declined; no changes made` のように、更新が開始されていないことを伝えます。一部の更新後に停止した場合は `no changes made` を示しません。
 
-承認後は、承認した対象と変更内容を差し替えません。各更新直前にリポジトリ ID・関係する現在値・適用条件を確認できない場合や、関係する予定外の変化を検出した場合は、理由を報告して当該操作と後続の更新を開始しません。更新操作に未管理設定の既存値を含める必要がある場合も、その値を維持できると確認できなければ当該操作を開始しません。
+承認後は、承認した対象と変更内容を差し替えません。各更新の直前に変更前提を確認できない場合は、理由を報告して当該操作と後続の更新を開始しません（INV-004）。
 
-更新は逐次実行します。論理的な設定変更の中では、先行する更新操作の成功を確認してから次の更新操作へ進み、別の論理的な設定変更へは、その期待状態を確認してから進みます。複数のリポジトリに変更予定があるときは、設定宣言の `repositories` の並びで一つずつ更新し、あるリポジトリのすべての論理的な設定変更が完了したときだけ、次のリポジトリへ進みます。完了しなかった論理的な設定変更があれば、残りのリポジトリには、更新要求も、更新直前の確認のための読み取り要求も送りません。変更不要のリポジトリには、変更計画を作るための観測のあと、要求を送りません。自動ロールバックは行いません。
+複数のリポジトリに変更予定があるときは、設定宣言の `repositories` の並びで一つずつ更新し、あるリポジトリのすべての論理的な設定変更が完了したときだけ、次のリポジトリへ進みます。完了しなかった論理的な設定変更があれば、残りのリポジトリの更新は開始しません。自動ロールバックは行いません。更新中に中断（`SIGINT`、`SIGTERM`）を受けた場合は、次の更新操作を開始しません。
 
-更新要求のあいだは1秒以上空けます。そのため `apply` の所要時間は、2つ目以降の更新操作ごとに1秒以上延びます。別のリポジトリの更新要求とのあいだも同じです。`deployment_branch_policy` の個別パターンは、加えるパターンと取り除くパターンの一つごとに更新要求を送るため、パターンの数だけ所要時間が延びます。Repository Variables と Environment Variables も、作成するか、値を変えるか、削除する変数の一つごとに更新要求を送るため、変数の数だけ所要時間が延びます。このあいだに中断（`SIGINT`、`SIGTERM`）を受けた場合は、次の更新操作を開始しません（[アーキテクチャ設計](../design/architecture.md) 6.2節）。
+`apply` は、更新要求のあいだを空け、GitHub が更新を取得の結果に反映するまでの遅れに備えて確認し直すため、更新する変更予定や個別パターンの数が多いほど時間がかかります（[アーキテクチャ設計](../design/architecture.md) 6.2節）。
 
-GitHub が更新を取得の結果に反映するまで時間がかかることがあるため、更新操作が成功したのに期待状態と一致しないとき、または期待値と比べる設定が観測不能で確認できないときは、間隔を広げながら確認し直し、一致を確認できないまま合計約30秒が経てば `failed` とします（[アーキテクチャ設計](../design/architecture.md) 6.2節）。
-
-一つの論理的な設定変更が複数の更新操作からなるときは、後続の更新操作の直前の確認にも同じ遅れが現れ得ます。先行する更新操作が成功したのに、その更新操作が変えた設定が更新前の値のままのときは、同じ間隔で確認し直します。合計約30秒が経っても変わらなければ、後続の更新操作を開始せずに `failed` とします。先行する更新操作の更新要求は再送しません。
-
-一つのリポジトリに複数の変更予定があるときは、承認の前に提示する順も、論理的な設定変更を実行する順も、4章が定める変更予定の表示順に従います。ただし、Dependabot alerts を無効にする変更と Dependabot security updates の変更がともにあるときは、Dependabot security updates の変更を先に実行します。Dependabot alerts を先に無効にすると、GitHub が Dependabot security updates も無効にし、宣言した変更の変更前提が成り立たなくなるためです（[Security の設計](../design/settings/security.md) の論理的な設定変更と更新操作）。Secret scanning を無効にする変更とリポジトリの push protection の変更がともにあるときも、同じ理由で、リポジトリの push protection の変更を先に実行します。変更結果は実行した順に示します。`allowed_actions` と `sha_pinning_required` の両方に変更予定があるときも、別々の論理的な設定変更として一つずつ更新します。`general.allow_squash_merge`、`general.allow_merge_commit`、`general.allow_rebase_merge` の変更予定は、一つの更新要求で送る一つの論理的な設定変更にまとめ、そのうちで最初の変更予定の位置で実行します。変更予定ごとに送ると、有効なマージ方式を入れ替える変更の途中ですべてのマージ方式が無効になり、GitHub が拒否するためです（[General の設計](../design/settings/general.md) の論理的な設定変更と更新操作）。`general.allow_update_branch` の変更予定はまとめず、一つずつ更新します。
+一つのリポジトリの論理的な設定変更は、原則として4章の変更予定の表示順に実行し、変更結果は実行した順に示します。どの変更予定を一つの論理的な設定変更にまとめるかと、表示順と異なる実行順（Dependabot alerts を無効にする変更より先に Dependabot security updates の変更を実行するなど）は、[設定ごとの設計](../design/settings/README.md) の各文書の「論理的な設定変更と更新操作」が定めます。
 
 ### 5.2 結果の表示区分
 
@@ -539,37 +495,17 @@ GitHub が更新を取得の結果に反映するまで時間がかかること�
 
 いずれかの論理的な設定変更で更新操作を開始しており、完了しなかった論理的な設定変更があるときは、変更結果の末尾に注記（`Note:`）を添えます。開始した更新操作に成否不明があれば自動で再送していないことを、なければ自動ロールバックを行っていないことを示します。どちらの注記にも、`reco plan` で残りの変更を確かめられることを添えます（`Run reco plan to see the remaining changes.`）。一つの変更の途中で止まった場合も、`plan` は先行する更新操作のあとの現在値を変更計画に示すため、利用者は残った中間状態と残りの変更を同じ表示で確かめられます。複数の更新操作からなる論理的な設定変更では、すべての更新操作を判定に含めます。この判定は、選択したすべてのリポジトリの論理的な設定変更について行います。先に完了したリポジトリのあとで別のリポジトリが完了しなかった場合も、適用済みの変更が残るため注記を添えます。
 
-選択方式の Actions 許可条件は、3項目を個別の変更として表示せず、一体の設定グループとして扱います。Actions 許可ポリシーを `selected` へ変える変更と組み合わせて一つの論理的な設定変更となる場合は、変更結果を管理設定ごとの行に分けず、その変更全体について一つ示します。承認の前に提示する変更予定は、管理設定ごとの行のままです。
+論理的な設定変更ごとに結果を表示するときは、論理的な設定変更を、それが変える管理設定の名前で示します。二つ以上の管理設定を変える論理的な設定変更は、変更計画に示す順に ` + ` でつないで示します（`actions.permissions.allowed_actions + actions.permissions.selected_actions`、`general.allow_squash_merge + general.allow_merge_commit + general.allow_rebase_merge`、`environments.<名前> + environments.<名前>.deployment_branch_policy`）。名前は設定宣言の綴りです。同じ管理設定を変える更新操作が複数あっても、その管理設定の名前は一度だけ示します。変更結果を一つにまとめても、承認の前に提示する変更予定は管理設定ごとの行のままです。選択方式の Actions 許可条件の3項目は、個別の変更として示しません。
 
-論理的な設定変更ごとに結果を表示するときは、論理的な設定変更を、それが変える管理設定の名前で示します。二つ以上の管理設定を変える論理的な設定変更は、変更計画に示す順に ` + ` でつないで示します（`actions.permissions.allowed_actions + actions.permissions.selected_actions`、`general.allow_squash_merge + general.allow_merge_commit + general.allow_rebase_merge`）。同じ管理設定を変える更新操作が複数あっても、その管理設定の名前は一度だけ示します。
-
-Environment の作成も、完了すれば `updated` と示します。何を作成したかは、承認の前に提示した `absent -> present` が示します。`deployment_branch_policy` を宣言した Environment の作成は、一つの更新要求で Environment と方式を設定する一つの論理的な設定変更で、`environments.<名前> + environments.<名前>.deployment_branch_policy` と示します。方式を宣言していない作成は `environments.<名前>`、存在する Environment の方式の変更は `environments.<名前>.deployment_branch_policy` と示します。名前は設定宣言の綴りです。期待値の方式が `selected` の変更でなければ、更新操作は一つのため、`Update request` は1行です。
-
-期待値の方式が `selected` の `deployment_branch_policy` の変更は、方式を `selected` にする更新要求（方式が変わる場合だけで、作成ではその作成の更新要求）、取り除く個別パターンごとの更新要求、加える個別パターンごとの更新要求を、この順に送る一つの論理的な設定変更です（順の理由は [Environments の設計](../design/settings/environments.md) の論理的な設定変更と更新操作）。名前は、存在する Environment では `environments.<名前>.deployment_branch_policy`、作成と重なる場合は `environments.<名前> + environments.<名前>.deployment_branch_policy` です。
-
-Repository Variable の作成と値の変更は、変数ごとに、一つの更新要求からなる一つの論理的な設定変更で、`actions.variables.<名前>` と示します。名前は設定宣言の綴りです。作成も、完了すれば `updated` と示します。複数の変数は、設定宣言に書いた順に一つずつ実行し、一つが完了しなければ、残りの変数は `not attempted`（`Stopped: a preceding change did not complete`）です。作成の更新要求を、同じ名前（大文字小文字だけが違う名前を含む）の変数があるとして GitHub が拒否した場合は、更新操作の失敗として `failed` と示します。この変数を期待値と比べて `updated` にはしません。変更結果と stderr のエラーは、変数の名前を示し、変数の値と更新要求の本文は示しません。
-
-Repository Variable の削除も、変数ごとに、一つの更新要求からなる一つの論理的な設定変更で、完了すれば `updated` と示します。完了とするのは、更新要求の成功のあとに、変数の一覧にその名前がないことを確かめたときです。削除の更新要求に GitHub が `404`（対象が見つからない）を返した場合は、更新操作の失敗として `failed` と示し、存在しないことの確認には使いません。変更結果とエラーは、削除でも変数の名前だけを示し、失われた値を示しません。
-
-Environment Variable の作成と値の変更も、変数ごとに、一つの更新要求からなる一つの論理的な設定変更で、`environments.<Environment の名前>.variables.<変数の名前>` と示します。名前はどちらも設定宣言の綴りです。存在しない Environment に書いた変数の作成は、Environment の作成とは別の論理的な設定変更で、Environment の作成（`deployment_branch_policy` の方式と個別パターンを含む）が完了してから実行します。Environment の作成が完了しなければ、その変数は `not attempted`（`Stopped: a preceding change did not complete`）です。作成の `409` の扱いと、変更結果とエラーに値を示さないことは Repository Variable と同じです。削除の扱いも Repository Variable と同じです。
-
-存在しない Environment に書いた、存在しないことを宣言した変数は、Environment の作成と一つの論理的な設定変更にまとめ、`environments.<名前> + environments.<名前>.variables.<変数の名前>` と示します（`deployment_branch_policy` を宣言していれば、その名前をあいだに示します）。この変数への更新要求は送りません。作成のあとにその変数が存在した場合は、`Desired state: does not match (environments.<名前>.variables.<変数の名前>)` と示して `failed` とし、変数を削除しません。承認の前に削除と失われる値を示していないためです。
+関連リソースの作成と削除も、完了すれば `updated` と示します。何を作成し、何を削除したかは、承認の前に提示した変更予定が示します。Repository Variable と Environment Variable の変更結果と stderr のエラーは、変数の名前だけを示し、変数の値と更新要求の本文は示しません。削除でも、失われた値を示しません。
 
 複数の更新操作からなる論理的な設定変更が、更新操作を開始したあとで完了しなかった場合は、`Update request` の行を実行順に示します。行は `Update request (<対象>): <結果>` の形で、結果は `succeeded`、`rejected`、`unknown`、開始しなかった更新操作を表す `not started` のいずれかです。`<対象>` は、その更新操作が変える管理設定です。ただし、個別パターンを取り除く更新操作は `patterns to remove [<パターン>, ...]`、加える更新操作は `patterns to add [<パターン>, ...]` と示し、パターンは `plan` と同じく `branch "main"` の形で書きます。個別パターンの更新操作のうち、加えるか取り除くかと結果が同じで続けて並ぶものは、1行にまとめてパターンを実行順に並べます。そのため、この行は複数の更新要求を表すことがあります。先行する更新操作が成功し、後続の更新操作を開始できなかった場合は、完了済みの更新操作を `succeeded`、未開始の更新操作を `not started` と示し、変更全体を `failed` とします。`not started` は更新操作についての表示で、論理的な設定変更の `not attempted` とは区別します。
 
-後続の更新操作を変更前提の不成立で開始できなかった場合は、その更新操作を含む `not started` の行の次に `Precondition:` の行で理由を示します。先行する更新操作が変えた設定が予定どおりの値でなかった場合は、`Precondition: <設定> is not the value expected after the preceding update` と示します。GitHub の反映が遅れている場合も、外部主体が値を変えた場合もこの表示になり、原因は断定しません。先行する更新操作が成功しなかったために開始しなかった場合は、理由の行を足しません。先行する更新操作が成功していれば、後続を開始できなかった場合も後続が失敗した場合も、更新後の確認を一度だけ行い、その結果と変更対象外の設定の予期しない変化を示します。この確認で期待状態との一致を確認しても、必要な更新操作の成功を確認していないため、`updated` に変更しません。最初の更新操作が拒否され、更新後の確認を行わなかった場合は `Desired state: not checked` と示します。
+後続の更新操作を変更前提の不成立で開始できなかった場合は、その更新操作を含む `not started` の行の次に `Precondition:` の行で理由を示します。先行する更新操作が変えた設定が予定どおりの値でなかった場合は、`Precondition: <設定> is not the value expected after the preceding update` と示します。同じ論理的な設定変更が作成した Environment が、後続の更新操作の直前に予定どおりでなかった場合は、`Precondition: environments.<名前> is not the environment expected after the preceding update` と示します。GitHub の反映が遅れている場合も、外部主体が値を変えた場合もこの表示になり、原因は断定しません。先行する更新操作が成功しなかったために開始しなかった場合は、理由の行を足しません。先行する更新操作が成功していれば、後続を開始できなかった場合も後続が失敗した場合も、更新後の確認の結果と変更対象外の設定の予期しない変化を示します。この確認で期待状態との一致を確認しても、必要な更新操作の成功を確認していないため、`updated` に変更しません。最初の更新操作が拒否され、更新後の確認を行わなかった場合は `Desired state: not checked` と示します。
 
 更新を一度も開始していない変更は `not attempted` とし、変更前提の不成立と、先行する異常による停止のどちらに当たるかを区別して理由を示します。先行する異常による停止は、同じリポジトリの先行する論理的な設定変更が完了しなかった場合（`Stopped: a preceding change did not complete`）と、先行するリポジトリが完了しなかった場合（`Stopped: a preceding repository did not complete`）を文言で区別します。
 
-変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を示します（`Precondition: <設定> changed since approval`）。`Side effect:` で示した設定の値が承認の前に示した値から変わっていた場合は、その設定を示します。Dependabot alerts を無効にする変更で、`dependabot_security_updates` を宣言しておらず、計画時に無効だったため `Side effect:` に示さなかった Dependabot security updates が、承認のあとに有効になっていた場合も、`Precondition: security.dependabot_security_updates changed since approval` と示して更新しません。承認の前に示していない変化を GitHub に起こさせないためです。Secret scanning を無効にする変更で、`secret_scanning_push_protection` を宣言しておらず、計画時に無効だったリポジトリの push protection が、承認のあとに有効になっていた場合も、同じ理由で `Precondition: security.secret_scanning_push_protection changed since approval` と示して更新しません。リポジトリの push protection を有効にする更新の直前に Secret scanning が無効だった場合は、`Precondition: security.secret_scanning changed since approval` と示して更新しません。GitHub が成功を応答しながら値を変えないためです。計画時に Secret scanning が無効で、承認した変更が先に有効にした場合は、予定どおりの変化です。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。複数の設定が変わっていた場合は、論理的な設定変更が変える設定を優先して一つだけ示します。ただし、Actions が無効のリポジトリで、承認した変更が Actions を有効にしたあとに `sha_pinning_required` を確認できるようになったことは、予定どおりの変化で、示しません。`sha_pinning_required` の更新は `enabled: true` を送るため、その直前に Actions が無効だった場合は `Precondition: actions.permissions.enabled changed since approval` と示します。計画時に Actions が有効だった場合は、`sha_pinning_required` を確認できなくなったことを優先し、`actions.permissions.sha_pinning_required` を示します。`access_level` の更新の直前にリポジトリが公開になっていた場合も、`access_level` を確認できなくなったため、`Precondition: actions.access.access_level changed since approval` と示します。
-
-Environment では、Environment そのものの変化を `Precondition: environments.<名前> changed since approval` と示します。作成の承認のあとに同じ名前（ASCII の英字の大文字小文字だけが違う名前を含む）の Environment が作られた場合、宣言した名前と同じかどうかを判定できない名前の Environment が現れて存在を確かめられなくなった場合、方式の変更の承認のあとに Environment がなくなった場合、同じ名前で作り直されて ID が変わった場合が当たります。先頭の更新操作の直前の確認で見つかった場合は、更新要求を送らずに `not attempted` になります。Environment が変わらず方式（`selected` の個別パターンを含む）だけが変わっていた場合は、`Precondition: environments.<名前>.deployment_branch_policy changed since approval` と示します。両方が変わっていた場合は Environment そのものを優先します。作り直された Environment の方式を承認時の値と比べても、承認した変更が当てはまるかは分からないためです。
-
-個別パターンの更新操作のように後続の更新操作の直前に Environment そのものが変わっていた場合は、存在する Environment では、承認したときから変わったため、先頭の更新操作と同じく `Precondition: environments.<名前> changed since approval` と示します。同じ論理的な設定変更が作成した Environment では、`Precondition: environments.<名前> is not the environment expected after the preceding update` と示します。作成のあとに Environment がなくなった場合や、作成のあとの最初の確認で見た ID から変わった場合が当たります。先行する更新操作が成功しているため、どちらの場合も変更全体は `failed` です。後続の更新操作の直前に個別パターンの集合が予定どおりでなかった場合は、`Precondition: environments.<名前>.deployment_branch_policy is not the value expected after the preceding update` と示します。予定どおりの集合は、承認時に観測した集合に、先行する更新操作が取り除いたパターンと加えたパターンを反映したものです。方式を `selected` にした更新操作や作成のあとは、パターンが一つもないことを予定します。パターンの ID だけが違う場合（同じ種類と名前で作り直された場合）は、予定どおりとして扱います。
-
-Repository Variable では、変数の変化を `Precondition: actions.variables.<名前> changed since approval` と示し、更新要求を送らずに `not attempted` とします。作成の承認のあとに同じ名前（大文字小文字だけが違う名前を含む）の変数が作られた場合は、値が宣言と同じでもこれに当たります。承認したのは作成であり、存在する変数を上書きする変更ではないためです。値の変更の承認のあとに値が変わった場合（宣言した値になっていた場合を含む）と、変数がなくなった場合も当たります。削除の承認のあとに値が変わった場合と、変数がなくなった場合も当たります。値が変わった変数を削除すると、承認の前に示していない値を失わせるためです。変数がすでになくなっていた場合も、`updated` にはしません。reco は作成を値の変更に、値の変更を作成に差し替えません。同じ一覧のほかの変数は、変更対象外の設定として比べません。
-
-Environment Variable では、計画時に存在した Environment の変数なら、Environment そのものの変化（なくなった、同じ名前で作り直されて ID が変わった、判定できない名前の Environment が現れた）を `Precondition: environments.<Environment の名前> changed since approval` と、Environment が変わらず変数が変わった場合を `Precondition: environments.<Environment の名前>.variables.<変数の名前> changed since approval` と示します。両方が変わっていた場合は Environment そのものを優先します。削除は、計画時に存在した Environment の変数にだけ起きるため、この形で示します。同じ変更計画が作成した Environment の変数では、更新直前に Environment が存在しなかった場合も、変数が存在した場合も、変数の変化として `Precondition: environments.<Environment の名前>.variables.<変数の名前> changed since approval` と示します。承認の時点で Environment は存在せず、比べる ID がないため、変数が存在しないと確かめられることだけを確かめるためです。どちらも更新要求を送らずに `not attempted` とし、Environment を作り直しません。同じ Environment のほかの変数、Environment の保護設定、同じ名前の Repository Variable は、変更対象外の設定として比べません。変数の更新エンドポイントは変数ごとに別で、変数の作成、値の変更、削除がこれらを変えないことを確かめているためです（[GitHub Actions 変数 API 仕様](../research/actions-variables.md) 5.4）。
+変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を `Precondition: <設定> changed since approval` と示します。`<設定>` は、関連リソースそのものの変化なら `environments.<名前>` や `actions.variables.<名前>` のように関連リソースの名前で示します。変更前提で比べる設定（変える設定のほか、`Side effect:` で示した設定、副作用として示さなかったが計画時の値のままであることを確かめる設定、更新が値を変える前提として必要な設定）は、設定ごとの設計の各文書の「論理的な設定変更と更新操作」が定めます。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。承認した先行する変更による予定どおりの変化は示しません。複数の設定が変わっていた場合は、一つだけ示します。関連リソースそのものと、その中の設定やそれに属する関連リソースが両方変わっていれば、関連リソースそのものを示します。それ以外では、論理的な設定変更が変える設定を優先します。
 
 `failed` には、更新操作の失敗、更新操作の成否不明、成功応答後の期待状態の確認失敗、成功応答後の期待状態との不一致、成功応答後の変更対象外の設定の予期しない変化のいずれに当たるかを添えて示します。先行操作の成功後に後続操作を開始できなかった場合は、その旨を示します。変更対象外の設定の予期しない変化では、観測した変化を示しますが、reco に起因するとは断定しません。変更対象外の設定には、同じリポジトリのほかの管理設定も含みます。更新要求の応答を確認できない場合は成否不明とし、その後の再観測で期待状態が一致しても、更新操作の成否が判明したことにはならず、`updated` に変更しません。この再観測で変更対象外の設定の変化を観測した場合も、更新操作の結果と分けて示します。成否不明になった原因は、理由の行では区別せず、エラーとして示します。
 
@@ -577,17 +513,13 @@ Environment Variable では、計画時に存在した Environment の変数な�
 
 二つ以上の管理設定を変える論理的な設定変更が期待状態と一致しなかった場合は、期待値と異なる値を観測した管理設定を、変更計画に示す順に `, ` でつないで括弧で添えます（`does not match (general.allow_merge_commit)`）。一部の管理設定だけが一致しなくても、変更全体を `failed` とします。期待値と比べる設定が観測不能だった管理設定は、値を確認できていないため括弧に含めません。一つの管理設定を変える論理的な設定変更では、どの管理設定かが行の名前から分かるため添えません。
 
-期待値と比べる設定が GitHub の取得条件により観測不能だったことによる確認失敗は、`not in effect` に、宣言した設定が効いていない理由を括弧で添えて示します。理由は、Actions が無効なら `GitHub Actions is disabled`、Actions 許可ポリシーが `selected` でなければ `allowed_actions is not "selected"`、リポジトリが公開なら `the repository is public`、リポジトリが非公開なら `the repository is private` です。`allowed_actions` を宣言できるのは Actions を有効にする場合に限られ、`sha_pinning_required` は Actions を無効にする宣言と同時には宣言できず、`selected_actions` を宣言できるのは Actions 許可ポリシーを `selected` と宣言した場合に限られます（[YAML 設定仕様](configuration.md) 4章）。`access_level` は公開リポジトリには適用されず（[YAML 設定仕様](configuration.md) 6章）、Secret scanning の2設定と Private vulnerability reporting は、reco が公開リポジトリでだけ管理する設定です（[YAML 設定仕様](configuration.md) 9.2、9.3）。このため、この観測不能は、宣言した設定が効いていないことを意味します。値そのものは確認できていないため、`does not match` とは示しません。`not confirmed` とも示さないのは、reco が確認に失敗したと読ませず、利用者が確かめるべきリポジトリの状態を示すためです。
+期待値と比べる設定が GitHub の取得条件により観測不能だったことによる確認失敗は、宣言した設定が効いていないことを示す `not in effect` に、理由を括弧で添えて示します。理由は、Actions が無効なら `GitHub Actions is disabled`、Actions 許可ポリシーが `selected` でなければ `allowed_actions is not "selected"`、リポジトリが公開なら `the repository is public`、リポジトリが非公開なら `the repository is private` です。値そのものは確認できていないため、`does not match` とは示しません。`not confirmed` とも示さないのは、reco が確認に失敗したと読ませず、利用者が確かめるべきリポジトリの状態を示すためです。
 
-Environment の方式の変更か Environment Variable の作成・値の変更・削除のあとに Environment が存在しなかった場合は、`not in effect (the environment does not exist)` と示します。宣言した方式を持つ Environment がないためです。作成のあとに Environment が存在しなかった場合は、存在しないことを確認できているため、`does not match` と示します。作成、方式の変更、Environment Variable の変更のどれでも、宣言した名前と同じかどうかを判定できない名前の Environment が現れ、存在を確かめられなかった場合は、reco が確認できなかったことを示す `not confirmed (environment existence unknown)` と示します。
-
-マージ方式をまとめた更新要求を GitHub が拒否した場合は、更新操作の失敗として `failed` と示します。承認のあとに、宣言していないマージ方式が外部主体によって無効にされていて、送るとすべてのマージ方式が無効になる場合が当たります。reco は宣言していないマージ方式の値を更新直前に確かめないため、この場合を `not attempted` と `Precondition:` では示しません。GitHub はこの更新要求を拒否し、どのマージ方式の値も変えません（[General の設計](../design/settings/general.md) の適用可能性と副作用）。
-
-`general` の設定と Secret scanning の2設定は、同じ更新エンドポイント（`PATCH /repos/{owner}/{repo}`）で更新するため、互いに変更対象外の設定として比べます。`general` の設定の更新では Secret scanning の2設定を、Secret scanning の一方の更新では `general` の設定ともう一方を比べます。ただし、`Side effect:` で示したリポジトリの push protection は比べません。承認した変化であるためです。
+Environment の方式の変更か Environment Variable の作成・値の変更・削除のあとに Environment が存在しなかった場合は、`not in effect (the environment does not exist)` と示します。宣言した方式や変数を持つ Environment がないためです。作成のあとに Environment が存在しなかった場合は、存在しないことを確認できているため、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Environment が現れ、存在を確かめられなかった場合は、reco が確認できなかったことを示す `not confirmed (environment existence unknown)` と示します。
 
 変更対象外の設定は、管理設定と同じ形の名前で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` がデプロイを待たせる分数、`required_reviewers` が `reviewers: [User 583231, Team 42], prevent_self_review: true` の1行（レビュアーは GitHub が返した順）、`can_admins_bypass` が `true` か `false` です。`wait_timer` と `required_reviewers` は、その保護ルールがなければ `none` と示します。複数が変わっていれば、`wait_timer`、`required_reviewers`、`can_admins_bypass` の順に1行ずつ示します。保護設定は reco が宣言を受け付けず、`show` も表示しないため、名前と値の表記はここで定めます。
 
-更新操作が成功したのに期待状態と一致しない場合、reco は原因を断定しません。設定に既知の原因の候補があれば、`Possible cause:` として可能性の形で添えます。`general.allow_auto_merge` では、GitHub Free の非公開リポジトリで自動マージを利用できず、GitHub が更新を反映しないまま成功を応答する場合があることを示します（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）。更新操作の成否が不明な場合は添えません。
+更新操作が成功したのに期待状態と一致しない場合、reco は原因を断定しません。設定ごとの設計が原因の候補を挙げている場合は、`Possible cause:` として可能性の形で添えます。更新操作の成否が不明な場合は添えません。
 
 ### 5.3 異常時の表示例
 
@@ -831,7 +763,7 @@ Applying changes...
 Note: No automatic retry was performed. Run reco plan to see the remaining changes.
 ```
 
-マージ方式をまとめた変更で、`200` のあとに一方のマージ方式だけが期待値と違った場合は次のとおりです。`general.allow_update_branch` の変更は開始しません。
+マージ方式をまとめた変更で、更新要求の成功のあとに一方のマージ方式だけが期待値と違った場合は次のとおりです。`general.allow_update_branch` の変更は開始しません。
 
 ```text
 Applying changes...
@@ -841,17 +773,6 @@ Applying changes...
       Desired state: does not match (general.allow_merge_commit)
     general.allow_update_branch: not attempted
       Stopped: a preceding change did not complete
-
-Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
-```
-
-承認のあとに宣言していないマージ方式が無効にされていて、マージ方式をまとめた更新要求を GitHub が拒否した場合は次のとおりです。
-
-```text
-Applying changes...
-  example/project-a: failed
-    Update request: rejected
-    Desired state: not checked
 
 Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
@@ -917,14 +838,14 @@ GitHub の取得条件によって確認できない設定は、その取得条�
         sha_pinning_required: false
 ```
 
-Actions が無効のリポジトリでは、`allowed_actions`、`selected_actions`、`sha_pinning_required` を取得できないため、`enabled` だけを示します。
+Actions が無効のリポジトリでは、`enabled` だけを示します。
 
 ```text
       permissions:
         enabled: false
 ```
 
-`access_level` は非公開リポジトリにだけ適用される設定で、公開リポジトリでは取得できません（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 6章）。公開リポジトリでは、`access` とその下の行をコメントとして示します。`access` の下に設定のない空のマッピングは、設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 10.1節）。Actions が無効のリポジトリでも、非公開であれば値を示します。
+公開リポジトリでは、`access` とその下の行をコメントとして示します。`access` の下に設定のない空のマッピングは、設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 10.1節）。
 
 ```text
       # access:
@@ -982,7 +903,7 @@ Environment ごとに、`deployment_branch_policy` のあとに、その Environ
         # variables: none
 ```
 
-`security` には、Dependabot alerts を `dependabot_alerts` に、Dependabot security updates を `dependabot_security_updates` に、有効なら `true`、無効なら `false` で示します。Dependabot の二つの設定は取得条件を持たないため、`unavailable` にはなりません。Dependabot security updates が一時停止中（GitHub が自動で更新を止めた状態）のときは、値を `true` とし、行末の YAML のコメントで一時停止中であることを示します。一時停止中も設定は有効のままであり、`false` と示すと無効と取り違え、値の位置に一時停止を書くと設定宣言の真偽値として読めないためです。
+`security` には、Dependabot alerts を `dependabot_alerts` に、Dependabot security updates を `dependabot_security_updates` に、有効なら `true`、無効なら `false` で示します。Dependabot security updates が一時停止中（GitHub が自動で更新を止めた状態）のときは、値を `true` とし、行末の YAML のコメントで一時停止中であることを示します。一時停止中も設定は有効のままであり、`false` と示すと無効と取り違え、値の位置に一時停止を書くと設定宣言の真偽値として読めないためです。
 
 ```text
     security:
@@ -990,16 +911,11 @@ Environment ごとに、`deployment_branch_policy` のあとに、その Environ
       dependabot_security_updates: true # paused by GitHub (still enabled)
 ```
 
-Secret scanning の有効状態を `secret_scanning` に、リポジトリの push protection を `secret_scanning_push_protection` に、有効なら `true`、無効なら `false` で示します。`secret_scanning_push_protection` は、リポジトリに設定する push protection で、利用者が自分のアカウントに設定する push protection とは別の設定です。二つの設定は、非公開リポジトリでは取得できません（[GitHub リポジトリ API 仕様](../research/repositories.md) 5章）。非公開リポジトリでは、二つの行を YAML のコメントとして、値の位置に `unavailable (the repository is private)` と示します。
+Secret scanning の有効状態を `secret_scanning` に、リポジトリの push protection を `secret_scanning_push_protection` に、Private vulnerability reporting の有効状態を `private_vulnerability_reporting` に、有効なら `true`、無効なら `false` で示します。非公開リポジトリでは、三つの行を YAML のコメントとして、値の位置に `unavailable (the repository is private)` と示します。
 
 ```text
       # secret_scanning: unavailable (the repository is private)
       # secret_scanning_push_protection: unavailable (the repository is private)
-```
-
-Private vulnerability reporting の有効状態を `private_vulnerability_reporting` に、有効なら `true`、無効なら `false` で示します。非公開リポジトリでは、Secret scanning の2設定と同じく、行を YAML のコメントとして `unavailable (the repository is private)` と示します（[YAML 設定仕様](configuration.md) 9.3）。
-
-```text
       # private_vulnerability_reporting: unavailable (the repository is private)
 ```
 
@@ -1011,10 +927,6 @@ Private vulnerability reporting の有効状態を `private_vulnerability_report
 |---|---|---|
 | `alignment` | `FR-004` | Functional Requirement |
 | `alignment` | `QR-002` | Quality Requirement |
-| `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
-| `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
-| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
-| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Repository File |
 | `grounding` | [GitHub Actions 変数 API 仕様](../research/actions-variables.md) | Repository File |
 
 ## 7. 出力と終了コード
@@ -1059,7 +971,7 @@ GitHub は、名前変更前の名前で指定したリポジトリへの要求�
 {"time":"...","level":"ERROR","msg":"command failed","error":"fetch repository example/old-name: redirect not followed (HTTP 301): the repository may have been renamed or transferred; specify its current name"}
 ```
 
-ただし、個別パターンを加える要求への `303` は、同じ種類と名前のパターンがすでにある場合に GitHub が返す応答です（[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 1章）。その直前の確認で同じリポジトリを読めているため、名前変更の案内ではなく、パターンがすでにある場合の応答であることを示します。この場合も成否不明の `failed` で、成功や変更なしとは扱いません。
+ただし、更新エンドポイントが名前変更以外の理由でリダイレクト応答を返すと設定ごとの設計が定めている場合（Environment の個別パターンを加える要求の `303`。[Environments の設計](../design/settings/environments.md) の更新方式）は、名前変更の案内ではなく、その理由を示します。この場合も成否不明の `failed` で、成功や変更なしとは扱いません。
 
 ```text
 {"time":"...","level":"ERROR","msg":"command failed","error":"change environments.production.deployment_branch_policy failed: add deployment pattern branch \"main\" to environment \"production\" example/project-a: update outcome unknown: redirect not followed (HTTP 303): GitHub returns this when the pattern already exists"}
@@ -1073,14 +985,14 @@ GitHub は、名前変更前の名前で指定したリポジトリへの要求�
 | `alignment` | `QR-002` | Quality Requirement |
 | `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Repository File |
 | `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
-| `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Repository File |
 
 ## 8. References
 
 - [要求定義](requirements.md)
 - [YAML 設定仕様](configuration.md)
+- [ドメインモデル](../design/domain.md)
+- [アーキテクチャ設計](../design/architecture.md)
+- [設定ごとの設計](../design/settings/README.md)
 - [GitHub REST API 共通仕様](../research/rest-api.md)
 - [GitHub リポジトリ API 仕様](../research/repositories.md)
-- [GitHub Actions 権限 API 仕様](../research/actions-permissions.md)
-- [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md)
-- [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md)
+- [GitHub Actions 変数 API 仕様](../research/actions-variables.md)

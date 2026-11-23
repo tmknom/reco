@@ -75,9 +75,9 @@ repositories:
 
 この例で管理するのは `general.allow_auto_merge` だけです。`false` も明示された期待値です。宣言していない `general.delete_branch_on_merge` は管理範囲外です。宣言した設定の現在値が期待値と一致していても管理範囲には含まれますが、更新は不要です。
 
-設定の一部は、意味を確定するために複数の値を一体として宣言します。この場合、個々の値を独立した管理の単位にはせず、一つの設定グループとして扱います。具体的な組み合わせは第4章で定めます。なお、観測しただけの設定や、別の設定の更新時に保全のため既存値を送信する設定は、管理範囲に追加しません。
+設定の一部は、意味を確定するために複数の値を一体として宣言します。この場合、個々の値を独立した管理の単位にはせず、一つの設定グループとして扱います。具体的な組み合わせは第4章で定めます。
 
-入力が正しいことと、GitHub 上で安全に適用できることは別の判断です。リポジトリの実在性、権限、現在状態、API の取得条件、更新途中の安全性、未管理設定の保全は、入力検証では確定しません。これらは選択されたリポジトリの観測後に適用可能性として判断します。
+入力検証は、宣言だけから決まる誤りを拒否します。入力として有効な宣言でも、リポジトリの状態（公開範囲や、ほかの設定の現在値など）によっては適用できないことがあります。これは観測のあとに適用可能性として判断し、どの宣言がどの状態で適用不能になるかは [設定ごとの設計](../design/settings/README.md) の各文書の「適用可能性と副作用」が定めます。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -122,9 +122,7 @@ Environment や Variable のように、一つのリポジトリに名前の違�
 | 1つ以上が `true` | 有効 |
 | 一部を省略し、宣言したものがすべて `false` | 有効 |
 
-3つとも `false` と宣言できないのは、GitHub が、3つのマージ方式をすべて無効にする更新を拒否し（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）、この状態を実現できないためです。この誤りは、`general` の6つの設定のいずれかの値が真偽値でない誤りより後に示します。
-
-一部を省略し、宣言したものがすべて `false` の場合、宣言していないマージ方式がすべて無効のリポジトリでは、無効にする変更予定が適用不能になります（[General の設計](../design/settings/general.md) の適用可能性と副作用）。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。reco は、宣言していないマージ方式を有効にしません。
+3つとも `false` と宣言できないのは、GitHub が、3つのマージ方式をすべて無効にする更新を拒否し（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）、この状態を実現できないためです。この誤りは、`general` の6つの設定のいずれかの値が真偽値でない誤りより後に示します。一部を省略した宣言では、宣言していないマージ方式の値は宣言に含まれず、reco はそれを有効にしません。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -145,11 +143,11 @@ Environment や Variable のように、一つのリポジトリに名前の違�
 | `actions.permissions.selected_actions.patterns_allowed` | シーケンス | 文字列の要素を0件以上（`[]` 可） | 許可する Actions と再利用可能なワークフローのパターン | 選択方式の Actions 許可条件（設定グループ） |
 | `actions.permissions.sha_pinning_required` | 真偽値 | `true` / `false` | Actions を完全な長さのコミット SHA に固定することを必須にするか | 独立 |
 
-`selected_actions` の3項目は選択方式の Actions 許可条件を表し、 **一つの設定グループ** として扱います。3項目を一体として宣言するのは reco の入力契約であり、GitHub への更新の単位を定めるものではありません。
+`selected_actions` の3項目は選択方式の Actions 許可条件を表し、 **一つの設定グループ** として扱います。
 
 `enabled: false` は Actions を無効にする宣言です。reco が Actions を無効にするのは、`enabled: false` を宣言したリポジトリに限ります。
 
-`sha_pinning_required` は独立した管理の単位で、`allowed_actions` を宣言しなくても宣言できます。Actions が無効のリポジトリで、`enabled: true` も `allowed_actions` も宣言せずに `sha_pinning_required` を宣言すると、その変更予定は適用不能になります（[Actions の設計](../design/settings/actions.md) の適用可能性と副作用）。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。
+`sha_pinning_required` は独立した管理の単位で、`allowed_actions` を宣言しなくても宣言できます。`sha_pinning_required` だけの宣言は、Actions が有効であることを期待状態に含みません。
 
 `allowed_actions` を宣言した場合は、そのポリシーで Actions が実行できること、つまり Actions が有効であることも期待状態に含めます。Actions が無効のリポジトリでは、reco は宣言したポリシーで Actions を有効にします。そのため、`allowed_actions` とともに宣言した `enabled: true` の意味は、`enabled` を省略した場合と同じです。
 
@@ -179,7 +177,7 @@ Environment や Variable のように、一つのリポジトリに名前の違�
 
 `enabled: false` と `allowed_actions`・`selected_actions`・`sha_pinning_required` を同時に宣言できないのは、Actions が無効のあいだ GitHub がこれらの保存された値を返さず（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 3.1・4章）、期待状態を確かめられないためです。この組み合わせの誤りは、`allowed_actions` の値や `selected_actions` の中身の誤りより先に示します。`actions.workflow` の設定は、`enabled` の値によらず同時に宣言できます。
 
-3項目を必須とする点は **reco 固有の入力契約** です。GitHub REST API では Selected actions の3項目は任意パラメータですが、reco は選択方式の Actions 許可条件の期待状態を一意に定めるため、3項目を必須とします。入力として有効でも、現在の Actions 許可ポリシーや GitHub の制約によって、選択方式の Actions 許可条件を取得・適用できるとは限りません。
+3項目を必須とする点は **reco 固有の入力契約** です。GitHub REST API では Selected actions の3項目は任意パラメータですが、reco は選択方式の Actions 許可条件の期待状態を一意に定めるため、3項目を必須とします。
 
 ### 4.2 `patterns_allowed`
 
@@ -191,9 +189,7 @@ patterns_allowed:
   - "actions/setup-go@v6"
 ```
 
-許可パターンは、reco の照合では **文字列の集合** として扱います。配列要素の順序だけが違う場合は差分とみなしません。GitHub から取得した値が同じ文字列を複数含む場合も一つの要素として扱い、重複の有無だけが違う場合は差分とみなしません。一方、ワイルドカードや異なるパターンの意味的な包含関係は解釈せず、文字列の一致によって扱います。GitHub がこれらのパターンを実際に許可条件として扱うかどうかは、GitHub の仕様と対象リポジトリの条件に従います。
-
-GitHub の公式資料は `patterns_allowed` を公開リポジトリに適用する設定としています。非公開リポジトリでの保存・再取得・適用の具体的な挙動を、この入力契約によって保証するものではありません。
+`patterns_allowed` の値は **文字列の集合** です。要素の順序に意味はなく、順序だけが違う宣言は同じ期待値です。ワイルドカードや異なるパターンの意味的な包含関係は解釈せず、文字列の一致で扱います。
 
 ## 5. Workflow permissions
 
@@ -218,9 +214,9 @@ GitHub の公式資料は `patterns_allowed` を公開リポジトリに適用�
 
 `none` はリポジトリの外のワークフローからのアクセスを許可しません。`user` は、同じユーザーが所有するほかの非公開リポジトリのワークフローからのアクセスを許可します。
 
-GitHub の値には `organization` もありますが、reco は宣言として受け付けません。`organization` は Organization が所有するリポジトリのための値で、reco がサポートするユーザー所有のリポジトリでは、GitHub がこの値への更新を拒否するためです（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 6章）。一方、Organization から移転したリポジトリなどで `organization` を観測した場合は、宣言した値と異なる値として扱い、宣言した値への変更を計画します。
+GitHub の値には `organization` もありますが、reco は宣言として受け付けません。`organization` は Organization が所有するリポジトリのための値で、reco がサポートするユーザー所有のリポジトリでは、GitHub がこの値への更新を拒否するためです（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 6章）。
 
-`access_level` は非公開リポジトリにだけ適用される設定です。公開リポジトリで宣言すると、その変更予定は適用不能になります（[Actions の設計](../design/settings/actions.md) の適用可能性と副作用）。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。Actions の有効状態は、この設定の宣言にも適用可能性にも関係しません。`actions.permissions.enabled: false` と同時に宣言できます。
+`access_level` は非公開リポジトリにだけ適用される設定です。`actions.permissions` の宣言によらず宣言でき、`actions.permissions.enabled: false` と同時にも宣言できます。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -246,8 +242,6 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 - **行を消しても削除しない**：`actions.variables` から要素を消すことは省略であり（2.1節）、その変数は管理範囲外になる
 - **`actions` に `variables` だけを書いた宣言は、Actions の許可設定を宣言しない**：`permissions`、`workflow`、`access` の設定は管理範囲外のままである
 
-Repository Variable の変更予定は、`actions.variables` に書いた順に表示します。
-
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-001` | Functional Requirement |
@@ -263,7 +257,7 @@ Repository Variable の変更予定は、`actions.variables` に書いた順に�
 
 名前の長さは入力検証で確かめません。公式資料が上限を記載しておらず、GitHub の上限が変わり得るためです。
 
-二つの名前が同じかどうかは、ASCII の英字の大文字小文字を区別せずに比べます。GitHub が名前を大文字小文字を区別せずに扱うためです（同 2章）。同じリポジトリの `actions.variables` に同じ名前が複数あれば、入力不正として拒否します。宣言の名前と GitHub 上の変数の名前の突き合わせも、同じ規則で行います。
+二つの名前が同じかどうかは、ASCII の英字の大文字小文字を区別せずに比べます。GitHub が名前を大文字小文字を区別せずに扱うためです（同 2章）。同じリポジトリの `actions.variables` に同じ名前が複数あれば、入力不正として拒否します。
 
 ### 7.2 変数の値
 
@@ -301,8 +295,6 @@ actions:
 
 同じ名前の要素を、値の宣言と存在しないことの宣言に分けて書くことはできません。7.1節の名前の重複として拒否します。
 
-削除される変数の値は、変更計画に示します（[CLI 仕様](cli.md) 4章）。
-
 ## 8. Environments
 
 `environments` は、リポジトリの Environment を名前ごとに宣言するシーケンスです。Environment は関連リソースであり、2.1節の規則に従います。
@@ -324,8 +316,6 @@ actions:
 - **存在しないことの宣言は受け付けない**：reco は Environment を削除しない
 - **`deployment_branch_policy` は `mode` を必須とする**：`all` はすべてのブランチとタグからのデプロイを許可する。`protected_branches` は、保護ルールのあるブランチからのデプロイだけを許可する。`protected_branches` の宣言は、Branch protection を管理することを意味しない。`selected` は、`patterns` に書いたパターンに一致するブランチとタグからのデプロイだけを許可する
 
-同じ Environment の変更予定は、存在、`deployment_branch_policy`、`variables` の順に表示し、実行します。`variables` の中は書いた順です。存在しない Environment の中の設定と変数は、Environment を作成してからでないと変えられないためです。Environment をまたいでは、`environments` に書いた Environment の順に、Environment ごとにまとめて並べます。
-
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-001` | Functional Requirement |
@@ -340,8 +330,6 @@ actions:
 二つの名前が同じかどうかは、ASCII の英字の大文字小文字を区別せずに比べます。同じリポジトリの宣言に同じとみなされる名前が複数あれば、入力不正として拒否します。たとえば `Production` と `production` を同じリポジトリに並べることはできません。
 
 ASCII 以外の文字と制御文字を受け付けないのは、GitHub が大文字小文字のほかに、アクセントの有無、全角と半角、末尾の空白、制御文字の違いも同じ名前とみなすためです（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 2章）。reco はこの判定を再現できません。受け付けると、GitHub 上で綴りの違う同じ Environment を存在しないと判断し、作成の要求で既存の Environment を変え得ます。
-
-GitHub 上の Environment の名前に ASCII 以外の文字などが含まれ、宣言した名前と同じかどうかを reco が判定できない場合の扱いは、入力検証ではなく、観測のあとに行う適用可能性の判断です（2章、[Environments の設計](../design/settings/environments.md) の適用可能性と副作用）。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -379,7 +367,7 @@ environments:
 
 同じ一覧に、`type` と `name` の組が同じ要素を二つ書けません。重複は YAML のエスケープ表現を解釈した後の文字列で判定し、大文字小文字だけが異なる名前（`main` と `MAIN`）と、名前が同じで `type` が違う要素は、別の要素として扱います。GitHub がこれらを別のパターンとして扱うためです（[GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) 2章）。
 
-`patterns` は、reco の照合では `type` と `name` の組の **集合** として扱い、要素の順序だけが違う場合は差分とみなしません。ワイルドカードの意味的な包含関係は解釈せず、文字列の一致によって扱います。`patterns` は一覧の全体であり、宣言した一覧が適用後の一覧になります（2.1節）。`patterns: []` は、どのブランチとタグからもデプロイできない状態の宣言です。
+`patterns` の値は `type` と `name` の組の **集合** です。要素の順序に意味はなく、順序だけが違う宣言は同じ期待値です。ワイルドカードの意味的な包含関係は解釈せず、文字列の一致によって扱います。`patterns` は一覧の全体であり、宣言した一覧が適用後の一覧になります（2.1節）。`patterns: []` は、どのブランチとタグからもデプロイできない状態の宣言です。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -402,9 +390,9 @@ environments:
 
 - **要素の形は `actions.variables` と同じである**：`name` は必須で、`value` か `state: absent` のどちらか一方を書く。名前は 7.1節、値は 7.2節、存在しないことの宣言は 7.3節の規則に従う
 - **`value` を書いた要素は存在と値の宣言を兼ねる**：書いた名前の Environment Variable が存在しなければ作成を計画し、存在して値が違えば値の変更を計画する
-- **`state: absent` を書いた要素は、存在しないことの宣言である**：その名前の Environment Variable が存在すれば削除を計画する。`state: absent` の変数だけを書いた Environment も、Environment の存在の宣言を兼ね、存在しなければ作成を計画する。作成する Environment の中で存在しないことを宣言した変数は、Environment を作成したあとに存在しないことを確かめる
+- **`state: absent` を書いた要素は、存在しないことの宣言である**：その名前の Environment Variable が存在すれば削除を計画する。`state: absent` の変数だけを書いた Environment も、Environment の存在の宣言を兼ね、存在しなければ作成を計画する
 - **重複は一つの Environment の中で判定する**：同じ Environment の `variables` に同じ名前（7.1節の判定）が複数あれば、入力不正として拒否する。別の Environment の同じ名前と、`actions.variables` の同じ名前は、重複ではない
-- **同じ名前の Repository Variable とは別の管理設定である**：`actions.variables` と `environments[].variables` に同じ名前を書いても、値を同期しない。それぞれを別々に照合し、更新する
+- **同じ名前の Repository Variable とは別の管理設定である**：`actions.variables` と `environments[].variables` に同じ名前を書いても、値を同期しない
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -440,11 +428,7 @@ GitHub が Dependabot security updates を一時停止していても、設定�
 | `false` | `true` | エラー |
 | 省略 | `true`、`false` | 有効 |
 
-`dependabot_alerts: false` と `dependabot_security_updates: true` を同時に宣言できないのは、GitHub が、Dependabot alerts が無効のリポジトリで Dependabot security updates の有効化を拒否し（GitHub リポジトリ API 仕様 7章）、この状態を実現できないためです。値の誤りを先に示すのは、組み合わせが2つの値で決まるためです。
-
-Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を宣言せずに `dependabot_security_updates` の値を変える宣言をすると、その変更予定は適用不能になります（[Security の設計](../design/settings/security.md) の適用可能性と副作用）。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。
-
-`dependabot_alerts: false` は、Dependabot alerts を無効にする宣言です。GitHub は、Dependabot alerts を無効にすると、Dependency graph と、有効だった Dependabot security updates も無効にします（GitHub リポジトリ API 仕様 6章）。reco はこの変化を変更に伴う副作用として承認の前に示したうえで、宣言どおりに無効にします。Dependency graph は reco が宣言を受け付けない設定です。
+`dependabot_alerts: false` と `dependabot_security_updates: true` を同時に宣言できないのは、GitHub が、Dependabot alerts が無効のリポジトリで Dependabot security updates の有効化を拒否し（GitHub リポジトリ API 仕様 7章）、この状態を実現できないためです。値の誤りを先に示すのは、組み合わせが2つの値で決まるためです。Dependency graph は宣言を受け付けない設定です。
 
 ### 9.2 Secret scanning
 
@@ -459,15 +443,11 @@ Dependabot alerts が無効のリポジトリで、`dependabot_alerts: true` を
 
 `secret_scanning: false` と `secret_scanning_push_protection: true` を同時に宣言できないのは、GitHub が、Secret scanning を無効にするとリポジトリの push protection も無効にし、Secret scanning が無効のあいだはリポジトリの push protection を有効にする更新を反映しないため（GitHub リポジトリ API 仕様 5章）、この状態を実現できないためです。
 
-2つの設定は、非公開リポジトリでは利用できません。非公開リポジトリでどちらかを宣言すると、その変更予定は適用不能になります。Secret scanning が無効のリポジトリで、`secret_scanning: true` を宣言せずに `secret_scanning_push_protection: true` を宣言した場合も、その変更予定は適用不能になります（[Security の設計](../design/settings/security.md) の適用可能性と副作用）。どちらの判断も、入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。
-
-`secret_scanning: false` は、Secret scanning を無効にする宣言です。GitHub は、Secret scanning を無効にすると、有効だったリポジトリの push protection も無効にします。reco はこの変化を変更に伴う副作用として承認の前に示したうえで、宣言どおりに無効にします。あとで Secret scanning を有効に戻しても、リポジトリの push protection は有効に戻りません。
+2つの設定は、reco が公開リポジトリでだけ管理する設定です。
 
 ### 9.3 Private vulnerability reporting
 
-`private_vulnerability_reporting` は、ほかの設定との組み合わせの規則を持ちません。
-
-reco は、この設定を公開リポジトリでだけ管理します。公式資料は公開リポジトリの設定として記載しており、非公開リポジトリへの取得と更新は、存在しないリポジトリと区別できない `404` を返したためです（GitHub リポジトリ API 仕様 8章）。非公開リポジトリで宣言すると、その変更予定は適用不能になります。この判断は入力の検証ではなく、観測のあとに行う適用可能性の判断です（2章）。
+`private_vulnerability_reporting` は、ほかの設定との組み合わせの規則を持ちません。reco が公開リポジトリでだけ管理する設定です。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -540,7 +520,7 @@ GitHub は所有者名・リポジトリ名を大文字小文字非依存で扱�
 ## 11. References
 
 - [要求定義](requirements.md)
-- [CLI 仕様](cli.md)
+- [設定ごとの設計](../design/settings/README.md)
 - [GitHub REST API 共通仕様](../research/rest-api.md)
 - [GitHub リポジトリ API 仕様](../research/repositories.md)
 - [GitHub Actions 権限 API 仕様](../research/actions-permissions.md)
