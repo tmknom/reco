@@ -285,7 +285,7 @@ func TestEnvironments_Lookup(t *testing.T) {
 		{
 			name:       "only undetermined name is unavailable",
 			existing:   []Environment{{ID: 1, Name: undetermined}},
-			wantReason: UnavailableEnvironmentNameUndetermined,
+			wantReason: UnavailableNameUndetermined,
 		},
 		{
 			name:     "undetermined name before the same name still exists",
@@ -296,7 +296,7 @@ func TestEnvironments_Lookup(t *testing.T) {
 		{
 			name:       "comparable different name after an undetermined name is still unavailable",
 			existing:   []Environment{{ID: 1, Name: undetermined}, {ID: 2, Name: "staging"}},
-			wantReason: UnavailableEnvironmentNameUndetermined,
+			wantReason: UnavailableNameUndetermined,
 		},
 	}
 	for _, tt := range tests {

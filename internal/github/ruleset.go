@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/tmknom/reco/internal/repository"
 
@@ -20,8 +21,9 @@ type Rulesets struct {
 // RulesetID は、GitHub が Ruleset の実体に付ける ID。同じ名前で作り直すと変わる。
 type RulesetID int64
 
-// Ruleset は、存在すると確かめた一つの Ruleset の観測結果で、値か、1件以上の解釈しなかったもののどちらか一方を持つ。
+// Ruleset は、存在すると確かめた一つの Ruleset の観測結果で、詳細を読んだ Ruleset では、値か、1件以上の解釈しなかったもののどちらか一方を持つ。
 // 後者は、ドメインモデルの、値が解釈しない部分を含むことを理由とする観測不能に当たる。
+// 読む範囲に含めず詳細を読まなかった Ruleset は、どちらも持たない。
 // 解釈できた部分だけの値を作らないよう、フィールドを公開せずコンストラクタでだけ作る。
 type Ruleset struct {
 	ID RulesetID
@@ -78,8 +80,17 @@ func UninterpretedRuleset(id RulesetID, name string, parts []UninterpretedPart) 
 	return Ruleset{ID: id, Name: name, uninterpreted: parts}
 }
 
+// unreadRuleset は、一覧で存在を確かめたが、詳細を読まなかった Ruleset の観測結果を作る。値も解釈しなかったものも持たない。
+func unreadRuleset(id RulesetID, name string) Ruleset {
+	return Ruleset{ID: id, Name: name}
+}
+
 // Value は値と真を返す。解釈しない部分を含むときはゼロ値と偽を返し、呼び出し側に値として読む前の確認を強いる。
+// 値を読んでいない Ruleset とゼロ値では、値が空であることとも解釈しない部分を含むこととも取り違えないよう、不変条件の破れとして panic する（ドメインモデルの存在の観測）。
 func (r Ruleset) Value() (setting.Ruleset, bool) {
+	if !r.interpreted && len(r.uninterpreted) == 0 {
+		panic(fmt.Sprintf("github: the value of ruleset %q was not read in this observation", r.Name))
+	}
 	return r.value, r.interpreted
 }
 
@@ -91,9 +102,63 @@ func (r Ruleset) UninterpretedParts() []UninterpretedPart {
 	return r.uninterpreted
 }
 
-// observeRulesets は、公開範囲が取得条件に当たれば Ruleset の要求を一つも送らずに一覧を観測不能とし、当たらなければすべての Ruleset を一覧の並びで読む。
+// Lookup は、同一性を判定できる名前 name の Ruleset を、一覧の全体と突き合わせて引く。
+// 呼び出し側が一覧を綴りで探すと、存在する Ruleset を存在しないと判断し得るため、ここでだけ引く。
+// 同じ名前の要素が二つ以上ないことは、observeRulesets が取得契約として確かめている。
+// 一覧が観測不能なら、同じ理由の観測不能にする。
+func (r Rulesets) Lookup(name setting.RulesetName) RulesetObservation {
+	existing, ok := r.Existing.Value()
+	if !ok {
+		return RulesetObservation{state: resourceUnavailable, reason: r.Existing.UnavailableReason()}
+	}
+	undetermined := false
+	for _, ruleset := range existing {
+		switch name.Compare(ruleset.Name) {
+		case setting.NameSame:
+			return RulesetObservation{state: resourceExisting, ruleset: ruleset}
+		case setting.NameUndetermined:
+			undetermined = true
+		case setting.NameDifferent:
+		}
+	}
+	if undetermined {
+		return RulesetObservation{state: resourceUnavailable, reason: UnavailableNameUndetermined}
+	}
+	return RulesetObservation{state: resourceAbsent}
+}
+
+// String は、解釈しなかったもの一つを、種類と、引用符で囲んでエスケープした名前の一行で返す。形は CLI 仕様の解釈しなかったものの表に従う。
+// 表示の形を外部クライアントの package に置くのは、状態確認（show）と変更計画の表示（changeplandisplay）が同じ形を使い、
+// show は変更計画の package に依存しないため、両方が使える置き場が解釈しなかったものの型を持つこの package だけだからである。
+// 名前は GitHub が返した任意の文字列のため、strconv.Quote で改行や表示の向きを変える文字をエスケープし、一行に収める。
+// 種類を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かず、定義にない値は panic する。
+func (p UninterpretedPart) String() string {
+	name := strconv.Quote(p.Name)
+	switch p.Kind {
+	case UninterpretedTarget:
+		return "target: " + name
+	case UninterpretedConditionsKey:
+		return "conditions key: " + name
+	case UninterpretedBypassActorType:
+		return "bypass actor type: " + name
+	case UninterpretedBypassMode:
+		return "bypass mode: " + name
+	case UninterpretedBypassActorKey:
+		return "bypass actor key: " + name
+	case UninterpretedRuleType:
+		return "rule type: " + name
+	case UninterpretedRuleKey:
+		return string(p.Rule) + " key: " + name
+	case UninterpretedRuleParameter:
+		return string(p.Rule) + " parameter: " + name
+	}
+	panic(fmt.Sprintf("github: undefined uninterpreted kind %d", int(p.Kind)))
+}
+
+// observeRulesets は、公開範囲が取得条件に当たれば Ruleset の要求を一つも送らずに一覧を観測不能とし、当たらなければ一覧を読む。
+// 詳細は scope にある Ruleset にだけ一覧の並びで読み、ほかの Ruleset は値を読まないまま一覧の並びに残す。
 // 公開と観測したあとの失敗の扱いは、Rulesets の設計の読み取り要求に従う。
-func (c *Client) observeRulesets(ctx context.Context, reference repository.Reference, private bool) (Rulesets, error) {
+func (c *Client) observeRulesets(ctx context.Context, reference repository.Reference, private bool, scope resourceScope) (Rulesets, error) {
 	if reason, unavailable := rulesetsUnavailability(private); unavailable {
 		return Rulesets{Existing: Unavailable[[]Ruleset](reason)}, nil
 	}
@@ -107,6 +172,10 @@ func (c *Client) observeRulesets(ctx context.Context, reference repository.Refer
 	}
 	existing := make([]Ruleset, len(summaries))
 	for i, summary := range summaries {
+		if !scope.includesRuleset(summary.name) {
+			existing[i] = unreadRuleset(summary.id, summary.name)
+			continue
+		}
 		existing[i], err = c.observeRuleset(ctx, reference, summary)
 		if err != nil {
 			return Rulesets{}, fmt.Errorf("ruleset %q: %w", summary.name, err)

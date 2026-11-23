@@ -22,12 +22,13 @@ const (
 // 期待値が省略された設定は管理範囲外のため、照合結果を作らず、観測値も読まない。
 // 並びは設定の領域の並び (YAML 設定仕様の章の並び) で、同じ領域の中では管理設定の列挙の並び (configuration.DesiredState.ManagedSettings) である。
 // Environment Variable は、設定の領域の並びではなく、属する Environment の計画の直後に宣言の並びで置く (planOrderArea)。
-// 宣言に名前のない Repository Variable、Environment、Environment Variable は、観測結果にあっても計画に現れない。
+// 宣言に名前のない Repository Variable、Environment、Environment Variable、Ruleset は、観測結果にあっても計画に現れない。
 func reconcile(desired configuration.DesiredState, observed github.ObservationResult) []SettingPlan {
 	var settings []SettingPlan
 	for _, managed := range desired.ManagedSettings() {
 		plan := newSettingPlan(managed.Unit, observed.Setting(managed.Unit), managed.Desired)
 		plan.EnvironmentIdentity = environmentIdentityOf(managed.Unit, observed)
+		plan.UninterpretedParts = uninterpretedPartsOf(managed.Unit, observed)
 		settings = append(settings, plan)
 	}
 	slices.SortStableFunc(settings, func(a, b SettingPlan) int { return cmp.Compare(planOrderArea(a.Unit.Key), planOrderArea(b.Unit.Key)) })
@@ -69,6 +70,18 @@ func managedEnvironments(desired configuration.DesiredState) []setting.Environme
 	return names
 }
 
+// managedRulesets は、管理範囲内の管理設定が名指す Ruleset の名前を、管理設定の列挙の並びで返す。
+// reconcile と同じ管理設定の列挙から決めるため、照合で引く Ruleset は必ず詳細が読まれる。
+func managedRulesets(desired configuration.DesiredState) []setting.RulesetName {
+	var names []setting.RulesetName
+	for _, managed := range desired.ManagedSettings() {
+		if managed.Unit.Key == setting.RulesetResource {
+			names = append(names, managed.Unit.Ruleset)
+		}
+	}
+	return names
+}
+
 // newSettingPlan は、観測値があれば期待値と比べ、観測不能なら Equal に渡さずに比較不能とする。
 func newSettingPlan(unit setting.Unit, observed github.SettingObservation[setting.Value], desired setting.Value) SettingPlan {
 	result := NotComparable
@@ -92,4 +105,14 @@ func environmentIdentityOf(unit setting.Unit, observed github.ObservationResult)
 		return EnvironmentIdentity{}
 	}
 	return ObservedEnvironmentIdentity(environment.ID)
+}
+
+// uninterpretedPartsOf は、Ruleset そのものの管理の単位 unit について、値が解釈しない部分を含むときだけ、その解釈しなかったものを返す。
+// 比較できない理由と同じ観測結果から読むため、理由が解釈しない部分を含むことである計画だけが解釈しなかったものを持つ。
+// ほかの管理の単位では nil を返す。
+func uninterpretedPartsOf(unit setting.Unit, observed github.ObservationResult) []github.UninterpretedPart {
+	if unit.Key != setting.RulesetResource {
+		return nil
+	}
+	return observed.Rulesets.Lookup(unit.Ruleset).UninterpretedParts()
 }

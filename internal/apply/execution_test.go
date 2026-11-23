@@ -298,27 +298,46 @@ func TestObservationAreas(t *testing.T) {
 }
 
 //trace:checks INV-004 FR-012
-func TestObservationEnvironments(t *testing.T) {
+func TestObservationResources(t *testing.T) {
 	production, staging := mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging")
 	stagingPolicy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}
+	protect, strict := mustRulesetName(t, "protect"), mustRulesetName(t, "strict")
 	cases := []struct {
 		name   string
 		change changeplan.LogicalChange
-		want   []setting.EnvironmentName
+		want   github.NamedResources
 	}{
 		{
-			name:   "repository setting change names no environment",
+			name:   "repository setting change names no environment or ruleset",
 			change: allowAutoMergeChange(),
 		},
 		{
 			name:   "creation with a mode and patterns names the destination once",
 			change: creationWithPatternsChange(t, "production", selectedPolicy(branchPattern("main"))),
-			want:   []setting.EnvironmentName{production},
+			want:   github.NamedResources{Environments: []setting.EnvironmentName{production}},
 		},
 		{
 			name:   "variable creation in a created environment names the environment it belongs to",
 			change: createdEnvironmentVariableChange(t, "production", "REGION", "a"),
-			want:   []setting.EnvironmentName{production},
+			want:   github.NamedResources{Environments: []setting.EnvironmentName{production}},
+		},
+		{
+			// 更新操作、関係する現在値、期待状態のどれもが同じ Ruleset を指すため、重複を除くことも確かめる
+			name:   "ruleset creation names the ruleset once without an environment",
+			change: rulesetCreationChange(t, "protect"),
+			want:   github.NamedResources{Rulesets: []setting.RulesetName{protect}},
+		},
+		{
+			// どの変更予定にも生じない組。期待状態の Ruleset を読まないと、更新後に値を比べられないことを確かめる
+			name: "ruleset of a desired setting is also named",
+			change: func() changeplan.LogicalChange {
+				change := rulesetValueUpdateChange(t, "protect")
+				change.DesiredState = append(change.DesiredState, changeplan.DesiredSetting{
+					Unit: setting.Unit{Key: setting.RulesetResource, Ruleset: strict}, Value: setting.RulesetValue(protectRuleset(setting.RulesetEnforcementActive)),
+				})
+				return change
+			}(),
+			want: github.NamedResources{Rulesets: []setting.RulesetName{protect, strict}},
 		},
 		{
 			// どの変更予定にも生じない組。更新操作の宛先の Environment を、期待状態に頼らずに読むことを確かめる
@@ -329,13 +348,13 @@ func TestObservationEnvironments(t *testing.T) {
 				change.DesiredState = nil
 				return change
 			}(),
-			want: []setting.EnvironmentName{production},
+			want: github.NamedResources{Environments: []setting.EnvironmentName{production}},
 		},
 		{
 			// どの変更予定にも生じない組。関係する現在値の Environment を読まないと、変更前提で個別パターンを比べられないことを確かめる
 			name:   "environment of a relevant setting is also named",
 			change: singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), []changeplan.RelevantSetting{{Unit: stagingPolicy, AnticipatedValue: github.Observed(modeValue(setting.DeploymentBranchPolicyAll))}}),
-			want:   []setting.EnvironmentName{staging},
+			want:   github.NamedResources{Environments: []setting.EnvironmentName{staging}},
 		},
 		{
 			// どの変更予定にも生じない組。期待状態の Environment を読まないと、更新後に個別パターンを比べられないことを確かめる
@@ -345,13 +364,13 @@ func TestObservationEnvironments(t *testing.T) {
 				change.DesiredState = append(change.DesiredState, changeplan.DesiredSetting{Unit: stagingPolicy, Value: modeValue(setting.DeploymentBranchPolicyAll)})
 				return change
 			}(),
-			want: []setting.EnvironmentName{staging},
+			want: github.NamedResources{Environments: []setting.EnvironmentName{staging}},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := observationEnvironments(tc.change); !slices.Equal(got, tc.want) {
-				t.Errorf("observationEnvironments() = %v, want %v", got, tc.want)
+			if got := observationResources(tc.change); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("observationResources() = %+v, want %+v", got, tc.want)
 			}
 		})
 	}
@@ -1884,11 +1903,14 @@ func TestSendUpdate(t *testing.T) {
 			name: "undefined kind of an update operation panics",
 			operation: func() changeplan.UpdateOperation {
 				o := toSelectedPatterns.Operations[1]
-				o.Kind = changeplan.EnvironmentVariableDeletion + 1
+				o.Kind = changeplan.RulesetValueUpdate + 1
 				return o
 			}(),
 			observed: github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", nil))},
 		},
+		// apply は Ruleset の変更予定を承認の前に拒否するため、Ruleset の更新操作は更新要求を送る段階に届かない
+		{name: "ruleset creation panics", operation: rulesetCreationChange(t, "protect").Operations[0]},
+		{name: "ruleset value update panics", operation: rulesetValueUpdateChange(t, "protect").Operations[0]},
 	}
 	for _, tc := range panicCases {
 		t.Run(tc.name, func(t *testing.T) {

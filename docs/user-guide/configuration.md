@@ -15,6 +15,7 @@ reco は、既定ではカレントディレクトリの `reco.yaml` を読み�
 | `actions` | [GitHub Actions の設定](#github-actions-の設定) |
 | `environments` | [Environment](#environment) |
 | `security` | [セキュリティの設定](#セキュリティの設定) |
+| `rulesets` | [Ruleset](#ruleset) |
 
 次は、一つのリポジトリでマージ後のブランチの自動削除だけを管理する、最小の例です。
 
@@ -299,6 +300,60 @@ Private vulnerability reporting の設定で気をつけることは次のとお
 
 - 非公開リポジトリには書けない。書くと `plan` に `Applicability: not applicable` と `Plan cannot be applied.` が出る。公開リポジトリにだけ書く
 - 変えるには Admin ロールが要る（[Authentication](authentication.md)）
+
+## Ruleset
+
+`rulesets` には、ブランチへの操作を制限する Ruleset を、名前ごとに並べます。Ruleset の作成と変更は、まだ `apply` で実行できません。`plan` で差分を確かめられます。
+
+```yaml
+repositories:
+  - name: example/project-a
+    rulesets:
+      - name: protect-default-branch
+        target: branch
+        enforcement: active
+        conditions:
+          ref_name:
+            include: ["~DEFAULT_BRANCH"]
+            exclude: []
+        bypass_actors:
+          - actor_type: RepositoryRole
+            actor_id: 5
+            bypass_mode: always
+        rules:
+          - type: pull_request
+            parameters:
+              required_approving_review_count: 1
+              dismiss_stale_reviews_on_push: true
+              require_code_owner_review: false
+              require_last_push_approval: false
+              required_review_thread_resolution: true
+          - type: deletion
+```
+
+| キー | 値 | 意味 |
+|---|---|---|
+| `name` | 文字列（必須） | Ruleset の名前 |
+| `target` | `branch`（必須） | Ruleset を適用する対象。ブランチだけを扱う |
+| `enforcement` | `active` / `disabled`（必須） | ルールを強制するか |
+| `conditions.ref_name.include` | パターンの一覧（必須。`[]` 可） | 対象にするブランチ。`~DEFAULT_BRANCH`（デフォルトブランチ）、`~ALL`（すべてのブランチ）、`refs/heads/` で始まるパターン（`refs/heads/release/*` など） |
+| `conditions.ref_name.exclude` | パターンの一覧（必須。`[]` 可） | 対象から外すブランチ |
+| `bypass_actors` | 要素の一覧（必須。`[]` 可） | ルールを迂回できる主体。`actor_type`、`actor_id`、`bypass_mode` を書く |
+| `rules` | 要素の一覧（必須。`[]` 可） | 課すルール。`pull_request`（Pull Request を経ることを必須にする）と `deletion`（ブランチの削除の制限）を書ける |
+
+**Ruleset は、書いた内容がその Ruleset の全体になります**。GitHub 上の Ruleset にあって設定ファイルにないルール、迂回できる主体、パターンは、適用するとなくなります。`plan` は、なくなるものを `Rules to remove:` や `Bypass actors to remove:` の行で示します。
+
+表のキーはどれも省略できません。書き忘れを既定値で補わないためです。ほかに気をつけることは次のとおりです。
+
+- 書いた名前の Ruleset がなければ、`plan` は作成を示す。書かなかった Ruleset を、reco は変更も削除もしない
+- 名前は、半角の英数字、空白、記号だけで書き、前後に空白を置かない。大文字と小文字だけが違う名前は同じ Ruleset とみなすため、同じリポジトリに並べられない
+- `bypass_actors` の `actor_type` は `RepositoryRole`、`User`、`Integration`、`DeployKey` のどれか。`bypass_mode` は `always`、`pull_request`、`exempt` のどれかで、省略できない。`RepositoryRole` の `actor_id` は `2`、`4`、`5` のどれかで、ロール名ではなく数値で書く。どの数値がどのロールかは公開されていないため、`show` の表示から書き写す。`DeployKey` には `actor_id` を書かず、`bypass_mode` は `always` だけ
+- `pull_request` の `parameters` は、例に示したキーをすべて書く。`required_approving_review_count` は `0` から `10` の整数
+- 一覧の要素の順序は問わない。並びだけが違っても変更にならない
+- 非公開リポジトリには書けない。書くと `plan` に `Applicability: not applicable` と `Plan cannot be applied.` が出る
+- reco がまだ解釈しないルール（`non_fast_forward` など）や `pull_request` の設定（`allowed_merge_methods` など）を持つ Ruleset の名前を書くと、`plan` に `Applicability: not applicable` と、reco の解釈しない部分の一覧が出る。そうした Ruleset は設定ファイルから外す
+
+GitHub 上にある Ruleset を管理に取り込むときは、`reco show` の `rulesets` の表示から、その Ruleset の要素を設定ファイルに書き写します。表示は設定ファイルと同じキーと値で示すため、書き写したあとの `plan` は、その Ruleset に差分を示しません。ただし、`unavailable` のコメントが付いた Ruleset は取り込めません。`enforcement: evaluate`、`conditions: {}`、`2`・`4`・`5` 以外の `RepositoryRole` のように設定ファイルに書けない値を持つ Ruleset は、そのまま書き写すと設定ファイルの誤りになります。
 
 ## 未記載の設定の扱い
 

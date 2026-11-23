@@ -33,6 +33,11 @@ func TestPluralize(t *testing.T) {
 //trace:checks FR-005 FR-007 QR-002
 func TestText(t *testing.T) {
 	target := mustReference(t, "owner/repo")
+	deletionRuleset := setting.RulesetValue(setting.Ruleset{
+		Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive, Conditions: refName([]string{"~ALL"}, []string{}),
+		BypassActors: []setting.BypassActor{}, Rules: []setting.RulesetRule{setting.DeletionRule()},
+	})
+	const deletionRulesetLines = "    target: branch\n    enforcement: active\n    include: [\"~ALL\"]\n    exclude: []\n    bypass_actors: []\n    rules: [deletion]\n"
 	cases := []struct {
 		name     string
 		settings []changeplan.SettingPlan
@@ -142,6 +147,17 @@ func TestText(t *testing.T) {
 				"  environments.production.deployment_branch_policy: (environment absent) -> protected_branches\n" +
 				"  environments.staging.deployment_branch_policy:\n    selected [branch \"main\", tag \"v*\"]\n    -> all\n\n" +
 				"Plan: 1 repository to update, 3 changes\nRepositories checked: 1\n",
+		},
+		{
+			name: "each ruleset to create counts as one change regardless of the lines of its value",
+			settings: []changeplan.SettingPlan{
+				{Unit: rulesetUnit(t, "protect"), Observed: github.Observed(setting.Absent()), Desired: deletionRuleset, Result: changeplan.Mismatch, Applicability: changeplan.Applicable()},
+				{Unit: rulesetUnit(t, "legacy"), Observed: github.Observed(setting.Absent()), Desired: deletionRuleset, Result: changeplan.Mismatch, Applicability: changeplan.Applicable()},
+			},
+			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n" +
+				"  rulesets.protect: absent -> present\n" + deletionRulesetLines +
+				"  rulesets.legacy: absent -> present\n" + deletionRulesetLines + "\n" +
+				"Plan: 1 repository to update, 2 changes\nRepositories checked: 1\n",
 		},
 	}
 	for _, tc := range cases {

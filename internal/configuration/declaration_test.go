@@ -338,7 +338,7 @@ func TestDocumentDeclaration(t *testing.T) {
 			name:       "name alone is rejected for lacking both general and actions",
 			src:        strings.Replace(second, "    general:\n      allow_auto_merge: false\n", "", 1),
 			wantPath:   "repositories[1]",
-			wantReason: "must have at least one of general, actions, environments, security",
+			wantReason: "must have at least one of general, actions, environments, security, rulesets",
 		},
 		{
 			name:       "missing name is rejected",
@@ -527,6 +527,27 @@ func TestDocumentDeclaration(t *testing.T) {
 			src:        second + "    security:\n      dependabot_alerts: false\n      dependabot_security_updates: true\n",
 			wantPath:   "repositories[1].security",
 			wantReason: "dependabot_alerts false cannot be declared with dependabot_security_updates true",
+		},
+		// Rulesets
+		{
+			name: "repository with only rulesets is accepted",
+			src:  minimal + "  - name: owner/second\n    rulesets:\n" + indentLines(rulesetSequence("protect", "release"), "      "),
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				{
+					Reference: mustReference(t, "owner/second"),
+					Desired: DesiredState{Rulesets: []RulesetDeclaration{
+						{Name: mustRulesetName(t, "protect"), Desired: setting.RulesetValue(baseRuleset())},
+						{Name: mustRulesetName(t, "release"), Desired: setting.RulesetValue(baseRuleset())},
+					}},
+				},
+			}},
+		},
+		{
+			name:       "invalid ruleset is rejected at the path of the repository and the ruleset",
+			src:        second + "    rulesets:\n      - name: protect\n",
+			wantPath:   "repositories[1].rulesets[0]",
+			wantReason: `missing key "target"`,
 		},
 		// Actions access
 		{

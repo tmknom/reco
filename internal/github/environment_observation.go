@@ -10,23 +10,14 @@ import (
 // 状態を取り違えた値を作れないよう、フィールドを公開せず Environments.Lookup でだけ作る。
 // どの状態でもないゼロ値は作れるが、理由を読もうとすると panic で検出する。
 type EnvironmentObservation struct {
-	state       environmentState
+	state       resourceState
 	environment Environment
 	reason      UnavailableReason
 }
 
-type environmentState int
-
-// ゼロ値をいずれかの状態と取り違えないよう 1 から始める。
-const (
-	environmentExisting environmentState = iota + 1
-	environmentAbsent
-	environmentUnavailable
-)
-
 // Existing は、存在するときだけ、観測した Environment を GitHub の綴りと ID のまま返し、真を返す。
 func (o EnvironmentObservation) Existing() (Environment, bool) {
-	if o.state != environmentExisting {
+	if o.state != resourceExisting {
 		return Environment{}, false
 	}
 	return o.environment, true
@@ -34,12 +25,12 @@ func (o EnvironmentObservation) Existing() (Environment, bool) {
 
 // Absent は、存在しないと確かめたときだけ真を返す。観測不能は存在しないことを意味しない。
 func (o EnvironmentObservation) Absent() bool {
-	return o.state == environmentAbsent
+	return o.state == resourceAbsent
 }
 
 // UnavailableReason は観測不能の理由を返す。観測不能でないとき、およびゼロ値では、不変条件の破れとして panic する。
 func (o EnvironmentObservation) UnavailableReason() UnavailableReason {
-	if o.state != environmentUnavailable {
+	if o.state != resourceUnavailable {
 		panic("github: environment observation is not unavailable")
 	}
 	return o.reason
@@ -49,9 +40,9 @@ func (o EnvironmentObservation) UnavailableReason() UnavailableReason {
 // 照合、変更前提の確認、期待状態の確認が、リポジトリ設定と同じ判定で存在を比べられるようにするため。ID は含めず、Existing で読む。
 func (o EnvironmentObservation) Existence() SettingObservation[setting.Value] {
 	switch o.state {
-	case environmentExisting:
+	case resourceExisting:
 		return Observed(setting.Present())
-	case environmentAbsent:
+	case resourceAbsent:
 		return Observed(setting.Absent())
 	default:
 		// 観測不能のときは同じ理由にし、ゼロ値は UnavailableReason の panic で検出する
@@ -63,9 +54,9 @@ func (o EnvironmentObservation) Existence() SettingObservation[setting.Value] {
 // 存在しない Environment の中の設定は値として読めないため、存在しないことを理由にした観測不能にする。
 func (o EnvironmentObservation) DeploymentBranchPolicy() SettingObservation[setting.Value] {
 	switch o.state {
-	case environmentExisting:
+	case resourceExisting:
 		return Observed(setting.DeploymentBranchPolicyValue(o.environment.DeploymentBranchPolicy()))
-	case environmentAbsent:
+	case resourceAbsent:
 		return Unavailable[setting.Value](UnavailableEnvironmentAbsent)
 	default:
 		// 観測不能のときは同じ理由にし、ゼロ値は UnavailableReason の panic で検出する
@@ -79,12 +70,12 @@ func (o EnvironmentObservation) DeploymentBranchPolicy() SettingObservation[sett
 // どちらも変数が一つもないこととは異なるため、不変条件の破れとして、どの Environment かを示して panic する。
 func (o EnvironmentObservation) Variable(name setting.VariableName) SettingObservation[setting.Value] {
 	switch o.state {
-	case environmentExisting:
+	case resourceExisting:
 		if o.environment.Variables == nil {
 			panic(fmt.Sprintf("github: variables of environment %q were not read in this observation", o.environment.Name))
 		}
 		return o.environment.Variables.Lookup(name)
-	case environmentAbsent:
+	case resourceAbsent:
 		return Unavailable[setting.Value](UnavailableEnvironmentAbsent)
 	default:
 		// 観測不能のときは同じ理由にし、ゼロ値は UnavailableReason の panic で検出する

@@ -286,7 +286,7 @@ func TestObserveEnvironmentVariables(t *testing.T) {
 		}}
 		c := newTestClient(t, routes.ServeHTTP)
 
-		if err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), environments, allEnvironments()); err != nil {
+		if err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), environments, allResources()); err != nil {
 			t.Fatalf("observeEnvironmentVariables() error = %v", err)
 		}
 		wantRequests := []string{
@@ -320,7 +320,7 @@ func TestObserveEnvironmentVariables(t *testing.T) {
 			_, _ = w.Write([]byte(githubtest.VariablesBody{TotalCount: 3000, Variables: variables}.JSON()))
 		})
 
-		err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), []Environment{{ID: 1, Name: "production"}}, allEnvironments())
+		err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), []Environment{{ID: 1, Name: "production"}}, allResources())
 		if !errors.Is(err, ErrUnexpectedResponse) {
 			t.Fatalf("observeEnvironmentVariables() error = %v, want %v", err, ErrUnexpectedResponse)
 		}
@@ -337,7 +337,7 @@ func TestObserveEnvironmentVariables(t *testing.T) {
 		}}
 		c := newTestClient(t, routes.ServeHTTP)
 
-		err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), []Environment{{ID: 1, Name: "a"}, {ID: 2, Name: "b"}, {ID: 3, Name: "c"}}, allEnvironments())
+		err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), []Environment{{ID: 1, Name: "a"}, {ID: 2, Name: "b"}, {ID: 3, Name: "c"}}, allResources())
 		if !errors.Is(err, ErrNotFound) {
 			t.Fatalf("observeEnvironmentVariables() error = %v, want %v", err, ErrNotFound)
 		}
@@ -357,7 +357,7 @@ func TestObserveEnvironmentVariables(t *testing.T) {
 		routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{}}
 		c := newTestClient(t, routes.ServeHTTP)
 
-		err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), []Environment{{ID: 1, Name: "."}}, allEnvironments())
+		err := c.observeEnvironmentVariables(t.Context(), mustReference(t, "owner/repo"), []Environment{{ID: 1, Name: "."}}, allResources())
 		if !errors.Is(err, ErrUnexpectedResponse) {
 			t.Fatalf("observeEnvironmentVariables() error = %v, want %v", err, ErrUnexpectedResponse)
 		}

@@ -222,8 +222,8 @@ func updateRequestOf(key setting.Key) updateRequest {
 		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateRepositoryPushProtection)}
 	case setting.PrivateVulnerabilityReportingEnabled:
 		return updateRequest{PrivateVulnerabilityReportingEndpoint, boolUpdate((*Client).updatePrivateVulnerabilityReporting)}
-	case setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentVariable:
-		// 関連リソースの更新要求は宛先に名前が要るため、設定の識別だけで引くこの関数では扱えない。
+	case setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentVariable, setting.RulesetResource:
+		// 関連リソースの更新要求は宛先に名前か ID が要るため、設定の識別だけで引くこの関数では扱えない。
 	}
 	panic("github: no update request for " + string(key))
 }

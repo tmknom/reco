@@ -69,3 +69,4 @@ reco が管理可能な設定は、次のとおりです。具体的な設定方
 | リポジトリに push されたシークレットを Secret scanning で検出するか（公開リポジトリだけ） | 「Advanced Security」ページの「Secret Protection」の項目 |
 | シークレットを含む push をリポジトリで拒否するか（公開リポジトリだけ） | 「Advanced Security」ページの「Secret Protection」の欄の「Push protection」の項目 |
 | 見つけた脆弱性を、公開せずにメンテナーへ報告できるようにするか（公開リポジトリだけ） | 「Advanced Security」ページの「Private vulnerability reporting」の項目 |
+| ブランチを保護する Ruleset の内容（対象のブランチ、強制するか、迂回できる主体、Pull Request を経ることを必須にするか、ブランチの削除を制限するか）（公開リポジトリだけ）。いまは `plan` で差分を確かめられるが、`apply` では変えられない | 「Rules」の「Rulesets」ページ |

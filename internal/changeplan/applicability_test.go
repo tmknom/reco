@@ -35,7 +35,7 @@ func TestJudgeApplicability(t *testing.T) {
 		}
 	}
 	undeterminedEnvironment := SettingPlan{
-		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined), Desired: setting.Present(), Result: NotComparable,
+		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableNameUndetermined), Desired: setting.Present(), Result: NotComparable,
 	}
 	cases := []struct {
 		name string
@@ -100,13 +100,13 @@ func TestJudgeApplicability(t *testing.T) {
 		{
 			name: "environment whose existence cannot be determined is not applicable",
 			in:   undeterminedEnvironment,
-			want: NotApplicable(NotApplicableEnvironmentNameUndetermined),
+			want: NotApplicable(NotApplicableNameUndetermined),
 		},
 		{
 			name:     "mode of an environment whose existence cannot be determined is not applicable",
-			in:       environmentPolicy(production, github.UnavailableEnvironmentNameUndetermined),
-			settings: []SettingPlan{undeterminedEnvironment, environmentPolicy(production, github.UnavailableEnvironmentNameUndetermined)},
-			want:     NotApplicable(NotApplicableEnvironmentNameUndetermined),
+			in:       environmentPolicy(production, github.UnavailableNameUndetermined),
+			settings: []SettingPlan{undeterminedEnvironment, environmentPolicy(production, github.UnavailableNameUndetermined)},
+			want:     NotApplicable(NotApplicableNameUndetermined),
 		},
 		{
 			name: "secret_scanning not comparable because the repository is private is not applicable",
@@ -137,9 +137,9 @@ func TestJudgeApplicability(t *testing.T) {
 		},
 		{
 			name:     "variable of an environment whose existence cannot be determined is not applicable",
-			in:       environmentVariable(production, github.UnavailableEnvironmentNameUndetermined),
-			settings: []SettingPlan{undeterminedEnvironment, environmentVariable(production, github.UnavailableEnvironmentNameUndetermined)},
-			want:     NotApplicable(NotApplicableEnvironmentNameUndetermined),
+			in:       environmentVariable(production, github.UnavailableNameUndetermined),
+			settings: []SettingPlan{undeterminedEnvironment, environmentVariable(production, github.UnavailableNameUndetermined)},
+			want:     NotApplicable(NotApplicableNameUndetermined),
 		},
 	}
 	for _, tc := range cases {
@@ -193,6 +193,57 @@ func TestJudgeApplicability(t *testing.T) {
 				}
 			}()
 			_ = judgeApplicability(tc.in, settings, github.ObservationResult{})
+		})
+	}
+}
+
+// TestJudgeApplicability_Rulesets は、Ruleset の不一致を適用可能とし、比較不能を理由ごとの適用不能にすることを確かめる。
+//
+//trace:checks FR-006 INV-001
+func TestJudgeApplicability_Rulesets(t *testing.T) {
+	unit := rulesetUnit(t, "protect")
+	desired := setting.RulesetValue(protectRuleset())
+	mismatch := func(observed setting.Value) SettingPlan {
+		return newSettingPlan(unit, github.Observed(observed), desired)
+	}
+	notComparable := func(reason github.UnavailableReason) SettingPlan {
+		return newSettingPlan(unit, github.Unavailable[setting.Value](reason), desired)
+	}
+	cases := []struct {
+		name string
+		in   SettingPlan
+		want Applicability
+	}{
+		{name: "creation of an absent ruleset is applicable", in: mismatch(setting.Absent()), want: Applicable()},
+		{name: "ruleset not comparable because the repository is private is not applicable", in: notComparable(github.UnavailablePrivateRepository), want: NotApplicable(NotApplicablePrivateRepository)},
+		{name: "ruleset whose existence cannot be determined is not applicable", in: notComparable(github.UnavailableNameUndetermined), want: NotApplicable(NotApplicableNameUndetermined)},
+		{name: "ruleset with uninterpreted parts is not applicable", in: notComparable(github.UnavailableUninterpretedParts), want: NotApplicable(NotApplicableUninterpretedParts)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := judgeApplicability(tc.in, []SettingPlan{tc.in}, github.ObservationResult{}); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("judgeApplicability() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+
+	// 遷移表にない比較不能を適用可能として黙って通さない
+	panics := []struct {
+		name string
+		in   SettingPlan
+	}{
+		{name: "ruleset not comparable because actions is disabled panics", in: notComparable(github.UnavailableActionsDisabled)},
+		{name: "repository setting not comparable because of uninterpreted parts panics", in: newSettingPlan(setting.Unit{Key: setting.AllowAutoMerge}, github.Unavailable[setting.Value](github.UnavailableUninterpretedParts), setting.BoolValue(true))},
+		{name: "repository setting not comparable because a name cannot be compared panics", in: newSettingPlan(setting.Unit{Key: setting.AllowAutoMerge}, github.Unavailable[setting.Value](github.UnavailableNameUndetermined), setting.BoolValue(true))},
+	}
+	for _, tc := range panics {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Error("judgeApplicability() did not panic")
+				}
+			}()
+			_ = judgeApplicability(tc.in, []SettingPlan{tc.in}, github.ObservationResult{})
 		})
 	}
 }

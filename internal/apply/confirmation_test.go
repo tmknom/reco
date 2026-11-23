@@ -148,7 +148,7 @@ func TestConfirmDesiredState_Environments(t *testing.T) {
 			change:       creationChange(t, "production"),
 			environments: environments(undetermined),
 			want:         desiredStateUnavailable,
-			wantReason:   github.UnavailableEnvironmentNameUndetermined,
+			wantReason:   github.UnavailableNameUndetermined,
 		},
 		{
 			name:         "creation with a mode matches when the environment has the mode",
@@ -186,7 +186,7 @@ func TestConfirmDesiredState_Environments(t *testing.T) {
 			change:       modeChange(t, "staging", approvedStaging, setting.DeploymentBranchPolicyProtectedBranches),
 			environments: environments(observedEnvironment(9, "stagïng", setting.DeploymentBranchPolicyProtectedBranches)),
 			want:         desiredStateUnavailable,
-			wantReason:   github.UnavailableEnvironmentNameUndetermined,
+			wantReason:   github.UnavailableNameUndetermined,
 		},
 		{
 			// 方式を送らない変更でも、デプロイ元制限の値の全体を期待状態として確かめる

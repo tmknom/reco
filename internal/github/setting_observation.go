@@ -13,10 +13,12 @@ const (
 	UnavailablePublicRepository
 	// UnavailableEnvironmentAbsent は、属する先の Environment が存在しないことを表す。
 	UnavailableEnvironmentAbsent
-	// UnavailableEnvironmentNameUndetermined は、引いた名前と同じかどうかを判定できない名前の Environment があることを表す。
-	UnavailableEnvironmentNameUndetermined
+	// UnavailableNameUndetermined は、引いた名前と同じ名前の関連リソースはないが、同じかどうかを判定できない名前の関連リソースがあることを表す。
+	UnavailableNameUndetermined
 	// UnavailablePrivateRepository は、リポジトリが非公開であることを表す。
 	UnavailablePrivateRepository
+	// UnavailableUninterpretedParts は、関連リソースの値が reco の解釈しない部分を含むことを表す。
+	UnavailableUninterpretedParts
 )
 
 // SettingObservation は、一つの設定の観測結果で、観測値か、理由を伴う観測不能のどちらか一方を持つ。

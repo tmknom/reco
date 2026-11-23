@@ -32,7 +32,9 @@ type DesiredState struct {
 	// RepositoryVariables は宣言の並びのまま持ち、actions.variables を省略したリポジトリでは nil。
 	RepositoryVariables []VariableDeclaration
 	// Environments は宣言の並びのまま持ち、environments を省略したリポジトリでは nil。
-	Environments                  []EnvironmentDeclaration
+	Environments []EnvironmentDeclaration
+	// Rulesets は宣言の並びのまま持ち、rulesets を省略したリポジトリでは nil。
+	Rulesets                      []RulesetDeclaration
 	Dependabot                    Dependabot
 	SecretScanning                SecretScanning
 	PrivateVulnerabilityReporting PrivateVulnerabilityReporting
@@ -53,6 +55,13 @@ type EnvironmentDeclaration struct {
 	DeploymentBranchPolicy *setting.DeploymentBranchPolicy
 	// Variables は宣言の並びのまま持ち、variables を省略した Environment では nil。
 	Variables []VariableDeclaration
+}
+
+// RulesetDeclaration は、一つの Ruleset の宣言。その名前の Ruleset が存在し、値が宣言と同じであることの期待値を兼ねる。
+type RulesetDeclaration struct {
+	Name setting.RulesetName
+	// Desired は、存在し値を伴うことの期待値 (setting.RulesetValue)。
+	Desired setting.Value
 }
 
 // General はリポジトリ一般設定の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
@@ -113,8 +122,9 @@ type ManagedSetting struct {
 }
 
 // ManagedSettings は、管理範囲の管理設定を期待値とともに返す。何も宣言していなければ nil を返す。
-// 並びは、リポジトリ設定 (setting.RepositorySettingUnits の並び)、Repository Variable (宣言の並び)、Environment ごと (宣言の並び) に存在、デプロイ元制限、変数 (宣言の並び) である。
+// 並びは、リポジトリ設定 (setting.RepositorySettingUnits の並び)、Repository Variable (宣言の並び)、Environment ごと (宣言の並び) に存在、デプロイ元制限、変数 (宣言の並び)、Ruleset (宣言の並び) である。
 // Environment の宣言は存在することの期待値を兼ねるため、名前だけの宣言も存在の管理設定になる。
+// Ruleset の宣言は、存在し値が宣言と同じことの期待値を一つの管理設定にする。
 // 管理範囲を読む処理ごとに宣言を走査すると管理設定が食い違うため、ここでだけ列挙する。
 func (d DesiredState) ManagedSettings() []ManagedSetting {
 	var managed []ManagedSetting
@@ -135,6 +145,9 @@ func (d DesiredState) ManagedSettings() []ManagedSetting {
 		for _, v := range e.Variables {
 			managed = append(managed, ManagedSetting{Unit: setting.Unit{Key: setting.EnvironmentVariable, Environment: e.Name, Variable: v.Name}, Desired: v.Desired})
 		}
+	}
+	for _, r := range d.Rulesets {
+		managed = append(managed, ManagedSetting{Unit: setting.Unit{Key: setting.RulesetResource, Ruleset: r.Name}, Desired: r.Desired})
 	}
 	return managed
 }
@@ -195,7 +208,7 @@ func (d DesiredState) value(key setting.Key) (value setting.Value, ok bool) {
 		return optionalBoolValue(d.SecretScanning.PushProtection)
 	case setting.PrivateVulnerabilityReportingEnabled:
 		return optionalBoolValue(d.PrivateVulnerabilityReporting.Enabled)
-	case setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentVariable:
+	case setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentVariable, setting.RulesetResource:
 		// 関連リソースに関わる管理の単位は名前との組で識別するため、この関数では引けない。
 	}
 	panic(fmt.Sprintf("unknown setting %q", key))

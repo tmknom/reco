@@ -67,6 +67,8 @@ func TestValue_Equal(t *testing.T) {
 		{name: "absences are equal", a: Absent(), b: Absent(), equal: true},
 		{name: "presence differs from an absence", a: Present(), b: Absent(), equal: false},
 		{name: "variable value differs from a boolean of the same spelling", a: VariableValue("true"), b: BoolValue(true), equal: false},
+		{name: "rulesets of different enforcement differ", a: RulesetValue(newTestRuleset()), b: RulesetValue(newTestRuleset(withEnforcement(RulesetEnforcementDisabled))), equal: false},
+		{name: "ruleset differs from an absence", a: RulesetValue(newTestRuleset()), b: Absent(), equal: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -112,6 +114,16 @@ func TestValue_StringOfZeroValuePanics(t *testing.T) {
 		}
 	}()
 	_ = Value{}.String()
+}
+
+// Ruleset の値は1行の表記を持たず、変更計画の表示は値の差から組み立てるため、String で表示しようとするのは不変条件の破れになる。
+func TestValue_StringOfRulesetPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("String() did not panic for a ruleset value")
+		}
+	}()
+	_ = RulesetValue(newTestRuleset()).String()
 }
 
 func TestValue_Bool(t *testing.T) {
@@ -349,5 +361,48 @@ func TestValue_DeploymentBranchPolicyIsolatesPatterns(t *testing.T) {
 	v.DeploymentBranchPolicy().Patterns[0].Name = "changed"
 	if got := v.DeploymentBranchPolicy().Patterns[0].Name; got != "main" {
 		t.Errorf("Patterns[0].Name = %q, want %q", got, "main")
+	}
+}
+
+func TestValue_RulesetOfBoolPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("Ruleset() did not panic for a boolean value")
+		}
+	}()
+	_ = BoolValue(true).Ruleset()
+}
+
+func TestRulesetValue_IsolatesSlices(t *testing.T) {
+	newRuleset := func() Ruleset {
+		return newTestRuleset(withRefName([]string{"a"}, []string{"x"}))
+	}
+	changes := []struct {
+		name   string
+		change func(*Ruleset)
+	}{
+		{name: "include", change: func(r *Ruleset) { r.Conditions.RefName.Include[0] = "changed" }},
+		{name: "exclude", change: func(r *Ruleset) { r.Conditions.RefName.Exclude[0] = "changed" }},
+		{name: "ref_name", change: func(r *Ruleset) { r.Conditions.RefName.Include = []string{"changed"} }},
+		{name: "bypass actors", change: func(r *Ruleset) { r.BypassActors[0].ActorID = 2 }},
+		{name: "rules", change: func(r *Ruleset) { r.Rules[0] = PullRequestRule(PullRequestParameters{}) }},
+	}
+	for _, c := range changes {
+		t.Run("writing to the "+c.name+" given to the constructor does not change the value", func(t *testing.T) {
+			given := newRuleset()
+			v := RulesetValue(given)
+			c.change(&given)
+			if got := v.Ruleset(); !reflect.DeepEqual(got, newRuleset()) {
+				t.Errorf("Ruleset() = %+v, want the value at construction", got)
+			}
+		})
+		t.Run("writing to the "+c.name+" returned by the accessor does not change the value", func(t *testing.T) {
+			v := RulesetValue(newRuleset())
+			returned := v.Ruleset()
+			c.change(&returned)
+			if got := v.Ruleset(); !reflect.DeepEqual(got, newRuleset()) {
+				t.Errorf("Ruleset() = %+v, want the value at construction", got)
+			}
+		})
 	}
 }

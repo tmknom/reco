@@ -56,10 +56,10 @@ func (c *Client) observeRepositoryVariables(ctx context.Context, reference repos
 // environments は同じ観測で一覧から読んだ Environment に限る。一覧にあった Environment の 404 は、二つの要求のあいだになくなった可能性があるため、観測不能にせず error として返す。
 // パスに組み込めない名前の Environment は、要求を送らずに失敗する。
 // 失敗の文言に Environment の名前を入れるのは、どの Environment で失敗したかを示す対象の識別子で、秘密情報ではないため。%q で制御文字をエスケープする。
-func (c *Client) observeEnvironmentVariables(ctx context.Context, reference repository.Reference, environments []Environment, scope environmentScope) error {
+func (c *Client) observeEnvironmentVariables(ctx context.Context, reference repository.Reference, environments []Environment, scope resourceScope) error {
 	for i := range environments {
 		e := &environments[i]
-		if !scope.includes(e.Name) {
+		if !scope.includesEnvironment(e.Name) {
 			continue
 		}
 		u, ok := c.environmentVariablesURL(reference, e.Name)

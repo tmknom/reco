@@ -1,6 +1,6 @@
 # Rulesets の設計
 
-リポジトリの Ruleset の設計を定めます。設定宣言の `rulesets` はまだ受け付けておらず、本文書は観測と、その単位を定めます。文書の構成は [設定ごとの設計](README.md) に従います。関連リソースに共通する規則は [ドメインモデル](../domain.md) の関連リソースと存在に従い、ここでは繰り返しません。
+設定宣言の `rulesets`（[YAML 設定仕様](../../spec/configuration.md) 10章）に属する、リポジトリの Ruleset の設計を定めます。Ruleset の変更の実行はまだ行わず、本文書は観測、照合、適用可能性を定めます。文書の構成は [設定ごとの設計](README.md) に従います。関連リソースに共通する規則は [ドメインモデル](../domain.md) の関連リソースと存在に従い、ここでは繰り返しません。
 
 ## 設定と管理の単位
 
@@ -15,22 +15,36 @@
 
 Ruleset は、一覧と取得の応答が ID を含み、同じ名前で作り直すと ID が変わることを確かめた種類です（[GitHub Rules API 仕様](../../research/rules.md) 2章）。そのため、GitHub が ID を付ける種類として扱います（[ドメインモデル](../domain.md) の関連リソースの同一性）。
 
-Ruleset の中身は項目ごとの管理の単位に分けず、値の全体を一つの値とします（ドメインモデルの管理の単位の形）。GitHub の更新は、送った `rules` で全体を置き換えるためです（GitHub Rules API 仕様 4.2）。
+Ruleset の中身は項目ごとの管理の単位に分けず、値の全体を一つの値とします（ドメインモデルの管理の単位の形）。GitHub の更新は、送った `rules` で全体を置き換えるためです（GitHub Rules API 仕様 4.2）。期待値は「存在し、値が宣言と同じ」です。
+
+二つの Ruleset の値は、次のすべての項目が同じときに限り同じ値です。
+
+| 項目 | 比べ方 |
+|---|---|
+| `target`、`enforcement` | 文字列の一致 |
+| 対象の条件 | `ref_name` があるかないか。あれば `include` と `exclude` を、それぞれ文字列の集合として比べる（順序と重複を問わず、大文字小文字を区別する）。`ref_name` のない値（`conditions: {}`）は、`include` と `exclude` がどちらも空の値とも異なる |
+| Bypass | `actor_type`、`actor_id`、`bypass_mode` の組の集合 |
+| ルール | ルール型とパラメータの値の組の集合。`pull_request` は5項目の一致、`deletion` は型の一致 |
+
+- **集合として比べる理由**：GitHub は更新で `rules` の順を保たず、Bypass の順も保つとは限らない（GitHub Rules API 仕様 4.2、6章）。`include` と `exclude` は送った順で返ったが、Ruleset は `include` のどれかに一致し `exclude` のどれにも一致しない ref に効くため、順は意味を持たない（同 5章）
+- **`include` の重複**：GitHub は `include` の重複を残して保存する（同 5章）。重複を問わないため、観測の `[a, a]` と宣言の `[a]` は同じ値で、更新しない
+- **Bypass の同じ主体**：`actor_type` と `actor_id` が同じ要素を二つ送ると、GitHub は先の要素だけを残す（同 6章）。観測した値は受け取ったまま比べ、宣言では二つ書けない（YAML 設定仕様 10.4節）
 
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-004` | Functional Requirement |
+| `alignment` | `FR-005` | Functional Requirement |
 | `grounding` | [GitHub Rules API 仕様](../../research/rules.md) | Repository File |
 
 ## 観測
 
 ### 読み取り要求
 
-Rulesets は、`GET /repos/{owner}/{repo}` の応答の `private` が偽のときだけ、Private vulnerability reporting のあとに読みます。真のときは Ruleset の要求を一つも送らず、Rulesets の一覧を、リポジトリが非公開であることを理由とする観測不能にします（下の取得条件による観測不能）。公開と観測したあとの一覧と取得の失敗は、`403` と `404` を含めて観測操作の失敗です。`rulesets` は YAML 設定仕様にまだ章がないため、観測の順（[GitHub API 通信の設計](../github-access.md) 2.2節）では `security` のあとに置きます。
+Rulesets は、`GET /repos/{owner}/{repo}` の応答の `private` が偽のときだけ、Private vulnerability reporting のあとに読みます。真のときは Ruleset の要求を一つも送らず、Rulesets の一覧を、リポジトリが非公開であることを理由とする観測不能にします（下の取得条件による観測不能）。公開と観測したあとの一覧と取得の失敗は、`403` と `404` を含めて観測操作の失敗です。変更計画の確認と設定変更は、`rulesets` を宣言していないリポジトリでは一覧も送りません。
 
 一覧は `GET /repos/{owner}/{repo}/rulesets?includes_parents=false&per_page=100` で読みます。`includes_parents=false` は、Organization 所有のリポジトリで、上位で構成された Ruleset が一覧に加わるのを避けるためです（GitHub Rules API 仕様 3.1）。一覧は `total_count` を返さないため、`total_count` のない一覧の読み方（[GitHub API 通信の設計](../github-access.md) 2.3節）で読み、ページ数の上限は1ページです。GitHub が一つのリポジトリに置ける Ruleset は75個で（GitHub Rules API 仕様 1章）、`per_page` の上限の100より少ないためです。1ページ目が100件を返したら、最後のページに達しないため観測操作の失敗とします。1ページの本文の上限は既定の値（同 2.1節）です。
 
-一覧の要素は `id` と `name` しか使えません。`conditions`、`rules`、`bypass_actors` を含まないためです（GitHub Rules API 仕様 3.1）。値は、Ruleset ごとに `GET /repos/{owner}/{repo}/rulesets/{ruleset_id}` で読みます。この取得は関連リソースごとの読み取り要求で、範囲は GitHub API 通信の設計 2.4節に従います。状態確認は、一覧のすべての Ruleset に一覧の並びで送ります。詳細の取得は、一覧のすべての要素を読み、名前の重複を確かめてから送ります。
+一覧の要素は `id` と `name` しか使えません。`conditions`、`rules`、`bypass_actors` を含まないためです（GitHub Rules API 仕様 3.1）。値は、Ruleset ごとに `GET /repos/{owner}/{repo}/rulesets/{ruleset_id}` で読みます。この取得は関連リソースごとの読み取り要求で、範囲は GitHub API 通信の設計 2.4節に従います。状態確認は、一覧のすべての Ruleset に一覧の並びで送ります。変更計画の確認と設定変更は、宣言の名前と同じと判定した Ruleset にだけ送り、同じかどうかを判定できない名前の Ruleset には送りません。詳細の取得は、一覧のすべての要素を読み、名前の重複を確かめてから送ります。
 
 一覧の名前の扱いは次のとおりです。
 
@@ -112,6 +126,22 @@ GitHub Pro 以上のアカウントや Organization が所有する非公開リ�
 | `alignment` | `QR-002` | Quality Requirement |
 | `grounding` | [GitHub Rules API 仕様](../../research/rules.md) | Repository File |
 
+## 適用可能性と副作用
+
+Rulesets に固有の適用不能の条件は、リポジトリが非公開であることだけです。Rulesets が非公開を理由とする観測不能のため、宣言した Ruleset はどれも比較不能になります。取得条件による比較不能は一般には適用可能になり得ますが、GitHub Free の非公開リポジトリでは Ruleset の作成も `403` を返すため（GitHub Rules API 仕様 1章）、適用不能にします。公開範囲を変える宣言は reco にないため、ほかの宣言では解消しません。ほかの設定の照合は続けます。
+
+値が解釈しない部分を含むことと、名前の同一性を判定できないことによる適用不能は、ドメインモデルの照合結果と適用可能性と、照合と変更予定に従います。適用不能の理由には、解釈しなかったものを、観測の解釈しない部分の並びで添えます。`enforcement: evaluate` や `conditions: {}` の Ruleset は、宣言が受け付けない値でも解釈する値のため（観測の解釈しない部分）、照合は Mismatch で、宣言した値へ置き換える変更は適用可能です。
+
+宣言の内容から、Pull Request をマージできなくなる設定（承認者のいない個人アカウントのリポジトリで承認数を1以上にするなど）を判定しません。設定の望ましさの評価になるためです（[Constitution](../../CONSTITUTION.md) の Non-Goals）。
+
+Ruleset の変更予定に、変更に伴う副作用と再開する設定はありません。宣言にないルールや Bypass がなくなることは、Ruleset という一つの管理設定の値の変更です（ドメインモデルの一覧の全体を宣言する設定との違い）。
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `alignment` | `FR-006` | Functional Requirement |
+| `alignment` | `INV-001` | Invariant |
+| `grounding` | [GitHub Rules API 仕様](../../research/rules.md) | Repository File |
+
 ## シナリオと反例
 
 | 状況 | 解釈 | 誤った解釈 |
@@ -123,6 +153,9 @@ GitHub Pro 以上のアカウントや Organization が所有する非公開リ�
 | 取得の応答に `bypass_actors` がない | 観測操作の失敗 | Bypass がないとして空集合で読む |
 | `target` が `tag` の Ruleset | 解釈しない部分を含み、値を作らない。存在はするため、名前は示す | 一覧から省く |
 | 一覧が100件を返した | 観測操作の失敗 | 100件をすべての Ruleset とする |
+| 宣言と同じ名前の Tag Ruleset がある | 解釈しない部分を含む観測不能で、適用不能。作成も計画しない（名前は `target` をまたいで一意） | 別の `target` なので Branch Ruleset を作成する。または、`tag` から `branch` へ変える |
+| GitHub 上に `non_fast_forward` を持つ Ruleset を、`pull_request` と `deletion` だけで宣言した | 解釈しない部分を含む観測不能で、適用不能 | 宣言にないルールなので外す |
+| 非公開リポジトリで `rulesets` を宣言した | 比較不能で適用不能。Ruleset の要求を送らない。ほかの設定の照合は続ける | 一覧を送り、`403` で観測操作の失敗にする |
 
 | Relationship | Target | Target Type |
 |---|---|---|

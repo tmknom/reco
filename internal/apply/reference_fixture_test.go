@@ -24,3 +24,12 @@ func mustEnvironmentName(t *testing.T, name string) setting.EnvironmentName {
 	}
 	return environment
 }
+
+func mustRulesetName(t *testing.T, name string) setting.RulesetName {
+	t.Helper()
+	ruleset, err := setting.ParseRulesetName(name)
+	if err != nil {
+		t.Fatalf("ParseRulesetName(%q) error = %v", name, err)
+	}
+	return ruleset
+}

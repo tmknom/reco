@@ -301,7 +301,7 @@ func TestMatchesRelevantSetting_EnvironmentExistence(t *testing.T) {
 	}{
 		{
 			name:     "undetermined at approval panics even if still undetermined",
-			relevant: changeplan.RelevantSetting{Unit: unit, AnticipatedValue: github.Unavailable[setting.Value](github.UnavailableEnvironmentNameUndetermined)},
+			relevant: changeplan.RelevantSetting{Unit: unit, AnticipatedValue: github.Unavailable[setting.Value](github.UnavailableNameUndetermined)},
 			current:  []github.Environment{undetermined},
 		},
 		{name: "zero value at approval panics even if the environment exists", relevant: changeplan.RelevantSetting{Unit: unit}, current: []github.Environment{approved}},

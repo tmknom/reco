@@ -85,4 +85,4 @@ Repository Variables と Environment Variables も、行を消しただけでは
 
 - [CLI 仕様](../spec/cli.md)：`apply` が今の値から変更計画を作り直すこと（2.1節）、`--repo` で選べるリポジトリと、設定ファイル全体の検証（2.2節、2.3節）、変更計画の表示（4章）、更新の順序と、完了しなかったリポジトリのあとの扱い（5.1節）、`show`（6章）
 - [要求定義](../spec/requirements.md)：設定ファイルに書いたリポジトリだけを対象にすること（FR-002）、異常のあとに更新を続けないこと（INV-005）
-- [YAML 設定仕様](../spec/configuration.md)：未記載の設定を管理しないこと（2章）、空の階層を拒否すること（1章、10.1節）、`allowed_actions` と `selected_actions` の組み合わせ（4.1節）、存在しないことの宣言による変数の削除（7.3節）、Environment を削除しないこと（8章）
+- [YAML 設定仕様](../spec/configuration.md)：未記載の設定を管理しないこと（2章）、空の階層を拒否すること（1章、11.1節）、`allowed_actions` と `selected_actions` の組み合わせ（4.1節）、存在しないことの宣言による変数の削除（7.3節）、Environment を削除しないこと（8章）

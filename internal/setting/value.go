@@ -6,7 +6,7 @@ import (
 )
 
 // Value は、一つの設定の値。期待値と観測値のどちらも、同じ設定についてはこの値で表す。
-// 関連リソースそのものでは、存在すること (値を持つ種類の Variable では値を伴う) と存在しないことも、この値で表す。
+// 関連リソースそのものでは、存在すること (値を持つ種類の Variable と Ruleset では値を伴う) と存在しないことも、この値で表す。
 // GitHub が付ける ID は含めない (ドメインモデルの関連リソースの同一性)。
 // 種別の違う設定の値を一つの並びで扱うため、値の種別を持つ。
 // ゼロ値は値がないことを表す。
@@ -22,6 +22,7 @@ type Value struct {
 	branchPolicy    DeploymentBranchPolicy
 	securityUpdates DependabotSecurityUpdatesState
 	variable        string
+	ruleset         Ruleset
 }
 
 type valueKind int
@@ -36,6 +37,7 @@ const (
 	kindDeploymentBranchPolicy
 	kindDependabotSecurityUpdates
 	kindVariable
+	kindRuleset
 	kindPresent
 	kindAbsent
 )
@@ -88,6 +90,12 @@ func VariableValue(value string) Value {
 	return Value{kind: kindVariable, variable: value}
 }
 
+// RulesetValue は、Ruleset が存在し、値が r であることを表す値を作る。
+// 呼び出し側があとで書き換えても値が変わらないように、スライスと ref_name の条件を複製して持つ。
+func RulesetValue(r Ruleset) Value {
+	return Value{kind: kindRuleset, ruleset: r.clone()}
+}
+
 // Present は、値を持たない種類の関連リソース (Environment) が存在することを表す値を作る。
 func Present() Value {
 	return Value{kind: kindPresent}
@@ -114,7 +122,8 @@ func (v Value) Equal(other Value) bool {
 		v.accessLevel == other.accessLevel &&
 		v.branchPolicy.equal(other.branchPolicy) &&
 		v.securityUpdates.Enabled() == other.securityUpdates.Enabled() &&
-		v.variable == other.variable
+		v.variable == other.variable &&
+		v.ruleset.equal(other.ruleset)
 }
 
 // String は、表示に使う表記で値を返す。値のないゼロ値を表示しようとするのは不変条件の破れのため panic する。
@@ -150,6 +159,9 @@ func (v Value) String() string {
 		return "present"
 	case kindAbsent:
 		return "absent"
+	case kindRuleset:
+		// 1行の表記を持たない。変更計画の表示は値の差から行を組み立てる
+		panic("setting: ruleset value has no one-line format")
 	case kindNone:
 	}
 	panic("setting: no value to format")
@@ -224,4 +236,13 @@ func (v Value) VariableValue() string {
 		panic("setting: value is not an existing variable")
 	}
 	return v.variable
+}
+
+// Ruleset は、存在する Ruleset の値を返す。それ以外の値は不変条件の破れのため panic する。
+// 戻り値の書き換えが値に及ばないように、複製を返す。
+func (v Value) Ruleset() Ruleset {
+	if v.kind != kindRuleset {
+		panic("setting: value is not an existing ruleset")
+	}
+	return v.ruleset.clone()
 }

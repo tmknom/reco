@@ -27,8 +27,8 @@ const (
 	NotApplicableActionsRemainDisabled NotApplicableReason = iota + 1
 	// NotApplicablePublicRepository は、リポジトリが公開で、その設定が公開リポジトリに適用されないこと。
 	NotApplicablePublicRepository
-	// NotApplicableEnvironmentNameUndetermined は、宣言の名前と同じかどうかを判定できない名前の Environment があり、存在するかを確かめられないこと。
-	NotApplicableEnvironmentNameUndetermined
+	// NotApplicableNameUndetermined は、宣言の名前と同じかどうかを判定できない名前の関連リソースがあり、宣言の名前の関連リソースが存在するかを確かめられないこと。
+	NotApplicableNameUndetermined
 	// NotApplicableDependabotAlertsRemainDisabled は、Dependabot alerts が無効で、同じリポジトリの期待状態が Dependabot alerts の有効を含まないこと。
 	NotApplicableDependabotAlertsRemainDisabled
 	// NotApplicablePrivateRepository は、リポジトリが非公開で、その設定が非公開リポジトリでは利用できないこと。
@@ -37,6 +37,8 @@ const (
 	NotApplicableSecretScanningRemainsDisabled
 	// NotApplicableNoMergeMethodEnabled は、更新後に有効なマージ方式が一つも残らないこと。無効のまま残るマージ方式を伴う。
 	NotApplicableNoMergeMethodEnabled
+	// NotApplicableUninterpretedParts は、存在する関連リソースの値が reco の解釈しない部分を含むこと。
+	NotApplicableUninterpretedParts
 )
 
 // Applicable は、適用可能の判断を返す。
@@ -100,9 +102,12 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 	}
 	reason := s.Observed.UnavailableReason()
 	switch {
-	case s.Unit.Key.HasEnvironmentName() && reason == github.UnavailableEnvironmentNameUndetermined:
-		// 作成すれば、GitHub が同じとみなす既存の Environment を変え得る。同じリポジトリのほかの宣言では解消しない
-		return NotApplicable(NotApplicableEnvironmentNameUndetermined)
+	case (s.Unit.Key.HasEnvironmentName() || s.Unit.Key == setting.RulesetResource) && reason == github.UnavailableNameUndetermined:
+		// 作成すれば、GitHub が同じとみなす既存の関連リソースを変え得る。同じリポジトリのほかの宣言では解消しない
+		return NotApplicable(NotApplicableNameUndetermined)
+	case s.Unit.Key == setting.RulesetResource && reason == github.UnavailableUninterpretedParts:
+		// 期待値に変える更新は解釈しない部分も置き換え、reco が承認の前に示せない値を変えるか失わせる。同じリポジトリのほかの宣言では解消しない
+		return NotApplicable(NotApplicableUninterpretedParts)
 	case s.Unit.Key.HasEnvironmentName() && s.Unit.Key != setting.EnvironmentResource && reason == github.UnavailableEnvironmentAbsent:
 		// Environment の宣言は、方式や変数だけを書いても存在の宣言を兼ねるため、同じ変更計画が先にその Environment を作成する
 		if !createsEnvironment(settings, s.Unit.Environment) {
@@ -122,7 +127,7 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 		// 公開範囲は reco が変える設定ではないため、同じリポジトリのほかの宣言では解消しない
 		return NotApplicable(NotApplicablePublicRepository)
 	case reason == github.UnavailablePrivateRepository &&
-		(s.Unit.Key.Area() == setting.AreaSecretScanning || s.Unit.Key == setting.PrivateVulnerabilityReportingEnabled):
+		(s.Unit.Key.Area() == setting.AreaSecretScanning || s.Unit.Key == setting.PrivateVulnerabilityReportingEnabled || s.Unit.Key == setting.RulesetResource):
 		// 公開範囲は reco が変える設定ではないため、同じリポジトリのほかの宣言では解消しない
 		return NotApplicable(NotApplicablePrivateRepository)
 	}

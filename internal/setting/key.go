@@ -35,6 +35,8 @@ const (
 	EnvironmentDeploymentBranchPolicy Key = "environments.deployment_branch_policy"
 	// EnvironmentVariable は、Environment に属する Environment Variable そのもの (期待値は存在し、値を伴うこと) の形。
 	EnvironmentVariable Key = "environments.variables"
+	// RulesetResource は、Ruleset そのもの (期待値は存在し、値を伴うこと) の形。
+	RulesetResource Key = "rulesets"
 )
 
 // RepositorySettingUnits は、リポジトリ設定の管理の単位 (reco が期待値の宣言を受け付ける設定) を YAML 設定仕様の章と表の並びで返す。
@@ -80,6 +82,8 @@ func (k Key) Area() Area {
 		return AreaSecretScanning
 	case PrivateVulnerabilityReportingEnabled:
 		return AreaPrivateVulnerabilityReporting
+	case RulesetResource:
+		return AreaRulesets
 	}
 	panic(fmt.Sprintf("unknown setting %q", k))
 }

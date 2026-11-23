@@ -187,7 +187,8 @@ func updateRequestLabel(operation changeplan.UpdateOperation, patterns []setting
 	switch operation.Kind {
 	case changeplan.SettingUpdate, changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate,
 		changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate, changeplan.RepositoryVariableDeletion,
-		changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate, changeplan.EnvironmentVariableDeletion:
+		changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate, changeplan.EnvironmentVariableDeletion,
+		changeplan.RulesetCreation, changeplan.RulesetValueUpdate:
 		return operation.Unit.String()
 	case changeplan.MergeMethodsUpdate:
 		// マージ方式をまとめた論理的な設定変更は更新操作が一つで、Update request の行に対象を示さないため、ここに届かない
@@ -284,7 +285,7 @@ func confirmationText(record changeRecord) string {
 		return "not confirmed (repository ID changed)"
 	case desiredStateUnavailable:
 		// 判定できない名前は、宣言した設定が効いていないのではなく reco が存在を確かめられなかったことを表すため、not in effect と示さない
-		if record.desiredUnavailableReason == github.UnavailableEnvironmentNameUndetermined {
+		if record.desiredUnavailableReason == github.UnavailableNameUndetermined {
 			return "not confirmed (environment existence unknown)"
 		}
 		return "not in effect (" + unavailableReasonText(record.desiredUnavailableReason) + ")"
@@ -318,10 +319,12 @@ func unavailableReasonText(reason github.UnavailableReason) string {
 		return "the repository is public"
 	case github.UnavailableEnvironmentAbsent:
 		return "the environment does not exist"
-	case github.UnavailableEnvironmentNameUndetermined:
+	case github.UnavailableNameUndetermined:
 		// confirmationText が not in effect と示さないため、理由の文言を持たない
 	case github.UnavailablePrivateRepository:
 		return "the repository is private"
+	case github.UnavailableUninterpretedParts:
+		// 解釈しない部分を含む観測不能は Ruleset にだけ生じ、applyPlan が Ruleset の更新操作を承認の前に拒否するため、期待状態の確認に届かない
 	}
 	panic(fmt.Sprintf("apply: undefined unavailable reason %d", int(reason)))
 }

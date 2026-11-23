@@ -77,22 +77,22 @@ func (e Environments) Lookup(name setting.EnvironmentName) EnvironmentObservatio
 	undetermined := false
 	for _, env := range e.Existing {
 		switch name.Compare(env.Name) {
-		case setting.EnvironmentNameSame:
-			return EnvironmentObservation{state: environmentExisting, environment: env}
-		case setting.EnvironmentNameUndetermined:
+		case setting.NameSame:
+			return EnvironmentObservation{state: resourceExisting, environment: env}
+		case setting.NameUndetermined:
 			undetermined = true
-		case setting.EnvironmentNameDifferent:
+		case setting.NameDifferent:
 		}
 	}
 	if undetermined {
-		return EnvironmentObservation{state: environmentUnavailable, reason: UnavailableEnvironmentNameUndetermined}
+		return EnvironmentObservation{state: resourceUnavailable, reason: UnavailableNameUndetermined}
 	}
-	return EnvironmentObservation{state: environmentAbsent}
+	return EnvironmentObservation{state: resourceAbsent}
 }
 
 // observeEnvironments は Environment の一覧の全ページを読み、scope にある方式が selected の Environment にだけ、一覧の並びで個別パターンを読む。
 // 個別パターンの要求を送る前にすべての要素を変換し、契約外の要素があれば要求を送らずに失敗する。
-func (c *Client) observeEnvironments(ctx context.Context, reference repository.Reference, scope environmentScope) (Environments, error) {
+func (c *Client) observeEnvironments(ctx context.Context, reference repository.Reference, scope resourceScope) (Environments, error) {
 	items, err := c.listAll(ctx, c.environmentsURL(reference), listPaging{itemsField: "environments", perPage: listPerPage, maxPageBytes: maxResponseBytes, maxPages: maxListPages})
 	if err != nil {
 		return Environments{}, err
@@ -114,7 +114,7 @@ func (c *Client) observeEnvironments(ctx context.Context, reference repository.R
 	}
 	for i := range existing {
 		e := &existing[i]
-		if e.DeploymentBranchPolicyMode != setting.DeploymentBranchPolicySelected || !scope.includes(e.Name) {
+		if e.DeploymentBranchPolicyMode != setting.DeploymentBranchPolicySelected || !scope.includesEnvironment(e.Name) {
 			continue
 		}
 		patterns, err := c.observeDeploymentPatterns(ctx, reference, e.Name)

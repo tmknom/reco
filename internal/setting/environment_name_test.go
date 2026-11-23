@@ -68,22 +68,15 @@ func TestEnvironmentName_EqualFold(t *testing.T) {
 	}
 }
 
-//trace:checks FR-004
+// TestEnvironmentName_Compare は、宣言の名前を宣言の側、引数を観測の側として突き合わせることを確かめる。
 func TestEnvironmentName_Compare(t *testing.T) {
 	cases := []struct {
 		name     string
 		observed string
-		want     EnvironmentNameComparison
+		want     NameComparison
 	}{
-		{name: "same spelling is the same", observed: "staging", want: EnvironmentNameSame},
-		{name: "different ASCII letter case is the same", observed: "STAGING", want: EnvironmentNameSame},
-		{name: "different comparable name is different", observed: "production", want: EnvironmentNameDifferent},
-		{name: "comparable name of the same length is different", observed: "stagine", want: EnvironmentNameDifferent},
-		{name: "accented letter is undetermined", observed: "stàging", want: EnvironmentNameUndetermined},
-		{name: "long s that Unicode folds to s is undetermined", observed: "ſtaging", want: EnvironmentNameUndetermined},
-		{name: "trailing space is undetermined", observed: "staging ", want: EnvironmentNameUndetermined},
-		{name: "leading space is undetermined", observed: " staging", want: EnvironmentNameUndetermined},
-		{name: "control character is undetermined", observed: "staging\x01", want: EnvironmentNameUndetermined},
+		{name: "different ASCII letter case is the same", observed: "STAGING", want: NameSame},
+		{name: "observed name that is not comparable is undetermined", observed: "ſtaging", want: NameUndetermined},
 	}
 	declared := mustEnvironmentName(t, "staging")
 	for _, tc := range cases {

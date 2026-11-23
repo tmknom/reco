@@ -40,6 +40,25 @@ func TestDesiredState_ManagedSettings(t *testing.T) {
 		}
 	})
 
+	t.Run("rulesets follow the environments in the declared order with their desired values", func(t *testing.T) {
+		zeta, alpha := mustRulesetName(t, "zeta"), mustRulesetName(t, "alpha")
+		desired := DesiredState{
+			Environments: []EnvironmentDeclaration{{Name: production}},
+			Rulesets: []RulesetDeclaration{
+				{Name: zeta, Desired: setting.RulesetValue(baseRuleset())},
+				{Name: alpha, Desired: setting.RulesetValue(setting.Ruleset{Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementDisabled})},
+			},
+		}
+		want := []ManagedSetting{
+			{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Desired: setting.Present()},
+			{Unit: setting.Unit{Key: setting.RulesetResource, Ruleset: zeta}, Desired: setting.RulesetValue(baseRuleset())},
+			{Unit: setting.Unit{Key: setting.RulesetResource, Ruleset: alpha}, Desired: setting.RulesetValue(setting.Ruleset{Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementDisabled})},
+		}
+		if got := desired.ManagedSettings(); !reflect.DeepEqual(got, want) {
+			t.Errorf("ManagedSettings() =\n%+v\nwant\n%+v", got, want)
+		}
+	})
+
 	t.Run("nothing declared lists no managed settings", func(t *testing.T) {
 		if got := (DesiredState{}).ManagedSettings(); len(got) != 0 {
 			t.Errorf("ManagedSettings() = %+v, want none", got)
@@ -122,7 +141,7 @@ func TestDesiredState_valueCoversEveryDesiredValue(t *testing.T) {
 
 // 関連リソースに関わる管理の単位は名前との組で識別するため、value では引けない。
 func TestDesiredState_valueOfRelatedResourceSettingPanics(t *testing.T) {
-	for _, key := range []setting.Key{setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentVariable} {
+	for _, key := range []setting.Key{setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentVariable, setting.RulesetResource} {
 		t.Run(string(key), func(t *testing.T) {
 			defer func() {
 				if recover() == nil {
@@ -145,11 +164,11 @@ func TestDesiredState_valueOfUnknownSettingPanics(t *testing.T) {
 
 // fillDesiredValues は、v の中の期待値 (ポインタのフィールド) をすべてゼロ値への参照で埋め、その数を返す。
 // 列挙値のゼロ値は定義外の値だが、ここでは期待値の有無だけを数える。
-// 関連リソースの宣言 (RepositoryVariables、Environments) は value で引かない期待値のため、数えない。
+// 関連リソースの宣言 (RepositoryVariables、Environments、Rulesets) は value で引かない期待値のため、数えない。
 func fillDesiredValues(v reflect.Value) int {
 	n := 0
 	for structField, field := range v.Fields() {
-		if structField.Name == "RepositoryVariables" || structField.Name == "Environments" {
+		if structField.Name == "RepositoryVariables" || structField.Name == "Environments" || structField.Name == "Rulesets" {
 			continue
 		}
 		switch field.Kind() {

@@ -36,7 +36,7 @@ func (d document) declaration() (Declaration, error) {
 }
 
 func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDeclaration, error) {
-	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"general", "actions", "environments", "security"})
+	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"general", "actions", "environments", "security", "rulesets"})
 	if err != nil {
 		return RepositoryDeclaration{}, err
 	}
@@ -44,8 +44,9 @@ func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDe
 	actionsNode, hasActions := entries["actions"]
 	environmentsNode, hasEnvironments := entries["environments"]
 	securityNode, hasSecurity := entries["security"]
-	if !hasGeneral && !hasActions && !hasEnvironments && !hasSecurity {
-		return RepositoryDeclaration{}, invalid(n, path, "must have at least one of general, actions, environments, security")
+	rulesetsNode, hasRulesets := entries["rulesets"]
+	if !hasGeneral && !hasActions && !hasEnvironments && !hasSecurity && !hasRulesets {
+		return RepositoryDeclaration{}, invalid(n, path, "must have at least one of general, actions, environments, security, rulesets")
 	}
 	namePath := path + ".name"
 	name, err := d.stringValue(entries["name"], namePath)
@@ -74,6 +75,11 @@ func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDe
 	}
 	if hasSecurity {
 		if desired.Dependabot, desired.SecretScanning, desired.PrivateVulnerabilityReporting, err = d.security(securityNode, path+".security"); err != nil {
+			return RepositoryDeclaration{}, err
+		}
+	}
+	if hasRulesets {
+		if desired.Rulesets, err = d.rulesets(rulesetsNode, path+".rulesets"); err != nil {
 			return RepositoryDeclaration{}, err
 		}
 	}
