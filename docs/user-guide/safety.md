@@ -6,6 +6,8 @@ reco が変えるのは、設定ファイルに書いた設定だけです。た
 
 Environment も同じです。reco が作成するのも、`deployment_branch_policy` を変えるのも、設定ファイルに名前を書いた Environment だけです。Environment を削除することはありません。
 
+reco が削除するのは、設定ファイルに `state: absent` と書いた名前の Repository Variable と Environment Variable だけです。行を消した変数や、書いていない変数は消しません。消す変数の値は、変更計画に `"<今の値>" -> absent` と示し、承認を求めます。
+
 例外は、書いた設定を変えると GitHub の仕様でほかの値が消えるか変わる場合です。たとえば、`allowed_actions` を `selected` から `all` や `local_only` に変えると、GitHub が `selected_actions` の値を消します。`dependabot_alerts` を変えると、GitHub は Dependency graph も同じ値（有効か無効）に変えます。`dependabot_alerts` を無効にするときは、設定ファイルに書いていない Dependabot security updates も、有効だったなら無効にします。`secret_scanning` を無効にするときも、設定ファイルに書いていないリポジトリの push protection を、有効だったなら無効にします。reco はこれらを変更計画の `Side effect:` の行に示し、その内容も含めて承認を求めます。
 
 ## すべてのリポジトリを読み取ってから更新を始める
@@ -20,7 +22,7 @@ Environment も同じです。reco が作成するのも、`deployment_branch_po
 
 ## 承認のあとで設定が変わったら止まる
 
-reco は、更新の直前ごとに、関係する設定が承認したときの値のままかを確かめます。Environment や Repository Variable を作成するときは、同じ名前（大文字と小文字だけが違う名前を含む）のものがまだないことを確かめます。承認のあとでほかの人や仕組みが設定を変えていたり、同じ名前の Environment や Repository Variable が作られていたりしたら、その更新もそのあとの更新も始めずに止まります。同じ名前の Repository Variable が作られていた場合は、その値が設定ファイルと同じでも止まります。それでも、`apply` のあいだに設定を変えられると、reco が見つけられないことがあります。`apply` のあいだは、同じリポジトリの設定をほかの手段で変えないようにします。
+reco は、更新の直前ごとに、関係する設定が承認したときの値のままかを確かめます。Environment や Repository Variable を作成するときは、同じ名前（大文字と小文字だけが違う名前を含む）のものがまだないことを確かめます。承認のあとでほかの人や仕組みが設定を変えていたり、同じ名前の Environment や Repository Variable が作られていたりしたら、その更新もそのあとの更新も始めずに止まります。同じ名前の Repository Variable が作られていた場合は、その値が設定ファイルと同じでも止まります。変数を削除するときは、値が承認したときのままかを確かめ、変わっていれば消さずに止まります。承認の前に示していない値を失わせないためです。それでも、`apply` のあいだに設定を変えられると、reco が見つけられないことがあります。`apply` のあいだは、同じリポジトリの設定をほかの手段で変えないようにします。
 
 ## 問題が起きたら、それ以上更新しない
 

@@ -68,10 +68,14 @@ const (
 	RepositoryVariableCreation
 	// RepositoryVariableValueUpdate は、存在する Repository Variable の値だけを変える。
 	RepositoryVariableValueUpdate
+	// RepositoryVariableDeletion は、存在する Repository Variable を消す。値を送らない。
+	RepositoryVariableDeletion
 	// EnvironmentVariableCreation は、Environment Variable を名前と値で作る。宛先が Environment の名前を含むため Repository Variable と分ける。
 	EnvironmentVariableCreation
 	// EnvironmentVariableValueUpdate は、存在する Environment Variable の値だけを変える。
 	EnvironmentVariableValueUpdate
+	// EnvironmentVariableDeletion は、存在する Environment Variable を消す。値を送らない。
+	EnvironmentVariableDeletion
 )
 
 // RelevantSetting は、変更前提で比べる関係する現在値の設定と、その承認時に予定した値。
@@ -158,7 +162,9 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 			continue
 		case s.Unit.Key == setting.EnvironmentVariable:
 			// Environment の作成とまとめず、変数ごとに一つの論理的な設定変更にする (Environments の設計の論理的な設定変更と更新操作)
-			changes = append(changes, LogicalChange{DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}}, Operations: []UpdateOperation{r.environmentVariableOperationOf(s)}})
+			if operation, ok := r.environmentVariableOperationOf(s); ok {
+				changes = append(changes, LogicalChange{DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}}, Operations: []UpdateOperation{operation}})
+			}
 			continue
 		}
 		operation := operationOf(s)

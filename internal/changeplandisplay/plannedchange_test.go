@@ -314,6 +314,11 @@ func TestPlannedChangeText_RepositoryVariables(t *testing.T) {
 	}{
 		{name: "value update shows the quoted current and desired values on one line", s: variable(setting.VariableValue("1.26"), "1.27"), want: "  actions.variables.GO_VERSION: \"1.26\" -> \"1.27\"\n"},
 		{name: "creation shows absent without parentheses as the current value", s: variable(setting.Absent(), "1.27"), want: "  actions.variables.GO_VERSION: absent -> \"1.27\"\n"},
+		{
+			name: "deletion shows the value to be lost escaped on one line and absent as the desired value",
+			s:    changeplan.SettingPlan{Unit: unit, Observed: github.Observed(setting.VariableValue("line 1\nline 2\x01")), Desired: setting.Absent(), Result: changeplan.Mismatch, Applicability: changeplan.Applicable},
+			want: "  actions.variables.GO_VERSION: \"line 1\\nline 2\\x01\" -> absent\n",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -353,6 +358,13 @@ func TestPlannedChangeText_EnvironmentVariables(t *testing.T) {
 			name: "variable of an environment to create shows environment absent as the state",
 			s:    variable(github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), "ap-northeast-1", changeplan.NotComparable, changeplan.Applicable),
 			want: "  environments.production.variables.REGION: (environment absent) -> \"ap-northeast-1\"\n",
+		},
+		{
+			name: "declared absence in an environment to create shows environment absent and absent",
+			s: changeplan.SettingPlan{
+				Unit: unit, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.Absent(), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
+			},
+			want: "  environments.production.variables.REGION: (environment absent) -> absent\n",
 		},
 		{
 			name: "variable of an environment whose existence is unknown shows the state and why it is not applicable",

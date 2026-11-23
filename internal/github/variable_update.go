@@ -46,6 +46,23 @@ func (c *Client) UpdateEnvironmentVariableValue(ctx context.Context, reference r
 	return c.updateVariableValue(ctx, fmt.Sprintf("update environment variable %q in environment %q", name.String(), environment), reference, u, value)
 }
 
+// DeleteRepositoryVariable は、reference のリポジトリの name の Repository Variable を削除する DELETE を一度だけ送る。再送はしない。
+// 本文と Content-Type を送らず、正常応答は本文のない 204 である。存在しない名前への 404 は、存在しないことの確認にせず、更新操作の失敗として扱う。
+func (c *Client) DeleteRepositoryVariable(ctx context.Context, reference repository.Reference, name setting.VariableName) (UpdateOutcome, error) {
+	return c.deleteVariable(ctx, fmt.Sprintf("delete repository variable %q", name.String()), reference, c.repositoryVariableURL(reference, name.String()))
+}
+
+// DeleteEnvironmentVariable は、reference のリポジトリの environment の Environment の name の Environment Variable を削除する DELETE を一度だけ送る。
+// 本文と応答の扱いは DeleteRepositoryVariable と同じ。
+// 呼び出し元は宛先にできる名前だけを渡すため、URL を組めないときは不変条件の破れとして panic する。
+func (c *Client) DeleteEnvironmentVariable(ctx context.Context, reference repository.Reference, environment string, name setting.VariableName) (UpdateOutcome, error) {
+	u, ok := c.environmentVariableURL(reference, environment, name.String())
+	if !ok {
+		panic(fmt.Sprintf("github: environment name %q cannot be addressed", environment))
+	}
+	return c.deleteVariable(ctx, fmt.Sprintf("delete environment variable %q in environment %q", name.String(), environment), reference, u)
+}
+
 // createVariable は、変数の一覧の u へ、名前が name で値が value の変数を作る POST を送る。Repository Variable と Environment Variable で、本文と応答の扱いは同じ。
 func (c *Client) createVariable(ctx context.Context, operation string, reference repository.Reference, u *url.URL, name setting.VariableName, value string) (UpdateOutcome, error) {
 	status, _, err := c.send(ctx, http.MethodPost, u, encodeVariableCreation(name, value), http.StatusCreated)
@@ -55,6 +72,12 @@ func (c *Client) createVariable(ctx context.Context, operation string, reference
 // updateVariableValue は、変数の u へ、値を value にする PATCH を送る。Repository Variable と Environment Variable で、本文と応答の扱いは同じ。
 func (c *Client) updateVariableValue(ctx context.Context, operation string, reference repository.Reference, u *url.URL, value string) (UpdateOutcome, error) {
 	status, _, err := c.send(ctx, http.MethodPatch, u, encodeVariableValue(value), http.StatusNoContent)
+	return describeUpdateOutcome(operation, reference, status, err)
+}
+
+// deleteVariable は、変数の u へ、変数を削除する DELETE を本文なしで送る。Repository Variable と Environment Variable で、応答の扱いは同じ。
+func (c *Client) deleteVariable(ctx context.Context, operation string, reference repository.Reference, u *url.URL) (UpdateOutcome, error) {
+	status, _, err := c.send(ctx, http.MethodDelete, u, nil, http.StatusNoContent)
 	return describeUpdateOutcome(operation, reference, status, err)
 }
 

@@ -190,7 +190,7 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			}
 		}()
 		change := allowAutoMergeChange()
-		change.Operations[0].Kind = changeplan.EnvironmentVariableValueUpdate + 1
+		change.Operations[0].Kind = changeplan.EnvironmentVariableDeletion + 1
 		unexpectedOutsideChanges(change, []github.ObservationResult{{}}, github.ObservationResult{})
 	})
 }

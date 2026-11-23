@@ -1774,6 +1774,20 @@ func TestSendUpdate(t *testing.T) {
 			response:  noContent(),
 			want:      githubtest.Request{Method: http.MethodPatch, Path: "/repos/owner/repo/environments/Production/variables/REGION", Body: map[string]any{"value": "ap-northeast-1\n"}},
 		},
+		{
+			name:      "variable deletion is sent to the declared name without a body",
+			operation: variableDeletionChange(t, "GO_VERSION", "1.26").Operations[0],
+			observed:  github.ObservationResult{RepositoryVariables: variables(github.Variable{Name: "GO_VERSION", Value: "1.26"})},
+			response:  noContent(),
+			want:      githubtest.Request{Method: http.MethodDelete, Path: "/repos/owner/repo/actions/variables/GO_VERSION"},
+		},
+		{
+			name:      "environment variable deletion is sent to the observed spelling of the environment without a body",
+			operation: environmentVariableDeletionChange(t, "production", productionRegion, "REGION", "us-east-1").Operations[0],
+			observed:  github.ObservationResult{Environments: environments(productionRegion)},
+			response:  noContent(),
+			want:      githubtest.Request{Method: http.MethodDelete, Path: "/repos/owner/repo/environments/Production/variables/REGION"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1810,7 +1824,7 @@ func TestSendUpdate(t *testing.T) {
 			name: "undefined kind of an update operation panics",
 			operation: func() changeplan.UpdateOperation {
 				o := toSelectedPatterns.Operations[1]
-				o.Kind = changeplan.EnvironmentVariableValueUpdate + 1
+				o.Kind = changeplan.EnvironmentVariableDeletion + 1
 				return o
 			}(),
 			observed: github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", nil))},
@@ -1992,19 +2006,22 @@ func TestExecuteChange_Environments(t *testing.T) {
 	}
 }
 
-// TestExecuteChange_RepositoryVariables は、変数の作成と値の変更を、一覧の読み直しで確かめて一度だけ送るつなぎ目を確かめる。
+// TestExecuteChange_RepositoryVariables は、変数の作成、値の変更、削除を、一覧の読み直しで確かめて一度だけ送るつなぎ目を確かめる。
 //
 //trace:checks INV-001 INV-004 INV-005 FR-010 FR-011 FR-012 FR-013
 func TestExecuteChange_RepositoryVariables(t *testing.T) {
 	const (
-		getRepository = "GET /repos/owner/repo"
-		getVariables  = "GET /repos/owner/repo/actions/variables"
-		postVariable  = "POST /repos/owner/repo/actions/variables"
-		patchVariable = "PATCH /repos/owner/repo/actions/variables/GO_VERSION"
+		getRepository  = "GET /repos/owner/repo"
+		getVariables   = "GET /repos/owner/repo/actions/variables"
+		postVariable   = "POST /repos/owner/repo/actions/variables"
+		patchVariable  = "PATCH /repos/owner/repo/actions/variables/GO_VERSION"
+		deleteVariable = "DELETE /repos/owner/repo/actions/variables/LEGACY"
 	)
 	declared := githubtest.VariableBody{Name: "GO_VERSION", Value: "1.27"}
 	other := githubtest.VariableBody{Name: "OTHER", Value: "a"}
+	legacy := githubtest.VariableBody{Name: "LEGACY", Value: "old"}
 	creation := variableCreationChange(t, "GO_VERSION", "1.27")
+	deletion := variableDeletionChange(t, "LEGACY", "old")
 	cases := []struct {
 		name         string
 		change       changeplan.LogicalChange
@@ -2074,6 +2091,20 @@ func TestExecuteChange_RepositoryVariables(t *testing.T) {
 			wantDesired:  desiredStateMatches,
 			wantResult:   completed,
 		},
+		{
+			// 宣言していない OTHER は一覧にあっても宛先にならない
+			name:   "deletion of the planned value is sent once only to the declared name and completes when the list lacks it",
+			change: deletion,
+			responses: []response{
+				okRepository(1, false, false), okVariables(legacy, other), noContent(),
+				okRepository(1, false, false), okVariables(other),
+			},
+			wantRequests: []string{getRepository, getVariables, deleteVariable, getRepository, getVariables},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -2101,7 +2132,8 @@ func TestExecuteChange_RepositoryVariables(t *testing.T) {
 	}
 }
 
-// TestExecuteChange_EnvironmentVariables は、Environment Variable の作成を、Environment の一覧と変数の一覧の読み直しで確かめて一度だけ送るつなぎ目を確かめる。
+// TestExecuteChange_EnvironmentVariables は、Environment Variable の作成と削除を、Environment の一覧と変数の一覧の読み直しで確かめて一度だけ送るつなぎ目と、
+// 作成する Environment の中で存在しないことを宣言した変数を、変数への要求を送らずに作成のあとの一覧で確かめるつなぎ目を確かめる。
 //
 //trace:checks INV-001 INV-004 INV-005 FR-010 FR-011 FR-012 FR-013
 func TestExecuteChange_EnvironmentVariables(t *testing.T) {
@@ -2110,11 +2142,16 @@ func TestExecuteChange_EnvironmentVariables(t *testing.T) {
 		getEnvironments = "GET /repos/owner/repo/environments"
 		getVariables    = "GET /repos/owner/repo/environments/production/variables"
 		postVariable    = "POST /repos/owner/repo/environments/production/variables"
+		deleteVariable  = "DELETE /repos/owner/repo/environments/production/variables/REGION"
+		putProduction   = "PUT /repos/owner/repo/environments/production"
 	)
 	production := githubtest.EnvironmentBody{ID: 8, Name: "production"}
 	creation := createdEnvironmentVariableChange(t, "production", "REGION", "ap-northeast-1")
+	other := githubtest.VariableBody{Name: "OTHER", Value: "a"}
+	approved := withVariables(observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll), github.Variable{Name: "REGION", Value: "us"})
 	cases := []struct {
 		name         string
+		change       changeplan.LogicalChange
 		responses    []response
 		wantRequests []string
 		wantPrecond  preconditionCheck
@@ -2124,7 +2161,8 @@ func TestExecuteChange_EnvironmentVariables(t *testing.T) {
 		wantResult   changeResult
 	}{
 		{
-			name: "creation in an existing environment without the variable is sent once and completes",
+			name:   "creation in an existing environment without the variable is sent once and completes",
+			change: creation,
 			responses: []response{
 				okRepository(1, false, false), okEnvironments(production), okVariables(), createdVariable(),
 				okRepository(1, false, false), okEnvironments(production), okVariables(githubtest.VariableBody{Name: "REGION", Value: "ap-northeast-1"}),
@@ -2137,18 +2175,46 @@ func TestExecuteChange_EnvironmentVariables(t *testing.T) {
 		},
 		{
 			name:         "creation in an environment absent before the update sends no update request",
+			change:       creation,
 			responses:    []response{okRepository(1, false, false), okEnvironments()},
 			wantRequests: []string{getRepository, getEnvironments},
 			wantPrecond:  preconditionCurrentValueChanged,
 			wantChanged:  creation.Operations[0].Unit,
 			wantResult:   notAttempted,
 		},
+		{
+			name:   "deletion in an existing environment is sent once only to the declared name and completes when the list lacks it",
+			change: environmentVariableDeletionChange(t, "production", approved, "REGION", "us"),
+			responses: []response{
+				okRepository(1, false, false), okEnvironments(production), okVariables(githubtest.VariableBody{Name: "REGION", Value: "us"}, other), noContent(),
+				okRepository(1, false, false), okEnvironments(production), okVariables(other),
+			},
+			wantRequests: []string{getRepository, getEnvironments, getVariables, deleteVariable, getRepository, getEnvironments, getVariables},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
+		{
+			// 作られたばかりの Environment に消す変数はないため、変数への要求を送らず、作成のあとの一覧で存在しないことを確かめる
+			name:   "creation with a declared absence sends only the creation and completes when the list of the created environment lacks the variable",
+			change: environmentCreationWithAbsentVariableChange(t, "production", "REGION"),
+			responses: []response{
+				okRepository(1, false, false), okEnvironments(), okEnvironment(production),
+				okRepository(1, false, false), okEnvironments(production), okVariables(),
+			},
+			wantRequests: []string{getRepository, getEnvironments, putProduction, getRepository, getEnvironments, getVariables},
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			baseURL, server := newSequenceServer(t, tc.responses...)
 
-			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), creation, (&delayRecorder{}).after, &updateInterval{})
+			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, (&delayRecorder{}).after, &updateInterval{})
 
 			// Repository Variables の一覧と更新エンドポイントを宛先にしないことも、要求の並びの一致で確かめる
 			if !slices.Equal(server.RequestLines(), tc.wantRequests) {

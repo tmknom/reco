@@ -169,10 +169,20 @@ repositories:
 | キー | 値 | 意味 |
 |---|---|---|
 | `name` | 文字列（必須） | 変数の名前。半角の英大文字、数字、`_` で書く |
-| `value` | 文字列（必須） | 変数の値 |
+| `value` | 文字列 | 変数の値。`state` を書かない要素では必須 |
+| `state` | `absent` | その名前の変数がないこと。`value` と同時には書けない |
 
 - 書いた名前の変数がなければ、`plan` は作成を示し、`apply` が作る。値が違えば、`plan` は書いた値への変更を示し、`apply` が値を変える
 - 書かなかった変数は、変更も削除もしない。設定ファイルから行を消しても、GitHub 上の変数は残る
+- 変数を消すには、行を消すのではなく、`value` の代わりに `state: absent` を書く。変数があれば、`plan` は削除と消える値を `"<今の値>" -> absent` と示し、`apply` が消す。変数がなければ、変更はない。消えたあとは、その行を設定ファイルから消してよい
+- `value` を書き忘れた要素や `value: ~` は、削除の宣言にならず、設定ファイルの誤りとして拒否する。`state` に書けるのは `absent` だけである
+
+```yaml
+      variables:
+        - name: LEGACY_FLAG
+          state: absent
+```
+
 - GitHub が名前を大文字にして保存するため、reco は小文字を含む名前（`go_version`）を設定ファイルの誤りとして拒否し、`GO_VERSION` と書くよう示す。数字で始まる名前と、`GITHUB_` で始まる名前は書けない
 - 数値、真偽値、日付に見える値は、引用符で囲む。`value: 1.27`、`value: true`、`value: 2026-11-22` は文字列ではないため拒否し、`"1.27"` のように引用符で囲んで書くよう示す
 - 空の値（`value: ""`）は書けない。GitHub が空の値を受け付けないため
@@ -236,9 +246,10 @@ repositories:
             value: us-west-2
 ```
 
-`name` と `value` の書き方と、書かなかった変数を変えないことは、[Repository Variables](#repository-variables) と同じです。
+`name`、`value`、`state: absent` の書き方と、書かなかった変数を変えないことは、[Repository Variables](#repository-variables) と同じです。
 
 - `variables` だけを書いた Environment も、GitHub 上になければ reco が作成し、そのあとに変数を作る
+- GitHub 上にない Environment の中に `state: absent` の変数を書くと、reco は Environment を作成し、作成のあとにその変数がないことを確かめる。作られたばかりの Environment には変数がないため、`plan` は `(environment absent) -> absent` と示し、削除はしない
 - 同じ Environment の `variables` には、同じ名前を二度書けない。別の Environment と `actions.variables` には、同じ名前を書ける
 - `actions.variables` と同じ名前の変数を書いても、別の変数として扱う。片方の値に合わせてもう一方を変えることはない
 

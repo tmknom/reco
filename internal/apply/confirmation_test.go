@@ -207,7 +207,7 @@ func TestConfirmDesiredState_Environments(t *testing.T) {
 	}
 }
 
-// TestConfirmDesiredState_RepositoryVariables は、変数の作成と値の変更の期待状態を、一覧から引いた存在と値で確かめることを確かめる。
+// TestConfirmDesiredState_RepositoryVariables は、変数の作成、値の変更、削除の期待状態を、一覧から引いた存在と値で確かめることを確かめる。
 //
 //trace:checks FR-012
 func TestConfirmDesiredState_RepositoryVariables(t *testing.T) {
@@ -233,6 +233,19 @@ func TestConfirmDesiredState_RepositoryVariables(t *testing.T) {
 			name:      "value change is a mismatch when the variable is absent",
 			change:    variableValueChange(t, "GO_VERSION", "1.26", "1.27"),
 			variables: variables(),
+			want:      desiredStateMismatch,
+		},
+		{
+			name:      "deletion matches when the list lacks the variable",
+			change:    variableDeletionChange(t, "GO_VERSION", "1.26"),
+			variables: variables(github.Variable{Name: "OTHER", Value: "x"}),
+			want:      desiredStateMatches,
+		},
+		{
+			// 削除の要求への成功応答だけでは、存在しないことを確かめたことにならない
+			name:      "deletion is a mismatch when the list still has the variable",
+			change:    variableDeletionChange(t, "GO_VERSION", "1.26"),
+			variables: variables(github.Variable{Name: "GO_VERSION", Value: "1.26"}),
 			want:      desiredStateMismatch,
 		},
 	}
@@ -269,6 +282,39 @@ func TestConfirmDesiredState_EnvironmentVariables(t *testing.T) {
 			observed := github.ObservationResult{RepositoryID: 1, Environments: environments(tc.existing...)}
 			if got, reason := confirmDesiredState(1, change, observed); got != tc.want || reason != tc.wantReason {
 				t.Errorf("confirmDesiredState() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)
+			}
+		})
+	}
+}
+
+// TestConfirmDesiredState_EnvironmentCreationWithAbsentVariable は、作成にまとめた、存在しないことを宣言した変数を、作成のあとの一覧で確かめることを確かめる。
+//
+//trace:checks FR-012
+func TestConfirmDesiredState_EnvironmentCreationWithAbsentVariable(t *testing.T) {
+	change := environmentCreationWithAbsentVariableChange(t, "staging", "DEBUG")
+	cases := []struct {
+		name           string
+		existing       []github.Environment
+		want           desiredStateConfirmation
+		wantMismatched []setting.Unit
+	}{
+		{name: "created environment without the variable matches", existing: []github.Environment{withVariables(observedEnvironment(8, "staging", setting.DeploymentBranchPolicyAll))}, want: desiredStateMatches},
+		{
+			// 作成では先頭の期待値だけでなく、加えた変数の存在しないことも比べる
+			name:           "created environment with the variable does not match by the variable",
+			existing:       []github.Environment{withVariables(observedEnvironment(8, "staging", setting.DeploymentBranchPolicyAll), github.Variable{Name: "DEBUG", Value: "x"})},
+			want:           desiredStateMismatch,
+			wantMismatched: []setting.Unit{change.DesiredState[1].Unit},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := github.ObservationResult{RepositoryID: 1, Environments: environments(tc.existing...)}
+			if got, _ := confirmDesiredState(1, change, observed); got != tc.want {
+				t.Errorf("confirmDesiredState() = %v, want %v", got, tc.want)
+			}
+			if got := mismatchedDesiredSettings(change, observed); !slices.Equal(got, tc.wantMismatched) {
+				t.Errorf("mismatchedDesiredSettings() = %v, want %v", got, tc.wantMismatched)
 			}
 		})
 	}

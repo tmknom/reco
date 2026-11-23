@@ -41,13 +41,40 @@ func TestVariableOperationOf(t *testing.T) {
 		})
 	}
 
+	// 削除は期待値で選び、送る値を持たない。基準は計画時の値である
+	deletions := []struct {
+		name        string
+		unit        setting.Unit
+		anticipated setting.Value
+		wantKind    UpdateOperationKind
+	}{
+		{name: "declared absence of an existing repository variable is a deletion based on the planned value", unit: repositoryUnit, anticipated: setting.VariableValue("1.26"), wantKind: RepositoryVariableDeletion},
+		{name: "declared absence of an empty value is a deletion", unit: repositoryUnit, anticipated: setting.VariableValue(""), wantKind: RepositoryVariableDeletion},
+		{name: "declared absence of an existing environment variable is an environment variable deletion", unit: environmentUnit, anticipated: setting.VariableValue("1.26"), wantKind: EnvironmentVariableDeletion},
+	}
+	for _, tc := range deletions {
+		t.Run(tc.name, func(t *testing.T) {
+			s := SettingPlan{Unit: tc.unit, Desired: setting.Absent(), Result: Mismatch, Applicability: Applicable}
+			want := UpdateOperation{
+				Kind: tc.wantKind, Unit: tc.unit,
+				RelevantSettings: []RelevantSetting{{Unit: tc.unit, AnticipatedValue: github.Observed(tc.anticipated)}},
+			}
+			if got := variableOperationOf(s, github.Observed(tc.anticipated)); !reflect.DeepEqual(got, want) {
+				t.Errorf("variableOperationOf() = %+v, want %+v", got, want)
+			}
+		})
+	}
+
 	panics := []struct {
 		name        string
 		unit        setting.Unit
+		desired     setting.Value
 		anticipated github.SettingObservation[setting.Value]
 	}{
-		{name: "not comparable anticipated value panics", unit: repositoryUnit, anticipated: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
-		{name: "unit other than a variable panics", unit: setting.Unit{Key: setting.AllowAutoMerge}, anticipated: github.Observed(setting.Absent())},
+		{name: "not comparable anticipated value panics", unit: repositoryUnit, desired: desired, anticipated: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
+		{name: "not comparable anticipated value of a declared absence panics", unit: repositoryUnit, desired: setting.Absent(), anticipated: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent)},
+		{name: "declared absence of an absent variable panics", unit: repositoryUnit, desired: setting.Absent(), anticipated: github.Observed(setting.Absent())},
+		{name: "unit other than a variable panics", unit: setting.Unit{Key: setting.AllowAutoMerge}, desired: desired, anticipated: github.Observed(setting.Absent())},
 	}
 	for _, tc := range panics {
 		t.Run(tc.name, func(t *testing.T) {
@@ -56,7 +83,7 @@ func TestVariableOperationOf(t *testing.T) {
 					t.Error("variableOperationOf() did not panic")
 				}
 			}()
-			variableOperationOf(SettingPlan{Unit: tc.unit, Desired: desired, Result: Mismatch, Applicability: Applicable}, tc.anticipated)
+			variableOperationOf(SettingPlan{Unit: tc.unit, Desired: tc.desired, Result: Mismatch, Applicability: Applicable}, tc.anticipated)
 		})
 	}
 }

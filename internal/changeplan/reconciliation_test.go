@@ -267,19 +267,21 @@ func TestReconcile_RepositoryVariables(t *testing.T) {
 	cases := []struct {
 		name         string
 		observed     []github.Variable
-		desired      string
+		desired      setting.Value
 		wantObserved setting.Value
 		wantResult   ReconciliationResult
 	}{
-		{name: "same value is a match", observed: []github.Variable{{Name: "GO_VERSION", Value: "1.27"}}, desired: "1.27", wantObserved: setting.VariableValue("1.27"), wantResult: Match},
-		{name: "different value is a mismatch with the observed value", observed: []github.Variable{{Name: "GO_VERSION", Value: "1.26"}}, desired: "1.27", wantObserved: setting.VariableValue("1.26"), wantResult: Mismatch},
+		{name: "same value is a match", observed: []github.Variable{{Name: "GO_VERSION", Value: "1.27"}}, desired: setting.VariableValue("1.27"), wantObserved: setting.VariableValue("1.27"), wantResult: Match},
+		{name: "different value is a mismatch with the observed value", observed: []github.Variable{{Name: "GO_VERSION", Value: "1.26"}}, desired: setting.VariableValue("1.27"), wantObserved: setting.VariableValue("1.26"), wantResult: Mismatch},
+		{name: "declared absence of an existing variable is a mismatch with the observed value", observed: []github.Variable{{Name: "GO_VERSION", Value: "1.26"}}, desired: setting.Absent(), wantObserved: setting.VariableValue("1.26"), wantResult: Mismatch},
+		{name: "declared absence of an absent variable is a match", observed: []github.Variable{{Name: "OTHER", Value: "x"}}, desired: setting.Absent(), wantObserved: setting.Absent(), wantResult: Match},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			unit := variableUnit(t, "GO_VERSION")
-			desired := configuration.DesiredState{RepositoryVariables: []configuration.VariableDeclaration{{Name: unit.Variable, Desired: setting.VariableValue(tc.desired)}}}
+			desired := configuration.DesiredState{RepositoryVariables: []configuration.VariableDeclaration{{Name: unit.Variable, Desired: tc.desired}}}
 			observed := github.ObservationResult{RepositoryVariables: &github.Variables{Existing: tc.observed}}
-			want := []SettingPlan{{Unit: unit, Observed: github.Observed(tc.wantObserved), Desired: setting.VariableValue(tc.desired), Result: tc.wantResult}}
+			want := []SettingPlan{{Unit: unit, Observed: github.Observed(tc.wantObserved), Desired: tc.desired, Result: tc.wantResult}}
 			if got := reconcile(desired, observed); !reflect.DeepEqual(got, want) {
 				t.Errorf("reconcile() = %+v, want %+v", got, want)
 			}
@@ -477,6 +479,29 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 			want: []SettingPlan{
 				creation,
 				{Unit: environmentVariableUnit(production, region), Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.VariableValue("eu"), Result: NotComparable},
+			},
+		},
+		{
+			name: "declared absences in an existing environment are a mismatch for an existing variable and a match for an absent one",
+			declared: configuration.EnvironmentDeclaration{Name: production, Variables: []configuration.VariableDeclaration{
+				{Name: region, Desired: setting.Absent()},
+				{Name: debug, Desired: setting.Absent()},
+			}},
+			observed: []github.Environment{withVariables(existing("production", all), github.Variable{Name: "REGION", Value: "us"})},
+			want: []SettingPlan{
+				matchedExistence,
+				{Unit: environmentVariableUnit(production, region), Observed: github.Observed(setting.VariableValue("us")), Desired: setting.Absent(), Result: Mismatch},
+				{Unit: environmentVariableUnit(production, debug), Observed: github.Observed(setting.Absent()), Desired: setting.Absent(), Result: Match},
+			},
+		},
+		{
+			// 属する先がなく読み取れなかった存在を、確かめた事実として一致にしない (ドメインモデルの存在の観測)
+			name:     "declared absence in an absent environment is not comparable because the environment is absent",
+			declared: configuration.EnvironmentDeclaration{Name: production, Variables: []configuration.VariableDeclaration{{Name: region, Desired: setting.Absent()}}},
+			observed: nil,
+			want: []SettingPlan{
+				creation,
+				{Unit: environmentVariableUnit(production, region), Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.Absent(), Result: NotComparable},
 			},
 		},
 	}
