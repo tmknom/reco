@@ -237,6 +237,17 @@ func variableValueChange(t *testing.T, name, observed, desired string) changepla
 	return onlyLogicalChange(t, newRepositoryPlan(t, variableMismatch(t, name, setting.VariableValue(observed), desired)))
 }
 
+// variableDeletionChange は、計画時に値 observed と観測した name の Repository Variable を、存在しないことの宣言に基づいて削除する論理的な設定変更。
+// 期待値が存在しないことで、値を持つ期待値の変更予定とは作る状態が違うため、variableMismatch を使わない。
+// 変更前提の基準を手で写さず、changeplan が導いた論理的な設定変更を使う。
+func variableDeletionChange(t *testing.T, name, observed string) changeplan.LogicalChange {
+	t.Helper()
+	return onlyLogicalChange(t, newRepositoryPlan(t, changeplan.SettingPlan{
+		Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, name)}, Observed: github.Observed(setting.VariableValue(observed)),
+		Desired: setting.Absent(), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+	}))
+}
+
 // environmentVariablePlan は、宣言の名前 environment の Environment の、宣言の名前 name の Environment Variable を、
 // 計画時の観測結果 observed から値 desired にする変更予定。result は observed から決まる照合結果である。
 func environmentVariablePlan(t *testing.T, environment, name string, observed github.SettingObservation[setting.Value], desired string, result changeplan.ReconciliationResult) changeplan.SettingPlan {
@@ -258,6 +269,40 @@ func environmentVariableValueChange(t *testing.T, environment string, approved g
 			EnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID), Result: changeplan.Match, Applicability: changeplan.Applicable,
 		},
 		environmentVariablePlan(t, environment, name, github.Observed(setting.VariableValue(observed)), desired, changeplan.Mismatch),
+	))
+}
+
+// environmentVariableDeletionChange は、計画時に approved と観測した、宣言の名前 environment の Environment の Environment Variable name を、
+// 計画時の値 observed から存在しないことの宣言に基づいて削除する論理的な設定変更。approved は name を値 observed で持つ。
+// 変更前提の基準を手で写さず、changeplan が導いた論理的な設定変更を使う。
+func environmentVariableDeletionChange(t *testing.T, environment string, approved github.Environment, name, observed string) changeplan.LogicalChange {
+	t.Helper()
+	return onlyLogicalChange(t, newRepositoryPlan(t,
+		changeplan.SettingPlan{
+			Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, environment)}, Observed: github.Observed(setting.Present()), Desired: setting.Present(),
+			EnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID), Result: changeplan.Match, Applicability: changeplan.Applicable,
+		},
+		changeplan.SettingPlan{
+			Unit:     setting.Unit{Key: setting.EnvironmentVariable, Environment: mustEnvironmentName(t, environment), Variable: mustVariableName(t, name)},
+			Observed: github.Observed(setting.VariableValue(observed)), Desired: setting.Absent(), Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+		},
+	))
+}
+
+// environmentCreationWithAbsentVariableChange は、計画時に存在しなかった environment の Environment を作成し、その中で存在しないことを宣言した Environment Variable name が
+// 作成のあとに存在しないことを確かめる論理的な設定変更。変数への更新操作は持たない。
+// 期待状態を手で写さず、changeplan がまとめたものを使う。
+func environmentCreationWithAbsentVariableChange(t *testing.T, environment, name string) changeplan.LogicalChange {
+	t.Helper()
+	return onlyLogicalChange(t, newRepositoryPlan(t,
+		changeplan.SettingPlan{
+			Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, environment)}, Observed: github.Observed(setting.Absent()), Desired: setting.Present(),
+			Result: changeplan.Mismatch, Applicability: changeplan.Applicable,
+		},
+		changeplan.SettingPlan{
+			Unit:     setting.Unit{Key: setting.EnvironmentVariable, Environment: mustEnvironmentName(t, environment), Variable: mustVariableName(t, name)},
+			Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.Absent(), Result: changeplan.NotComparable, Applicability: changeplan.Applicable,
+		},
 	))
 }
 

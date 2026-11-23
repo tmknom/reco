@@ -216,6 +216,7 @@ Environment Variables のエンドポイントのパスの `environment_name` �
 >
 > - 削除の応答：`204` を返し、本文はなかった。直後の取得は `404` で、直後の一覧は削除した変数を含まなかった
 > - 削除済みの変数：同じ名前への2回目の削除は `404` を返し、本文は `{}` だった
+> - 削除の直後の一覧：Repository Variable と Environment Variable の削除を、公開・非公開のリポジトリで合わせて10回送り、`204` の直後に読んだ一覧は、どの回も削除した変数を含まなかった
 
 | Relationship | Target | Target Type |
 |---|---|---|

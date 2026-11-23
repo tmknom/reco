@@ -79,6 +79,8 @@ reco で変えた設定を元の値に戻すには、設定ファイルにその
 
 `environments` から名前を消しても、GitHub 上の Environment は残ります。reco が作成した Environment も同じです。不要な Environment は、GitHub の「Environments」ページで消します。
 
+Repository Variables と Environment Variables も、行を消しただけでは GitHub 上に残ります。変数を消すときは、行を消す前に `value` を `state: absent` に書き換えて `apply` します。`plan` が消える値を示すので、戻す可能性があるなら控えておきます。消えたことを確かめたら、その行を消して管理をやめられます（[Configuration](configuration.md) の Repository Variables）。
+
 ## References
 
 - [CLI 仕様](../spec/cli.md)：`--repo` で選べるリポジトリと、設定ファイル全体の検証（2.2節、2.3節）、変更計画の表示（4章）、更新の順序と、完了しなかったリポジトリのあとの扱い（5.1節）、`show`（6章）

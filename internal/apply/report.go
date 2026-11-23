@@ -186,8 +186,8 @@ func updateRequestLines(record changeRecord) []string {
 func updateRequestLabel(operation changeplan.UpdateOperation, patterns []setting.DeploymentPattern) string {
 	switch operation.Kind {
 	case changeplan.SettingUpdate, changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate,
-		changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate,
-		changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate:
+		changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate, changeplan.RepositoryVariableDeletion,
+		changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate, changeplan.EnvironmentVariableDeletion:
 		return operation.Unit.String()
 	case changeplan.MergeMethodsUpdate:
 		// マージ方式をまとめた論理的な設定変更は更新操作が一つで、Update request の行に対象を示さないため、ここに届かない

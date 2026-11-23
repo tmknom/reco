@@ -384,15 +384,20 @@ func TestRepositoryPlan_LogicalChangesOfRepositoryVariables(t *testing.T) {
 	valueChange := SettingPlan{Unit: variableUnit(t, "ALPHA"), Observed: github.Observed(setting.VariableValue("1")), Desired: setting.VariableValue("2"), Result: Mismatch, Applicability: Applicable}
 	// 値が一致した変数は、変更予定がないため論理的な設定変更にならない
 	matched := SettingPlan{Unit: variableUnit(t, "MATCHED"), Observed: github.Observed(setting.VariableValue("m")), Desired: setting.VariableValue("m"), Result: Match}
-	plan := RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: []SettingPlan{mismatch, creation, matched, valueChange}}
+	deletion := SettingPlan{Unit: variableUnit(t, "LEGACY"), Observed: github.Observed(setting.VariableValue("old")), Desired: setting.Absent(), Result: Mismatch, Applicability: Applicable}
+	plan := RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: []SettingPlan{mismatch, creation, deletion, matched, valueChange}}
 
 	got, err := plan.LogicalChanges()
 	if err != nil {
 		t.Fatalf("LogicalChanges() error = %v", err)
 	}
+	// 削除も宣言の並びのまま変数ごとに一つで、期待状態は存在しないことである
 	want := []LogicalChange{
 		{DesiredState: []DesiredSetting{{Unit: mismatch.Unit, Value: mismatch.Desired}}, Operations: []UpdateOperation{operationOf(mismatch)}},
 		{DesiredState: []DesiredSetting{{Unit: creation.Unit, Value: creation.Desired}}, Operations: []UpdateOperation{variableOperationOf(creation, creation.Observed)}},
+		{DesiredState: []DesiredSetting{{Unit: deletion.Unit, Value: setting.Absent()}}, Operations: []UpdateOperation{{
+			Kind: RepositoryVariableDeletion, Unit: deletion.Unit, RelevantSettings: []RelevantSetting{{Unit: deletion.Unit, AnticipatedValue: deletion.Observed}},
+		}}},
 		{DesiredState: []DesiredSetting{{Unit: valueChange.Unit, Value: valueChange.Desired}}, Operations: []UpdateOperation{variableOperationOf(valueChange, valueChange.Observed)}},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -414,6 +419,8 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 	stagingEnvironment := RelevantSetting{Unit: stagingExistence.Unit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedIdentity: ObservedEnvironmentIdentity(7)}
 	productionUnit := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
 	productionCreation := SettingPlan{Unit: productionUnit, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch, Applicability: Applicable}
+	dev := mustEnvironmentName(t, "dev")
+	devUnit := setting.Unit{Key: setting.EnvironmentResource, Environment: dev}
 	variablePlan := func(unit setting.Unit, observed github.SettingObservation[setting.Value], result ReconciliationResult) SettingPlan {
 		return SettingPlan{Unit: unit, Observed: observed, Desired: setting.VariableValue("eu"), Result: result, Applicability: Applicable}
 	}
@@ -450,6 +457,62 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 				variableChange(EnvironmentVariableCreation, environmentVariableUnit(production, region), RelevantSetting{Unit: environmentVariableUnit(production, region), AnticipatedValue: absentVariable}),
 				variableChange(EnvironmentVariableCreation, environmentVariableUnit(production, debug), RelevantSetting{Unit: environmentVariableUnit(production, debug), AnticipatedValue: absentVariable}),
 			},
+		},
+		{
+			name: "deletion in an existing environment is based on the environment and then the planned value",
+			settings: []SettingPlan{stagingExistence, {
+				Unit: environmentVariableUnit(staging, region), Observed: github.Observed(setting.VariableValue("us")), Desired: setting.Absent(), Result: Mismatch, Applicability: Applicable,
+			}},
+			want: []LogicalChange{{
+				DesiredState: []DesiredSetting{{Unit: environmentVariableUnit(staging, region), Value: setting.Absent()}},
+				Operations: []UpdateOperation{{Kind: EnvironmentVariableDeletion, Unit: environmentVariableUnit(staging, region), RelevantSettings: []RelevantSetting{
+					stagingEnvironment, {Unit: environmentVariableUnit(staging, region), AnticipatedValue: github.Observed(setting.VariableValue("us"))},
+				}}},
+			}},
+		},
+		{
+			// 作られたばかりの Environment には消す変数がないため、存在しないことを作成の期待状態に加え、作成のあとの観測で確かめる
+			name: "declared absence in an environment to create joins the desired state of that creation without an update operation",
+			settings: []SettingPlan{
+				productionCreation,
+				variablePlan(environmentVariableUnit(production, region), github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), NotComparable),
+				{Unit: environmentVariableUnit(production, debug), Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.Absent(), Result: NotComparable, Applicability: Applicable},
+				{Unit: devUnit, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch, Applicability: Applicable},
+				{Unit: environmentVariableUnit(dev, region), Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.Absent(), Result: NotComparable, Applicability: Applicable},
+			},
+			want: []LogicalChange{
+				{
+					DesiredState: []DesiredSetting{{Unit: productionUnit, Value: setting.Present()}, {Unit: environmentVariableUnit(production, debug), Value: setting.Absent()}},
+					Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: productionUnit, RelevantSettings: []RelevantSetting{{Unit: productionUnit, AnticipatedValue: github.Observed(setting.Absent())}}}},
+				},
+				variableChange(EnvironmentVariableCreation, environmentVariableUnit(production, region), RelevantSetting{Unit: environmentVariableUnit(production, region), AnticipatedValue: absentVariable}),
+				{
+					DesiredState: []DesiredSetting{{Unit: devUnit, Value: setting.Present()}, {Unit: environmentVariableUnit(dev, region), Value: setting.Absent()}},
+					Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: devUnit, RelevantSettings: []RelevantSetting{{Unit: devUnit, AnticipatedValue: github.Observed(setting.Absent())}}}},
+				},
+			},
+		},
+		{
+			name: "declared absence follows the deployment branch policy in the desired state of a creation with a mode",
+			settings: []SettingPlan{
+				productionCreation,
+				{
+					Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
+					Desired: setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}), Result: NotComparable, Applicability: Applicable,
+				},
+				{Unit: environmentVariableUnit(production, debug), Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.Absent(), Result: NotComparable, Applicability: Applicable},
+			},
+			want: []LogicalChange{{
+				DesiredState: []DesiredSetting{
+					{Unit: productionUnit, Value: setting.Present()},
+					{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Value: setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll})},
+					{Unit: environmentVariableUnit(production, debug), Value: setting.Absent()},
+				},
+				Operations: []UpdateOperation{{
+					Kind: EnvironmentCreationWithMode, Unit: productionUnit, Mode: setting.DeploymentBranchPolicyAll,
+					RelevantSettings: []RelevantSetting{{Unit: productionUnit, AnticipatedValue: github.Observed(setting.Absent())}},
+				}},
+			}},
 		},
 	}
 	for _, tc := range cases {

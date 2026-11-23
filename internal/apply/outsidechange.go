@@ -41,8 +41,8 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.O
 			changes = append(changes, environmentProtectionChanges(operation.Unit.Environment, b, after)...)
 			continue
 		case changeplan.DeploymentPatternAddition, changeplan.DeploymentPatternRemoval,
-			changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate,
-			changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate:
+			changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate, changeplan.RepositoryVariableDeletion,
+			changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate, changeplan.EnvironmentVariableDeletion:
 			continue
 		}
 		panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))

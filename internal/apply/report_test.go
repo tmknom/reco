@@ -851,7 +851,7 @@ func TestWriteChangeReport_DeploymentPatterns(t *testing.T) {
 
 	t.Run("undefined kind of an update operation panics", func(t *testing.T) {
 		change := deploymentPatternsChange(t, "production", selectedEnvironment(7, "production", []setting.DeploymentPattern{main}, 10), selectedPolicy(main, release, version))
-		change.Operations[0].Kind = changeplan.EnvironmentVariableValueUpdate + 1
+		change.Operations[0].Kind = changeplan.EnvironmentVariableDeletion + 1
 		defer func() {
 			if recover() == nil {
 				t.Error("updateRequestLines() did not panic")
@@ -878,6 +878,29 @@ func TestWriteChangeReport_RepositoryVariables(t *testing.T) {
 		"    actions.variables.GO_VERSION: updated\n" +
 		"    actions.variables.NODE_VERSION: failed\n      Update request: rejected\n      Desired state: not checked\n" +
 		"    actions.variables.RUBY_VERSION: not attempted\n      Stopped: a preceding change did not complete\n" +
+		"\nNote: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.\n"
+	if out.String() != want {
+		t.Errorf("writeChangeReport() wrote %q, want %q", out.String(), want)
+	}
+}
+
+// TestWriteChangeReport_RepositoryVariableDeletions は、削除の変更結果も名前だけで示し、失われる値を示さないことを確かめる。
+// 期待値は CLI 仕様の apply の Repository Variable の削除の記述から導く。
+//
+//trace:checks INV-005 FR-013 QR-002
+func TestWriteChangeReport_RepositoryVariableDeletions(t *testing.T) {
+	changed := setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, "OLD_FLAG")}
+	records := []changeRecord{
+		completedRecord(variableDeletionChange(t, "LEGACY", "s3cr3t-deleted")),
+		{change: variableDeletionChange(t, "OLD_FLAG", "s3cr3t-approved"), operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: changed}}},
+	}
+	var out bytes.Buffer
+	if err := writeChangeReport(&out, []repositoryRecord{{target: mustReference(t, "owner/repo"), changes: records}}); err != nil {
+		t.Fatalf("writeChangeReport() error = %v", err)
+	}
+	want := "  owner/repo\n" +
+		"    actions.variables.LEGACY: updated\n" +
+		"    actions.variables.OLD_FLAG: not attempted\n      Precondition: actions.variables.OLD_FLAG changed since approval\n" +
 		"\nNote: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.\n"
 	if out.String() != want {
 		t.Errorf("writeChangeReport() wrote %q, want %q", out.String(), want)
@@ -922,6 +945,19 @@ func TestWriteChangeReport_EnvironmentVariables(t *testing.T) {
 				operations: []operationRecord{{precondition: preconditionCurrentValueChanged, changedSetting: region}},
 			}},
 			want: "  example/project-a: not attempted\n    Precondition: environments.production.variables.REGION changed since approval\n",
+		},
+		{
+			// 承認したのは作成で、削除と失われる値を示していないため、作成のあとに見つかった変数を消さずに不一致として示す
+			name: "creation with a declared absence whose variable exists afterwards names the variable that does not match",
+			records: []changeRecord{{
+				change: environmentCreationWithAbsentVariableChange(t, "staging", "DEBUG"), operations: []operationRecord{started(github.UpdateSucceeded)},
+				confirmation:       desiredStateMismatch,
+				mismatchedSettings: []setting.Unit{{Key: setting.EnvironmentVariable, Environment: mustEnvironmentName(t, "staging"), Variable: mustVariableName(t, "DEBUG")}},
+			}},
+			want: "  example/project-a: failed\n" +
+				"    Update request: succeeded\n" +
+				"    Desired state: does not match (environments.staging.variables.DEBUG)\n" +
+				"\nNote: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.\n",
 		},
 	}
 	for _, tc := range cases {
@@ -988,6 +1024,7 @@ func TestUpdateRequestLabel_EnvironmentVariables(t *testing.T) {
 	}{
 		{name: "creation is named by the variable", operation: createdEnvironmentVariableChange(t, "production", "REGION", "a").Operations[0]},
 		{name: "value change is named by the variable", operation: environmentVariableValueChange(t, "production", approved, "REGION", "a", "b").Operations[0]},
+		{name: "deletion is named by the variable", operation: environmentVariableDeletionChange(t, "production", approved, "REGION", "a").Operations[0]},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

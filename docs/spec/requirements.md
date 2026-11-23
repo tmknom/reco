@@ -40,8 +40,8 @@ GitHub 上に実際に存在する設定を現在状態（Current State）と呼
 | 関連リソース | 作成 | 管理する値・設定 | 存在しないことの宣言による削除 |
 |---|---|---|---|
 | Environment | 行う | デプロイできるブランチとタグの制限の方式と、個別に指定するブランチとタグのパターン | 行わない |
-| Repository Variable | 行う | 値 | 行わない |
-| Environment Variable | 行う | 値 | 行わない |
+| Repository Variable | 行う | 値 | 行う |
+| Environment Variable | 行う | 値 | 行う |
 
 ### サポート対象外
 

@@ -28,8 +28,9 @@ func (r RepositoryPlan) environmentChangeOf(s SettingPlan) (LogicalChange, bool)
 	panic(fmt.Sprintf("changeplan: %s has no environment plan to pair with", s.Unit.String()))
 }
 
-// creationOf は、Environment の作成の変更予定 s と、同じ名前のデプロイ元制限の変更予定を一つにまとめた論理的な設定変更を返す。
-// 存在しない Environment の方式を基準に載せないのは、存在しないことの基準が成立すれば同じ理由の観測不能に必ずなり、確かめる条件が重なるため。
+// creationOf は、Environment の作成の変更予定 s と、同じ名前のデプロイ元制限の変更予定と、同じ名前の Environment の中で存在しないことを宣言した変数の変更予定を、
+// 一つにまとめた論理的な設定変更を返す。期待状態は、Environment、方式、存在しないことを宣言した変数 (計画の並び) の順である。
+// 存在しない Environment の方式と変数を基準に載せないのは、存在しないことの基準が成立すれば同じ理由の観測不能に必ずなり、確かめる条件が重なるため。
 // 作成でない Environment の変更予定と、存在しないことを理由にした比較不能でない方式との組は、reconcile と judgeApplicability が作らないため、
 // 不変条件の破れとして panic する。
 func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
@@ -38,18 +39,25 @@ func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
 	}
 	change := LogicalChange{DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}}}
 	existence := []RelevantSetting{s.existenceBasis()}
-	policy, ok := r.settingPlanOf(setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: s.Unit.Environment})
+	// 方式の単位は作成の綴りで作り、期待状態と更新操作が作成と同じ綴りの名前を示すようにする
+	policyUnit := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: s.Unit.Environment}
+	policy, ok := r.settingPlanOf(policyUnit)
+	if ok && !isOfAbsentEnvironment(policy) {
+		panic(fmt.Sprintf("changeplan: creation of %s is paired with %s that is not of an absent environment", s.Unit.String(), policy.Unit.String()))
+	}
+	if ok {
+		change.DesiredState = append(change.DesiredState, DesiredSetting{Unit: policyUnit, Value: policy.Desired})
+	}
+	for _, variable := range r.Settings {
+		if isDeclaredAbsentInAbsentEnvironment(variable) && variable.Unit.Environment.EqualFold(s.Unit.Environment) {
+			change.DesiredState = append(change.DesiredState, DesiredSetting{Unit: variable.Unit, Value: variable.Desired})
+		}
+	}
 	if !ok {
 		change.Operations = []UpdateOperation{{Kind: EnvironmentCreation, Unit: s.Unit, RelevantSettings: existence}}
 		return change
 	}
-	if !isOfAbsentEnvironment(policy) {
-		panic(fmt.Sprintf("changeplan: creation of %s is paired with %s that is not of an absent environment", s.Unit.String(), policy.Unit.String()))
-	}
-	// 方式の単位は作成の綴りで作り、期待状態と更新操作が作成と同じ綴りの名前を示すようにする
-	policyUnit := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: s.Unit.Environment}
 	desired := policy.Desired.DeploymentBranchPolicy()
-	change.DesiredState = append(change.DesiredState, DesiredSetting{Unit: policyUnit, Value: policy.Desired})
 	change.Operations = []UpdateOperation{{Kind: EnvironmentCreationWithMode, Unit: s.Unit, Mode: desired.Mode, RelevantSettings: existence}}
 	if desired.Mode != setting.DeploymentBranchPolicySelected {
 		return change
@@ -62,17 +70,20 @@ func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
 // environmentVariableOperationOf は、Environment Variable の変更予定 s の更新操作を、同じ名前の Environment の存在の計画と組んで返す。
 // 基準は Environments の設計の論理的な設定変更と更新操作に従い、計画時に存在した Environment では Environment、変数の順、
 // 同じ変更計画が作成する Environment では変数が存在しないことだけである。
+// 作成する Environment の中で存在しないことを宣言した変数は、更新操作を持たずに作成の期待状態に加わるため (creationOf)、偽を返す。
 // 対にならない形 (存在の計画のない変数、存在が一致なのに比較不能な変数、作成なのに不一致の変数) は、
 // reconcile と judgeApplicability が作らないため、不変条件の破れとして panic する。
-func (r RepositoryPlan) environmentVariableOperationOf(s SettingPlan) UpdateOperation {
+func (r RepositoryPlan) environmentVariableOperationOf(s SettingPlan) (UpdateOperation, bool) {
 	existence, ok := r.settingPlanOf(setting.Unit{Key: setting.EnvironmentResource, Environment: s.Unit.Environment})
 	switch {
 	case ok && existence.Result == Match && s.Result == Mismatch:
 		operation := variableOperationOf(s, s.Observed)
 		operation.RelevantSettings = append([]RelevantSetting{existence.existenceBasis()}, operation.RelevantSettings...)
-		return operation
+		return operation, true
+	case ok && existence.IsEnvironmentCreation() && isDeclaredAbsentInAbsentEnvironment(s):
+		return UpdateOperation{}, false
 	case ok && existence.IsEnvironmentCreation() && isOfAbsentEnvironment(s):
-		return variableOperationOf(s, github.Observed(setting.Absent()))
+		return variableOperationOf(s, github.Observed(setting.Absent())), true
 	}
 	panic(fmt.Sprintf("changeplan: %s has no environment plan to pair with", s.Unit.String()))
 }
@@ -132,4 +143,9 @@ func (s SettingPlan) existenceBasis() RelevantSetting {
 // isOfAbsentEnvironment は、s が、属する Environment が存在しないことを理由に比較不能な、方式か変数の計画かを返す。
 func isOfAbsentEnvironment(s SettingPlan) bool {
 	return s.Result == NotComparable && s.Observed.UnavailableReason() == github.UnavailableEnvironmentAbsent
+}
+
+// isDeclaredAbsentInAbsentEnvironment は、s が、属する Environment が存在しないことを理由に比較不能な、存在しないことを宣言した変数の計画かを返す。
+func isDeclaredAbsentInAbsentEnvironment(s SettingPlan) bool {
+	return s.Unit.Key == setting.EnvironmentVariable && isOfAbsentEnvironment(s) && s.Desired.Equal(setting.Absent())
 }

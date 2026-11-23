@@ -483,7 +483,7 @@ func TestCheckPrecondition_Environments(t *testing.T) {
 	}
 }
 
-// TestCheckPrecondition_RepositoryVariables は、変数の作成と値の変更の変更前提を、一覧から引いた存在と値で確かめることを確かめる。
+// TestCheckPrecondition_RepositoryVariables は、変数の作成、値の変更、削除の変更前提を、一覧から引いた存在と値で確かめることを確かめる。
 //
 //trace:checks INV-001 INV-004 FR-010
 func TestCheckPrecondition_RepositoryVariables(t *testing.T) {
@@ -528,6 +528,21 @@ func TestCheckPrecondition_RepositoryVariables(t *testing.T) {
 			want:        preconditionCurrentValueChanged,
 			wantChanged: goVersion,
 		},
+		{
+			// 承認の前に示していない値を失わせない
+			name:        "deletion with another value since approval is a change of the variable",
+			change:      variableDeletionChange(t, "GO_VERSION", "1.26"),
+			variables:   variables(github.Variable{Name: "GO_VERSION", Value: "1.27"}),
+			want:        preconditionCurrentValueChanged,
+			wantChanged: goVersion,
+		},
+		{
+			name:        "deletion with the variable deleted since approval is a change of the variable",
+			change:      variableDeletionChange(t, "GO_VERSION", "1.26"),
+			variables:   variables(),
+			want:        preconditionCurrentValueChanged,
+			wantChanged: goVersion,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -540,7 +555,7 @@ func TestCheckPrecondition_RepositoryVariables(t *testing.T) {
 	}
 }
 
-// TestCheckPrecondition_EnvironmentVariables は、Environment Variable の作成と値の変更の変更前提を、
+// TestCheckPrecondition_EnvironmentVariables は、Environment Variable の作成、値の変更、削除の変更前提を、
 // 計画時に存在した Environment では Environment の存在と ID、変数の順に、同じ変更計画が作成した Environment では変数が存在しないことだけで確かめることを確かめる。
 //
 //trace:checks INV-001 INV-004 FR-010
@@ -552,6 +567,7 @@ func TestCheckPrecondition_EnvironmentVariables(t *testing.T) {
 	approved := withVariables(observedEnvironment(7, "Production", setting.DeploymentBranchPolicyAll), planned)
 	valueChange := environmentVariableValueChange(t, "production", approved, "REGION", "ap-northeast-1", "ap-northeast-3")
 	creation := createdEnvironmentVariableChange(t, "production", "REGION", "ap-northeast-1")
+	deletion := environmentVariableDeletionChange(t, "production", approved, "REGION", "ap-northeast-1")
 	cases := []struct {
 		name        string
 		change      changeplan.LogicalChange
@@ -586,6 +602,14 @@ func TestCheckPrecondition_EnvironmentVariables(t *testing.T) {
 			existing:    []github.Environment{withVariables(observedEnvironment(7, "Production", setting.DeploymentBranchPolicyAll), github.Variable{Name: "REGION", Value: "us-east-1"})},
 			want:        preconditionCurrentValueChanged,
 			wantChanged: region,
+		},
+		{
+			// 作り直された Environment の同じ名前と値の変数は、承認した削除の相手ではない
+			name:        "deletion in an environment recreated with another ID is a change of the environment even if the value is as planned",
+			change:      deletion,
+			existing:    []github.Environment{withVariables(observedEnvironment(8, "Production", setting.DeploymentBranchPolicyAll), planned)},
+			want:        preconditionCurrentValueChanged,
+			wantChanged: existence,
 		},
 		{
 			name:     "creation in a created environment holds when the environment exists without the variable",

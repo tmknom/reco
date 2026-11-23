@@ -87,7 +87,85 @@ func TestUpdateRepositoryVariableValue(t *testing.T) {
 	}
 }
 
-// TestRepositoryVariableUpdateOutcome は、変数の作成と値の変更の応答から成否を判定し、再送せず、error に値を含めないことを確かめる。
+// TestDeleteRepositoryVariable は、削除が宣言された名前1つの URL へ、本文も Content-Type もなしで DELETE を一度だけ送ることを確かめる。
+//
+//trace:checks INV-001 FR-011
+func TestDeleteRepositoryVariable(t *testing.T) {
+	var received atomic.Int32
+	var gotMethod, gotPath, gotRawQuery string
+	var gotHeader http.Header
+	var gotBody []byte
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		received.Add(1)
+		gotMethod, gotPath, gotRawQuery, gotHeader = r.Method, r.URL.EscapedPath(), r.URL.RawQuery, r.Header.Clone()
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	outcome, err := c.DeleteRepositoryVariable(t.Context(), mustReference(t, "owner/repo"), mustVariableName(t, "GO_VERSION"))
+	if err != nil || outcome != UpdateSucceeded {
+		t.Fatalf("DeleteRepositoryVariable() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+	}
+
+	if n := received.Load(); n != 1 {
+		t.Errorf("server received %d requests, want 1", n)
+	}
+	if gotMethod != http.MethodDelete || gotPath != "/repos/owner/repo/actions/variables/GO_VERSION" || gotRawQuery != "" {
+		t.Errorf("request = %s %s?%s, want DELETE /repos/owner/repo/actions/variables/GO_VERSION without a query", gotMethod, gotPath, gotRawQuery)
+	}
+	if len(gotBody) != 0 {
+		t.Errorf("request body = %q, want empty", gotBody)
+	}
+	if _, ok := gotHeader["Content-Type"]; ok {
+		t.Errorf("Content-Type = %q, want none", gotHeader.Get("Content-Type"))
+	}
+}
+
+//trace:checks INV-001 FR-011
+func TestDeleteEnvironmentVariable(t *testing.T) {
+	t.Run("deletes the variable at the escaped environment path without a body", func(t *testing.T) {
+		var received atomic.Int32
+		var gotMethod, gotPath string
+		var gotHeader http.Header
+		var gotBody []byte
+		c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			received.Add(1)
+			gotMethod, gotPath, gotHeader = r.Method, r.URL.EscapedPath(), r.Header.Clone()
+			gotBody, _ = io.ReadAll(r.Body)
+			w.WriteHeader(http.StatusNoContent)
+		})
+
+		outcome, err := c.DeleteEnvironmentVariable(t.Context(), mustReference(t, "owner/repo"), "a/b c", mustVariableName(t, "REGION"))
+		if err != nil || outcome != UpdateSucceeded {
+			t.Fatalf("DeleteEnvironmentVariable() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+		}
+		if n := received.Load(); n != 1 {
+			t.Errorf("server received %d requests, want 1", n)
+		}
+		if gotMethod != http.MethodDelete || gotPath != "/repos/owner/repo/environments/a%2Fb%20c/variables/REGION" {
+			t.Errorf("request = %s %s, want DELETE /repos/owner/repo/environments/a%%2Fb%%20c/variables/REGION", gotMethod, gotPath)
+		}
+		if len(gotBody) != 0 {
+			t.Errorf("request body = %q, want empty", gotBody)
+		}
+		if _, ok := gotHeader["Content-Type"]; ok {
+			t.Errorf("Content-Type = %q, want none", gotHeader.Get("Content-Type"))
+		}
+	})
+
+	t.Run("unaddressable environment name panics without sending a request", func(t *testing.T) {
+		var received atomic.Int32
+		c := newTestClient(t, func(http.ResponseWriter, *http.Request) { received.Add(1) })
+		assertPanics(t, func() {
+			_, _ = c.DeleteEnvironmentVariable(t.Context(), mustReference(t, "owner/repo"), ".", mustVariableName(t, "REGION"))
+		})
+		if n := received.Load(); n != 0 {
+			t.Errorf("server received %d requests, want 0", n)
+		}
+	})
+}
+
+// TestRepositoryVariableUpdateOutcome は、変数の作成、値の変更、削除の応答から成否を判定し、再送せず、error に値を含めないことを確かめる。
 //
 //trace:checks FR-013 INV-005
 func TestRepositoryVariableUpdateOutcome(t *testing.T) {
@@ -97,6 +175,9 @@ func TestRepositoryVariableUpdateOutcome(t *testing.T) {
 	}
 	update := func(c *Client, t *testing.T) (UpdateOutcome, error) {
 		return c.UpdateRepositoryVariableValue(t.Context(), mustReference(t, "example/project-a"), mustVariableName(t, "GO_VERSION"), value)
+	}
+	remove := func(c *Client, t *testing.T) (UpdateOutcome, error) {
+		return c.DeleteRepositoryVariable(t.Context(), mustReference(t, "example/project-a"), mustVariableName(t, "GO_VERSION"))
 	}
 	cases := []struct {
 		name        string
@@ -110,6 +191,8 @@ func TestRepositoryVariableUpdateOutcome(t *testing.T) {
 		{name: "creation 200 is outcome unknown", send: create, status: http.StatusOK, wantOutcome: UpdateUnknown, wantPrefix: `create repository variable "GO_VERSION" example/project-a: `},
 		{name: "value update 404 is rejected", send: update, status: http.StatusNotFound, wantOutcome: UpdateRejected, wantErr: ErrNotFound, wantPrefix: `update repository variable "GO_VERSION" example/project-a: `},
 		{name: "value update 200 is outcome unknown", send: update, status: http.StatusOK, wantOutcome: UpdateUnknown, wantPrefix: `update repository variable "GO_VERSION" example/project-a: `},
+		{name: "deletion 404 is rejected", send: remove, status: http.StatusNotFound, wantOutcome: UpdateRejected, wantErr: ErrNotFound, wantPrefix: `delete repository variable "GO_VERSION" example/project-a: `},
+		{name: "deletion 200 is outcome unknown", send: remove, status: http.StatusOK, wantOutcome: UpdateUnknown, wantPrefix: `delete repository variable "GO_VERSION" example/project-a: `},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -211,7 +294,7 @@ func TestUpdateEnvironmentVariableValue(t *testing.T) {
 	})
 }
 
-// TestEnvironmentVariableUpdateOutcome は、Environment の変数の作成と値の変更のエラーが、操作名と Environment と変数の名前を示し、値を含めないことを確かめる。
+// TestEnvironmentVariableUpdateOutcome は、Environment の変数の作成、値の変更、削除のエラーが、操作名と Environment と変数の名前を示し、値を含めないことを確かめる。
 // 操作名はメソッドごとに組み立てるため確かめ、応答の分類と再送しないことは TestRepositoryVariableUpdateOutcome が確かめる。
 //
 //trace:checks FR-013 INV-005
@@ -223,6 +306,9 @@ func TestEnvironmentVariableUpdateOutcome(t *testing.T) {
 	update := func(c *Client, t *testing.T) (UpdateOutcome, error) {
 		return c.UpdateEnvironmentVariableValue(t.Context(), mustReference(t, "example/project-a"), "production", mustVariableName(t, "REGION"), value)
 	}
+	remove := func(c *Client, t *testing.T) (UpdateOutcome, error) {
+		return c.DeleteEnvironmentVariable(t.Context(), mustReference(t, "example/project-a"), "production", mustVariableName(t, "REGION"))
+	}
 	cases := []struct {
 		name       string
 		send       func(*Client, *testing.T) (UpdateOutcome, error)
@@ -231,6 +317,7 @@ func TestEnvironmentVariableUpdateOutcome(t *testing.T) {
 	}{
 		{name: "creation error names the operation, the environment, and the variable", send: create, status: http.StatusConflict, wantPrefix: `create environment variable "REGION" in environment "production" example/project-a: `},
 		{name: "value update error names the operation, the environment, and the variable", send: update, status: http.StatusNotFound, wantPrefix: `update environment variable "REGION" in environment "production" example/project-a: `},
+		{name: "deletion error names the operation, the environment, and the variable", send: remove, status: http.StatusNotFound, wantPrefix: `delete environment variable "REGION" in environment "production" example/project-a: `},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

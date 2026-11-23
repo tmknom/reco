@@ -131,8 +131,8 @@ func checkUpdateEndpoint(operation changeplan.UpdateOperation) {
 		return
 	case changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate,
 		changeplan.DeploymentPatternAddition, changeplan.DeploymentPatternRemoval,
-		changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate,
-		changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate:
+		changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate, changeplan.RepositoryVariableDeletion,
+		changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate, changeplan.EnvironmentVariableDeletion:
 		return
 	}
 	panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))

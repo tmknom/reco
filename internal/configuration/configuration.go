@@ -41,7 +41,8 @@ type DesiredState struct {
 // VariableDeclaration は、一つの変数の宣言。
 type VariableDeclaration struct {
 	Name setting.VariableName
-	// Desired は、存在し値を伴うことの期待値 (setting.VariableValue)。
+	// Desired は、存在し値を伴うことの期待値 (setting.VariableValue) か、存在しないことの期待値 (setting.Absent)。
+	// setting.Absent を入れてよいのは state: absent を宣言したときだけで、value の省略や null、空文字列では入れない。
 	Desired setting.Value
 }
 

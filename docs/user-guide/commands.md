@@ -112,7 +112,8 @@ Repositories checked: 1
 | `environments.<名前>: absent -> present` | 設定ファイルに書いた Environment が GitHub 上にない。承認すると作成する |
 | `actions.variables.<名前>: absent -> "<書いた値>"` | 設定ファイルに書いた Repository Variable が GitHub 上にない。値は引用符で囲み、改行などは `\n` のようなエスケープで1行に示す |
 | `actions.variables.<名前>: "<現在の値>" -> "<書いた値>"` | Repository Variable の値が設定ファイルの値と違う。値の示し方は `absent -> "<書いた値>"` の行と同じ |
-| `environments.<Environment の名前>.variables.<名前>: ...` | Environment Variable の作成か値の変更。読み方は `actions.variables.<名前>` の行と同じ。Environment がまだないときは `(environment absent) -> "<書いた値>"` と出て、承認すると Environment を作成してから変数を作る |
+| `actions.variables.<名前>: "<現在の値>" -> absent` | `state: absent` を書いた Repository Variable が GitHub 上にある。承認すると削除する。左の値が、削除で失われる値である。引用符のない `absent` は「ない」ことを示し、値が文字列 `absent` の変数（`"absent"`）とは違う |
+| `environments.<Environment の名前>.variables.<名前>: ...` | Environment Variable の作成、値の変更、削除。読み方は `actions.variables.<名前>` の行と同じ。Environment がまだないときは `(environment absent) -> "<書いた値>"` と出て、承認すると Environment を作成してから変数を作る。`state: absent` の変数は `(environment absent) -> absent` と出て、Environment を作成したあとに変数がないことを確かめるだけで、削除はしない |
 | `<設定>: (<今の状態>) -> <書いた値>` | 今は効いていない設定（Actions が無効、Environment がまだない、など）。承認すると右の値に変える |
 | `environments.<名前>.deployment_branch_policy:` の下に、今の値の行と `-> <書いた値>` の行 | 今の値か書いた値が `selected` の `deployment_branch_policy`。読み方は1行の形と同じで、`selected` のパターンは `selected [branch "main"]` のように角括弧の中に並ぶ |
 | `Applicability: not applicable (<理由>)` | 安全に変えるための条件が成り立たないため、reco はすぐ上の変更をしない。括弧の中は、何が成り立っていないかと、設定ファイルの直し方 |

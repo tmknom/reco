@@ -270,9 +270,11 @@ func (d document) variables(n *yaml.Node, path string) ([]VariableDeclaration, e
 	return declarations, nil
 }
 
-// variable は、存在し値を伴うことを宣言する一つの変数を読む。
+// variable は、存在し値を伴うこと (value) か、存在しないこと (state: absent) を宣言する一つの変数を読む。
+// 判定は、キーの集合、name、state、組み合わせ、value の順に行い、削除は state: absent だけが表す。
+// value の書き忘れや null、空文字列は削除にならず、value の誤りとして拒否する。
 func (d document) variable(n *yaml.Node, path string) (VariableDeclaration, error) {
-	entries, err := d.mappingEntries(n, path, []string{"name", "value"}, nil)
+	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"value", "state"})
 	if err != nil {
 		return VariableDeclaration{}, err
 	}
@@ -285,14 +287,33 @@ func (d document) variable(n *yaml.Node, path string) (VariableDeclaration, erro
 	if err != nil {
 		return VariableDeclaration{}, invalid(entries["name"], namePath, "%v; got %q", err, name)
 	}
+	stateNode, hasState := entries["state"]
+	valueNode, hasValue := entries["value"]
+	if hasState {
+		statePath := path + ".state"
+		state, err := d.stringValue(stateNode, statePath)
+		if err != nil {
+			return VariableDeclaration{}, err
+		}
+		if state != "absent" {
+			return VariableDeclaration{}, invalid(stateNode, statePath, "must be absent; got %q", state)
+		}
+		if hasValue {
+			return VariableDeclaration{}, invalid(valueNode, path+".value", `value is not allowed when state is "absent"`)
+		}
+		return VariableDeclaration{Name: variableName, Desired: setting.Absent()}, nil
+	}
+	if !hasValue {
+		return VariableDeclaration{}, invalid(n, path, "missing key %q", "value")
+	}
 	valuePath := path + ".value"
-	value, err := d.quotableStringValue(entries["value"], valuePath)
+	value, err := d.quotableStringValue(valueNode, valuePath)
 	if err != nil {
 		return VariableDeclaration{}, err
 	}
 	// GitHub は空文字列の値の作成も更新も拒否する (YAML 設定仕様の変数の値)
 	if value == "" {
-		return VariableDeclaration{}, invalid(entries["value"], valuePath, "must not be an empty string")
+		return VariableDeclaration{}, invalid(valueNode, valuePath, "must not be an empty string")
 	}
 	return VariableDeclaration{Name: variableName, Desired: setting.VariableValue(value)}, nil
 }

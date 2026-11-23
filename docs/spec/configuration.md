@@ -236,12 +236,14 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 | YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
 |---|---|---|---|---|
 | `actions.variables` | シーケンス | 変数の宣言を1件以上 | 管理する Repository Variable の一覧 | なし（要素ごとに定まる） |
-| `actions.variables[].name` | 文字列 | 7.1節の名前 | その名前の Repository Variable が存在すること | Repository Variable（関連リソースそのもの） |
-| `actions.variables[].value` | 文字列 | 7.2節の値 | その Repository Variable の値 | Repository Variable（関連リソースそのもの） |
+| `actions.variables[].name` | 文字列 | 7.1節の名前 | 管理する Repository Variable の名前 | Repository Variable（関連リソースそのもの） |
+| `actions.variables[].value` | 文字列 | 7.2節の値。`state` を書かない要素では必須 | その名前の Repository Variable が存在し、その値であること | Repository Variable（関連リソースそのもの） |
+| `actions.variables[].state` | 文字列 | `absent` | その名前の Repository Variable が存在しないこと | Repository Variable（関連リソースそのもの） |
 
-- **`name` と `value` は必須である**：要素はこの2つのキーだけを持つ。`state` などほかのキーは受け付けない
-- **要素は存在と値の宣言を兼ねる**：書いた名前の Repository Variable が存在しなければ作成を計画し、存在して値が違えば値の変更を計画する
-- **存在しないことの宣言は受け付けない**：`value: ~` も存在しないことの宣言にはならず、入力不正として拒否する（7.2節）
+- **`name` は必須で、`value` か `state` のどちらか一方を書く**：要素が持てるキーはこの3つだけである。組み合わせは 7.3節が定める
+- **`value` を書いた要素は、存在と値の宣言を兼ねる**：書いた名前の Repository Variable が存在しなければ作成を計画し、存在して値が違えば値の変更を計画する
+- **`state: absent` を書いた要素は、存在しないことの宣言である**：その名前の Repository Variable が存在すれば削除を計画し、存在しなければ変更不要である
+- **行を消しても削除しない**：`actions.variables` から要素を消すことは省略であり（2.1節）、その変数は管理範囲外になる
 - **`actions` に `variables` だけを書いた宣言は、Actions の許可設定を宣言しない**：`permissions`、`workflow`、`access` の設定は管理範囲外のままである
 
 Repository Variable の変更予定は、`actions.variables` に書いた順に表示します。
@@ -274,6 +276,33 @@ Repository Variable の変更予定は、`actions.variables` に書いた順に�
 
 値の長さは入力検証で確かめません。名前の長さと同じく、GitHub の上限が変わり得るためです。
 
+### 7.3 存在しないことの宣言
+
+`state` に書ける値は `absent` だけです。`value` と `state` の組み合わせは次のとおりです。
+
+| `value` | `state` | 判定 |
+|---|---|---|
+| 7.2節の値 | 省略 | 有効。存在し、値を伴うことの宣言 |
+| 省略 | `absent` | 有効。存在しないことの宣言 |
+| 省略 | 省略 | エラー |
+| 指定（中身を問わない） | `absent` | エラー |
+| 省略または指定 | `absent` 以外 | エラー |
+
+`state` は大文字小文字を区別し、`Absent`、`present`、空文字列、文字列でない値、`null` と値なしを受け付けません。`state` の誤りは、`value` との組み合わせの誤りより先に示します。組み合わせの誤りは、`value` の中身の誤りより先に示します。
+
+`value: ~`、`value: ""`、`value` の省略は、どれも存在しないことの宣言になりません（7.2節）。値の書き忘れが削除にならないようにするためです。`value` も `state` もない要素は、`value` がないことを示して拒否し、`state: absent` を案内しません。値を書き忘れた利用者を削除へ誘導しないためです。
+
+```yaml
+actions:
+  variables:
+    - name: LEGACY_FLAG
+      state: absent
+```
+
+同じ名前の要素を、値の宣言と存在しないことの宣言に分けて書くことはできません。7.1節の名前の重複として拒否します。
+
+削除される変数の値は、変更計画に示します（[CLI 仕様](cli.md) 4章）。
+
 ## 8. Environments
 
 `environments` は、リポジトリの Environment を名前ごとに宣言するシーケンスです。Environment は関連リソースであり、2.1節の規則に従います。
@@ -286,8 +315,9 @@ Repository Variable の変更予定は、`actions.variables` に書いた順に�
 | `environments[].deployment_branch_policy.patterns[].type` | 文字列 | `branch` / `tag` | パターンがブランチとタグのどちらに一致するか | デプロイ元制限（設定グループ） |
 | `environments[].deployment_branch_policy.patterns[].name` | 文字列 | 8.2節の名前 | ブランチ名またはタグ名のパターン | デプロイ元制限（設定グループ） |
 | `environments[].variables` | シーケンス | 変数の宣言を1件以上（8.3節） | その Environment で管理する Environment Variable の一覧 | なし（要素ごとに定まる） |
-| `environments[].variables[].name` | 文字列 | 7.1節の名前 | その Environment に、その名前の Environment Variable が存在すること | Environment Variable（関連リソースそのもの） |
-| `environments[].variables[].value` | 文字列 | 7.2節の値 | その Environment Variable の値 | Environment Variable（関連リソースそのもの） |
+| `environments[].variables[].name` | 文字列 | 7.1節の名前 | その Environment で管理する Environment Variable の名前 | Environment Variable（関連リソースそのもの） |
+| `environments[].variables[].value` | 文字列 | 7.2節の値。`state` を書かない要素では必須 | その Environment に、その名前の Environment Variable が存在し、その値であること | Environment Variable（関連リソースそのもの） |
+| `environments[].variables[].state` | 文字列 | `absent` | その Environment に、その名前の Environment Variable が存在しないこと | Environment Variable（関連リソースそのもの） |
 
 - **`name` は必須である**：`name` のない要素は、`deployment_branch_policy` や `variables` を書いていても入力不正として拒否する。どの Environment の宣言かを補わない
 - **要素は存在の宣言を兼ねる**：`environments[]` に書いた名前の Environment が存在しなければ、作成を計画する。`variables` だけを書いた Environment も同じである。`deployment_branch_policy` と `variables` を省略した Environment は、存在だけを管理する
@@ -370,11 +400,11 @@ environments:
         value: ap-northeast-1
 ```
 
-- **要素の形は `actions.variables` と同じである**：要素は `name` と `value` の2つのキーだけを持ち、どちらも必須である。名前は 7.1節、値は 7.2節の規則に従う
-- **要素は存在と値の宣言を兼ねる**：書いた名前の Environment Variable が存在しなければ作成を計画し、存在して値が違えば値の変更を計画する
+- **要素の形は `actions.variables` と同じである**：`name` は必須で、`value` か `state: absent` のどちらか一方を書く。名前は 7.1節、値は 7.2節、存在しないことの宣言は 7.3節の規則に従う
+- **`value` を書いた要素は存在と値の宣言を兼ねる**：書いた名前の Environment Variable が存在しなければ作成を計画し、存在して値が違えば値の変更を計画する
+- **`state: absent` を書いた要素は、存在しないことの宣言である**：その名前の Environment Variable が存在すれば削除を計画する。`state: absent` の変数だけを書いた Environment も、Environment の存在の宣言を兼ね、存在しなければ作成を計画する。作成する Environment の中で存在しないことを宣言した変数は、Environment を作成したあとに存在しないことを確かめる
 - **重複は一つの Environment の中で判定する**：同じ Environment の `variables` に同じ名前（7.1節の判定）が複数あれば、入力不正として拒否する。別の Environment の同じ名前と、`actions.variables` の同じ名前は、重複ではない
 - **同じ名前の Repository Variable とは別の管理設定である**：`actions.variables` と `environments[].variables` に同じ名前を書いても、値を同期しない。それぞれを別々に照合し、更新する
-- **存在しないことの宣言は受け付けない**
 
 | Relationship | Target | Target Type |
 |---|---|---|
