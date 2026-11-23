@@ -88,6 +88,8 @@ General は、宣言された変更対象だけを `PATCH /repos/{owner}/{repo}`
 
 Secret scanning の2設定を比べるため、General を変える更新操作の更新直前と更新後の観測は Secret scanning の領域も読みます（[Security の設計](security.md) の Secret scanning の観測）。
 
+GitHub Free のアカウントが所有する非公開リポジトリでは、`allow_auto_merge` を送る `PATCH` が `200` を返しても値が変わりません（GitHub リポジトリ API 仕様 4章）。この場合は期待状態との不一致で、変更結果は失敗です。`allow_auto_merge` を変える論理的な設定変更が、更新操作の成功のあとに不一致になったときは、原因の候補（[アーキテクチャ設計](../architecture.md) 6.1節）として、GitHub Free の非公開リポジトリでは自動マージを利用できず、GitHub が更新を反映しないまま成功を応答する場合があることを添えます。公式資料が自動マージを利用できない条件として挙げるのはこの場合だけで、ほかの条件で同じ応答が起きないかは確かめていないため、候補は可能性として示します。
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-011` | Functional Requirement |
