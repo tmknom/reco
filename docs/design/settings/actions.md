@@ -12,8 +12,14 @@
 | 選択方式の Actions 許可条件 | Selected Actions Criteria | 上位の許可ポリシーが `selected` のときに適用される詳細な許可条件。3項目からなる設定グループ。GitHub 公式の用語ではない |
 | ワークフロー権限 | Workflow Permissions | ワークフローの `GITHUB_TOKEN` の既定権限と、GitHub Actions による Pull Request の作成と承認の許可からなる設定の領域 |
 | リポジトリ外のワークフローからのアクセス | Actions Access | リポジトリの外のワークフローが、このリポジトリの Actions と再利用可能なワークフローを使える範囲を定める設定の領域。設定は `access_level` の一つで、非公開リポジトリにだけ適用される |
+| Fork Pull Request ワークフローの承認 | Fork Pull Request Approval | 公開リポジトリで、Fork からの Pull Request のワークフローを実行する前に承認を求める範囲を定める設定の領域。設定は承認ポリシー（`approval_policy`）の一つで、公開リポジトリにだけ適用される |
+| 非公開リポジトリの Fork Pull Request ワークフロー | Private Fork Pull Request Workflows | 非公開リポジトリで、Fork からの Pull Request のワークフローを実行できるかと、その条件を定める設定の領域。設定は4項目からなる実行条件の一つで、非公開リポジトリにだけ適用される |
+| 保持期間 | Retention | チェック、ワークフローの実行、コミットのステータス、Artifact、Log を保持する期間を定める設定の領域。設定は保持日数（`days`）の一つ。GitHub は同じ取得で、保持日数の上限（`maximum_allowed_days`）を返す。上限は設定できる値の範囲（[ドメインモデル](../domain.md) の観測と GitHub への要求）に当たる |
+| 保持日数 | Retention Days | 保持期間の領域の設定。日数の整数 |
 | Repository Variables | Repository Variables | リポジトリに属する Repository Variable からなる設定の領域 |
 | Repository Variable | Repository Variable | リポジトリに属し、名前と値を持つ関連リソース。GitHub は ID を付けないため、名前だけで識別する種類として扱う |
+
+Fork Pull Request ワークフローの承認、非公開リポジトリの Fork Pull Request ワークフロー、保持期間の設定は、`show` が示すだけで、宣言はまだ受け付けません。承認ポリシーと実行条件を一つの領域にしないのは、更新エンドポイントが別であることに加え、公開範囲に合わない側だけを宣言したリポジトリで、宣言していない側の取得を送らないためです。一つの領域にすると、その取得の失敗が、宣言していない設定のために変更計画の確認を止めます。
 
 `sha_pinning_required` は、Actions 許可ポリシーと同じ更新エンドポイントで更新しますが、単独の管理の単位です。一方を変える更新がもう一方を変えず、期待値を別々に確かめられるためです。
 
@@ -33,15 +39,19 @@ Actions の実行許可は、`GET /repos/{owner}/{repo}/actions/permissions` で
 
 リポジトリ外のワークフローからのアクセスは `GET /repos/{owner}/{repo}/actions/permissions/access` で読み、`GET /repos/{owner}/{repo}` の応答の `private` が真のときだけ送ります。送るかどうかを、取得の `422` から推測しません。権限のない公開リポジトリには `403` が返り、`422` が公開範囲だけを理由に返るとは確かめられていないためです。個人アカウント所有のリポジトリは internal の公開範囲を持たないため、`private` の真偽で足ります（[GitHub リポジトリ API 仕様](../../research/repositories.md) 3章）。
 
+Fork Pull Request ワークフローの承認ポリシーは `GET /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval` で読み、`private` が偽のときだけ送ります。非公開リポジトリの Fork Pull Request ワークフローの実行条件は `GET /repos/{owner}/{repo}/actions/permissions/fork-pr-workflows-private-repos` で読み、`private` が真のときだけ送ります。どちらも、送るかどうかを取得の `422` から推測しない理由は `access_level` と同じです。保持日数とその上限は `GET /repos/{owner}/{repo}/actions/permissions/artifact-and-log-retention` で読み、公開範囲によらず送ります。三つの領域は YAML 設定仕様に章がないため、読み取りの順をここで定めます。リポジトリ外のワークフローからのアクセスのあと、Repository Variables の前に、承認、実行条件、保持期間の順で読みます。
 | 取得条件 | 観測不能になる設定 | 根拠 |
 |---|---|---|
 | Actions が無効（`enabled: false`） | Actions 許可ポリシー、`sha_pinning_required`、選択方式の Actions 許可条件 | 応答に `allowed_actions` が含まれず、`sha_pinning_required` は保存された値によらず `false` で返る（GitHub Actions 権限 API 仕様 3.1） |
 | Actions 許可ポリシーが `selected` でない | 選択方式の Actions 許可条件 | 取得が `409` を返し、値は返らない（GitHub Actions 権限 API 仕様 4章） |
-| リポジトリが公開（`private: false`） | `access_level` | 公式資料が非公開リポジトリにだけ適用されると記載し、公開リポジトリへの取得は `422` を返して値を返さない（GitHub Actions 権限 API 仕様 6章） |
+| リポジトリが公開（`private: false`） | `access_level`、非公開リポジトリの Fork Pull Request ワークフローの実行条件 | 公式資料が非公開リポジトリにだけ適用されると記載し、公開リポジトリへの取得は `422` を返して値を返さない（GitHub Actions 権限 API 仕様 6章、8章） |
+| リポジトリが非公開（`private: true`） | Fork Pull Request ワークフローの承認ポリシー | 公式資料が公開リポジトリの設定として説明し、非公開リポジトリへの取得は `422` を返して値を返さない（GitHub Actions 権限 API 仕様 7章） |
 
-ワークフロー権限と Repository Variables は取得条件を持たず、`access_level` の取得条件は公開範囲だけです。ワークフロー権限と `access_level` は Actions が無効でも取得でき（GitHub Actions 権限 API 仕様 5.1・6章）、Repository Variables は非公開リポジトリでも一覧を読めます（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 1.1）。`selected` と観測したあとの Selected actions の取得の `409` と、非公開と観測したあとの `access_level` の取得の `422` は、観測不能にせず観測操作の失敗とします（[ドメインモデル](../domain.md) の現在状態・観測結果・観測失敗）。
+ワークフロー権限、保持日数、Repository Variables は取得条件を持たず、`access_level`、承認ポリシー、実行条件の取得条件は公開範囲だけです。ワークフロー権限、`access_level`、承認ポリシー、実行条件、保持日数は Actions が無効でも取得でき（GitHub Actions 権限 API 仕様 5.1・6〜9章）、Repository Variables は非公開リポジトリでも一覧を読めます（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 1.1）。`selected` と観測したあとの Selected actions の取得の `409` と、公開範囲が合うと観測したあとの `access_level`、承認ポリシー、実行条件の取得の `422` は、観測不能にせず観測操作の失敗とします（[ドメインモデル](../domain.md) の現在状態・観測結果・観測失敗）。
 
 Actions が有効のときに `allowed_actions` か `sha_pinning_required` が欠けた応答、3項目のいずれかが欠けた Selected actions の応答、定義にない値か欠けた `access_level` の応答は、取得契約に適合しない応答です。`sha_pinning_required` と Selected actions の3項目は公式ドキュメント上は任意のフィールドですが、欠落の理由を確認できないため、既定値で補いません。
+
+定義にない値か欠けた `approval_policy` の応答、4項目のいずれかが欠けた実行条件の応答、`days` か `maximum_allowed_days` が欠けたか整数でない保持期間の応答も、取得契約に適合しない応答です。`run_workflows_from_fork_pull_requests` が `false` のとき、GitHub はほかの3項目を `false` で返しますが（GitHub Actions 権限 API 仕様 8.2）、reco はこの関係を取得契約にせず、返った4項目をそのまま観測値とします。保持日数は、上限を超えていても、`1` 未満でも、観測値としてそのまま持ちます（ドメインモデルの現在状態・観測結果・観測失敗）。上限は公開範囲と、管理する Organization か Enterprise で決まります（同 9章）。
 
 Repository Variables は、`GET /repos/{owner}/{repo}/actions/variables` の一覧で読みます。一覧の要素は個別取得と全フィールドが一致するため（GitHub Actions 変数 API 仕様 4.1）、個別取得は送りません。個別取得は名前の末尾に空白をつけても `200` を返すため、存在の確認にも使えません。
 
@@ -218,8 +228,9 @@ Repository Variable の変更予定は、変数ごとに一つの更新操作か
 | Actions が無効のリポジトリを観測し、応答の `sha_pinning_required` が `false` だった | 観測不能。無効のあいだの応答は保存された値を示さない | 応答にあるので `false` を観測値とする |
 | Actions 許可ポリシーを `all` から `local_only` へ変えると宣言した | 副作用はない。失われる選択方式の Actions 許可条件が現在状態にない | ポリシーを変えるので、常に許可条件の消失を副作用として示す |
 | Actions 許可ポリシーを `local_only` から `selected` へ変え、`github_owned_allowed: false` を宣言した。二つの更新操作のあいだ、GitHub 所有の Actions が許可される | 副作用ではない。論理的な設定変更が完了すれば残らない中間状態である。後続の更新操作が完了せずに残った場合は、変更結果が完了しなかったことを示す | 変更前も宣言した状態も許可しない Actions を許可するので、副作用として変更予定に添える |
-| Actions が無効のリポジトリで、ワークフロー権限か、非公開リポジトリの `access_level` の値が返った | 観測値。取得条件は設定ごとに異なる | Actions が無効なので観測不能とする |
+| Actions が無効のリポジトリで、ワークフロー権限、保持日数か、公開範囲に合う `access_level`、承認ポリシー、実行条件の値が返った | 観測値。取得条件は設定ごとに異なる | Actions が無効なので観測不能とする |
 | 非公開リポジトリで `access_level` を `organization` と観測し、`none` を宣言した | 不一致で適用可能 | `organization` は宣言できない値なので比較不能 |
+| 非公開リポジトリで、承認ポリシーの領域だけを読む観測 | 読み取り要求を送らずに観測不能（非公開）。実行条件の取得も送らない | 非公開なので、代わりに実行条件を読む |
 | 宣言した値と、観測した Repository Variable の値が、末尾の改行だけ異なる | 異なる値であり不一致。変更予定は値の変更 | 空白の違いなので同じ値とみなし一致 |
 | 宣言した `GO_VERSION` に対し、一覧が `go_version` を返した | 同じ変数として照合する。作成を計画しない | 綴りが違うので存在しないとみなし、作成を計画する |
 | Actions が無効のリポジトリで Actions を有効にする変更が完了し、`sha_pinning_required` の更新直前の観測で値を観測できた | 先行する変更が取得条件を解消した、予定どおりの変化で、変更前提は成立する | 承認時に予定した値は観測不能なので、関係する現在値の変化 |

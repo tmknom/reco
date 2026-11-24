@@ -120,6 +120,24 @@ func (c *Client) actionsAccessURL(reference repository.Reference) *url.URL {
 	return u
 }
 
+func (c *Client) forkPullRequestApprovalURL(reference repository.Reference) *url.URL {
+	u := c.actionsPermissionsURL(reference)
+	u.Path += "/fork-pr-contributor-approval"
+	return u
+}
+
+func (c *Client) privateForkPullRequestWorkflowsURL(reference repository.Reference) *url.URL {
+	u := c.actionsPermissionsURL(reference)
+	u.Path += "/fork-pr-workflows-private-repos"
+	return u
+}
+
+func (c *Client) retentionURL(reference repository.Reference) *url.URL {
+	u := c.actionsPermissionsURL(reference)
+	u.Path += "/artifact-and-log-retention"
+	return u
+}
+
 func (c *Client) vulnerabilityAlertsURL(reference repository.Reference) *url.URL {
 	u := c.repositoryURL(reference)
 	u.Path += "/vulnerability-alerts"

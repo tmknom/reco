@@ -24,7 +24,7 @@ type Config struct {
 func Run(ctx context.Context, cfg Config) error {
 	client := github.New(cfg.Token, cfg.GitHubOptions...)
 	// 失敗の文言は対象名を含むため、ここでは包み直さない
-	observed, err := client.ObserveRepository(ctx, cfg.Target, setting.AreaActionsPermissions, setting.AreaWorkflowPermissions, setting.AreaActionsAccess, setting.AreaRepositoryVariables, setting.AreaEnvironments, setting.AreaEnvironmentVariables, setting.AreaDependabot, setting.AreaSecretScanning, setting.AreaPrivateVulnerabilityReporting, setting.AreaRulesets)
+	observed, err := client.ObserveRepository(ctx, cfg.Target, setting.AreaActionsPermissions, setting.AreaWorkflowPermissions, setting.AreaActionsAccess, setting.AreaForkPullRequestApproval, setting.AreaPrivateForkPullRequestWorkflows, setting.AreaRetention, setting.AreaRepositoryVariables, setting.AreaEnvironments, setting.AreaEnvironmentVariables, setting.AreaDependabot, setting.AreaSecretScanning, setting.AreaPrivateVulnerabilityReporting, setting.AreaRulesets)
 	if err != nil {
 		return err
 	}
@@ -44,6 +44,8 @@ func writeObservationResult(w io.Writer, target repository.Reference, observed g
 	fmt.Fprintf(&b, "      workflow:\n        default_workflow_permissions: %s\n        can_approve_pull_request_reviews: %t\n",
 		observed.WorkflowPermissions.DefaultWorkflowPermissions, observed.WorkflowPermissions.CanApprovePullRequestReviews)
 	writeActionsAccess(&b, *observed.ActionsAccess)
+	writeForkPullRequests(&b, *observed.ForkPullRequestApproval, *observed.PrivateForkPullRequestWorkflows)
+	writeRetention(&b, *observed.Retention)
 	writeRepositoryVariables(&b, *observed.RepositoryVariables)
 	writeEnvironments(&b, *observed.Environments)
 	writeSecurity(&b, *observed.Dependabot, *observed.SecretScanning, *observed.PrivateVulnerabilityReporting)
@@ -92,4 +94,12 @@ func writeActionsAccess(b *strings.Builder, a github.ActionsAccess) {
 		panic(fmt.Sprintf("show: undefined unavailable reason %d for access_level", int(reason)))
 	}
 	b.WriteString("      # access:\n      #   access_level: unavailable (the repository is public)\n")
+}
+
+// writeRetention は actions.retention を書く。
+// 設定宣言がまだ受け付けないため、すべての行を YAML のコメントにし、その前の行で書けないことを示す。
+// 上限は設定宣言に書けない値のため、値の位置ではなく行末のコメントに書く。
+func writeRetention(b *strings.Builder, r github.Retention) {
+	fmt.Fprintf(b, "      # reco does not accept the retention period in the configuration file yet\n"+
+		"      # retention:\n      #   days: %d # maximum allowed: %d\n", r.Days, r.MaximumAllowedDays)
 }

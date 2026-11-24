@@ -11,6 +11,7 @@ import (
 )
 
 // ObservationResult は、一回の観測で確認できた、リポジトリ指定が指す実体の ID と、読み取った設定の領域の設定ごとの、設定の観測結果である。
+// 設定できる値の範囲を GitHub が設定と同じ応答で返す領域については、その範囲も含む。
 // 関連リソースを読み取った設定の領域については、関連リソースの観測結果も含む。
 type ObservationResult struct {
 	RepositoryID repository.ID
@@ -20,6 +21,11 @@ type ObservationResult struct {
 	ActionsPermissions  *ActionsPermissions
 	WorkflowPermissions *WorkflowPermissions
 	ActionsAccess       *ActionsAccess
+	// ForkPullRequestApproval、PrivateForkPullRequestWorkflows、Retention は、その設定の領域を選ばなかった観測では nil になる。
+	// 読み取っていない値を、公開範囲による観測不能や、0 日の保持期間として読ませないため、値型にしない。
+	ForkPullRequestApproval         *ForkPullRequestApproval
+	PrivateForkPullRequestWorkflows *PrivateForkPullRequestWorkflows
+	Retention                       *Retention
 	// RepositoryVariables は、その設定の領域を選ばなかった観測では nil になる。Variable が一つもないことと取り違えさせないため、値型にしない。
 	RepositoryVariables *Variables
 	// Environments は、Environments と Environment Variables のどちらの設定の領域も選ばなかった観測では nil になる。Environment が一つもないことと取り違えさせないため、値型にしない。
@@ -161,6 +167,27 @@ func (c *Client) observe(ctx context.Context, reference repository.Reference, sc
 			return ObservationResult{}, fmt.Errorf("fetch actions access %s: %w", reference, err)
 		}
 		o.ActionsAccess = &aa
+	}
+	if slices.Contains(areas, setting.AreaForkPullRequestApproval) {
+		approval, err := c.observeForkPullRequestApproval(ctx, reference, attributes.private)
+		if err != nil {
+			return ObservationResult{}, fmt.Errorf("fetch fork pull request approval %s: %w", reference, err)
+		}
+		o.ForkPullRequestApproval = &approval
+	}
+	if slices.Contains(areas, setting.AreaPrivateForkPullRequestWorkflows) {
+		workflows, err := c.observePrivateForkPullRequestWorkflows(ctx, reference, attributes.private)
+		if err != nil {
+			return ObservationResult{}, fmt.Errorf("fetch private fork pull request workflows %s: %w", reference, err)
+		}
+		o.PrivateForkPullRequestWorkflows = &workflows
+	}
+	if slices.Contains(areas, setting.AreaRetention) {
+		retention, err := c.observeRetention(ctx, reference)
+		if err != nil {
+			return ObservationResult{}, fmt.Errorf("fetch retention %s: %w", reference, err)
+		}
+		o.Retention = &retention
 	}
 	if slices.Contains(areas, setting.AreaRepositoryVariables) {
 		variables, err := c.observeRepositoryVariables(ctx, reference)

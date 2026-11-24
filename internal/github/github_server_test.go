@@ -48,6 +48,10 @@ const (
 	actionsAccessBody       = `{"access_level": "user"}`
 	workflowPermissionsBody = `{"default_workflow_permissions": "read", "can_approve_pull_request_reviews": false}`
 	selectedActionsBody     = `{"github_owned_allowed": true, "verified_allowed": false, "patterns_allowed": ["z/*", "a/*"]}`
+
+	forkPullRequestApprovalPath         = "/repos/owner/repo/actions/permissions/fork-pr-contributor-approval"
+	privateForkPullRequestWorkflowsPath = "/repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos"
+	retentionPath                       = "/repos/owner/repo/actions/permissions/artifact-and-log-retention"
 )
 
 func newTestClient(t *testing.T, handler http.HandlerFunc) *Client {

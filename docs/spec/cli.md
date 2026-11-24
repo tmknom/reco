@@ -909,7 +909,7 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 
 `show` は設定宣言を使用せず、指定リポジトリについて GitHub から確認できた管理設定の値と関連リソースを表示します。認証・権限・通信による観測操作の失敗は、正常な観測結果ではなくエラーとします。GitHub の設定は変更しません。
 
-表示は、YAML 設定仕様の設定宣言と同じ構造の YAML です。ルートの `repositories` に、`name` を指定したリポジトリとする要素を一つ置き、その下に `general`、`actions`（`permissions`、`workflow`、`access`、`variables`）、`environments`、`security`、`rulesets` の順で、確認できた値を設定宣言のキーで示します。`name` には、GitHub が返す名前ではなく、`--repo` に指定したリポジトリ指定を示します。観測操作の失敗の文言と同じ名前で対象を示すためです。設定宣言と同じ構造にするのは、表示から設定宣言のどこに何を書けばよいかを読み取れるようにし、表示をそのまま設定宣言の出発点にできるようにするためです。観測した値が設定宣言の入力検証を通る場合（この章の末尾）、表示を変えずに設定宣言として読むと、管理範囲は表示したすべての管理設定と Environment と Repository Variable と Environment Variable と Ruleset になり、期待値は観測時点の値と一致します。
+表示は、YAML 設定仕様の設定宣言と同じ構造の YAML です。ルートの `repositories` に、`name` を指定したリポジトリとする要素を一つ置き、その下に `general`、`actions`（`permissions`、`workflow`、`access`、`fork_pull_requests`、`retention`、`variables`）、`environments`、`security`、`rulesets` の順で、確認できた値を設定宣言のキーで示します。`name` には、GitHub が返す名前ではなく、`--repo` に指定したリポジトリ指定を示します。観測操作の失敗の文言と同じ名前で対象を示すためです。設定宣言と同じ構造にするのは、表示から設定宣言のどこに何を書けばよいかを読み取れるようにし、表示をそのまま設定宣言の出発点にできるようにするためです。観測した値が設定宣言の入力検証を通る場合（この章の末尾）、表示を変えずに設定宣言として読むと、管理範囲は表示したすべての管理設定と Environment と Repository Variable と Environment Variable と Ruleset になり、期待値は観測時点の値と一致します。
 
 ```text
 $ reco show --repo example/project-a
@@ -932,6 +932,17 @@ repositories:
         can_approve_pull_request_reviews: false
       access:
         access_level: none
+      # reco does not accept the fork pull request settings in the configuration file yet
+      # fork_pull_requests:
+      #   approval_policy: unavailable (the repository is private)
+      #   private_repositories:
+      #     run_workflows_from_fork_pull_requests: false
+      #     send_write_tokens_to_workflows: false
+      #     send_secrets_and_variables: false
+      #     require_approval_for_fork_pr_workflows: false
+      # reco does not accept the retention period in the configuration file yet
+      # retention:
+      #   days: 90 # maximum allowed: 400
       # variables: none
     # environments: none
     security:
@@ -945,10 +956,12 @@ repositories:
 
 表示するのは、設定宣言に書ける管理設定と関連リソースに限ります。Environment の保護設定（`wait_timer`、`required_reviewers`、`can_admins_bypass`）のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
 
+`actions` の `fork_pull_requests` と `retention` は、この規定の例外です。設定宣言はまだこの二つを受け付けませんが、受け付けるときに使う予定のキーで、`access` と `variables` のあいだに値を示します。二つのキーとその下の行は YAML のコメントとして示し、それぞれの前の行で、設定ファイルに書けないことを示します。コメントにするのは、表示を設定宣言として読めるままにし、書けない設定であることを利用者が行を見て分かるようにするためです。
+
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
 - **ほかの行から分かる**：行ごと示さない。上位の設定によってその設定が効いていない状態（Actions が無効、Actions 許可ポリシーが `selected` でない）がこれに当たり、その状態は上位の設定の行で示されるためである
-- **ほかの行から分からない**：行を省かず、YAML のコメントとして、値の位置に `unavailable (<理由>)` と示す。行を省くと、確認できなかった設定と reco が表示しない設定を区別できないためである。コメントにするのは、確認できなかった値を期待値として読ませないためである。公開リポジトリの `access_level` と、非公開リポジトリの Secret scanning の有効状態、リポジトリの push protection、Private vulnerability reporting の有効状態、Rulesets がこれに当たる
+- **ほかの行から分からない**：行を省かず、YAML のコメントとして、値の位置に `unavailable (<理由>)` と示す。行を省くと、確認できなかった設定と reco が表示しない設定を区別できないためである。コメントにするのは、確認できなかった値を期待値として読ませないためである。公開リポジトリの `access_level` と Fork Pull Request ワークフローの実行条件、非公開リポジトリの Fork Pull Request ワークフローの承認ポリシー、Secret scanning の有効状態、リポジトリの push protection、Private vulnerability reporting の有効状態、Rulesets がこれに当たる
 
 `allowed_actions` が `selected` のときは、`selected_actions` の3項目を `sha_pinning_required` の前に示します。`patterns_allowed` は、パターンを関連リソースの名前と同じく二重引用符で囲んでエスケープし、GitHub が返した順に1行に一つずつ並べます。空の集合は `[]` と示します。
 
@@ -977,6 +990,23 @@ Actions が無効のリポジトリでは、`enabled` だけを示します。
 ```text
       # access:
       #   access_level: unavailable (the repository is public)
+```
+
+Fork からの Pull Request のワークフローの設定は、`fork_pull_requests` に示します。Fork Pull Request ワークフローの承認ポリシーを `approval_policy` に、GitHub が返した値（`first_time_contributors_new_to_github`、`first_time_contributors`、`all_external_contributors`）で示します。非公開リポジトリの Fork Pull Request ワークフローの実行条件を `private_repositories` に、4項目（`run_workflows_from_fork_pull_requests`、`send_write_tokens_to_workflows`、`send_secrets_and_variables`、`require_approval_for_fork_pr_workflows`）を `true` か `false` で、GitHub が返したとおりに示します。非公開リポジトリでは `approval_policy` の値の位置に `unavailable (the repository is private)` と、公開リポジトリでは `private_repositories` の値の位置に `unavailable (the repository is public)` と示します。
+
+```text
+      # reco does not accept the fork pull request settings in the configuration file yet
+      # fork_pull_requests:
+      #   approval_policy: all_external_contributors
+      #   private_repositories: unavailable (the repository is public)
+```
+
+Artifact と Log などの保持期間は、`retention` の `days` に保持日数で示します。GitHub が返した、保持日数の上限を、行末の YAML のコメントで `# maximum allowed: <日数>` と示します。上限は設定宣言に書けない値であり、値の位置に書くと設定宣言の整数として読めないためです。保持日数は公開範囲によらず示し、上限を超える日数もそのまま示します。
+
+```text
+      # reco does not accept the retention period in the configuration file yet
+      # retention:
+      #   days: 90 # maximum allowed: 90
 ```
 
 関連リソースは、種類ごとに、存在するものをすべて示します。並びは GitHub が一覧で返した順で、reco は並べ替えません。名前は二重引用符で囲み、制御文字をエスケープして示します。エスケープは YAML の二重引用符のスカラーとして読める表記です。一つもないときは、種類のキーを省かず、YAML のコメントとして `none` と示します。キーを省くと、存在しないと確かめたことと、reco がその種類を表示しないことを区別できないためです。コメントにするのは、空のシーケンスを設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 11.1節）。

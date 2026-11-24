@@ -68,6 +68,25 @@ type PrivateVulnerabilityReportingBody struct {
 	Enabled bool
 }
 
+// ForkPullRequestApprovalBody は、Fork Pull Request ワークフローの承認ポリシーの取得の応答本文である。
+type ForkPullRequestApprovalBody struct {
+	ApprovalPolicy string
+}
+
+// PrivateForkPullRequestWorkflowsBody は、非公開リポジトリの Fork Pull Request ワークフローの実行条件の取得の応答本文である。
+type PrivateForkPullRequestWorkflowsBody struct {
+	RunWorkflowsFromForkPullRequests           bool
+	SendWriteTokensToWorkflows                 bool
+	SendSecretsAndVariables                    bool
+	RequireApprovalForForkPullRequestWorkflows bool
+}
+
+// RetentionBody は、保持期間の取得の応答本文である。
+type RetentionBody struct {
+	Days               int
+	MaximumAllowedDays int
+}
+
 // EnvironmentsBody は、Environment の一覧の1ページの応答本文である。
 // TotalCount は GitHub が返す全件数で、このページの要素数とは限らない。
 type EnvironmentsBody struct {
@@ -220,6 +239,24 @@ func (b AutomatedSecurityFixesBody) JSON() string {
 // JSON は応答本文を返す。
 func (b PrivateVulnerabilityReportingBody) JSON() string {
 	return fmt.Sprintf(`{"enabled": %t}`, b.Enabled)
+}
+
+// JSON は応答本文を返す。
+func (b ForkPullRequestApprovalBody) JSON() string {
+	return fmt.Sprintf(`{"approval_policy": %q}`, b.ApprovalPolicy)
+}
+
+// JSON は応答本文を返す。
+func (b PrivateForkPullRequestWorkflowsBody) JSON() string {
+	return fmt.Sprintf(
+		`{"run_workflows_from_fork_pull_requests": %t, "send_write_tokens_to_workflows": %t, "send_secrets_and_variables": %t, "require_approval_for_fork_pr_workflows": %t}`,
+		b.RunWorkflowsFromForkPullRequests, b.SendWriteTokensToWorkflows, b.SendSecretsAndVariables, b.RequireApprovalForForkPullRequestWorkflows,
+	)
+}
+
+// JSON は応答本文を返す。
+func (b RetentionBody) JSON() string {
+	return fmt.Sprintf(`{"days": %d, "maximum_allowed_days": %d}`, b.Days, b.MaximumAllowedDays)
 }
 
 // JSON は応答本文を返す。
