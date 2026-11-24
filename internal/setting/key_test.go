@@ -6,7 +6,7 @@ import (
 )
 
 func TestRepositorySettingUnits_FollowsConfigurationOrder(t *testing.T) {
-	want := []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
+	want := []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, ForkPullRequestApproval, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
 	if got := RepositorySettingUnits(); !slices.Equal(got, want) {
 		t.Errorf("RepositorySettingUnits() = %v, want %v", got, want)
 	}
@@ -39,6 +39,7 @@ func TestKeyArea(t *testing.T) {
 		{key: DefaultWorkflowPermissions, want: AreaWorkflowPermissions},
 		{key: CanApprovePullRequestReviews, want: AreaWorkflowPermissions},
 		{key: ActionsAccessLevel, want: AreaActionsAccess},
+		{key: ForkPullRequestApproval, want: AreaForkPullRequestApproval},
 		{key: RepositoryVariable, want: AreaRepositoryVariables},
 		{key: EnvironmentResource, want: AreaEnvironments},
 		{key: EnvironmentDeploymentBranchPolicy, want: AreaEnvironments},

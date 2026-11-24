@@ -50,7 +50,7 @@ func TestWriteObservationResult(t *testing.T) {
 		allPermissions                      = "    actions:\n      permissions:\n        enabled: true\n        allowed_actions: all\n        sha_pinning_required: true\n"
 		readOnlyWorkflow                    = "      workflow:\n        default_workflow_permissions: read\n        can_approve_pull_request_reviews: false\n"
 		notSharedAccess                     = "      access:\n        access_level: none\n"
-		privateForkPullRequestsAndRetention = "      # reco does not accept the fork pull request settings in the configuration file yet\n" +
+		privateForkPullRequestsAndRetention = "      # reco does not accept private_repositories in the configuration file yet\n" +
 			"      # fork_pull_requests:\n      #   approval_policy: unavailable (the repository is private)\n      #   private_repositories:\n" +
 			"      #     run_workflows_from_fork_pull_requests: false\n      #     send_write_tokens_to_workflows: false\n" +
 			"      #     send_secrets_and_variables: false\n      #     require_approval_for_fork_pr_workflows: false\n" +
@@ -220,9 +220,8 @@ func TestWriteObservationResult(t *testing.T) {
 			},
 			want: header + defaultGeneral + allPermissions + readOnlyWorkflow +
 				"      # access:\n      #   access_level: unavailable (the repository is public)\n" +
-				"      # reco does not accept the fork pull request settings in the configuration file yet\n" +
-				"      # fork_pull_requests:\n      #   approval_policy: first_time_contributors\n" +
-				"      #   private_repositories: unavailable (the repository is public)\n" +
+				"      fork_pull_requests:\n        approval_policy: first_time_contributors\n" +
+				"        # private_repositories: unavailable (the repository is public)\n" +
 				"      # reco does not accept the retention period in the configuration file yet\n" +
 				"      # retention:\n      #   days: 30 # maximum allowed: 400\n" +
 				noVariable + noEnvironment + enabledSecurity + noRulesets,

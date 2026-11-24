@@ -451,7 +451,8 @@ func TestReconcile_RepositoryVariables(t *testing.T) {
 //trace:checks FR-005 INV-001
 func TestReconcile_RepositoryVariablesOrder(t *testing.T) {
 	desired := configuration.DesiredState{
-		ActionsAccess: configuration.ActionsAccess{AccessLevel: new(setting.AccessNone)},
+		ActionsAccess:           configuration.ActionsAccess{AccessLevel: new(setting.AccessNone)},
+		ForkPullRequestApproval: configuration.ForkPullRequestApproval{ApprovalPolicy: new(setting.ForkPullRequestApprovalFirstTimeContributors)},
 		RepositoryVariables: []configuration.VariableDeclaration{
 			{Name: mustVariableName(t, "ZETA"), Desired: setting.VariableValue("z")},
 			{Name: mustVariableName(t, "ALPHA"), Desired: setting.VariableValue("a")},
@@ -459,16 +460,17 @@ func TestReconcile_RepositoryVariablesOrder(t *testing.T) {
 		Environments: []configuration.EnvironmentDeclaration{{Name: mustEnvironmentName(t, "production")}},
 	}
 	observed := github.ObservationResult{
-		ActionsAccess:       &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessNone)},
-		RepositoryVariables: &github.Variables{Existing: []github.Variable{{Name: "ALPHA", Value: "a"}, {Name: "UNDECLARED", Value: "u"}}},
-		Environments:        &github.Environments{Existing: []github.Environment{{Name: "production"}}},
+		ActionsAccess:           &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessNone)},
+		ForkPullRequestApproval: &github.ForkPullRequestApproval{ApprovalPolicy: github.Observed(setting.ForkPullRequestApprovalFirstTimeContributors)},
+		RepositoryVariables:     &github.Variables{Existing: []github.Variable{{Name: "ALPHA", Value: "a"}, {Name: "UNDECLARED", Value: "u"}}},
+		Environments:            &github.Environments{Existing: []github.Environment{{Name: "production"}}},
 	}
 	var units []string
 	for _, s := range reconcile(desired, observed) {
 		units = append(units, s.Unit.String())
 	}
-	// YAML 設定仕様の章の並びで Actions access と Environments のあいだに、宣言の並びで続き、宣言していない変数は現れない
-	want := []string{"actions.access.access_level", "actions.variables.ZETA", "actions.variables.ALPHA", "environments.production"}
+	// YAML 設定仕様の章の並びで Fork pull requests と Environments のあいだに、宣言の並びで続き、宣言していない変数は現れない
+	want := []string{"actions.access.access_level", "actions.fork_pull_requests.approval_policy", "actions.variables.ZETA", "actions.variables.ALPHA", "environments.production"}
 	if !reflect.DeepEqual(units, want) {
 		t.Errorf("reconcile() units = %v, want %v", units, want)
 	}

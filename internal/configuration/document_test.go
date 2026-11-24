@@ -377,6 +377,39 @@ func TestDocumentAccessLevelValue(t *testing.T) {
 }
 
 //trace:checks FR-001
+func TestDocumentForkPullRequestApprovalPolicyValue(t *testing.T) {
+	const wantReason = `must be first_time_contributors_new_to_github, first_time_contributors, or all_external_contributors; got `
+	cases := []struct {
+		name    string
+		src     string
+		want    setting.ForkPullRequestApprovalPolicy
+		wantErr string
+	}{
+		{name: "first_time_contributors is accepted", src: "first_time_contributors\n", want: setting.ForkPullRequestApprovalFirstTimeContributors},
+		{name: "uppercase FIRST_TIME_CONTRIBUTORS is rejected listing the defined values", src: "FIRST_TIME_CONTRIBUTORS\n", wantErr: wantReason + `"FIRST_TIME_CONTRIBUTORS"`},
+		{name: "null is rejected", src: "~\n", wantErr: "must not be null"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.forkPullRequestApprovalPolicyValue(doc.root, "v")
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("forkPullRequestApprovalPolicyValue() error = %v, want it to contain %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("forkPullRequestApprovalPolicyValue() error = %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("forkPullRequestApprovalPolicyValue() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+//trace:checks FR-001
 func TestDocumentAllowedActionsPolicyValue(t *testing.T) {
 	cases := []struct {
 		name    string

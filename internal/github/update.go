@@ -128,6 +128,15 @@ func (c *Client) updateAccessLevel(ctx context.Context, reference repository.Ref
 	return describeUpdateOutcome("update actions access", reference, status, err)
 }
 
+// updateForkPullRequestApprovalPolicy は reference のリポジトリの、Fork Pull Request ワークフローの承認ポリシーを policy に更新する。
+// 正常応答の 204 は本文を持たず、成功の判定に本文を使わない。
+func (c *Client) updateForkPullRequestApprovalPolicy(ctx context.Context, reference repository.Reference, policy setting.ForkPullRequestApprovalPolicy) (UpdateOutcome, error) {
+	// policy は英小文字と _ だけの定義済みの値で、%q の表記が JSON の文字列と一致する
+	body := fmt.Appendf(nil, `{"approval_policy":%q}`, policy)
+	status, _, err := c.send(ctx, http.MethodPut, c.forkPullRequestApprovalURL(reference), body, http.StatusNoContent)
+	return describeUpdateOutcome("update fork pull request approval", reference, status, err)
+}
+
 // updateSelectedActions は reference のリポジトリの選択方式の Actions 許可条件を criteria に更新する。
 // GitHub は、要求の前提となる設定の状態が成り立たないとき 409 で拒否する（GitHub Actions 権限 API 仕様の Selected actions）。
 func (c *Client) updateSelectedActions(ctx context.Context, reference repository.Reference, criteria setting.SelectedActionsCriteria) (UpdateOutcome, error) {
@@ -209,6 +218,10 @@ func updateRequestOf(key setting.Key) updateRequest {
 	case setting.ActionsAccessLevel:
 		return updateRequest{ActionsAccessEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
 			return c.updateAccessLevel(ctx, reference, value.AccessLevel())
+		}}
+	case setting.ForkPullRequestApproval:
+		return updateRequest{ForkPullRequestApprovalEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+			return c.updateForkPullRequestApprovalPolicy(ctx, reference, value.ForkPullRequestApprovalPolicy())
 		}}
 	case setting.DependabotAlerts:
 		return updateRequest{DependabotAlertsEndpoint, boolUpdate((*Client).updateDependabotAlerts)}

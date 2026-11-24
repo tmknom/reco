@@ -1100,6 +1100,82 @@ func TestExecuteChange_ActionsAccess(t *testing.T) {
 	}
 }
 
+// TestExecuteChange_ForkPullRequestApproval は、承認ポリシーの論理的な設定変更について、観測と更新の要求の送り先と本文、
+// 更新の直後の観測が更新前の値を返したときの観測し直し、リポジトリが非公開に変わったときの変更結果を確かめる。
+//
+//trace:checks INV-001 INV-004 FR-010 FR-011 FR-012
+func TestExecuteChange_ForkPullRequestApproval(t *testing.T) {
+	const (
+		getRepository              = "GET /repos/owner/repo"
+		getForkPullRequestApproval = "GET /repos/owner/repo/actions/permissions/fork-pr-contributor-approval"
+		putForkPullRequestApproval = "PUT /repos/owner/repo/actions/permissions/fork-pr-contributor-approval"
+	)
+	public := okRepository(1, false, false)
+	cases := []struct {
+		name         string
+		responses    []response
+		wantRequests []string
+		wantBodies   []map[string]any
+		wantDelays   []time.Duration
+		wantPrecond  preconditionCheck
+		wantChanged  setting.Key
+		wantResult   changeResult
+	}{
+		{
+			// GitHub は更新の直後の取得で更新前の値を返すことがある (GitHub Actions 権限 API 仕様の承認ポリシーの更新)
+			name: "first read after the update still returns the previous policy and the next read completes",
+			responses: []response{
+				public, okForkPullRequestApproval("first_time_contributors"), {status: http.StatusNoContent},
+				public, okForkPullRequestApproval("first_time_contributors"), public, okForkPullRequestApproval("all_external_contributors"),
+			},
+			wantRequests: []string{
+				getRepository, getForkPullRequestApproval, putForkPullRequestApproval,
+				getRepository, getForkPullRequestApproval, getRepository, getForkPullRequestApproval,
+			},
+			wantBodies:  []map[string]any{nil, nil, {"approval_policy": "all_external_contributors"}, nil, nil, nil, nil},
+			wantDelays:  []time.Duration{time.Second},
+			wantPrecond: preconditionHolds,
+			wantResult:  completed,
+		},
+		{
+			// 観測値だった承認ポリシーが観測不能になったことは、関係する現在値の変化に当たる
+			name:         "repository made private since approval sends no update request",
+			responses:    []response{okPrivateRepository(1)},
+			wantRequests: []string{getRepository},
+			wantPrecond:  preconditionCurrentValueChanged,
+			wantChanged:  setting.ForkPullRequestApproval,
+			wantResult:   notAttempted,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, server := newSequenceServer(t, tc.responses...)
+			delays := &delayRecorder{}
+
+			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), forkPullRequestApprovalChange(), delays.after, &updateInterval{})
+
+			if !slices.Equal(server.RequestLines(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", server.RequestLines(), tc.wantRequests)
+			}
+			if tc.wantBodies != nil && !reflect.DeepEqual(server.Bodies(), tc.wantBodies) {
+				t.Errorf("request bodies = %v, want %v", server.Bodies(), tc.wantBodies)
+			}
+			if !slices.Equal(delays.delays, tc.wantDelays) {
+				t.Errorf("delays = %v, want %v", delays.delays, tc.wantDelays)
+			}
+			if got.operation(0).precondition != tc.wantPrecond {
+				t.Errorf("precondition = %v, want %v", got.operation(0).precondition, tc.wantPrecond)
+			}
+			if got.operation(0).changedSetting != (setting.Unit{Key: tc.wantChanged}) {
+				t.Errorf("changedSetting = %q, want %q", got.operation(0).changedSetting.Key, tc.wantChanged)
+			}
+			if got.result() != tc.wantResult {
+				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)
+			}
+		})
+	}
+}
+
 // TestExecuteChange_TwoUpdates は、二つの更新操作からなる論理的な設定変更について、
 // 更新操作ごとの直前の観測と変更前提、先行する更新操作が成功したときだけ後続へ進むこと、更新後の確認のつなぎ目を確かめる。
 //

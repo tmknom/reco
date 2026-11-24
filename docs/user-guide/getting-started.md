@@ -41,7 +41,7 @@ repositories:
         can_approve_pull_request_reviews: false
       access:
         access_level: none
-      # reco does not accept the fork pull request settings in the configuration file yet
+      # reco does not accept private_repositories in the configuration file yet
       # fork_pull_requests:
       #   approval_policy: unavailable (the repository is private)
       #   private_repositories:

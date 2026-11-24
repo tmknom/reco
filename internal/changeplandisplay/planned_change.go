@@ -91,6 +91,10 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 	case changeplan.NotApplicableDependabotAlertsRemainDisabled:
 		return "Dependabot alerts is disabled; declare dependabot_alerts: true to enable it"
 	case changeplan.NotApplicablePrivateRepository:
+		// GitHub が非公開リポジトリに適用しない設定は、reco が管理しないのではなく、適用されないことを示す
+		if key == setting.ForkPullRequestApproval {
+			return "the repository is private; remove approval_policy, which applies only to public repositories"
+		}
 		return "the repository is private; remove " + string(key)[strings.LastIndex(string(key), ".")+1:] + ", which reco manages only on public repositories"
 	case changeplan.NotApplicableSecretScanningRemainsDisabled:
 		return "Secret scanning is disabled; declare secret_scanning: true to enable it"

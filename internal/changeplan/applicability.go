@@ -31,7 +31,8 @@ const (
 	NotApplicableNameUndetermined
 	// NotApplicableDependabotAlertsRemainDisabled は、Dependabot alerts が無効で、同じリポジトリの期待状態が Dependabot alerts の有効を含まないこと。
 	NotApplicableDependabotAlertsRemainDisabled
-	// NotApplicablePrivateRepository は、リポジトリが非公開で、その設定が非公開リポジトリでは利用できないこと。
+	// NotApplicablePrivateRepository は、リポジトリが非公開で、その設定を非公開リポジトリでは変えられないこと。
+	// 設定が非公開リポジトリに適用されないのか、reco が非公開リポジトリでは扱わないのかは、表示が設定から決める。
 	NotApplicablePrivateRepository
 	// NotApplicableSecretScanningRemainsDisabled は、Secret scanning が無効で、同じリポジトリの期待状態が Secret scanning の有効を含まないこと。
 	NotApplicableSecretScanningRemainsDisabled
@@ -127,7 +128,8 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 		// 公開範囲は reco が変える設定ではないため、同じリポジトリのほかの宣言では解消しない
 		return NotApplicable(NotApplicablePublicRepository)
 	case reason == github.UnavailablePrivateRepository &&
-		(s.Unit.Key.Area() == setting.AreaSecretScanning || s.Unit.Key == setting.PrivateVulnerabilityReportingEnabled || s.Unit.Key == setting.RulesetResource):
+		(s.Unit.Key.Area() == setting.AreaSecretScanning || s.Unit.Key == setting.PrivateVulnerabilityReportingEnabled || s.Unit.Key == setting.RulesetResource ||
+			s.Unit.Key == setting.ForkPullRequestApproval):
 		// 公開範囲は reco が変える設定ではないため、同じリポジトリのほかの宣言では解消しない
 		return NotApplicable(NotApplicablePrivateRepository)
 	}

@@ -10,7 +10,6 @@ import (
 
 //trace:checks FR-004 QR-002
 func TestWriteForkPullRequests(t *testing.T) {
-	const guide = "      # reco does not accept the fork pull request settings in the configuration file yet\n      # fork_pull_requests:\n"
 	cases := []struct {
 		name      string
 		approval  github.ForkPullRequestApproval
@@ -18,20 +17,21 @@ func TestWriteForkPullRequests(t *testing.T) {
 		want      string
 	}{
 		{
-			name:      "public repository shows the approval policy and the unavailable conditions",
+			name:      "public repository shows the approval policy as a declarable value and the unavailable conditions as a comment",
 			approval:  github.ForkPullRequestApproval{ApprovalPolicy: github.Observed(setting.ForkPullRequestApprovalAllExternalContributors)},
 			workflows: github.PrivateForkPullRequestWorkflows{Conditions: github.Unavailable[setting.PrivateForkPullRequestWorkflowConditions](github.UnavailablePublicRepository)},
-			want: guide +
-				"      #   approval_policy: all_external_contributors\n" +
-				"      #   private_repositories: unavailable (the repository is public)\n",
+			want: "      fork_pull_requests:\n" +
+				"        approval_policy: all_external_contributors\n" +
+				"        # private_repositories: unavailable (the repository is public)\n",
 		},
 		{
-			name:     "private repository shows the unavailable approval policy and the four conditions in place",
+			name:     "private repository keeps every line as a comment under the notice about private_repositories",
 			approval: github.ForkPullRequestApproval{ApprovalPolicy: github.Unavailable[setting.ForkPullRequestApprovalPolicy](github.UnavailablePrivateRepository)},
 			workflows: github.PrivateForkPullRequestWorkflows{Conditions: github.Observed(setting.PrivateForkPullRequestWorkflowConditions{
 				RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true,
 			})},
-			want: guide +
+			want: "      # reco does not accept private_repositories in the configuration file yet\n" +
+				"      # fork_pull_requests:\n" +
 				"      #   approval_policy: unavailable (the repository is private)\n" +
 				"      #   private_repositories:\n" +
 				"      #     run_workflows_from_fork_pull_requests: true\n" +
@@ -64,6 +64,16 @@ func TestWriteForkPullRequests(t *testing.T) {
 			name:      "conditions unavailable for a reason other than public panics",
 			approval:  github.ForkPullRequestApproval{ApprovalPolicy: github.Observed(setting.ForkPullRequestApprovalFirstTimeContributors)},
 			workflows: github.PrivateForkPullRequestWorkflows{Conditions: github.Unavailable[setting.PrivateForkPullRequestWorkflowConditions](github.UnavailablePrivateRepository)},
+		},
+		{
+			name:      "unavailable conditions on a private repository panic",
+			approval:  github.ForkPullRequestApproval{ApprovalPolicy: github.Unavailable[setting.ForkPullRequestApprovalPolicy](github.UnavailablePrivateRepository)},
+			workflows: github.PrivateForkPullRequestWorkflows{Conditions: github.Unavailable[setting.PrivateForkPullRequestWorkflowConditions](github.UnavailablePublicRepository)},
+		},
+		{
+			name:      "observed conditions on a public repository panic",
+			approval:  github.ForkPullRequestApproval{ApprovalPolicy: github.Observed(setting.ForkPullRequestApprovalFirstTimeContributors)},
+			workflows: github.PrivateForkPullRequestWorkflows{Conditions: github.Observed(setting.PrivateForkPullRequestWorkflowConditions{})},
 		},
 	}
 	for _, tc := range panics {

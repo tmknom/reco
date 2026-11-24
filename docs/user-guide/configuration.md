@@ -83,7 +83,7 @@ repositories:
 
 ## GitHub Actions の設定
 
-`actions` には、`permissions`（Actions の実行許可）、`workflow`（ワークフローの権限）、`access`（ほかのリポジトリのワークフローからのアクセス）、`variables`（Repository Variables）を書きます。使わないものは省けます。
+`actions` には、`permissions`（Actions の実行許可）、`workflow`（ワークフローの権限）、`access`（ほかのリポジトリのワークフローからのアクセス）、`fork_pull_requests`（Fork からの Pull Request のワークフローの承認）、`variables`（Repository Variables）を書きます。使わないものは省けます。
 
 ### Actions の実行許可
 
@@ -150,6 +150,26 @@ repositories:
 
 - この設定は非公開リポジトリにだけ適用される。公開リポジトリに書くと `apply` できない
 - `organization` は設定ファイルに書けない。Organization が所有するリポジトリのための値で、reco が扱うユーザー所有のリポジトリでは GitHub が受け付けないため。Organization から移転したリポジトリなどで `show` が `organization` を示したときは、`none` か `user` を書けば、書いた値に変わる
+- Actions が無効のリポジトリでも書ける
+
+### Fork からの Pull Request のワークフローの承認
+
+`actions.fork_pull_requests` には、次のキーを書きます。
+
+| キー | 値 | 意味 |
+|---|---|---|
+| `approval_policy` | `first_time_contributors_new_to_github` / `first_time_contributors` / `all_external_contributors` | Fork からの Pull Request のワークフローの実行に承認が要るユーザーの範囲。承認できるのは、リポジトリへの書き込み権限を持つユーザー |
+
+`approval_policy` の値の意味は次のとおりです。
+
+| 値 | 承認が要るユーザー |
+|---|---|
+| `first_time_contributors_new_to_github` | このリポジトリにコミットか Pull Request がマージされたことがなく、GitHub に登録して間もないユーザー |
+| `first_time_contributors` | このリポジトリにコミットか Pull Request がマージされたことのないユーザー |
+| `all_external_contributors` | リポジトリのメンバーか所有者でも、Organization のメンバーでもない、すべてのユーザー |
+
+- この設定は公開リポジトリにだけ適用される。非公開リポジトリに書くと `apply` できない
+- 値は小文字で書く。`FIRST_TIME_CONTRIBUTORS` のような大文字の値は、GitHub が受け付けないため書けない
 - Actions が無効のリポジトリでも書ける
 
 ### Repository Variables
