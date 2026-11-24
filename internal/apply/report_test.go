@@ -13,53 +13,52 @@ import (
 )
 
 //trace:checks QR-002
-func TestUnavailableReasonText(t *testing.T) {
+func TestUnavailableConfirmationText(t *testing.T) {
+	variable := setting.Unit{Key: setting.EnvironmentVariable, Environment: mustEnvironmentName(t, "staging"), Variable: mustVariableName(t, "REGION")}
+	ruleset := setting.Unit{Key: setting.RulesetResource, Ruleset: mustRulesetName(t, "protect")}
 	cases := []struct {
+		name   string
+		unit   setting.Unit
 		reason github.UnavailableReason
 		want   string
 	}{
-		{reason: github.UnavailableActionsDisabled, want: "GitHub Actions is disabled"},
-		{reason: github.UnavailableNotSelected, want: `allowed_actions is not "selected"`},
-		{reason: github.UnavailablePublicRepository, want: "the repository is public"},
-		{reason: github.UnavailableEnvironmentAbsent, want: "the environment does not exist"},
-		{reason: github.UnavailablePrivateRepository, want: "the repository is private"},
+		{name: "actions disabled is not in effect", unit: setting.Unit{Key: setting.AllowedActions}, reason: github.UnavailableActionsDisabled, want: "not in effect (GitHub Actions is disabled)"},
+		{name: "policy other than selected is not in effect", unit: setting.Unit{Key: setting.SelectedActions}, reason: github.UnavailableNotSelected, want: `not in effect (allowed_actions is not "selected")`},
+		{name: "public repository is not in effect", unit: setting.Unit{Key: setting.ActionsAccessLevel}, reason: github.UnavailablePublicRepository, want: "not in effect (the repository is public)"},
+		{name: "absent environment is not in effect", unit: variable, reason: github.UnavailableEnvironmentAbsent, want: "not in effect (the environment does not exist)"},
+		{name: "private repository is not in effect", unit: ruleset, reason: github.UnavailablePrivateRepository, want: "not in effect (the repository is private)"},
+		// 判定できない名前と解釈しない部分は、宣言が効いていないのではなく reco が確かめられなかったことを表すため、not in effect と示さない
+		{name: "undetermined environment name is not confirmed as environment existence", unit: variable, reason: github.UnavailableNameUndetermined, want: "not confirmed (environment existence unknown)"},
+		{name: "undetermined ruleset name is not confirmed as ruleset existence", unit: ruleset, reason: github.UnavailableNameUndetermined, want: "not confirmed (ruleset existence unknown)"},
+		{name: "uninterpreted parts are not confirmed", unit: ruleset, reason: github.UnavailableUninterpretedParts, want: "not confirmed (the ruleset contains parts that reco does not interpret)"},
 	}
 	for _, tc := range cases {
-		t.Run(tc.want, func(t *testing.T) {
-			if got := unavailableReasonText(tc.reason); got != tc.want {
-				t.Errorf("unavailableReasonText() = %q, want %q", got, tc.want)
+		t.Run(tc.name, func(t *testing.T) {
+			if got := unavailableConfirmationText(unavailableDesiredSetting{unit: tc.unit, reason: tc.reason}); got != tc.want {
+				t.Errorf("unavailableConfirmationText() = %q, want %q", got, tc.want)
 			}
 		})
 	}
 
-	t.Run("undefined reason panics", func(t *testing.T) {
-		defer func() {
-			if recover() == nil {
-				t.Error("unavailableReasonText() did not panic for an undefined reason")
-			}
-		}()
-		_ = unavailableReasonText(0)
-	})
-
-	// 判定できない名前は、宣言が効いていないのではなく reco が確かめられなかったことを示すため、confirmationText が not in effect と示さない
-	t.Run("undetermined environment name panics", func(t *testing.T) {
-		defer func() {
-			if recover() == nil {
-				t.Error("unavailableReasonText() did not panic for an undetermined environment name")
-			}
-		}()
-		_ = unavailableReasonText(github.UnavailableNameUndetermined)
-	})
-
-	// 解釈しない部分を含む観測不能は Ruleset にだけ生じ、apply は Ruleset の変更予定を承認の前に拒否するため、期待状態の確認に届かない
-	t.Run("uninterpreted parts panic", func(t *testing.T) {
-		defer func() {
-			if recover() == nil {
-				t.Error("unavailableReasonText() did not panic for uninterpreted parts")
-			}
-		}()
-		_ = unavailableReasonText(github.UnavailableUninterpretedParts)
-	})
+	// 観測が作らない組を、ほかの種類の文言で黙って埋めない
+	panicCases := []struct {
+		name string
+		u    unavailableDesiredSetting
+	}{
+		{name: "undefined reason panics", u: unavailableDesiredSetting{unit: ruleset}},
+		{name: "undetermined name of a setting without a name panics", u: unavailableDesiredSetting{unit: setting.Unit{Key: setting.AllowAutoMerge}, reason: github.UnavailableNameUndetermined}},
+		{name: "uninterpreted parts of a setting other than a ruleset panic", u: unavailableDesiredSetting{unit: variable, reason: github.UnavailableUninterpretedParts}},
+	}
+	for _, tc := range panicCases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Error("unavailableConfirmationText() did not panic")
+				}
+			}()
+			_ = unavailableConfirmationText(tc.u)
+		})
+	}
 }
 
 //trace:checks FR-013 INV-005
@@ -247,7 +246,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 			name: "success with an unavailable desired value shows that the declaration is not in effect with the reason",
 			record: changeRecord{
 				change: allowedActionsChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}},
-				confirmation: desiredStateUnavailable, desiredUnavailableReason: github.UnavailableActionsDisabled,
+				confirmation: desiredStateUnavailable, desiredUnavailable: unavailableDesiredSetting{unit: setting.Unit{Key: setting.AllowedActions}, reason: github.UnavailableActionsDisabled},
 			},
 			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not in effect (GitHub Actions is disabled)\n\n" +
 				rollbackNote,
@@ -704,12 +703,12 @@ func TestWriteChangeReport_Environments(t *testing.T) {
 		},
 		{
 			name:    "mode change of an environment absent after the update is not in effect",
-			records: []changeRecord{{change: staging, operations: succeeded, confirmation: desiredStateUnavailable, desiredUnavailableReason: github.UnavailableEnvironmentAbsent}},
+			records: []changeRecord{{change: staging, operations: succeeded, confirmation: desiredStateUnavailable, desiredUnavailable: unavailableDesiredSetting{unit: staging.DesiredState[0].Unit, reason: github.UnavailableEnvironmentAbsent}}},
 			want:    "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not in effect (the environment does not exist)\n\n" + rollbackNote,
 		},
 		{
 			name:    "creation whose existence cannot be determined after the update is not confirmed",
-			records: []changeRecord{{change: creation, operations: succeeded, confirmation: desiredStateUnavailable, desiredUnavailableReason: github.UnavailableNameUndetermined}},
+			records: []changeRecord{{change: creation, operations: succeeded, confirmation: desiredStateUnavailable, desiredUnavailable: unavailableDesiredSetting{unit: creation.DesiredState[0].Unit, reason: github.UnavailableNameUndetermined}}},
 			want:    "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not confirmed (environment existence unknown)\n\n" + rollbackNote,
 		},
 		{

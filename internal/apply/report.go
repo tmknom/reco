@@ -284,11 +284,7 @@ func confirmationText(record changeRecord) string {
 	case desiredStateIdentityMismatch:
 		return "not confirmed (repository ID changed)"
 	case desiredStateUnavailable:
-		// 判定できない名前は、宣言した設定が効いていないのではなく reco が存在を確かめられなかったことを表すため、not in effect と示さない
-		if record.desiredUnavailableReason == github.UnavailableNameUndetermined {
-			return "not confirmed (environment existence unknown)"
-		}
-		return "not in effect (" + unavailableReasonText(record.desiredUnavailableReason) + ")"
+		return unavailableConfirmationText(record.desiredUnavailable)
 	default:
 		return "not checked"
 	}
@@ -307,26 +303,35 @@ func mismatchedSettingsText(units []setting.Unit) string {
 	return strings.Join(names, ", ")
 }
 
-// unavailableReasonText は、期待状態の確認で観測不能だったときに、宣言した設定が効いていない理由を CLI 仕様の文言で返す。
-// 未定義の理由は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
-func unavailableReasonText(reason github.UnavailableReason) string {
-	switch reason {
+// unavailableConfirmationText は、期待値と比べる設定が観測不能だったことによる確認失敗を、CLI 仕様の文言で返す。
+// not in effect と not confirmed の分け方は、ドメインモデルの期待状態の確認結果に従う。
+// 理由だけでは文言が決まらないため、観測不能だった管理設定の種類からも選び、観測が作らない組は既定の文言で埋めずに不変条件の破れとして panic する。
+// 定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+func unavailableConfirmationText(u unavailableDesiredSetting) string {
+	switch u.reason {
 	case github.UnavailableActionsDisabled:
-		return "GitHub Actions is disabled"
+		return "not in effect (GitHub Actions is disabled)"
 	case github.UnavailableNotSelected:
-		return `allowed_actions is not "selected"`
+		return `not in effect (allowed_actions is not "selected")`
 	case github.UnavailablePublicRepository:
-		return "the repository is public"
+		return "not in effect (the repository is public)"
 	case github.UnavailableEnvironmentAbsent:
-		return "the environment does not exist"
-	case github.UnavailableNameUndetermined:
-		// confirmationText が not in effect と示さないため、理由の文言を持たない
+		return "not in effect (the environment does not exist)"
 	case github.UnavailablePrivateRepository:
-		return "the repository is private"
+		return "not in effect (the repository is private)"
+	case github.UnavailableNameUndetermined:
+		switch {
+		case u.unit.Key == setting.RulesetResource:
+			return "not confirmed (ruleset existence unknown)"
+		case u.unit.Key.HasEnvironmentName():
+			return "not confirmed (environment existence unknown)"
+		}
 	case github.UnavailableUninterpretedParts:
-		// 解釈しない部分を含む観測不能は Ruleset にだけ生じ、applyPlan が Ruleset の更新操作を承認の前に拒否するため、期待状態の確認に届かない
+		if u.unit.Key == setting.RulesetResource {
+			return "not confirmed (the ruleset contains parts that reco does not interpret)"
+		}
 	}
-	panic(fmt.Sprintf("apply: undefined unavailable reason %d", int(reason)))
+	panic(fmt.Sprintf("apply: no confirmation text for unavailable reason %d of %s", int(u.reason), u.unit.String()))
 }
 
 func writeDetails(b *strings.Builder, indent string, lines []string) {

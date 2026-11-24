@@ -151,22 +151,24 @@ func TestPresentPlan(t *testing.T) {
 		}
 	})
 
-	// apply がまだ実行しない Ruleset の変更予定でも、plan は変更計画を示して終える (CLI 仕様の apply のエラー終了と plan の終了コード)
-	t.Run("ruleset creation returns no error", func(t *testing.T) {
+	// apply がまだ実行しない既存の Ruleset の値の変更でも、plan は変更計画を示して終える (CLI 仕様の apply のエラー終了と plan の終了コード)
+	t.Run("ruleset value update returns no error", func(t *testing.T) {
 		name, err := setting.ParseRulesetName("protect")
 		if err != nil {
 			t.Fatalf("ParseRulesetName() error = %v", err)
 		}
-		creation := changeplan.SettingPlan{
-			Unit: setting.Unit{Key: setting.RulesetResource, Ruleset: name}, Observed: github.Observed(setting.Absent()),
-			Desired: setting.RulesetValue(setting.Ruleset{
-				Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive,
+		ruleset := func(enforcement setting.RulesetEnforcement) setting.Value {
+			return setting.RulesetValue(setting.Ruleset{
+				Target: setting.RulesetTargetBranch, Enforcement: enforcement,
 				Conditions:   setting.RulesetConditions{RefName: &setting.RefNameCondition{Include: []string{"~DEFAULT_BRANCH"}, Exclude: []string{}}},
 				BypassActors: []setting.BypassActor{}, Rules: []setting.RulesetRule{setting.DeletionRule()},
-			}),
-			Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
+			})
 		}
-		if err := presentPlan(cfg, plan(creation)); err != nil {
+		update := changeplan.SettingPlan{
+			Unit: setting.Unit{Key: setting.RulesetResource, Ruleset: name}, Observed: github.Observed(ruleset(setting.RulesetEnforcementDisabled)),
+			Desired: ruleset(setting.RulesetEnforcementActive), Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
+		}
+		if err := presentPlan(cfg, plan(update)); err != nil {
 			t.Errorf("presentPlan() error = %v, want nil", err)
 		}
 	})

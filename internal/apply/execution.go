@@ -107,9 +107,9 @@ func executeChange(ctx context.Context, client *github.Client, r changeplan.Repo
 	if record.updatesSucceeded() {
 		retryDelays = reobservationDelays[:]
 	}
-	observed, confirmation, reason, err := observeAfterUpdate(ctx, client, r, change, areas, retryDelays, after)
+	observed, confirmation, unavailable, err := observeAfterUpdate(ctx, client, r, change, areas, retryDelays, after)
 	record.confirmation = confirmation
-	record.desiredUnavailableReason = reason
+	record.desiredUnavailable = unavailable
 	if err != nil {
 		record.cause = errors.Join(record.cause, err)
 		return record
@@ -183,8 +183,10 @@ func sendUpdate(ctx context.Context, client *github.Client, target repository.Re
 		return client.UpdateEnvironmentVariableValue(ctx, target, environmentDestination(operation.Unit.Environment, observed), operation.Unit.Variable, operation.Value.VariableValue())
 	case changeplan.EnvironmentVariableDeletion:
 		return client.DeleteEnvironmentVariable(ctx, target, environmentDestination(operation.Unit.Environment, observed), operation.Unit.Variable)
-	case changeplan.RulesetCreation, changeplan.RulesetValueUpdate:
-		// applyPlan が Ruleset の更新操作を承認の前に拒否するため、ここに届かない
+	case changeplan.RulesetCreation:
+		return client.CreateRuleset(ctx, target, operation.Unit.Ruleset, operation.Value.Ruleset())
+	case changeplan.RulesetValueUpdate:
+		// applyPlan が既存の Ruleset の値の変更を承認の前に拒否するため、ここに届かない
 	}
 	panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))
 }
@@ -268,21 +270,21 @@ func appendArea(areas []setting.Area, area setting.Area) []setting.Area {
 	return append(areas, area)
 }
 
-// observeAfterUpdate は、更新後の観測を行い、期待状態の確認結果とその観測不能の理由、それを与えた観測を返す。
+// observeAfterUpdate は、更新後の観測を行い、期待状態の確認結果と観測不能だった管理設定、それを与えた観測を返す。
 // GitHub は正常応答のあとすぐには更新を反映しないことがあるため、期待状態と一致しないあいだと、期待値と比べる設定が観測不能のあいだは、
 // retryDelays の時間ずつ待って、retryDelays を使い切るまで観測し直す。
-func observeAfterUpdate(ctx context.Context, client *github.Client, r changeplan.RepositoryPlan, change changeplan.LogicalChange, areas []setting.Area, retryDelays []time.Duration, after func(time.Duration) <-chan time.Time) (github.ObservationResult, desiredStateConfirmation, github.UnavailableReason, error) {
+func observeAfterUpdate(ctx context.Context, client *github.Client, r changeplan.RepositoryPlan, change changeplan.LogicalChange, areas []setting.Area, retryDelays []time.Duration, after func(time.Duration) <-chan time.Time) (github.ObservationResult, desiredStateConfirmation, unavailableDesiredSetting, error) {
 	for i := 0; ; i++ {
 		observed, err := client.ObserveRepositoryForNamedResources(ctx, r.Target, observationResources(change), areas...)
 		if err != nil {
-			return github.ObservationResult{}, desiredStateUnconfirmed, 0, err
+			return github.ObservationResult{}, desiredStateUnconfirmed, unavailableDesiredSetting{}, err
 		}
-		confirmation, reason := confirmDesiredState(r.RepositoryID, change, observed)
+		confirmation, unavailable := confirmDesiredState(r.RepositoryID, change, observed)
 		if (confirmation != desiredStateMismatch && confirmation != desiredStateUnavailable) || i == len(retryDelays) {
-			return observed, confirmation, reason, nil
+			return observed, confirmation, unavailable, nil
 		}
 		if err := waitFor(ctx, after, retryDelays[i]); err != nil {
-			return github.ObservationResult{}, desiredStateUnconfirmed, 0, fmt.Errorf("wait before reading %s again after the update: %w", r.Target, err)
+			return github.ObservationResult{}, desiredStateUnconfirmed, unavailableDesiredSetting{}, fmt.Errorf("wait before reading %s again after the update: %w", r.Target, err)
 		}
 	}
 }

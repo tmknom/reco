@@ -986,8 +986,8 @@ func TestExecuteChange_ActionsPermissions(t *testing.T) {
 			if got.confirmation != tc.wantDesired {
 				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
 			}
-			if got.desiredUnavailableReason != tc.wantReason {
-				t.Errorf("desiredUnavailableReason = %v, want %v", got.desiredUnavailableReason, tc.wantReason)
+			if got.desiredUnavailable.reason != tc.wantReason {
+				t.Errorf("desiredUnavailable.reason = %v, want %v", got.desiredUnavailable.reason, tc.wantReason)
 			}
 			if !reflect.DeepEqual(got.unexpectedOutsideChanges, tc.wantOutside) {
 				t.Errorf("unexpectedOutsideChanges = %v, want %v", got.unexpectedOutsideChanges, tc.wantOutside)
@@ -1089,8 +1089,8 @@ func TestExecuteChange_ActionsAccess(t *testing.T) {
 			if got.confirmation != tc.wantDesired {
 				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
 			}
-			if got.desiredUnavailableReason != tc.wantReason {
-				t.Errorf("desiredUnavailableReason = %v, want %v", got.desiredUnavailableReason, tc.wantReason)
+			if got.desiredUnavailable.reason != tc.wantReason {
+				t.Errorf("desiredUnavailable.reason = %v, want %v", got.desiredUnavailable.reason, tc.wantReason)
 			}
 			if got.result() != tc.wantResult {
 				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)
@@ -1854,6 +1854,18 @@ func TestSendUpdate(t *testing.T) {
 			want:      githubtest.Request{Method: http.MethodPatch, Path: "/repos/owner/repo/environments/Production/variables/REGION", Body: map[string]any{"value": "ap-northeast-1\n"}},
 		},
 		{
+			name:      "ruleset creation is sent with the declared name and the whole declared value",
+			operation: rulesetCreationChange(t, "Protect").Operations[0],
+			observed:  github.ObservationResult{},
+			response:  createdRuleset(protectRulesetBody(42, "Protect", setting.RulesetEnforcementActive)),
+			want: githubtest.Request{Method: http.MethodPost, Path: "/repos/owner/repo/rulesets", Body: map[string]any{
+				"name": "Protect", "target": "branch", "enforcement": "active",
+				"conditions":    map[string]any{"ref_name": map[string]any{"include": []any{"~DEFAULT_BRANCH"}, "exclude": []any{}}},
+				"bypass_actors": []any{map[string]any{"actor_type": "RepositoryRole", "actor_id": float64(5), "bypass_mode": "always"}},
+				"rules":         []any{map[string]any{"type": "deletion"}},
+			}},
+		},
+		{
 			name:      "variable deletion is sent to the declared name without a body",
 			operation: variableDeletionChange(t, "GO_VERSION", "1.26").Operations[0],
 			observed:  github.ObservationResult{RepositoryVariables: variables(github.Variable{Name: "GO_VERSION", Value: "1.26"})},
@@ -1908,8 +1920,7 @@ func TestSendUpdate(t *testing.T) {
 			}(),
 			observed: github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", nil))},
 		},
-		// apply は Ruleset の変更予定を承認の前に拒否するため、Ruleset の更新操作は更新要求を送る段階に届かない
-		{name: "ruleset creation panics", operation: rulesetCreationChange(t, "protect").Operations[0]},
+		// apply は既存の Ruleset の値の変更を承認の前に拒否するため、値の変更の更新操作は更新要求を送る段階に届かない
 		{name: "ruleset value update panics", operation: rulesetValueUpdateChange(t, "protect").Operations[0]},
 	}
 	for _, tc := range panicCases {

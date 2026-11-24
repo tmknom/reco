@@ -34,8 +34,8 @@ type changeRecord struct {
 	// 変更前提を確かめなかった更新操作の記録は持たない。
 	operations   []operationRecord
 	confirmation desiredStateConfirmation
-	// desiredUnavailableReason は confirmation が desiredStateUnavailable のときだけ意味を持つ。
-	desiredUnavailableReason github.UnavailableReason
+	// desiredUnavailable は confirmation が desiredStateUnavailable のときだけ意味を持つ。
+	desiredUnavailable unavailableDesiredSetting
 	// mismatchedSettings は、更新後の観測で期待値と異なる値を観測した管理設定。期待状態の並びである。confirmation が desiredStateMismatch のときだけ表示に使う。
 	mismatchedSettings       []setting.Unit
 	unexpectedOutsideChanges []unexpectedOutsideChange

@@ -162,7 +162,7 @@ func (c *Client) observeRulesets(ctx context.Context, reference repository.Refer
 	if reason, unavailable := rulesetsUnavailability(private); unavailable {
 		return Rulesets{Existing: Unavailable[[]Ruleset](reason)}, nil
 	}
-	items, err := c.listSinglePage(ctx, c.rulesetsURL(reference))
+	items, err := c.listSinglePage(ctx, c.rulesetListURL(reference))
 	if err != nil {
 		return Rulesets{}, err
 	}

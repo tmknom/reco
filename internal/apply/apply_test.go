@@ -75,7 +75,7 @@ func TestExecutableChanges(t *testing.T) {
 	})
 }
 
-// TestUnsupportedChangesError は、apply がまだ実行しない Ruleset の更新操作を持つ論理的な設定変更を、変更計画の並びですべて挙げることを確かめる。
+// TestUnsupportedChangesError は、apply がまだ実行しない既存の Ruleset の値の変更を持つ論理的な設定変更を、変更計画の並びですべて挙げ、作成は挙げないことを確かめる。
 //
 //trace:checks FR-008
 func TestUnsupportedChangesError(t *testing.T) {
@@ -89,26 +89,21 @@ func TestUnsupportedChangesError(t *testing.T) {
 		want         string
 	}{
 		{
-			name:         "ruleset creation is rejected naming the target and the ruleset",
-			repositories: []repositoryChanges{repositoryOf(zeta, rulesetCreationChange(t, "protect"))},
-			want:         "plan cannot be applied: owner/zeta: rulesets.protect is a ruleset change, which apply does not support yet",
-		},
-		{
 			name:         "ruleset value update is rejected naming the target and the ruleset",
 			repositories: []repositoryChanges{repositoryOf(zeta, rulesetValueUpdateChange(t, "protect"))},
-			want:         "plan cannot be applied: owner/zeta: rulesets.protect is a ruleset change, which apply does not support yet",
+			want:         "plan cannot be applied: owner/zeta: rulesets.protect is a change to an existing ruleset, which apply does not support yet",
 		},
 		{
 			// 対象リポジトリの宣言の並びを名前順と逆にし、名前順に並べ替える実装と、最初の一件で打ち切る実装を失敗させる
-			name: "ruleset changes across repositories are all listed in the order of the change plan",
+			name: "ruleset value updates across repositories are all listed in the order of the change plan",
 			repositories: []repositoryChanges{
-				repositoryOf(zeta, rulesetCreationChange(t, "zeta-rule")),
+				repositoryOf(zeta, rulesetValueUpdateChange(t, "zeta-rule")),
 				repositoryOf(alpha),
-				repositoryOf(alpha, allowAutoMergeChange(), rulesetValueUpdateChange(t, "beta-rule"), rulesetCreationChange(t, "alpha-rule")),
+				repositoryOf(alpha, allowAutoMergeChange(), rulesetValueUpdateChange(t, "beta-rule"), rulesetValueUpdateChange(t, "alpha-rule")),
 			},
-			want: "plan cannot be applied: owner/zeta: rulesets.zeta-rule is a ruleset change, which apply does not support yet; " +
-				"owner/alpha: rulesets.beta-rule is a ruleset change, which apply does not support yet; " +
-				"owner/alpha: rulesets.alpha-rule is a ruleset change, which apply does not support yet",
+			want: "plan cannot be applied: owner/zeta: rulesets.zeta-rule is a change to an existing ruleset, which apply does not support yet; " +
+				"owner/alpha: rulesets.beta-rule is a change to an existing ruleset, which apply does not support yet; " +
+				"owner/alpha: rulesets.alpha-rule is a change to an existing ruleset, which apply does not support yet",
 		},
 	}
 	for _, tc := range cases {
@@ -119,9 +114,9 @@ func TestUnsupportedChangesError(t *testing.T) {
 		})
 	}
 
-	t.Run("changes without a ruleset update operation are not rejected", func(t *testing.T) {
+	t.Run("changes without a ruleset value update are not rejected", func(t *testing.T) {
 		repositories := []repositoryChanges{
-			repositoryOf(zeta, allowAutoMergeChange(), creationChange(t, "production"), variableCreationChange(t, "GO_VERSION", "1.27")),
+			repositoryOf(zeta, allowAutoMergeChange(), creationChange(t, "production"), variableCreationChange(t, "GO_VERSION", "1.27"), rulesetCreationChange(t, "protect")),
 			repositoryOf(alpha),
 		}
 		if err := unsupportedChangesError(repositories); err != nil {
@@ -554,11 +549,12 @@ func TestApplyPlan(t *testing.T) {
 	})
 }
 
-// TestApplyPlan_RulesetChangeRejectedBeforeApproval は、apply がまだ実行しない Ruleset の変更予定を含む変更計画を、
+// TestApplyPlan_RulesetChangeRejectedBeforeApproval は、apply がまだ実行しない既存の Ruleset の値の変更を含む変更計画を、
 // 変更計画を表示したうえで、承認を求めず、どの対象リポジトリも更新せずに拒否することを確かめる。
 //
 //trace:checks INV-002 INV-003 FR-008
 func TestApplyPlan_RulesetChangeRejectedBeforeApproval(t *testing.T) {
+	disabled := setting.RulesetValue(protectRuleset(setting.RulesetEnforcementDisabled))
 	approve := func(calls *int) func(context.Context) error {
 		return func(context.Context) error {
 			*calls++
@@ -566,20 +562,20 @@ func TestApplyPlan_RulesetChangeRejectedBeforeApproval(t *testing.T) {
 		}
 	}
 
-	// 先頭の対象リポジトリを適用可能なほかの変更予定だけにし、先頭の対象リポジトリから更新を始める実装を失敗させる
-	t.Run("ruleset change is rejected with the change plan without approval or requests", func(t *testing.T) {
+	// 先頭の対象リポジトリを適用可能なほかの変更予定と Ruleset の作成にし、先頭の対象リポジトリから更新を始める実装と、作成を先に実行する実装を失敗させる
+	t.Run("ruleset value update is rejected with the change plan without approval or requests", func(t *testing.T) {
 		baseURL, server := newSequenceServer(t)
 		var out bytes.Buffer
 		calls := 0
 		cfg := Config{Configuration: configuration.File{Path: "./reco.yaml"}, Out: &out, Approve: approve(&calls), After: elapsedAtOnce}
 		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{
-			newRepositoryPlanOf(t, "owner/first", 1, allowAutoMergeMismatch()),
-			newRepositoryPlanOf(t, "owner/second", 2, rulesetMismatch(t, "protect", setting.Absent())),
+			newRepositoryPlanOf(t, "owner/first", 1, allowAutoMergeMismatch(), rulesetMismatch(t, "release", setting.Absent())),
+			newRepositoryPlanOf(t, "owner/second", 2, rulesetMismatch(t, "protect", disabled)),
 		}}
 
 		err := applyPlan(context.Background(), cfg, newClient(baseURL), p)
 
-		want := "plan cannot be applied: owner/second: rulesets.protect is a ruleset change, which apply does not support yet; no changes made"
+		want := "plan cannot be applied: owner/second: rulesets.protect is a change to an existing ruleset, which apply does not support yet; no changes made"
 		if err == nil || err.Error() != want {
 			t.Errorf("applyPlan() error = %v, want %q", err, want)
 		}
@@ -592,10 +588,10 @@ func TestApplyPlan_RulesetChangeRejectedBeforeApproval(t *testing.T) {
 		}
 	})
 
-	t.Run("not-applicable change is reported before the ruleset change", func(t *testing.T) {
+	t.Run("not-applicable change is reported before the ruleset value update", func(t *testing.T) {
 		baseURL, server := newSequenceServer(t)
 		calls := 0
-		p := newPlan(t, rulesetMismatch(t, "protect", setting.Absent()), shaPinningRequiredNotApplicable())
+		p := newPlan(t, rulesetMismatch(t, "protect", disabled), shaPinningRequiredNotApplicable())
 
 		err := applyPlan(context.Background(), Config{Out: &bytes.Buffer{}, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), p)
 
@@ -609,7 +605,7 @@ func TestApplyPlan_RulesetChangeRejectedBeforeApproval(t *testing.T) {
 
 	t.Run("change plan write failure is returned without approval", func(t *testing.T) {
 		calls := 0
-		err := applyPlan(context.Background(), Config{Out: failingWriter{}, Approve: approve(&calls)}, nil, newPlan(t, rulesetMismatch(t, "protect", setting.Absent())))
+		err := applyPlan(context.Background(), Config{Out: failingWriter{}, Approve: approve(&calls)}, nil, newPlan(t, rulesetMismatch(t, "protect", disabled)))
 
 		if !errors.Is(err, errWrite) {
 			t.Errorf("applyPlan() error = %v, want %v", err, errWrite)
