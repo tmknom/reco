@@ -22,15 +22,17 @@ func TestShow_Success(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			server, opts := newGitHubServer(t, githubtest.Routes(t, map[string]githubtest.Response{
 				// 非公開のリポジトリにし、show がリポジトリ外のワークフローからのアクセスまで読むことを確かめる
-				"GET /repos/owner/repo":                                      githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowAutoMerge: true, Private: true, Admin: true}.JSON()),
-				"GET /repos/owner/repo/actions/permissions":                  {Status: http.StatusOK, Body: actionsPermissionsBody},
-				"GET /repos/owner/repo/actions/permissions/selected-actions": {Status: http.StatusOK, Body: selectedActionsBody},
-				"GET /repos/owner/repo/actions/permissions/workflow":         {Status: http.StatusOK, Body: workflowPermissionsBody},
-				"GET /repos/owner/repo/actions/permissions/access":           githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
-				"GET /repos/owner/repo/actions/variables":                    githubtest.OK(githubtest.VariablesBody{}.JSON()),
-				"GET /repos/owner/repo/environments":                         githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
-				"GET /repos/owner/repo/vulnerability-alerts":                 {Status: http.StatusNoContent},
-				"GET /repos/owner/repo/automated-security-fixes":             githubtest.OK(githubtest.AutomatedSecurityFixesBody{Enabled: true}.JSON()),
+				"GET /repos/owner/repo":                                                     githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowAutoMerge: true, Private: true, Admin: true}.JSON()),
+				"GET /repos/owner/repo/actions/permissions":                                 {Status: http.StatusOK, Body: actionsPermissionsBody},
+				"GET /repos/owner/repo/actions/permissions/selected-actions":                {Status: http.StatusOK, Body: selectedActionsBody},
+				"GET /repos/owner/repo/actions/permissions/workflow":                        {Status: http.StatusOK, Body: workflowPermissionsBody},
+				"GET /repos/owner/repo/actions/permissions/access":                          githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos": githubtest.OK(githubtest.PrivateForkPullRequestWorkflowsBody{}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/artifact-and-log-retention":      githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 400}.JSON()),
+				"GET /repos/owner/repo/actions/variables":                                   githubtest.OK(githubtest.VariablesBody{}.JSON()),
+				"GET /repos/owner/repo/environments":                                        githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
+				"GET /repos/owner/repo/vulnerability-alerts":                                {Status: http.StatusNoContent},
+				"GET /repos/owner/repo/automated-security-fixes":                            githubtest.OK(githubtest.AutomatedSecurityFixesBody{Enabled: true}.JSON()),
 			}))
 
 			code, stdout, stderr := runExecute(t, Environment{Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue, "GITHUB_TOKEN": githubEnvValue})}, opts, tc.args...)
@@ -49,6 +51,8 @@ func TestShow_Success(t *testing.T) {
 				"/repos/owner/repo/actions/permissions/selected-actions",
 				"/repos/owner/repo/actions/permissions/workflow",
 				"/repos/owner/repo/actions/permissions/access",
+				"/repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos",
+				"/repos/owner/repo/actions/permissions/artifact-and-log-retention",
 				"/repos/owner/repo/actions/variables",
 				"/repos/owner/repo/environments",
 				"/repos/owner/repo/vulnerability-alerts",
@@ -91,8 +95,10 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 				"GET /repos/owner/repo/actions/permissions/selected-actions": githubtest.OK(githubtest.SelectedActionsBody{
 					GitHubOwnedAllowed: true, PatternsAllowed: []string{`a"b\c`, "é/*", "#x: y", "\u200b"},
 				}.JSON()),
-				"GET /repos/owner/repo/actions/permissions/workflow": githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "write", CanApprovePullRequestReviews: true}.JSON()),
-				"GET /repos/owner/repo/actions/permissions/access":   githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "user"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/workflow":                        githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "write", CanApprovePullRequestReviews: true}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/access":                          githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "user"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos": githubtest.OK(githubtest.PrivateForkPullRequestWorkflowsBody{}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/artifact-and-log-retention":      githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 400}.JSON()),
 				// 改行に続けてキーを模した値も、エスケープした1行の値として読み戻せ、設定宣言の構造を変えない
 				"GET /repos/owner/repo/actions/variables": githubtest.OK(githubtest.VariablesBody{TotalCount: 2, Variables: []githubtest.VariableBody{
 					{Name: "GO_VERSION", Value: "1.27"},
@@ -124,14 +130,16 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 		{
 			name: "public repository with disabled actions and no environments reads back without the commented lines",
 			routes: map[string]githubtest.Response{
-				"GET /repos/owner/repo":                                 githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowMergeCommit: true, AllowRebaseMerge: true, Admin: true}.JSON()),
-				"GET /repos/owner/repo/actions/permissions":             githubtest.OK(`{"enabled": false}`),
-				"GET /repos/owner/repo/actions/permissions/workflow":    githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
-				"GET /repos/owner/repo/actions/variables":               githubtest.OK(githubtest.VariablesBody{}.JSON()),
-				"GET /repos/owner/repo/environments":                    githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
-				"GET /repos/owner/repo/vulnerability-alerts":            {Status: http.StatusNotFound},
-				"GET /repos/owner/repo/automated-security-fixes":        githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),
-				"GET /repos/owner/repo/private-vulnerability-reporting": githubtest.OK(githubtest.PrivateVulnerabilityReportingBody{Enabled: true}.JSON()),
+				"GET /repos/owner/repo":                                                  githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowMergeCommit: true, AllowRebaseMerge: true, Admin: true}.JSON()),
+				"GET /repos/owner/repo/actions/permissions":                              githubtest.OK(`{"enabled": false}`),
+				"GET /repos/owner/repo/actions/permissions/workflow":                     githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/fork-pr-contributor-approval": githubtest.OK(githubtest.ForkPullRequestApprovalBody{ApprovalPolicy: "first_time_contributors"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/artifact-and-log-retention":   githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 400}.JSON()),
+				"GET /repos/owner/repo/actions/variables":                                githubtest.OK(githubtest.VariablesBody{}.JSON()),
+				"GET /repos/owner/repo/environments":                                     githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
+				"GET /repos/owner/repo/vulnerability-alerts":                             {Status: http.StatusNotFound},
+				"GET /repos/owner/repo/automated-security-fixes":                         githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),
+				"GET /repos/owner/repo/private-vulnerability-reporting":                  githubtest.OK(githubtest.PrivateVulnerabilityReportingBody{Enabled: true}.JSON()),
 				// Ruleset が一つもないときのコメントの行も、設定宣言として読むことを妨げない
 				"GET /repos/owner/repo/rulesets": githubtest.OK(githubtest.RulesetsBody{}.JSON()),
 			},
@@ -139,15 +147,17 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 		{
 			name: "public repository with interpretable rulesets reads back with escaped names and patterns",
 			routes: map[string]githubtest.Response{
-				"GET /repos/owner/repo":                                 githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowSquashMerge: true, Admin: true}.JSON()),
-				"GET /repos/owner/repo/actions/permissions":             githubtest.OK(`{"enabled": false}`),
-				"GET /repos/owner/repo/actions/permissions/workflow":    githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
-				"GET /repos/owner/repo/actions/variables":               githubtest.OK(githubtest.VariablesBody{}.JSON()),
-				"GET /repos/owner/repo/environments":                    githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
-				"GET /repos/owner/repo/vulnerability-alerts":            {Status: http.StatusNotFound},
-				"GET /repos/owner/repo/automated-security-fixes":        githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),
-				"GET /repos/owner/repo/private-vulnerability-reporting": githubtest.OK(githubtest.PrivateVulnerabilityReportingBody{}.JSON()),
-				"GET /repos/owner/repo/rulesets":                        githubtest.OK(githubtest.RulesetsBody{{ID: 10, Name: `protect "main" #1: x`}, {ID: 11, Name: "empty"}}.JSON()),
+				"GET /repos/owner/repo":                                                  githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowSquashMerge: true, Admin: true}.JSON()),
+				"GET /repos/owner/repo/actions/permissions":                              githubtest.OK(`{"enabled": false}`),
+				"GET /repos/owner/repo/actions/permissions/workflow":                     githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/fork-pr-contributor-approval": githubtest.OK(githubtest.ForkPullRequestApprovalBody{ApprovalPolicy: "first_time_contributors"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/artifact-and-log-retention":   githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 400}.JSON()),
+				"GET /repos/owner/repo/actions/variables":                                githubtest.OK(githubtest.VariablesBody{}.JSON()),
+				"GET /repos/owner/repo/environments":                                     githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
+				"GET /repos/owner/repo/vulnerability-alerts":                             {Status: http.StatusNotFound},
+				"GET /repos/owner/repo/automated-security-fixes":                         githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),
+				"GET /repos/owner/repo/private-vulnerability-reporting":                  githubtest.OK(githubtest.PrivateVulnerabilityReportingBody{}.JSON()),
+				"GET /repos/owner/repo/rulesets":                                         githubtest.OK(githubtest.RulesetsBody{{ID: 10, Name: `protect "main" #1: x`}, {ID: 11, Name: "empty"}}.JSON()),
 				// 名前とパターンの引用符、#、: も、エスケープした値として読み戻せる。並びは GitHub が返した順のまま
 				"GET /repos/owner/repo/rulesets/10": githubtest.OK(githubtest.RulesetBody{
 					ID: 10, Name: `protect "main" #1: x`, Target: "branch", Enforcement: "active",
@@ -162,11 +172,13 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 		{
 			name: "local_only policy without selected actions reads back",
 			routes: map[string]githubtest.Response{
-				"GET /repos/owner/repo":                              githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowSquashMerge: true, AllowMergeCommit: true, AllowRebaseMerge: true, Private: true, Admin: true}.JSON()),
-				"GET /repos/owner/repo/actions/permissions":          githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "local_only"}.JSON()),
-				"GET /repos/owner/repo/actions/permissions/workflow": githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
-				"GET /repos/owner/repo/actions/permissions/access":   githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
-				"GET /repos/owner/repo/actions/variables":            githubtest.OK(githubtest.VariablesBody{}.JSON()),
+				"GET /repos/owner/repo":                                                     githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowSquashMerge: true, AllowMergeCommit: true, AllowRebaseMerge: true, Private: true, Admin: true}.JSON()),
+				"GET /repos/owner/repo/actions/permissions":                                 githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "local_only"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/workflow":                        githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/access":                          githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos": githubtest.OK(githubtest.PrivateForkPullRequestWorkflowsBody{}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/artifact-and-log-retention":      githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 400}.JSON()),
+				"GET /repos/owner/repo/actions/variables":                                   githubtest.OK(githubtest.VariablesBody{}.JSON()),
 				"GET /repos/owner/repo/environments": githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 1, Environments: []githubtest.EnvironmentBody{
 					{ID: 2, Name: "production"},
 				}}.JSON()),
@@ -178,15 +190,17 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 		{
 			name: "selected policy without patterns reads back with the empty sequence",
 			routes: map[string]githubtest.Response{
-				"GET /repos/owner/repo":                                      githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowRebaseMerge: true, AllowUpdateBranch: true, Private: true, Admin: true}.JSON()),
-				"GET /repos/owner/repo/actions/permissions":                  githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "selected"}.JSON()),
-				"GET /repos/owner/repo/actions/permissions/selected-actions": githubtest.OK(githubtest.SelectedActionsBody{VerifiedAllowed: true}.JSON()),
-				"GET /repos/owner/repo/actions/permissions/workflow":         githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
-				"GET /repos/owner/repo/actions/permissions/access":           githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
-				"GET /repos/owner/repo/actions/variables":                    githubtest.OK(githubtest.VariablesBody{}.JSON()),
-				"GET /repos/owner/repo/environments":                         githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
-				"GET /repos/owner/repo/vulnerability-alerts":                 {Status: http.StatusNotFound},
-				"GET /repos/owner/repo/automated-security-fixes":             githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),
+				"GET /repos/owner/repo":                                                     githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowRebaseMerge: true, AllowUpdateBranch: true, Private: true, Admin: true}.JSON()),
+				"GET /repos/owner/repo/actions/permissions":                                 githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "selected"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/selected-actions":                githubtest.OK(githubtest.SelectedActionsBody{VerifiedAllowed: true}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/workflow":                        githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/access":                          githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos": githubtest.OK(githubtest.PrivateForkPullRequestWorkflowsBody{}.JSON()),
+				"GET /repos/owner/repo/actions/permissions/artifact-and-log-retention":      githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 400}.JSON()),
+				"GET /repos/owner/repo/actions/variables":                                   githubtest.OK(githubtest.VariablesBody{}.JSON()),
+				"GET /repos/owner/repo/environments":                                        githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
+				"GET /repos/owner/repo/vulnerability-alerts":                                {Status: http.StatusNotFound},
+				"GET /repos/owner/repo/automated-security-fixes":                            githubtest.OK(githubtest.AutomatedSecurityFixesBody{}.JSON()),
 			},
 		},
 	}

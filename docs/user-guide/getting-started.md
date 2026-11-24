@@ -41,6 +41,17 @@ repositories:
         can_approve_pull_request_reviews: false
       access:
         access_level: none
+      # reco does not accept the fork pull request settings in the configuration file yet
+      # fork_pull_requests:
+      #   approval_policy: unavailable (the repository is private)
+      #   private_repositories:
+      #     run_workflows_from_fork_pull_requests: false
+      #     send_write_tokens_to_workflows: false
+      #     send_secrets_and_variables: false
+      #     require_approval_for_fork_pr_workflows: false
+      # reco does not accept the retention period in the configuration file yet
+      # retention:
+      #   days: 90 # maximum allowed: 400
       # variables: none
     # environments: none
     security:

@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/tmknom/reco/internal/githubtest"
 	"github.com/tmknom/reco/internal/setting"
 )
 
@@ -280,6 +281,9 @@ func TestObserveRepositoryAreas(t *testing.T) {
 			if observed.Dependabot != nil {
 				t.Errorf("ObserveRepository().Dependabot = %+v, want nil without the dependabot area", observed.Dependabot)
 			}
+			if observed.ForkPullRequestApproval != nil || observed.PrivateForkPullRequestWorkflows != nil || observed.Retention != nil {
+				t.Errorf("ObserveRepository() = %+v, want no fork pull request settings and no retention without their areas", observed)
+			}
 
 			if len(got) != len(tc.wantPaths) {
 				t.Fatalf("got %d requests %+v, want paths %v", len(got), got, tc.wantPaths)
@@ -304,6 +308,35 @@ func TestObserveRepositoryAreas(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestObserveRepositoryForkPullRequestAndRetentionOrder は、Fork Pull Request と保持期間の領域が、
+// 渡した並びによらず、リポジトリ外のワークフローからのアクセスのあと、Repository Variables の前に、公開範囲に合う取得だけを送ることを確かめる。
+//
+//trace:checks FR-004 QR-002
+func TestObserveRepositoryForkPullRequestAndRetentionOrder(t *testing.T) {
+	s := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+		"GET " + repositoryPath:                      githubtest.OK(privateRepositoryBody),
+		"GET " + actionsAccessPath:                   githubtest.OK(actionsAccessBody),
+		"GET " + privateForkPullRequestWorkflowsPath: githubtest.OK(githubtest.PrivateForkPullRequestWorkflowsBody{}.JSON()),
+		"GET " + retentionPath:                       githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 400}.JSON()),
+		"GET " + repositoryVariablesPath:             githubtest.OK(githubtest.VariablesBody{}.JSON()),
+	}))
+	c := New(testToken, WithBaseURL(s.URL()))
+
+	_, err := c.ObserveRepository(t.Context(), mustReference(t, "owner/repo"),
+		setting.AreaRepositoryVariables, setting.AreaRetention, setting.AreaPrivateForkPullRequestWorkflows,
+		setting.AreaForkPullRequestApproval, setting.AreaActionsAccess)
+	if err != nil {
+		t.Fatalf("ObserveRepository() error = %v", err)
+	}
+	wantLines := []string{
+		"GET " + repositoryPath, "GET " + actionsAccessPath, "GET " + privateForkPullRequestWorkflowsPath,
+		"GET " + retentionPath, "GET " + repositoryVariablesPath,
+	}
+	if got := s.RequestLines(); !reflect.DeepEqual(got, wantLines) {
+		t.Errorf("requests = %q, want %q", got, wantLines)
 	}
 }
 

@@ -32,6 +32,10 @@ func TestWriteObservationResult(t *testing.T) {
 	}
 	readOnly := &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: false}
 	notShared := &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessNone)}
+	privateApproval := &github.ForkPullRequestApproval{ApprovalPolicy: github.Unavailable[setting.ForkPullRequestApprovalPolicy](github.UnavailablePrivateRepository)}
+	noForkWorkflows := &github.PrivateForkPullRequestWorkflows{Conditions: github.Observed(setting.PrivateForkPullRequestWorkflowConditions{})}
+	// 保持期間と上限を違う値にし、取り違えと、上限を値の位置に書く誤りを検出する
+	retention := &github.Retention{Days: 30, MaximumAllowedDays: 400}
 	noVariables := &github.Variables{}
 	noEnvironments := &github.Environments{}
 	enabledDependabot := &github.Dependabot{Alerts: true, SecurityUpdates: setting.DependabotSecurityUpdatesEnabled}
@@ -43,12 +47,18 @@ func TestWriteObservationResult(t *testing.T) {
 		header         = "repositories:\n  - name: owner/repo\n"
 		defaultGeneral = "    general:\n      delete_branch_on_merge: false\n      allow_auto_merge: false\n" +
 			"      allow_squash_merge: false\n      allow_merge_commit: false\n      allow_rebase_merge: false\n      allow_update_branch: false\n"
-		allPermissions   = "    actions:\n      permissions:\n        enabled: true\n        allowed_actions: all\n        sha_pinning_required: true\n"
-		readOnlyWorkflow = "      workflow:\n        default_workflow_permissions: read\n        can_approve_pull_request_reviews: false\n"
-		notSharedAccess  = "      access:\n        access_level: none\n"
-		noVariable       = "      # variables: none\n"
-		noEnvironment    = "    # environments: none\n"
-		enabledSecurity  = "    security:\n      dependabot_alerts: true\n      dependabot_security_updates: true\n" +
+		allPermissions                      = "    actions:\n      permissions:\n        enabled: true\n        allowed_actions: all\n        sha_pinning_required: true\n"
+		readOnlyWorkflow                    = "      workflow:\n        default_workflow_permissions: read\n        can_approve_pull_request_reviews: false\n"
+		notSharedAccess                     = "      access:\n        access_level: none\n"
+		privateForkPullRequestsAndRetention = "      # reco does not accept the fork pull request settings in the configuration file yet\n" +
+			"      # fork_pull_requests:\n      #   approval_policy: unavailable (the repository is private)\n      #   private_repositories:\n" +
+			"      #     run_workflows_from_fork_pull_requests: false\n      #     send_write_tokens_to_workflows: false\n" +
+			"      #     send_secrets_and_variables: false\n      #     require_approval_for_fork_pr_workflows: false\n" +
+			"      # reco does not accept the retention period in the configuration file yet\n" +
+			"      # retention:\n      #   days: 30 # maximum allowed: 400\n"
+		noVariable      = "      # variables: none\n"
+		noEnvironment   = "    # environments: none\n"
+		enabledSecurity = "    security:\n      dependabot_alerts: true\n      dependabot_security_updates: true\n" +
 			"      secret_scanning: true\n      secret_scanning_push_protection: true\n      private_vulnerability_reporting: false\n"
 	)
 	cases := []struct {
@@ -59,37 +69,43 @@ func TestWriteObservationResult(t *testing.T) {
 		{
 			name: "all areas are shown in the configuration structure and the all policy omits the criteria",
 			observed: github.ObservationResult{
-				RepositoryID:                  1,
-				General:                       github.General{DeleteBranchOnMerge: true, AllowAutoMerge: false, AllowSquashMerge: true, AllowMergeCommit: false, AllowRebaseMerge: true, AllowUpdateBranch: false},
-				ActionsPermissions:            allPolicy,
-				WorkflowPermissions:           readOnly,
-				ActionsAccess:                 notShared,
-				RepositoryVariables:           noVariables,
-				Environments:                  noEnvironments,
-				Dependabot:                    enabledDependabot,
-				SecretScanning:                enabledSecretScanning,
-				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
-				Rulesets:                      emptyRulesets,
+				RepositoryID:                    1,
+				General:                         github.General{DeleteBranchOnMerge: true, AllowAutoMerge: false, AllowSquashMerge: true, AllowMergeCommit: false, AllowRebaseMerge: true, AllowUpdateBranch: false},
+				ActionsPermissions:              allPolicy,
+				WorkflowPermissions:             readOnly,
+				ActionsAccess:                   notShared,
+				ForkPullRequestApproval:         privateApproval,
+				PrivateForkPullRequestWorkflows: noForkWorkflows,
+				Retention:                       retention,
+				RepositoryVariables:             noVariables,
+				Environments:                    noEnvironments,
+				Dependabot:                      enabledDependabot,
+				SecretScanning:                  enabledSecretScanning,
+				PrivateVulnerabilityReporting:   disabledPrivateVulnerabilityReporting,
+				Rulesets:                        emptyRulesets,
 			},
 			want: header +
 				"    general:\n      delete_branch_on_merge: true\n      allow_auto_merge: false\n" +
 				"      allow_squash_merge: true\n      allow_merge_commit: false\n      allow_rebase_merge: true\n      allow_update_branch: false\n" +
-				allPermissions + readOnlyWorkflow + notSharedAccess + noVariable + noEnvironment + enabledSecurity + noRulesets,
+				allPermissions + readOnlyWorkflow + notSharedAccess + privateForkPullRequestsAndRetention + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "opposite values are shown as observed",
 			observed: github.ObservationResult{
-				RepositoryID:                  1,
-				General:                       github.General{DeleteBranchOnMerge: false, AllowAutoMerge: true, AllowSquashMerge: false, AllowMergeCommit: true, AllowRebaseMerge: false, AllowUpdateBranch: true},
-				ActionsPermissions:            allPolicy,
-				WorkflowPermissions:           &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: true},
-				ActionsAccess:                 &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessUser)},
-				RepositoryVariables:           noVariables,
-				Environments:                  noEnvironments,
-				Dependabot:                    enabledDependabot,
-				SecretScanning:                enabledSecretScanning,
-				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
-				Rulesets:                      emptyRulesets,
+				RepositoryID:                    1,
+				General:                         github.General{DeleteBranchOnMerge: false, AllowAutoMerge: true, AllowSquashMerge: false, AllowMergeCommit: true, AllowRebaseMerge: false, AllowUpdateBranch: true},
+				ActionsPermissions:              allPolicy,
+				WorkflowPermissions:             &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: true},
+				ActionsAccess:                   &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessUser)},
+				ForkPullRequestApproval:         privateApproval,
+				PrivateForkPullRequestWorkflows: noForkWorkflows,
+				Retention:                       retention,
+				RepositoryVariables:             noVariables,
+				Environments:                    noEnvironments,
+				Dependabot:                      enabledDependabot,
+				SecretScanning:                  enabledSecretScanning,
+				PrivateVulnerabilityReporting:   disabledPrivateVulnerabilityReporting,
+				Rulesets:                        emptyRulesets,
 			},
 			want: header +
 				"    general:\n      delete_branch_on_merge: false\n      allow_auto_merge: true\n" +
@@ -97,7 +113,7 @@ func TestWriteObservationResult(t *testing.T) {
 				allPermissions +
 				"      workflow:\n        default_workflow_permissions: write\n        can_approve_pull_request_reviews: true\n" +
 				"      access:\n        access_level: user\n" +
-				noVariable + noEnvironment + enabledSecurity + noRulesets,
+				privateForkPullRequestsAndRetention + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "selected policy shows the three criteria with one quoted pattern per line",
@@ -113,20 +129,23 @@ func TestWriteObservationResult(t *testing.T) {
 						PatternsAllowed:    []string{"actions/checkout@v4", "example/*"},
 					}),
 				},
-				WorkflowPermissions:           readOnly,
-				ActionsAccess:                 notShared,
-				RepositoryVariables:           noVariables,
-				Environments:                  noEnvironments,
-				Dependabot:                    enabledDependabot,
-				SecretScanning:                enabledSecretScanning,
-				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
-				Rulesets:                      emptyRulesets,
+				WorkflowPermissions:             readOnly,
+				ActionsAccess:                   notShared,
+				ForkPullRequestApproval:         privateApproval,
+				PrivateForkPullRequestWorkflows: noForkWorkflows,
+				Retention:                       retention,
+				RepositoryVariables:             noVariables,
+				Environments:                    noEnvironments,
+				Dependabot:                      enabledDependabot,
+				SecretScanning:                  enabledSecretScanning,
+				PrivateVulnerabilityReporting:   disabledPrivateVulnerabilityReporting,
+				Rulesets:                        emptyRulesets,
 			},
 			want: header + defaultGeneral +
 				"    actions:\n      permissions:\n        enabled: true\n        allowed_actions: selected\n        selected_actions:\n" +
 				"          github_owned_allowed: true\n          verified_allowed: false\n          patterns_allowed:\n" +
 				"            - \"actions/checkout@v4\"\n            - \"example/*\"\n        sha_pinning_required: false\n" +
-				readOnlyWorkflow + notSharedAccess + noVariable + noEnvironment + enabledSecurity + noRulesets,
+				readOnlyWorkflow + notSharedAccess + privateForkPullRequestsAndRetention + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "selected policy without patterns shows the empty sequence",
@@ -138,19 +157,22 @@ func TestWriteObservationResult(t *testing.T) {
 					SHAPinningRequired: github.Observed(false),
 					SelectedActions:    github.Observed(setting.SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: true}),
 				},
-				WorkflowPermissions:           readOnly,
-				ActionsAccess:                 notShared,
-				RepositoryVariables:           noVariables,
-				Environments:                  noEnvironments,
-				Dependabot:                    enabledDependabot,
-				SecretScanning:                enabledSecretScanning,
-				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
-				Rulesets:                      emptyRulesets,
+				WorkflowPermissions:             readOnly,
+				ActionsAccess:                   notShared,
+				ForkPullRequestApproval:         privateApproval,
+				PrivateForkPullRequestWorkflows: noForkWorkflows,
+				Retention:                       retention,
+				RepositoryVariables:             noVariables,
+				Environments:                    noEnvironments,
+				Dependabot:                      enabledDependabot,
+				SecretScanning:                  enabledSecretScanning,
+				PrivateVulnerabilityReporting:   disabledPrivateVulnerabilityReporting,
+				Rulesets:                        emptyRulesets,
 			},
 			want: header + defaultGeneral +
 				"    actions:\n      permissions:\n        enabled: true\n        allowed_actions: selected\n        selected_actions:\n" +
 				"          github_owned_allowed: true\n          verified_allowed: true\n          patterns_allowed: []\n        sha_pinning_required: false\n" +
-				readOnlyWorkflow + notSharedAccess + noVariable + noEnvironment + enabledSecurity + noRulesets,
+				readOnlyWorkflow + notSharedAccess + privateForkPullRequestsAndRetention + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "disabled actions shows only enabled without the policy, the criteria, and sha_pinning_required",
@@ -161,26 +183,34 @@ func TestWriteObservationResult(t *testing.T) {
 					SHAPinningRequired: github.Unavailable[bool](github.UnavailableActionsDisabled),
 					SelectedActions:    github.Unavailable[setting.SelectedActionsCriteria](github.UnavailableActionsDisabled),
 				},
-				WorkflowPermissions:           readOnly,
-				ActionsAccess:                 notShared,
-				RepositoryVariables:           noVariables,
-				Environments:                  noEnvironments,
-				Dependabot:                    enabledDependabot,
-				SecretScanning:                enabledSecretScanning,
-				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
-				Rulesets:                      emptyRulesets,
+				WorkflowPermissions:             readOnly,
+				ActionsAccess:                   notShared,
+				ForkPullRequestApproval:         privateApproval,
+				PrivateForkPullRequestWorkflows: noForkWorkflows,
+				Retention:                       retention,
+				RepositoryVariables:             noVariables,
+				Environments:                    noEnvironments,
+				Dependabot:                      enabledDependabot,
+				SecretScanning:                  enabledSecretScanning,
+				PrivateVulnerabilityReporting:   disabledPrivateVulnerabilityReporting,
+				Rulesets:                        emptyRulesets,
 			},
 			want: header + defaultGeneral +
 				"    actions:\n      permissions:\n        enabled: false\n" +
-				readOnlyWorkflow + notSharedAccess + noVariable + noEnvironment + enabledSecurity + noRulesets,
+				readOnlyWorkflow + notSharedAccess + privateForkPullRequestsAndRetention + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "public repository shows access and the unavailable access level as comments",
 			observed: github.ObservationResult{
-				RepositoryID:                  1,
-				ActionsPermissions:            allPolicy,
-				WorkflowPermissions:           readOnly,
-				ActionsAccess:                 &github.ActionsAccess{AccessLevel: github.Unavailable[setting.AccessLevel](github.UnavailablePublicRepository)},
+				RepositoryID:            1,
+				ActionsPermissions:      allPolicy,
+				WorkflowPermissions:     readOnly,
+				ActionsAccess:           &github.ActionsAccess{AccessLevel: github.Unavailable[setting.AccessLevel](github.UnavailablePublicRepository)},
+				ForkPullRequestApproval: &github.ForkPullRequestApproval{ApprovalPolicy: github.Observed(setting.ForkPullRequestApprovalFirstTimeContributors)},
+				PrivateForkPullRequestWorkflows: &github.PrivateForkPullRequestWorkflows{
+					Conditions: github.Unavailable[setting.PrivateForkPullRequestWorkflowConditions](github.UnavailablePublicRepository),
+				},
+				Retention:                     retention,
 				RepositoryVariables:           noVariables,
 				Environments:                  noEnvironments,
 				Dependabot:                    enabledDependabot,
@@ -190,42 +220,53 @@ func TestWriteObservationResult(t *testing.T) {
 			},
 			want: header + defaultGeneral + allPermissions + readOnlyWorkflow +
 				"      # access:\n      #   access_level: unavailable (the repository is public)\n" +
+				"      # reco does not accept the fork pull request settings in the configuration file yet\n" +
+				"      # fork_pull_requests:\n      #   approval_policy: first_time_contributors\n" +
+				"      #   private_repositories: unavailable (the repository is public)\n" +
+				"      # reco does not accept the retention period in the configuration file yet\n" +
+				"      # retention:\n      #   days: 30 # maximum allowed: 400\n" +
 				noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "organization access level is shown as observed",
 			observed: github.ObservationResult{
-				RepositoryID:                  1,
-				ActionsPermissions:            allPolicy,
-				WorkflowPermissions:           readOnly,
-				ActionsAccess:                 &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessOrganization)},
-				RepositoryVariables:           noVariables,
-				Environments:                  noEnvironments,
-				Dependabot:                    enabledDependabot,
-				SecretScanning:                enabledSecretScanning,
-				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
-				Rulesets:                      emptyRulesets,
+				RepositoryID:                    1,
+				ActionsPermissions:              allPolicy,
+				WorkflowPermissions:             readOnly,
+				ActionsAccess:                   &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessOrganization)},
+				ForkPullRequestApproval:         privateApproval,
+				PrivateForkPullRequestWorkflows: noForkWorkflows,
+				Retention:                       retention,
+				RepositoryVariables:             noVariables,
+				Environments:                    noEnvironments,
+				Dependabot:                      enabledDependabot,
+				SecretScanning:                  enabledSecretScanning,
+				PrivateVulnerabilityReporting:   disabledPrivateVulnerabilityReporting,
+				Rulesets:                        emptyRulesets,
 			},
 			want: header + defaultGeneral + allPermissions + readOnlyWorkflow +
 				"      access:\n        access_level: organization\n" +
-				noVariable + noEnvironment + enabledSecurity + noRulesets,
+				privateForkPullRequestsAndRetention + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "rulesets are shown after security",
 			observed: github.ObservationResult{
-				RepositoryID:                  1,
-				ActionsPermissions:            allPolicy,
-				WorkflowPermissions:           readOnly,
-				ActionsAccess:                 notShared,
-				RepositoryVariables:           noVariables,
-				Environments:                  noEnvironments,
-				Dependabot:                    enabledDependabot,
-				SecretScanning:                enabledSecretScanning,
-				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
-				Rulesets:                      &github.Rulesets{Existing: github.Unavailable[[]github.Ruleset](github.UnavailablePrivateRepository)},
+				RepositoryID:                    1,
+				ActionsPermissions:              allPolicy,
+				WorkflowPermissions:             readOnly,
+				ActionsAccess:                   notShared,
+				ForkPullRequestApproval:         privateApproval,
+				PrivateForkPullRequestWorkflows: noForkWorkflows,
+				Retention:                       retention,
+				RepositoryVariables:             noVariables,
+				Environments:                    noEnvironments,
+				Dependabot:                      enabledDependabot,
+				SecretScanning:                  enabledSecretScanning,
+				PrivateVulnerabilityReporting:   disabledPrivateVulnerabilityReporting,
+				Rulesets:                        &github.Rulesets{Existing: github.Unavailable[[]github.Ruleset](github.UnavailablePrivateRepository)},
 			},
 			want: header + defaultGeneral + allPermissions + readOnlyWorkflow + notSharedAccess +
-				noVariable + noEnvironment + enabledSecurity + "    # rulesets: unavailable (the repository is private)\n",
+				privateForkPullRequestsAndRetention + noVariable + noEnvironment + enabledSecurity + "    # rulesets: unavailable (the repository is private)\n",
 		},
 	}
 	for _, tc := range cases {
@@ -242,15 +283,18 @@ func TestWriteObservationResult(t *testing.T) {
 
 	t.Run("write failure is returned", func(t *testing.T) {
 		observed := github.ObservationResult{
-			ActionsPermissions:            allPolicy,
-			WorkflowPermissions:           readOnly,
-			ActionsAccess:                 notShared,
-			RepositoryVariables:           noVariables,
-			Environments:                  noEnvironments,
-			Dependabot:                    enabledDependabot,
-			SecretScanning:                enabledSecretScanning,
-			PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
-			Rulesets:                      emptyRulesets,
+			ActionsPermissions:              allPolicy,
+			WorkflowPermissions:             readOnly,
+			ActionsAccess:                   notShared,
+			ForkPullRequestApproval:         privateApproval,
+			PrivateForkPullRequestWorkflows: noForkWorkflows,
+			Retention:                       retention,
+			RepositoryVariables:             noVariables,
+			Environments:                    noEnvironments,
+			Dependabot:                      enabledDependabot,
+			SecretScanning:                  enabledSecretScanning,
+			PrivateVulnerabilityReporting:   disabledPrivateVulnerabilityReporting,
+			Rulesets:                        emptyRulesets,
 		}
 		err := writeObservationResult(failingWriter{}, target, observed)
 		if !errors.Is(err, errWrite) {
@@ -274,14 +318,16 @@ func TestWriteObservationResult(t *testing.T) {
 }
 
 const (
-	repositoryPath          = "/repos/owner/repo"
-	actionsPermissionsPath  = "/repos/owner/repo/actions/permissions"
-	workflowPermissionsPath = "/repos/owner/repo/actions/permissions/workflow"
-	actionsAccessPath       = "/repos/owner/repo/actions/permissions/access"
-	variablesPath           = "/repos/owner/repo/actions/variables"
-	environmentsPath        = "/repos/owner/repo/environments"
-	vulnerabilityAlertsPath = "/repos/owner/repo/vulnerability-alerts"
-	securityFixesPath       = "/repos/owner/repo/automated-security-fixes"
+	repositoryPath                      = "/repos/owner/repo"
+	actionsPermissionsPath              = "/repos/owner/repo/actions/permissions"
+	workflowPermissionsPath             = "/repos/owner/repo/actions/permissions/workflow"
+	actionsAccessPath                   = "/repos/owner/repo/actions/permissions/access"
+	privateForkPullRequestWorkflowsPath = "/repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos"
+	retentionPath                       = "/repos/owner/repo/actions/permissions/artifact-and-log-retention"
+	variablesPath                       = "/repos/owner/repo/actions/variables"
+	environmentsPath                    = "/repos/owner/repo/environments"
+	vulnerabilityAlertsPath             = "/repos/owner/repo/vulnerability-alerts"
+	securityFixesPath                   = "/repos/owner/repo/automated-security-fixes"
 )
 
 //trace:checks FR-004
@@ -290,10 +336,12 @@ func TestRun(t *testing.T) {
 
 	t.Run("all areas are observed with GET only and written to Out", func(t *testing.T) {
 		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
-			"GET " + repositoryPath:          githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowAutoMerge: true, Private: true}.JSON()),
-			"GET " + actionsPermissionsPath:  githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "local_only"}.JSON()),
-			"GET " + workflowPermissionsPath: githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "write", CanApprovePullRequestReviews: true}.JSON()),
-			"GET " + actionsAccessPath:       githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "user"}.JSON()),
+			"GET " + repositoryPath:                      githubtest.OK(githubtest.RepositoryBody{ID: 1, AllowAutoMerge: true, Private: true}.JSON()),
+			"GET " + actionsPermissionsPath:              githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "local_only"}.JSON()),
+			"GET " + workflowPermissionsPath:             githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "write", CanApprovePullRequestReviews: true}.JSON()),
+			"GET " + actionsAccessPath:                   githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "user"}.JSON()),
+			"GET " + privateForkPullRequestWorkflowsPath: githubtest.OK(githubtest.PrivateForkPullRequestWorkflowsBody{}.JSON()),
+			"GET " + retentionPath:                       githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 400}.JSON()),
 			"GET " + variablesPath: githubtest.OK(githubtest.VariablesBody{TotalCount: 1, Variables: []githubtest.VariableBody{
 				{Name: "GO_VERSION", Value: "1.27"},
 			}}.JSON()),
@@ -312,7 +360,9 @@ func TestRun(t *testing.T) {
 		if err := Run(context.Background(), cfg); err != nil {
 			t.Fatalf("Run() error = %v", err)
 		}
-		want := []string{"GET " + repositoryPath, "GET " + actionsPermissionsPath, "GET " + workflowPermissionsPath, "GET " + actionsAccessPath, "GET " + variablesPath, "GET " + environmentsPath,
+		// 非公開リポジトリのため、承認ポリシーの取得は送らない
+		want := []string{"GET " + repositoryPath, "GET " + actionsPermissionsPath, "GET " + workflowPermissionsPath, "GET " + actionsAccessPath,
+			"GET " + privateForkPullRequestWorkflowsPath, "GET " + retentionPath, "GET " + variablesPath, "GET " + environmentsPath,
 			"GET " + environmentsPath + "/staging/variables", "GET " + vulnerabilityAlertsPath, "GET " + securityFixesPath}
 		if got := server.RequestLines(); !slices.Equal(got, want) {
 			t.Errorf("got requests %v, want %v", got, want)
@@ -324,6 +374,8 @@ func TestRun(t *testing.T) {
 		}
 		for _, observed := range []string{
 			"default_workflow_permissions: write", `        - name: "GO_VERSION"`, `- name: "staging"`, `          - name: "REGION"`, "dependabot_security_updates: true # paused",
+			"#   approval_policy: unavailable (the repository is private)",
+			"#   days: 90 # maximum allowed: 400",
 			"# secret_scanning: unavailable (the repository is private)",
 			"# private_vulnerability_reporting: unavailable (the repository is private)",
 			"    # rulesets: unavailable (the repository is private)",

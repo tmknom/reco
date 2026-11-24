@@ -55,6 +55,24 @@ func TestBodies(t *testing.T) {
 			want: map[string]any{"enabled": true},
 		},
 		{
+			name: "fork pull request approval body has approval_policy",
+			body: ForkPullRequestApprovalBody{ApprovalPolicy: "first_time_contributors"}.JSON(),
+			want: map[string]any{"approval_policy": "first_time_contributors"},
+		},
+		{
+			name: "private fork pull request workflows body has the four conditions",
+			body: PrivateForkPullRequestWorkflowsBody{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true}.JSON(),
+			want: map[string]any{
+				"run_workflows_from_fork_pull_requests": true, "send_write_tokens_to_workflows": false,
+				"send_secrets_and_variables": true, "require_approval_for_fork_pr_workflows": false,
+			},
+		},
+		{
+			name: "retention body has days and maximum_allowed_days",
+			body: RetentionBody{Days: 30, MaximumAllowedDays: 400}.JSON(),
+			want: map[string]any{"days": float64(30), "maximum_allowed_days": float64(400)},
+		},
+		{
 			name: "actions permissions body is enabled with the policy and SHA pinning",
 			body: ActionsPermissionsBody{AllowedActions: "selected", SHAPinningRequired: true}.JSON(),
 			want: map[string]any{"enabled": true, "allowed_actions": "selected", "sha_pinning_required": true},
