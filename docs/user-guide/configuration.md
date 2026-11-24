@@ -351,6 +351,7 @@ repositories:
 - `pull_request` の `parameters` は、例に示したキーをすべて書く。`required_approving_review_count` は `0` から `10` の整数
 - 一覧の要素の順序は問わない。並びだけが違っても変更にならない
 - 非公開リポジトリには書けない。書くと `plan` に `Applicability: not applicable` と `Plan cannot be applied.` が出る
+- GitHub 上に、半角の英数字、空白、記号以外の文字（`é` など）を含む名前の Ruleset があると、そのリポジトリにまだない名前の Ruleset は作成できない。GitHub がその名前を書いた名前と同じとみなすかを reco が判断できないため、`plan` は `(existence unknown)` と `Applicability: not applicable` を示す。GitHub 上にすでにある Ruleset の名前を書いた場合は、内容を比べられる
 - reco がまだ解釈しないルール（`non_fast_forward` など）や `pull_request` の設定（`allowed_merge_methods` など）を持つ Ruleset の名前を書くと、`plan` に `Applicability: not applicable` と、reco の解釈しない部分の一覧が出る。そうした Ruleset は設定ファイルから外す
 
 GitHub 上にある Ruleset を管理に取り込むときは、`reco show` の `rulesets` の表示から、その Ruleset の要素を設定ファイルに書き写します。表示は設定ファイルと同じキーと値で示すため、書き写したあとの `plan` は、その Ruleset に差分を示しません。ただし、`unavailable` のコメントが付いた Ruleset は取り込めません。`enforcement: evaluate`、`conditions: {}`、`2`・`4`・`5` 以外の `RepositoryRole` のように設定ファイルに書けない値を持つ Ruleset は、そのまま書き写すと設定ファイルの誤りになります。
