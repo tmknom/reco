@@ -1,6 +1,6 @@
 # GitHub Actions 権限 API 仕様
 
-本ドキュメントは、GitHub REST API の「REST API endpoints for GitHub Actions permissions」のうち、reco が利用するリポジトリ単位のエンドポイントの外部契約を整理します。対象は、Actions permissions・Selected actions・Workflow permissions・リポジトリ外のワークフローからのアクセスの取得・更新に必要な権限、HTTP 応答、フィールドです。すべてのエンドポイントに共通する仕様は [GitHub REST API 共通仕様](rest-api.md) が、リポジトリの名前と ID は [GitHub リポジトリ API 仕様](repositories.md) が扱います。記述の前提（根拠とする API バージョン、注釈の意味）は [Research](README.md) に従います。
+本ドキュメントは、GitHub REST API の「REST API endpoints for GitHub Actions permissions」のうち、reco が利用するリポジトリ単位のエンドポイントの外部契約を整理します。対象は、Actions permissions・Selected actions・Workflow permissions・リポジトリ外のワークフローからのアクセス・Fork からの Pull Request のワークフローの承認と実行の条件・保持期間の取得・更新に必要な権限、HTTP 応答、フィールドです。すべてのエンドポイントに共通する仕様は [GitHub REST API 共通仕様](rest-api.md) が、リポジトリの名前と ID は [GitHub リポジトリ API 仕様](repositories.md) が扱います。記述の前提（根拠とする API バージョン、注釈の意味）は [Research](README.md) に従います。
 
 ## 1. 必要な権限と HTTP 応答
 
@@ -16,6 +16,12 @@
 | Workflow permissions の更新 | `PUT /repos/{owner}/{repo}/actions/permissions/workflow` | Administration: write |
 | リポジトリ外のワークフローからのアクセスの取得 | `GET /repos/{owner}/{repo}/actions/permissions/access` | Administration: read |
 | リポジトリ外のワークフローからのアクセスの更新 | `PUT /repos/{owner}/{repo}/actions/permissions/access` | Administration: write |
+| Fork からの Pull Request のワークフローの承認ポリシーの取得 | `GET /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval` | Administration: read |
+| Fork からの Pull Request のワークフローの承認ポリシーの更新 | `PUT /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval` | Administration: write |
+| 非公開リポジトリの Fork からの Pull Request のワークフローの設定の取得 | `GET /repos/{owner}/{repo}/actions/permissions/fork-pr-workflows-private-repos` | Administration: read |
+| 非公開リポジトリの Fork からの Pull Request のワークフローの設定の更新 | `PUT /repos/{owner}/{repo}/actions/permissions/fork-pr-workflows-private-repos` | Administration: write |
+| 保持期間の取得 | `GET /repos/{owner}/{repo}/actions/permissions/artifact-and-log-retention` | Administration: read |
+| 保持期間の更新 | `PUT /repos/{owner}/{repo}/actions/permissions/artifact-and-log-retention` | Administration: write |
 
 | メソッド・パス | 正常応答 | ドキュメントに記載されたその他の応答 |
 |---|---|---|
@@ -27,6 +33,17 @@
 | `PUT /repos/{owner}/{repo}/actions/permissions/workflow` | `204` | `409` 所有 Organization によって設定の変更が妨げられた場合の競合応答 |
 | `GET /repos/{owner}/{repo}/actions/permissions/access` | `200` | 記載なし |
 | `PUT /repos/{owner}/{repo}/actions/permissions/access` | `204` | 記載なし |
+| `GET /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval` | `200` | `404` リソースが見つからない |
+| `PUT /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval` | `204` | `404` リソースが見つからない、`422` 検証の失敗 |
+| `GET /repos/{owner}/{repo}/actions/permissions/fork-pr-workflows-private-repos` | `200` | `403` 禁止、`404` リソースが見つからない |
+| `PUT /repos/{owner}/{repo}/actions/permissions/fork-pr-workflows-private-repos` | `204` | `404` リソースが見つからない、`422` 検証の失敗 |
+| `GET /repos/{owner}/{repo}/actions/permissions/artifact-and-log-retention` | `200` | `404` リソースが見つからない |
+| `PUT /repos/{owner}/{repo}/actions/permissions/artifact-and-log-retention` | `204` | `404` リソースが見つからない、`422` 検証の失敗 |
+
+> [!NOTE]
+> 次は、reco の開発者が実際の動作で確認した事項です（`repo` scope を持つ personal access token (classic) で確認）。
+>
+> - 権限のないリポジトリへの取得：トークン所有者が Write 以上のロールを持たない第三者の公開リポジトリ（`cli/cli`）では、7章・8章・9章の取得はどれも `403` を返す。本文の `message` は 5.1 の注釈と同じ `You must have repository read permissions or have the repository Actions policies fine-grained permission.` で、公開範囲に合わない取得の `422`（7章・8章）とは異なる
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -36,7 +53,7 @@
 
 ## 2. 更新操作の単位と結果の確認
 
-本ドキュメントの更新エンドポイントは、それぞれ独立したリクエストです。Actions permissions・Selected actions・Workflow permissions・リポジトリ外のワークフローからのアクセスのうち複数を、一つのリクエストでまとめて更新するエンドポイントは公開ドキュメントにありません。
+本ドキュメントの更新エンドポイントは、それぞれ独立したリクエストです。Actions permissions・Selected actions・Workflow permissions・リポジトリ外のワークフローからのアクセス・7章から9章の設定のうち複数を、一つのリクエストでまとめて更新するエンドポイントは公開ドキュメントにありません。
 
 更新エンドポイントの本文フィールドの多くは任意ですが、省略したフィールドの既存値が保持されるかは、いずれのドキュメントにも記載がありません。また、どの `PUT` も本文のない `204` を返すため、更新後の値を知るには対応する `GET` で取得し直す必要があります。条件付きリクエストに対応する旨の記載は、いずれの更新エンドポイントのドキュメントにもありません。
 
@@ -233,3 +250,171 @@ Selected actions の取得・更新は、どちらもリポジトリの `allowed
 | Relationship | Target | Target Type |
 |---|---|---|
 | `grounding` | [Set the level of access for workflows outside of the repository](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-the-level-of-access-for-workflows-outside-of-the-repository) | External Document |
+
+## 7. 公開リポジトリの Fork からの Pull Request のワークフローの承認
+
+誰でも公開リポジトリを Fork し、ワークフローを変える Pull Request を送れます。リポジトリ設定のドキュメントは、公開リポジトリへの一部の外部のコントリビューターからの Pull Request のワークフローは自動では実行されず、承認が要り得ると記載しています。承認が要るかは、Pull Request の作成者とワークフローを起動したイベントの実行者の両方について、本章の承認ポリシーで判断され、承認できるのはリポジトリへの書き込み権限を持つユーザーです。既定では、初めてのコントリビューターすべてに承認が要ると記載しています。`pull_request_target` イベントで起動したワークフローは、ベースブランチの文脈で実行されるため、承認の設定によらず常に実行されます。
+
+設定画面では、「Actions」の「General」ページにある「Approval for running fork pull request workflows from contributors」の欄で選びます。リポジトリで設定すると、Organization と Enterprise の設定を上書きすると記載しています。
+
+| `approval_policy` の値 | 設定画面の選択肢 | 承認が要るユーザー |
+|---|---|---|
+| `first_time_contributors_new_to_github` | Require approval for first-time contributors who are new to GitHub | GitHub に登録して間もなく、このリポジトリにコミットか Pull Request がマージされたことのないユーザー |
+| `first_time_contributors` | Require approval for first-time contributors | このリポジトリにコミットか Pull Request がマージされたことのないユーザー |
+| `all_external_contributors` | Require approval for all external contributors | リポジトリのメンバーか所有者でも、Organization のメンバーでもないすべてのユーザー |
+
+初めてのコントリビューターだけに承認を求める二つの値では、何らかのコミットか Pull Request がマージされたユーザーには承認が要らなくなります。リポジトリ設定のドキュメントは、無害な変更を一度マージさせればこの条件を満たせると警告しています。REST API のドキュメントは、本章のエンドポイントが適用される公開範囲を記載していません。適用される公開範囲を述べるのは、公開リポジトリの節として説明するリポジトリ設定のドキュメントだけです。
+
+> [!NOTE]
+> 次は、reco の開発者が実際の動作で確認した事項です（`repo` scope を持つ personal access token (classic) で確認）。
+>
+> - 非公開リポジトリへの要求：トークン所有者が Admin ロールを持つ非公開リポジトリでは、取得も更新も `422` を返し、値は返らない。本文の `errors` は `Fork PR approval is not allowed for private repositories.` だった。Actions が無効のときも同じだった
+> - Actions が無効のとき：公開リポジトリでは、取得は `200` で値を返し、更新も `204` を返して反映される。Actions を有効に戻したあとも、無効のあいだに送った値が返る
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [REST API endpoints for GitHub Actions permissions](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10) | External Document |
+| `grounding` | [Managing GitHub Actions settings for a repository: Controlling changes from forks to workflows in public repositories](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository#controlling-changes-from-forks-to-workflows-in-public-repositories) | External Document |
+
+### 7.1 `GET /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval`
+
+- 用途：Fork からの Pull Request のワークフローに承認を求める範囲の取得
+- 応答フィールド：`approval_policy`（`first_time_contributors_new_to_github` / `first_time_contributors` / `all_external_contributors`、必須）
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [Get fork PR contributor approval permissions for a repository](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#get-fork-pr-contributor-approval-permissions-for-a-repository) | External Document |
+
+### 7.2 `PUT /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval`
+
+- 用途：7.1 で取得する範囲の設定
+
+| 本文フィールド | 型・値 | 指定条件 | 意味 |
+|---|---|---|---|
+| `approval_policy` | `first_time_contributors_new_to_github` / `first_time_contributors` / `all_external_contributors` | 必須 | Fork からの Pull Request のワークフローに、メンテナーの承認を求める範囲 |
+
+> [!NOTE]
+> 次は、reco の開発者が実際の動作で確認した事項です（公開リポジトリで確認）。
+>
+> - 値の反映：3つの値のどれを送っても `204` を返し、送った値が 7.1 の取得に反映された
+> - 受け付けない値：定義にない値と、大文字の `FIRST_TIME_CONTRIBUTORS` は `422` で、本文の `message` は受け付ける3つの値を挙げた。`approval_policy` のない本文も `422` だった。どれも値は変わらなかった
+> - 更新直後の取得：値を変える更新7回のうち4回で、`204` を受け取ってから約 0.7 秒後の 7.1 の取得が更新前の値を返した。どの回も、約 1.9 秒後と約 3.5 秒後の取得は更新後の値を返し、一度更新後の値を返したあとに更新前の値へ戻ることはなかった。残りの3回（Actions が無効のときの更新を含む）は、約 0.8〜1 秒後の最初の取得から更新後の値を返した
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [Set fork PR contributor approval permissions for a repository](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-fork-pr-contributor-approval-permissions-for-a-repository) | External Document |
+
+## 8. 非公開リポジトリの Fork からの Pull Request のワークフロー
+
+非公開リポジトリの Fork を使う場合に、Fork からの `pull_request` イベントでワークフローをどう実行できるかを、4項目で設定します。リポジトリ設定のドキュメントは、この設定を **非公開リポジトリでだけ利用できる** と記載し、Organization で無効にした項目はリポジトリで有効にできないとしています。設定画面では、「Actions」の「General」ページにある「Fork pull request workflows」の欄で選びます。
+
+| フィールド | 設定画面の項目 | リポジトリ設定のドキュメントの説明 |
+|---|---|---|
+| `run_workflows_from_fork_pull_requests` | Run workflows from fork pull requests | Fork からの Pull Request のワークフローを、読み取り専用の `GITHUB_TOKEN` で、Secrets にアクセスさせずに実行できるようにする |
+| `send_write_tokens_to_workflows` | Send write tokens to workflows from pull requests | Fork からの Pull Request に、書き込み権限を持つ `GITHUB_TOKEN` を使わせる |
+| `send_secrets_and_variables` | Send secrets to workflows from pull requests | すべての Secrets を Pull Request から使えるようにする |
+| `require_approval_for_fork_pr_workflows` | Require approval for fork pull request workflows | 書き込み権限を持たないコラボレーターの Pull Request のワークフローは、書き込み権限を持つユーザーの承認のあとに実行する |
+
+REST API のドキュメントは、`send_write_tokens_to_workflows` を、Fork からの Pull Request で起動したワークフローから GitHub Actions が Pull Request を作成し、承認するレビューを送れるか、`send_secrets_and_variables` を、Secrets と Variables をそのワークフローで使えるようにするか、と説明しています。4項目のあいだの依存（実行を許可しないまま送信を有効にできるか）は、どちらのドキュメントにも記載がありません。
+
+> [!NOTE]
+> 次は、reco の開発者が実際の動作で確認した事項です（`repo` scope を持つ personal access token (classic) で確認）。
+>
+> - 公開リポジトリへの要求：トークン所有者が Admin ロールを持つ公開リポジトリでは、取得も更新も `422` を返し、値は返らない。本文の `message` は `Fork PR workflow settings is not allowed for public repositories.` だった
+> - 個人アカウントが所有する非公開リポジトリ：取得は `200` で4項目を返し、更新も反映される。Organization に属さないリポジトリでも利用できた
+> - Actions が無効のとき：非公開リポジトリでは、取得は `200` で4項目を返し、更新も `204` を返して反映される。Actions を有効に戻したあとも、無効のあいだに送った値が返る
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [REST API endpoints for GitHub Actions permissions](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10) | External Document |
+| `grounding` | [Managing GitHub Actions settings for a repository: Enabling workflows for forks of private repositories](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository#enabling-workflows-for-forks-of-private-repositories) | External Document |
+
+### 8.1 `GET /repos/{owner}/{repo}/actions/permissions/fork-pr-workflows-private-repos`
+
+- 用途：非公開リポジトリで、Fork からの Pull Request のワークフローを実行できるかと、その条件の取得
+- 応答フィールド：`run_workflows_from_fork_pull_requests`、`send_write_tokens_to_workflows`、`send_secrets_and_variables`、`require_approval_for_fork_pr_workflows`（いずれも boolean、必須）
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [Get private repo fork PR workflow settings for a repository](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#get-private-repo-fork-pr-workflow-settings-for-a-repository) | External Document |
+
+### 8.2 `PUT /repos/{owner}/{repo}/actions/permissions/fork-pr-workflows-private-repos`
+
+- 用途：8.1 で取得する4項目の設定
+
+| 本文フィールド | 型 | 指定条件 | 意味 |
+|---|---|---|---|
+| `run_workflows_from_fork_pull_requests` | boolean | 必須 | Fork からの Pull Request で起動したワークフローを、非公開リポジトリで実行できるか |
+| `send_write_tokens_to_workflows` | boolean | 任意 | Fork からの Pull Request で起動したワークフローから、GitHub Actions が Pull Request を作成し、承認するレビューを送れるか |
+| `send_secrets_and_variables` | boolean | 任意 | Fork からの Pull Request で起動したワークフローで、Secrets と Variables を使えるようにするか |
+| `require_approval_for_fork_pr_workflows` | boolean | 任意 | Fork からの Pull Request で起動したワークフローの実行に、リポジトリの管理者の承認を求めるか |
+
+> [!NOTE]
+> 次は、reco の開発者が実際の動作で確認した事項です（個人アカウントが所有する非公開リポジトリで確認）。
+>
+> - 省略したフィールドの保持：`run_workflows_from_fork_pull_requests: true` だけを送ると、ほかの3項目は変わらない。3項目を `true` にしてから確かめた。`run_workflows_from_fork_pull_requests: true` と3項目のうち1項目を送ると、その1項目だけが変わる
+> - 必須のフィールド：`run_workflows_from_fork_pull_requests` のない本文は、ほかの項目を含んでいても `422` だった。文字列の `"true"` も `422` だった。定義にないフィールドを加えた本文は `204` で、加えたフィールドは無視された
+> - 実行を許可しないときのほかの3項目：`run_workflows_from_fork_pull_requests` を `false` にすると、送ったかどうかによらず、ほかの3項目は `false` になる。`false` と一緒に3項目のどれかを `true` で送っても `204` を返すが、直後と約 3.5 秒後の 8.1 の取得は3項目とも `false` を返した。1項目ずつ `true` で送っても同じだった
+> - 実行の無効化と再有効化：3項目を `true` にした状態で `run_workflows_from_fork_pull_requests: false` だけを送り、続けて `true` だけを送ると、3項目は `false` のままで、無効にする前の値は返らなかった（2回確認）
+> - 更新直後の取得：4項目のどれかの値を変える更新15回のうち5回で、`204` を受け取ってから約 0.7 秒後の 8.1 の取得が更新前の値を返した。どの回も、約 1.9 秒後と約 3.5 秒後の取得は更新後の値を返し、一度更新後の値を返したあとに更新前の値へ戻ることはなかった。`run_workflows_from_fork_pull_requests` を `false` にする更新（3項目が `false` になる更新を含む）では、どの回も約 0.7 秒後の取得から更新後の値を返した
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [Set private repo fork PR workflow settings for a repository](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-private-repo-fork-pr-workflow-settings-for-a-repository) | External Document |
+
+## 9. 保持期間
+
+本章のエンドポイントは、チェック、ワークフローの実行、コミットのステータス、Artifact、Log を保持する日数を取得・設定します。チェックはチェックスイート、チェックラン、チェックのアノテーションを含みます。REST API のドキュメントは、この設定が GitHub Actions の作ったデータに限らず、外部のインテグレーションが作ったチェックとコミットのステータスにも適用されると記載しています。
+
+リポジトリ設定のドキュメントは、既定の保持期間を90日とし、変えられる範囲を公開範囲ごとに次のとおり記載しています。管理する Organization か Enterprise があるリポジトリでは、その上限を超えられません。設定画面では、「Actions」の「General」ページにある「Check, workflow run, status, artifact and log retention」の欄で入力します。
+
+| リポジトリ | 設定できる日数 |
+|---|---|
+| 公開 | 1〜90日 |
+| 非公開 | 1〜400日 |
+
+保持期間を変えても、適用されるのは新しく作られるチェック、ワークフローの実行、コミットのステータス、Artifact、Log だけで、既存のものには遡って適用されないと記載しています。また、チェック、ワークフローの実行、コミットのステータスは、2026年10月1日からこの保持期間の対象になり、それまでは設定によらず400日以上保持されると記載しています。
+
+> [!NOTE]
+> 次は、reco の開発者が実際の動作で確認した事項です（`repo` scope を持つ personal access token (classic) で確認）。
+>
+> - 上限の取得：9.1 の `maximum_allowed_days` は、個人アカウントが所有する公開リポジトリで `90`、非公開リポジトリで `400` だった。リポジトリ設定のドキュメントの上限と一致する
+> - Actions が無効のとき：取得は `200` で2フィールドを返し、更新も `204` を返して反映される。Actions を有効に戻したあとも、無効のあいだに送った値が返る（公開・非公開リポジトリで確認）
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [REST API endpoints for GitHub Actions permissions](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10) | External Document |
+| `grounding` | [Managing GitHub Actions settings for a repository: Configuring the retention period for checks, workflow runs, commit statuses, artifacts, and logs in your repository](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository#configuring-the-retention-period-for-checks-workflow-runs-commit-statuses-artifacts-and-logs-in-your-repository) | External Document |
+
+### 9.1 `GET /repos/{owner}/{repo}/actions/permissions/artifact-and-log-retention`
+
+- 用途：保持期間と、設定できる日数の上限の取得
+
+| 応答フィールド | 型 | 必須 | 意味 |
+|---|---|---|---|
+| `days` | integer | 必須 | チェック、ワークフローの実行、コミットのステータス、Artifact、Log を保持する日数 |
+| `maximum_allowed_days` | integer | 必須 | 設定できる日数の上限 |
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [Get artifact and log retention settings for a repository](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#get-artifact-and-log-retention-settings-for-a-repository) | External Document |
+
+### 9.2 `PUT /repos/{owner}/{repo}/actions/permissions/artifact-and-log-retention`
+
+- 用途：保持期間の設定
+
+| 本文フィールド | 型 | 指定条件 | 意味 |
+|---|---|---|---|
+| `days` | integer | 必須 | チェック、ワークフローの実行、コミットのステータス、Artifact、Log を保持する日数 |
+
+> [!NOTE]
+> 次は、reco の開発者が実際の動作で確認した事項です（個人アカウントが所有する公開・非公開リポジトリで確認）。
+>
+> - 値の反映：公開リポジトリで `1`・`20`・`30`・`90`、非公開リポジトリで `30`・`45`・`60`・`90`・`400` を送ると、どれも `204` を返し、送った値が 9.1 の取得に反映された。`maximum_allowed_days` は変わらなかった
+> - 上限を超える値：公開リポジトリで `91` と `400` を送ると `409` を返し、本文の `errors` は `Public repositories are limited to 90 days for artifact and log retention settings` だった。非公開リポジトリで `401` を送ると `422` を返し、本文の `errors` は `Retention value must be between 1 and 400.` だった。公開範囲によってステータスが異なる。どれも値は変わらなかった
+> - `1` 未満の値：`0` と `-1` は、公開リポジトリで `422`（`Retention value must be between 1 and 90.`）、非公開リポジトリで `422`（`Retention value must be between 1 and 400.`）だった。文字列の `"30"`、小数の `30.5`、`days` のない本文も `422` だった。どれも値は変わらなかった
+> - 更新直後の取得：値を変える更新11回のどれでも、`204` を受け取ってから約 0.7〜0.9 秒後の 9.1 の取得から更新後の値を返し、約 3.5 秒後まで更新前の値へ戻ることはなかった
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [Set artifact and log retention settings for a repository](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10#set-artifact-and-log-retention-settings-for-a-repository) | External Document |
