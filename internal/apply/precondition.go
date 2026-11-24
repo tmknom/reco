@@ -55,8 +55,8 @@ func matchesRelevantSetting(relevant changeplan.RelevantSetting, observed github
 }
 
 // matchesAnticipatedValue は、関係する現在値 current が承認時に予定した値 anticipated と、ドメインモデルの承認と変更前提の意味で同じかを返す。
-// 観測不能の理由は観測値に対して読めないため、両方が観測不能のときだけ理由を比べる。
-func matchesAnticipatedValue(anticipated, current github.SettingObservation[setting.Value]) bool {
+// 観測不能の理由は値に対して読めないため、両方が観測不能のときだけ理由を比べる。
+func matchesAnticipatedValue(anticipated changeplan.AnticipatedValue, current github.SettingObservation[setting.Value]) bool {
 	anticipatedValue, anticipatedHasValue := anticipated.Value()
 	currentValue, currentObserved := current.Value()
 	switch {

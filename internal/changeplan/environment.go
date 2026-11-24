@@ -62,7 +62,7 @@ func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
 	if desired.Mode != setting.DeploymentBranchPolicySelected {
 		return change
 	}
-	created := RelevantSetting{Unit: s.Unit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedEnvironmentIdentity: CreatedByPrecedingOperation()}
+	created := RelevantSetting{Unit: s.Unit, AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: CreatedByPrecedingOperation()}
 	change.Operations = append(change.Operations, deploymentPatternOperations(policyUnit, created, emptySelected(), nil, desired.Patterns)...)
 	return change
 }
@@ -77,13 +77,13 @@ func (r RepositoryPlan) environmentVariableOperationOf(s SettingPlan) (UpdateOpe
 	existence, ok := r.settingPlanOf(setting.Unit{Key: setting.EnvironmentResource, Environment: s.Unit.Environment})
 	switch {
 	case ok && existence.Result == Match && s.Result == Mismatch:
-		operation := variableOperationOf(s, s.Observed)
+		operation := variableOperationOf(s, AnticipateUnchanged(s.Observed))
 		operation.RelevantSettings = append([]RelevantSetting{existence.existenceBasis()}, operation.RelevantSettings...)
 		return operation, true
 	case ok && existence.IsEnvironmentCreation() && isDeclaredAbsentInAbsentEnvironment(s):
 		return UpdateOperation{}, false
 	case ok && existence.IsEnvironmentCreation() && isOfAbsentEnvironment(s):
-		return variableOperationOf(s, github.Observed(setting.Absent())), true
+		return variableOperationOf(s, AnticipateValue(setting.Absent())), true
 	}
 	panic(fmt.Sprintf("changeplan: %s has no environment plan to pair with", s.Unit.String()))
 }
@@ -99,7 +99,7 @@ func deploymentBranchPolicyOperations(s SettingPlan, environment RelevantSetting
 	}
 	operations := []UpdateOperation{{
 		Kind: DeploymentBranchPolicyModeUpdate, Unit: s.Unit, Mode: after.Mode,
-		RelevantSettings: []RelevantSetting{environment, {Unit: s.Unit, AnticipatedValue: s.Observed}},
+		RelevantSettings: []RelevantSetting{environment, {Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)}},
 	}}
 	if after.Mode != setting.DeploymentBranchPolicySelected {
 		return operations
@@ -121,7 +121,7 @@ func deploymentPatternOperations(unit setting.Unit, environment RelevantSetting,
 		base := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: patterns})
 		operations = append(operations, UpdateOperation{
 			Kind: kind, Unit: unit, Pattern: pattern,
-			RelevantSettings: []RelevantSetting{environment, {Unit: unit, AnticipatedValue: github.Observed(base)}},
+			RelevantSettings: []RelevantSetting{environment, {Unit: unit, AnticipatedValue: AnticipateValue(base)}},
 		})
 	}
 	for _, pattern := range remove {
@@ -137,7 +137,7 @@ func deploymentPatternOperations(unit setting.Unit, environment RelevantSetting,
 
 // existenceBasis は、Environment の存在の計画 s を、計画時の存在の観測結果と ID を承認時に予定した値にした基準にして返す。
 func (s SettingPlan) existenceBasis() RelevantSetting {
-	return RelevantSetting{Unit: s.Unit, AnticipatedValue: s.Observed, AnticipatedEnvironmentIdentity: s.EnvironmentIdentity}
+	return RelevantSetting{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed), AnticipatedEnvironmentIdentity: s.EnvironmentIdentity}
 }
 
 // isOfAbsentEnvironment は、s が、属する Environment が存在しないことを理由に比較不能な、方式か変数の計画かを返す。

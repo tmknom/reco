@@ -23,7 +23,7 @@ func rulesetChangeOf(s SettingPlan) LogicalChange {
 		DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}},
 		Operations: []UpdateOperation{{
 			Kind: kind, Unit: s.Unit, Value: s.Desired,
-			RelevantSettings: []RelevantSetting{{Unit: s.Unit, AnticipatedValue: s.Observed, AnticipatedRulesetIdentity: s.RulesetIdentity}},
+			RelevantSettings: []RelevantSetting{{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed), AnticipatedRulesetIdentity: s.RulesetIdentity}},
 		}},
 	}
 }

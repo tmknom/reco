@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -353,7 +354,7 @@ func TestObservationResources(t *testing.T) {
 		{
 			// どの変更予定にも生じない組。関係する現在値の Environment を読まないと、変更前提で個別パターンを比べられないことを確かめる
 			name:   "environment of a relevant setting is also named",
-			change: singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), []changeplan.RelevantSetting{{Unit: stagingPolicy, AnticipatedValue: github.Observed(modeValue(setting.DeploymentBranchPolicyAll))}}),
+			change: singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), []changeplan.RelevantSetting{{Unit: stagingPolicy, AnticipatedValue: changeplan.AnticipateValue(modeValue(setting.DeploymentBranchPolicyAll))}}),
 			want:   github.NamedResources{Environments: []setting.EnvironmentName{staging}},
 		},
 		{
@@ -1912,6 +1913,18 @@ func TestSendUpdate(t *testing.T) {
 			}
 		})
 	}
+
+	// 方式を伴う作成は方式の更新と同じ要求を送るため、利用者が承認した作成として失敗を示すかで送り分けを確かめる
+	t.Run("rejected creation with a mode is reported as a creation", func(t *testing.T) {
+		baseURL, _ := newSequenceServer(t, response{status: http.StatusUnprocessableEntity})
+		operation := creationWithModeChange(t, "production", setting.DeploymentBranchPolicyProtectedBranches).Operations[0]
+
+		_, err := sendUpdate(context.Background(), newClient(baseURL), mustReference(t, "owner/repo"), operation, github.ObservationResult{Environments: environments()})
+
+		if err == nil || !strings.HasPrefix(err.Error(), `create environment with deployment branch policy "production" `) {
+			t.Errorf("sendUpdate() error = %v, want it to name the creation", err)
+		}
+	})
 
 	// 変更前提が成立した観測には取り除く個別パターンが必ずあるため、ない形は不変条件の破れになる
 	panicCases := []struct {

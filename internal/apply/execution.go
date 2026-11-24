@@ -164,7 +164,9 @@ func sendUpdate(ctx context.Context, client *github.Client, target repository.Re
 		return client.UpdateMergeMethods(ctx, target, allowed)
 	case changeplan.EnvironmentCreation:
 		return client.CreateEnvironment(ctx, target, environmentDestination(operation.Unit.Environment, observed))
-	case changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate:
+	case changeplan.EnvironmentCreationWithMode:
+		return client.CreateEnvironmentWithDeploymentBranchPolicy(ctx, target, environmentDestination(operation.Unit.Environment, observed), operation.Mode)
+	case changeplan.DeploymentBranchPolicyModeUpdate:
 		return client.UpdateEnvironmentDeploymentBranchPolicy(ctx, target, environmentDestination(operation.Unit.Environment, observed), operation.Mode)
 	case changeplan.DeploymentPatternAddition:
 		return client.AddDeploymentPattern(ctx, target, environmentDestination(operation.Unit.Environment, observed), operation.Pattern)
@@ -225,8 +227,8 @@ func observationAreas(change changeplan.LogicalChange) []setting.Area {
 		areas = appendArea(areas, unit.Key.Area())
 	}
 	for _, operation := range change.Operations {
-		if operation.Kind == changeplan.SettingUpdate || operation.Kind == changeplan.MergeMethodsUpdate {
-			for _, key := range github.UpdateEndpointOf(operation.Unit.Key).ObservedSettings() {
+		if endpoint, ok := operation.Endpoint(); ok {
+			for _, key := range endpoint.ObservedSettings() {
 				areas = appendArea(areas, key.Area())
 			}
 		}

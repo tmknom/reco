@@ -3,7 +3,6 @@ package changeplan
 import (
 	"fmt"
 
-	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
 
@@ -12,7 +11,7 @@ import (
 // 種類の組は宛先の違う Repository Variable と Environment Variable で分ける。
 // 基準が観測不能なら値がゼロ値になり、Equal が不変条件の破れとして panic する。どの種類かを決められないため。
 // 存在しない変数への削除も、照合が一致にして変更予定を作らないため、不変条件の破れとして panic する。
-func variableOperationOf(s SettingPlan, anticipated github.SettingObservation[setting.Value]) UpdateOperation {
+func variableOperationOf(s SettingPlan, anticipated AnticipatedValue) UpdateOperation {
 	var creation, valueUpdate, deletion UpdateOperationKind
 	switch s.Unit.Key {
 	case setting.RepositoryVariable:

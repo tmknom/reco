@@ -108,7 +108,7 @@ Go の package は、2.1節の領域を次の考え方で分けます。
 | すべての文脈が共有する語 | なし | `internal/setting`、`internal/repository` |
 | どの文脈にも属さない操作の調整と表示 | CLI、Plan、Apply、Show | `cmd`、`internal/plan`、`internal/apply`、`internal/show`、`internal/changeplandisplay` |
 
-package 間の依存の制約は、`scripts/golangci-lint/.golangci.yml` の depguard 規則で検査します。
+package 間の依存の制約は、`scripts/golangci-lint/.golangci.yml` の depguard 規則で検査します。GitHub Access は観測と更新要求を一つの package に持つため、package の依存だけでは更新要求を送る経路を Apply に限れません。GitHub へ更新要求を送るメソッドを、それを定める GitHub Access のほかには `internal/apply` だけが直接呼ぶことは、同じ設定の forbidigo 規則で検査します。interface やメソッド値を経た呼び出しは、この規則では検出できません。
 
 ## 3. 情報の流れと変更計画
 
