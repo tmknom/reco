@@ -74,6 +74,11 @@ func TestClientUpdate(t *testing.T) {
 			wantRequest: "PUT /repos/owner/repo/actions/permissions/access", wantBody: map[string]any{"access_level": "user"},
 		},
 		{
+			name: "approval_policy sends only approval_policy", key: setting.ForkPullRequestApproval,
+			value:       setting.ForkPullRequestApprovalPolicyValue(setting.ForkPullRequestApprovalAllExternalContributors),
+			wantRequest: "PUT /repos/owner/repo/actions/permissions/fork-pr-contributor-approval", wantBody: map[string]any{"approval_policy": "all_external_contributors"},
+		},
+		{
 			name: "secret_scanning true sends only the nested secret_scanning status enabled", key: setting.SecretScanningEnabled,
 			value:       setting.BoolValue(true),
 			wantRequest: "PATCH /repos/owner/repo",
@@ -956,6 +961,28 @@ func TestUpdateAccessLevelRejected(t *testing.T) {
 		t.Fatalf("updateAccessLevel() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrUnprocessable)
 	}
 	if !strings.HasPrefix(err.Error(), "update actions access owner/repo: ") {
+		t.Errorf("error = %q, want it to start with the operation and owner/repo", err)
+	}
+	if n := received.Load(); n != 1 {
+		t.Errorf("server received %d requests, want 1", n)
+	}
+}
+
+// TestUpdateForkPullRequestApprovalPolicyRejected は、GitHub が拒否した更新要求を拒否と判定し、操作と対象を error に添えることを確かめる。
+//
+//trace:checks FR-013
+func TestUpdateForkPullRequestApprovalPolicyRejected(t *testing.T) {
+	var received atomic.Int32
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		received.Add(1)
+		w.WriteHeader(http.StatusUnprocessableEntity)
+	})
+
+	outcome, err := c.updateForkPullRequestApprovalPolicy(t.Context(), mustReference(t, "owner/repo"), setting.ForkPullRequestApprovalFirstTimeContributors)
+	if outcome != UpdateRejected || !errors.Is(err, ErrUnprocessable) {
+		t.Fatalf("updateForkPullRequestApprovalPolicy() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrUnprocessable)
+	}
+	if !strings.HasPrefix(err.Error(), "update fork pull request approval owner/repo: ") {
 		t.Errorf("error = %q, want it to start with the operation and owner/repo", err)
 	}
 	if n := received.Load(); n != 1 {

@@ -15,6 +15,7 @@ func TestValue_String(t *testing.T) {
 		{value: PermissionLevelValue(PermissionRead), want: "read"},
 		{value: AllowedActionsPolicyValue(AllowedActionsSelected), want: "selected"},
 		{value: AccessLevelValue(AccessUser), want: "user"},
+		{value: ForkPullRequestApprovalPolicyValue(ForkPullRequestApprovalAllExternalContributors), want: "all_external_contributors"},
 		{value: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesDisabled), want: "false"},
 		{value: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesEnabled), want: "true"},
 		{value: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesPaused), want: "true (paused by GitHub)"},
@@ -54,6 +55,8 @@ func TestValue_Equal(t *testing.T) {
 		{name: "different policies differ", a: AllowedActionsPolicyValue(AllowedActionsAll), b: AllowedActionsPolicyValue(AllowedActionsSelected), equal: false},
 		{name: "same access levels are equal", a: AccessLevelValue(AccessNone), b: AccessLevelValue(AccessNone), equal: true},
 		{name: "different access levels differ", a: AccessLevelValue(AccessNone), b: AccessLevelValue(AccessUser), equal: false},
+		{name: "same approval policies are equal", a: ForkPullRequestApprovalPolicyValue(ForkPullRequestApprovalFirstTimeContributors), b: ForkPullRequestApprovalPolicyValue(ForkPullRequestApprovalFirstTimeContributors), equal: true},
+		{name: "different approval policies differ", a: ForkPullRequestApprovalPolicyValue(ForkPullRequestApprovalFirstTimeContributors), b: ForkPullRequestApprovalPolicyValue(ForkPullRequestApprovalAllExternalContributors), equal: false},
 		{name: "criteria differing only in pattern order are equal", a: criteria("a/*", "b/*"), b: criteria("b/*", "a/*"), equal: true},
 		{name: "criteria with a different pattern differ", a: criteria("a/*"), b: criteria("b/*"), equal: false},
 		{name: "values of different kinds differ", a: BoolValue(false), b: SelectedActionsCriteriaValue(SelectedActionsCriteria{}), equal: false},
@@ -192,6 +195,23 @@ func TestValue_AccessLevelOfBoolPanics(t *testing.T) {
 		}
 	}()
 	_ = BoolValue(true).AccessLevel()
+}
+
+func TestValue_ForkPullRequestApprovalPolicy(t *testing.T) {
+	for _, want := range []ForkPullRequestApprovalPolicy{ForkPullRequestApprovalFirstTimeContributorsNewToGitHub, ForkPullRequestApprovalFirstTimeContributors, ForkPullRequestApprovalAllExternalContributors} {
+		if got := ForkPullRequestApprovalPolicyValue(want).ForkPullRequestApprovalPolicy(); got != want {
+			t.Errorf("ForkPullRequestApprovalPolicyValue(%q).ForkPullRequestApprovalPolicy() = %q, want %q", want, got, want)
+		}
+	}
+}
+
+func TestValue_ForkPullRequestApprovalPolicyOfBoolPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("ForkPullRequestApprovalPolicy() did not panic for a boolean value")
+		}
+	}()
+	_ = BoolValue(true).ForkPullRequestApprovalPolicy()
 }
 
 func TestValue_DependabotSecurityUpdates(t *testing.T) {

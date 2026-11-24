@@ -79,6 +79,11 @@ func okActionsAccess(level string) response {
 	return response{status: http.StatusOK, body: githubtest.ActionsAccessBody{AccessLevel: level}.JSON()}
 }
 
+// okForkPullRequestApproval は、Fork Pull Request ワークフローの承認ポリシーの取得の正常応答。
+func okForkPullRequestApproval(policy string) response {
+	return response{status: http.StatusOK, body: githubtest.ForkPullRequestApprovalBody{ApprovalPolicy: policy}.JSON()}
+}
+
 func okWorkflowPermissions(defaultWorkflowPermissions string, canApprovePullRequestReviews bool) response {
 	return response{status: http.StatusOK, body: githubtest.WorkflowPermissionsBody{
 		DefaultWorkflowPermissions: defaultWorkflowPermissions, CanApprovePullRequestReviews: canApprovePullRequestReviews}.JSON()}

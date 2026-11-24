@@ -16,6 +16,7 @@ const (
 	ActionsPermissionsEndpoint
 	SelectedActionsEndpoint
 	ActionsAccessEndpoint
+	ForkPullRequestApprovalEndpoint
 	DependabotAlertsEndpoint
 	DependabotSecurityUpdatesEndpoint
 	PrivateVulnerabilityReportingEndpoint
@@ -39,6 +40,8 @@ func (e UpdateEndpoint) ObservedSettings() []setting.Key {
 		return []setting.Key{setting.SelectedActions}
 	case ActionsAccessEndpoint:
 		return []setting.Key{setting.ActionsAccessLevel}
+	case ForkPullRequestApprovalEndpoint:
+		return []setting.Key{setting.ForkPullRequestApproval}
 	case DependabotAlertsEndpoint:
 		return []setting.Key{setting.DependabotAlerts}
 	case DependabotSecurityUpdatesEndpoint:

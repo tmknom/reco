@@ -655,6 +655,29 @@ func TestRun(t *testing.T) {
 		}
 	})
 
+	// 計画時の観測値を関係する現在値とし、更新直前と更新後の観測が Fork Pull Request ワークフローの承認の領域を読むことを確かめる
+	t.Run("approval_policy of a public repository is applied after a single approval", func(t *testing.T) {
+		baseURL, server := newSequenceServer(t,
+			okRepository(1, false, false), okForkPullRequestApproval("first_time_contributors"),
+			okRepository(1, false, false), okForkPullRequestApproval("first_time_contributors"), response{status: http.StatusNoContent},
+			okRepository(1, false, false), okForkPullRequestApproval("all_external_contributors"))
+		var out bytes.Buffer
+		calls := 0
+		files := fstest.MapFS{"reco.yaml": {Data: []byte("repositories:\n  - name: owner/repo\n    actions:\n      fork_pull_requests:\n        approval_policy: all_external_contributors\n")}}
+
+		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		reads := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions/fork-pr-contributor-approval"}
+		want := slices.Concat(reads, reads, []string{"PUT /repos/owner/repo/actions/permissions/fork-pr-contributor-approval"}, reads)
+		if !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		if calls != 1 || !strings.Contains(out.String(), "actions.fork_pull_requests.approval_policy: first_time_contributors -> all_external_contributors") || !strings.Contains(out.String(), "owner/repo: updated") {
+			t.Errorf("approve calls = %d, Out = %q, want one approval, the approval policy change, and the repository updated", calls, out.String())
+		}
+	})
+
 	const (
 		getRepository         = "GET /repos/owner/repo"
 		getActionsPermissions = "GET /repos/owner/repo/actions/permissions"

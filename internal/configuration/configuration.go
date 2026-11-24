@@ -25,10 +25,11 @@ type RepositoryDeclaration struct {
 // DesiredState は、一つのリポジトリについて管理設定に求める状態。
 // YAML の入れ子 (actions.workflow) は写さず、設定の領域ごとに持つ。
 type DesiredState struct {
-	General             General
-	ActionsPermissions  ActionsPermissions
-	WorkflowPermissions WorkflowPermissions
-	ActionsAccess       ActionsAccess
+	General                 General
+	ActionsPermissions      ActionsPermissions
+	WorkflowPermissions     WorkflowPermissions
+	ActionsAccess           ActionsAccess
+	ForkPullRequestApproval ForkPullRequestApproval
 	// RepositoryVariables は宣言の並びのまま持ち、actions.variables を省略したリポジトリでは nil。
 	RepositoryVariables []VariableDeclaration
 	// Environments は宣言の並びのまま持ち、environments を省略したリポジトリでは nil。
@@ -94,6 +95,11 @@ type WorkflowPermissions struct {
 type ActionsAccess struct {
 	// AccessLevel は none か user。organization は宣言で受け付けない (YAML 設定仕様の Actions access)。
 	AccessLevel *setting.AccessLevel
+}
+
+// ForkPullRequestApproval は、Fork Pull Request ワークフローの承認の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
+type ForkPullRequestApproval struct {
+	ApprovalPolicy *setting.ForkPullRequestApprovalPolicy
 }
 
 // Dependabot は、Dependabot の領域の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
@@ -193,6 +199,11 @@ func (d DesiredState) value(key setting.Key) (value setting.Value, ok bool) {
 	case setting.ActionsAccessLevel:
 		if level := d.ActionsAccess.AccessLevel; level != nil {
 			return setting.AccessLevelValue(*level), true
+		}
+		return setting.Value{}, false
+	case setting.ForkPullRequestApproval:
+		if policy := d.ForkPullRequestApproval.ApprovalPolicy; policy != nil {
+			return setting.ForkPullRequestApprovalPolicyValue(*policy), true
 		}
 		return setting.Value{}, false
 	case setting.DependabotAlerts:

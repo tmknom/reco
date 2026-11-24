@@ -577,6 +577,33 @@ func TestObservationResult_SettingOfActionsAccess(t *testing.T) {
 	}
 }
 
+//trace:checks FR-004 QR-002
+func TestObservationResult_SettingOfForkPullRequestApproval(t *testing.T) {
+	cases := []struct {
+		name     string
+		observed ForkPullRequestApproval
+		want     SettingObservation[setting.Value]
+	}{
+		{
+			name:     "approval_policy returns the observed policy",
+			observed: ForkPullRequestApproval{ApprovalPolicy: Observed(setting.ForkPullRequestApprovalFirstTimeContributors)},
+			want:     Observed(setting.ForkPullRequestApprovalPolicyValue(setting.ForkPullRequestApprovalFirstTimeContributors)),
+		},
+		{
+			name:     "approval_policy keeps the unavailable reason",
+			observed: ForkPullRequestApproval{ApprovalPolicy: Unavailable[setting.ForkPullRequestApprovalPolicy](UnavailablePrivateRepository)},
+			want:     Unavailable[setting.Value](UnavailablePrivateRepository),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := (ObservationResult{ForkPullRequestApproval: &tc.observed}).Setting(setting.Unit{Key: setting.ForkPullRequestApproval}); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Setting(%q) = %+v, want %+v", setting.ForkPullRequestApproval, got, tc.want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-004
 func TestObservationResult_SettingOfEnvironmentDeploymentBranchPolicy(t *testing.T) {
 	// 別の Environment の方式を返す誤りと、宣言の名前を綴りのまま比べる誤りを検出するため、

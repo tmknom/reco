@@ -14,6 +14,15 @@ func accessLevelChange() changeplan.LogicalChange {
 	return singleUpdate(setting.ActionsAccessLevel, setting.AccessLevelValue(setting.AccessUser), relevantTo(setting.ActionsAccessLevel, setting.AccessLevelValue(setting.AccessNone)))
 }
 
+// forkPullRequestApprovalChange は、Fork Pull Request ワークフローの承認ポリシーを first_time_contributors から all_external_contributors にする論理的な設定変更。
+func forkPullRequestApprovalChange() changeplan.LogicalChange {
+	return singleUpdate(
+		setting.ForkPullRequestApproval,
+		setting.ForkPullRequestApprovalPolicyValue(setting.ForkPullRequestApprovalAllExternalContributors),
+		relevantTo(setting.ForkPullRequestApproval, setting.ForkPullRequestApprovalPolicyValue(setting.ForkPullRequestApprovalFirstTimeContributors)),
+	)
+}
+
 // allowAutoMergeChange は、allow_auto_merge を false から true にする論理的な設定変更。
 func allowAutoMergeChange() changeplan.LogicalChange {
 	return singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), relevantTo(setting.AllowAutoMerge, setting.BoolValue(false)))

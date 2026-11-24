@@ -64,7 +64,7 @@ func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDe
 		}
 	}
 	if hasActions {
-		if desired.ActionsPermissions, desired.WorkflowPermissions, desired.ActionsAccess, desired.RepositoryVariables, err = d.actions(actionsNode, path+".actions"); err != nil {
+		if desired.ActionsPermissions, desired.WorkflowPermissions, desired.ActionsAccess, desired.ForkPullRequestApproval, desired.RepositoryVariables, err = d.actions(actionsNode, path+".actions"); err != nil {
 			return RepositoryDeclaration{}, err
 		}
 	}
@@ -220,38 +220,44 @@ func (d document) deploymentPattern(n *yaml.Node, path string) (setting.Deployme
 	return setting.DeploymentPattern{Type: patternType, Name: name}, nil
 }
 
-// actions は、Actions の階層のうち reco が受け付ける permissions、workflow、access、variables だけを読む。
+// actions は、Actions の階層のうち reco が受け付ける permissions、workflow、access、fork_pull_requests、variables だけを読む。
 // どれも任意のキーだが、空のマッピングは拒否されるため、成功すればどれかは必ずある。
-func (d document) actions(n *yaml.Node, path string) (ActionsPermissions, WorkflowPermissions, ActionsAccess, []VariableDeclaration, error) {
-	entries, err := d.mappingEntries(n, path, nil, []string{"permissions", "workflow", "access", "variables"})
+func (d document) actions(n *yaml.Node, path string) (ActionsPermissions, WorkflowPermissions, ActionsAccess, ForkPullRequestApproval, []VariableDeclaration, error) {
+	entries, err := d.mappingEntries(n, path, nil, []string{"permissions", "workflow", "access", "fork_pull_requests", "variables"})
 	if err != nil {
-		return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, nil, err
+		return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, ForkPullRequestApproval{}, nil, err
 	}
 	var permissions ActionsPermissions
 	if value, ok := entries["permissions"]; ok {
 		if permissions, err = d.permissions(value, path+".permissions"); err != nil {
-			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, nil, err
+			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, ForkPullRequestApproval{}, nil, err
 		}
 	}
 	var workflow WorkflowPermissions
 	if value, ok := entries["workflow"]; ok {
 		if workflow, err = d.workflow(value, path+".workflow"); err != nil {
-			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, nil, err
+			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, ForkPullRequestApproval{}, nil, err
 		}
 	}
 	var access ActionsAccess
 	if value, ok := entries["access"]; ok {
 		if access, err = d.access(value, path+".access"); err != nil {
-			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, nil, err
+			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, ForkPullRequestApproval{}, nil, err
+		}
+	}
+	var approval ForkPullRequestApproval
+	if value, ok := entries["fork_pull_requests"]; ok {
+		if approval, err = d.forkPullRequests(value, path+".fork_pull_requests"); err != nil {
+			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, ForkPullRequestApproval{}, nil, err
 		}
 	}
 	var variables []VariableDeclaration
 	if value, ok := entries["variables"]; ok {
 		if variables, err = d.variables(value, path+".variables"); err != nil {
-			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, nil, err
+			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, ForkPullRequestApproval{}, nil, err
 		}
 	}
-	return permissions, workflow, access, variables, nil
+	return permissions, workflow, access, approval, variables, nil
 }
 
 // variables は、変数の宣言の並びを宣言の順のまま読む。
@@ -464,6 +470,20 @@ func (d document) access(n *yaml.Node, path string) (ActionsAccess, error) {
 		return ActionsAccess{}, err
 	}
 	return ActionsAccess{AccessLevel: &level}, nil
+}
+
+// forkPullRequests は、Fork からの Pull Request のワークフローの設定を読む。
+// 受け付けるキーは approval_policy だけのため必須として渡す。空のマッピングは mappingEntries が拒否する。
+func (d document) forkPullRequests(n *yaml.Node, path string) (ForkPullRequestApproval, error) {
+	entries, err := d.mappingEntries(n, path, []string{"approval_policy"}, nil)
+	if err != nil {
+		return ForkPullRequestApproval{}, err
+	}
+	policy, err := d.forkPullRequestApprovalPolicyValue(entries["approval_policy"], path+".approval_policy")
+	if err != nil {
+		return ForkPullRequestApproval{}, err
+	}
+	return ForkPullRequestApproval{ApprovalPolicy: &policy}, nil
 }
 
 // general は general の設定を読む。マージ方式の組み合わせの規則は 3 つの値で決まるため、すべての値の誤りを先に示す。

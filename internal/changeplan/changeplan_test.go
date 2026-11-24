@@ -947,3 +947,70 @@ func TestGenerate_ActionsAccess(t *testing.T) {
 		}
 	})
 }
+
+const forkPullRequestApprovalSource = `repositories:
+  - name: owner/repo
+    actions:
+      fork_pull_requests:
+        approval_policy: all_external_contributors
+`
+
+//trace:checks FR-005 FR-006
+func TestGenerate_ForkPullRequestApproval(t *testing.T) {
+	file := configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(forkPullRequestApprovalSource)}}, Name: "reco.yaml", Path: "./reco.yaml"}
+
+	t.Run("public repository reads only the approval policy and reconciles it as an applicable mismatch", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo": githubtest.OK(githubtest.RepositoryBody{ID: 7}.JSON()),
+			"GET /repos/owner/repo/actions/permissions/fork-pr-contributor-approval": githubtest.OK(githubtest.ForkPullRequestApprovalBody{ApprovalPolicy: "first_time_contributors"}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+		got, err := Generate(context.Background(), client, file, nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		if want := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions/fork-pr-contributor-approval"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		want := []SettingPlan{{
+			Unit:     setting.Unit{Key: setting.ForkPullRequestApproval},
+			Observed: github.Observed(setting.ForkPullRequestApprovalPolicyValue(setting.ForkPullRequestApprovalFirstTimeContributors)),
+			Desired:  setting.ForkPullRequestApprovalPolicyValue(setting.ForkPullRequestApprovalAllExternalContributors),
+			Result:   Mismatch, Applicability: Applicable(),
+		}}
+		if len(got.Repositories) != 1 {
+			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
+		}
+		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
+			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
+		}
+	})
+
+	t.Run("private repository sends no read request and is not applicable", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo": githubtest.OK(githubtest.RepositoryBody{ID: 7, Private: true}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+		got, err := Generate(context.Background(), client, file, nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		if want := []string{"GET /repos/owner/repo"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		want := []SettingPlan{{
+			Unit:     setting.Unit{Key: setting.ForkPullRequestApproval},
+			Observed: github.Unavailable[setting.Value](github.UnavailablePrivateRepository),
+			Desired:  setting.ForkPullRequestApprovalPolicyValue(setting.ForkPullRequestApprovalAllExternalContributors),
+			Result:   NotComparable, Applicability: NotApplicable(NotApplicablePrivateRepository),
+		}}
+		if len(got.Repositories) != 1 {
+			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
+		}
+		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
+			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
+		}
+	})
+}

@@ -19,6 +19,7 @@ type Value struct {
 	policy          AllowedActionsPolicy
 	criteria        SelectedActionsCriteria
 	accessLevel     AccessLevel
+	approvalPolicy  ForkPullRequestApprovalPolicy
 	branchPolicy    DeploymentBranchPolicy
 	securityUpdates DependabotSecurityUpdatesState
 	variable        string
@@ -34,6 +35,7 @@ const (
 	kindAllowedActionsPolicy
 	kindSelectedActionsCriteria
 	kindAccessLevel
+	kindForkPullRequestApprovalPolicy
 	kindDeploymentBranchPolicy
 	kindDependabotSecurityUpdates
 	kindVariable
@@ -67,6 +69,11 @@ func SelectedActionsCriteriaValue(criteria SelectedActionsCriteria) Value {
 // AccessLevelValue は、リポジトリ外のワークフローからのアクセスの範囲の値を作る。
 func AccessLevelValue(level AccessLevel) Value {
 	return Value{kind: kindAccessLevel, accessLevel: level}
+}
+
+// ForkPullRequestApprovalPolicyValue は、Fork Pull Request ワークフローの承認ポリシーの値を作る。
+func ForkPullRequestApprovalPolicyValue(policy ForkPullRequestApprovalPolicy) Value {
+	return Value{kind: kindForkPullRequestApprovalPolicy, approvalPolicy: policy}
 }
 
 // DeploymentBranchPolicyValue は、Environment のデプロイ元制限の値を作る。
@@ -120,6 +127,7 @@ func (v Value) Equal(other Value) bool {
 		v.policy == other.policy &&
 		v.criteria.equal(other.criteria) &&
 		v.accessLevel == other.accessLevel &&
+		v.approvalPolicy == other.approvalPolicy &&
 		v.branchPolicy.equal(other.branchPolicy) &&
 		v.securityUpdates.Enabled() == other.securityUpdates.Enabled() &&
 		v.variable == other.variable &&
@@ -142,6 +150,8 @@ func (v Value) String() string {
 			", patterns_allowed: " + v.criteria.PatternsAllowedString()
 	case kindAccessLevel:
 		return string(v.accessLevel)
+	case kindForkPullRequestApprovalPolicy:
+		return string(v.approvalPolicy)
 	case kindDeploymentBranchPolicy:
 		if v.branchPolicy.Mode == DeploymentBranchPolicySelected {
 			return string(v.branchPolicy.Mode) + " " + v.branchPolicy.PatternsString()
@@ -208,6 +218,14 @@ func (v Value) AccessLevel() AccessLevel {
 		panic("setting: value is not an access level")
 	}
 	return v.accessLevel
+}
+
+// ForkPullRequestApprovalPolicy は、Fork Pull Request ワークフローの承認ポリシーの値を返す。それ以外の値は不変条件の破れのため panic する。
+func (v Value) ForkPullRequestApprovalPolicy() ForkPullRequestApprovalPolicy {
+	if v.kind != kindForkPullRequestApprovalPolicy {
+		panic("setting: value is not a fork pull request approval policy")
+	}
+	return v.approvalPolicy
 }
 
 // DeploymentBranchPolicy は、Environment のデプロイ元制限の値を返す。それ以外の値は不変条件の破れのため panic する。

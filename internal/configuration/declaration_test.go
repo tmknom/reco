@@ -449,6 +449,20 @@ func TestDocumentDeclaration(t *testing.T) {
 			}},
 		},
 		{
+			name: "fork_pull_requests alone is read into the fork pull request approval desired state",
+			src:  second + "    actions:\n      fork_pull_requests:\n        approval_policy: all_external_contributors\n",
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				{
+					Reference: mustReference(t, "owner/second"),
+					Desired: DesiredState{
+						General:                 General{AllowAutoMerge: new(false)},
+						ForkPullRequestApproval: ForkPullRequestApproval{ApprovalPolicy: new(setting.ForkPullRequestApprovalAllExternalContributors)},
+					},
+				},
+			}},
+		},
+		{
 			name:       "unknown key in actions is rejected listing permissions, workflow, and access",
 			src:        second + "    actions:\n      secrets: {}\n",
 			wantPath:   "repositories[1].actions",
@@ -561,6 +575,19 @@ func TestDocumentDeclaration(t *testing.T) {
 			src:        second + "    actions:\n      access:\n        access_level: organization\n",
 			wantPath:   "repositories[1].actions.access.access_level",
 			wantReason: "must be none or user",
+		},
+		// Fork pull requests
+		{
+			name:       "unknown key in fork_pull_requests is rejected",
+			src:        second + "    actions:\n      fork_pull_requests:\n        approval_policy: first_time_contributors\n        days: 30\n",
+			wantPath:   "repositories[1].actions.fork_pull_requests",
+			wantReason: `unknown key "days"; expected approval_policy`,
+		},
+		{
+			name:       "undefined approval_policy is rejected at actions.fork_pull_requests.approval_policy",
+			src:        second + "    actions:\n      fork_pull_requests:\n        approval_policy: everyone\n",
+			wantPath:   "repositories[1].actions.fork_pull_requests.approval_policy",
+			wantReason: "must be first_time_contributors_new_to_github",
 		},
 		{
 			name:       "empty variables is rejected at actions.variables",

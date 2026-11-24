@@ -1,6 +1,6 @@
 # Rulesets の設計
 
-設定宣言の `rulesets`（[YAML 設定仕様](../../spec/configuration.md) 10章）に属する、リポジトリの Ruleset の設計を定めます。文書の構成は [設定ごとの設計](README.md) に従います。関連リソースに共通する規則は [ドメインモデル](../domain.md) の関連リソースと存在に従い、ここでは繰り返しません。
+設定宣言の `rulesets`（[YAML 設定仕様](../../spec/configuration.md) 11章）に属する、リポジトリの Ruleset の設計を定めます。文書の構成は [設定ごとの設計](README.md) に従います。関連リソースに共通する規則は [ドメインモデル](../domain.md) の関連リソースと存在に従い、ここでは繰り返しません。
 
 ## 設定と管理の単位
 
@@ -28,7 +28,7 @@ Ruleset の中身は項目ごとの管理の単位に分けず、値の全体を
 
 - **集合として比べる理由**：GitHub は更新で `rules` の順を保たず、Bypass の順も保つとは限らない（GitHub Rules API 仕様 4.2、6章）。`include` と `exclude` は送った順で返ったが、Ruleset は `include` のどれかに一致し `exclude` のどれにも一致しない ref に効くため、順は意味を持たない（同 5章）
 - **`include` の重複**：GitHub は `include` の重複を残して保存する（同 5章）。重複を問わないため、観測の `[a, a]` と宣言の `[a]` は同じ値で、更新しない
-- **Bypass の同じ主体**：`actor_type` と `actor_id` が同じ要素を二つ送ると、GitHub は先の要素だけを残す（同 6章）。観測した値は受け取ったまま比べ、宣言では二つ書けない（YAML 設定仕様 10.4節）
+- **Bypass の同じ主体**：`actor_type` と `actor_id` が同じ要素を二つ送ると、GitHub は先の要素だけを残す（同 6章）。観測した値は受け取ったまま比べ、宣言では二つ書けない（YAML 設定仕様 11.4節）
 
 | Relationship | Target | Target Type |
 |---|---|---|

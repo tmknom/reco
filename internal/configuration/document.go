@@ -221,6 +221,19 @@ func (d document) allowedActionsPolicyValue(n *yaml.Node, path string) (setting.
 	return policy, nil
 }
 
+// forkPullRequestApprovalPolicyValue は、文字列のうち定義された承認ポリシーの値に完全一致するものだけを受理する。
+func (d document) forkPullRequestApprovalPolicyValue(n *yaml.Node, path string) (setting.ForkPullRequestApprovalPolicy, error) {
+	s, err := d.stringValue(n, path)
+	if err != nil {
+		return "", err
+	}
+	policy, ok := setting.ParseForkPullRequestApprovalPolicy(s)
+	if !ok {
+		return "", invalid(n, path, "must be first_time_contributors_new_to_github, first_time_contributors, or all_external_contributors; got %q", s)
+	}
+	return policy, nil
+}
+
 // accessLevelValue は、取り得る値のうち宣言で受け付ける none と user だけを受理する。
 // organization は show が表示し得る値のため、そのまま書いた利用者に拒否の理由を添える。
 func (d document) accessLevelValue(n *yaml.Node, path string) (setting.AccessLevel, error) {

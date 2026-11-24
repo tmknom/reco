@@ -140,6 +140,16 @@ func TestPlannedChangeText(t *testing.T) {
 				"    Applicability: not applicable (the repository is public; remove access_level, which applies only to private repositories)\n",
 		},
 		{
+			name: "approval_policy of a private repository shows the repository state and that it applies only to public repositories",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.ForkPullRequestApproval}, Observed: github.Unavailable[setting.Value](github.UnavailablePrivateRepository),
+				Desired: setting.ForkPullRequestApprovalPolicyValue(setting.ForkPullRequestApprovalAllExternalContributors),
+				Result:  changeplan.NotComparable, Applicability: changeplan.NotApplicable(changeplan.NotApplicablePrivateRepository),
+			},
+			want: "  actions.fork_pull_requests.approval_policy: (private repository) -> all_external_contributors\n" +
+				"    Applicability: not applicable (the repository is private; remove approval_policy, which applies only to public repositories)\n",
+		},
+		{
 			name: "applicable not-comparable sha_pinning_required shows no applicability",
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: disabled, Desired: setting.BoolValue(true),

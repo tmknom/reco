@@ -21,6 +21,8 @@ const (
 	DefaultWorkflowPermissions   Key = "actions.workflow.default_workflow_permissions"
 	CanApprovePullRequestReviews Key = "actions.workflow.can_approve_pull_request_reviews"
 	ActionsAccessLevel           Key = "actions.access.access_level"
+	// ForkPullRequestApproval は、Fork Pull Request ワークフローの承認ポリシー。
+	ForkPullRequestApproval Key = "actions.fork_pull_requests.approval_policy"
 	// RepositoryVariable は、Repository Variable そのもの (期待値は存在し、値を伴うこと) の形。
 	RepositoryVariable        Key = "actions.variables"
 	DependabotAlerts          Key = "security.dependabot_alerts"
@@ -43,7 +45,7 @@ const (
 // 設定グループは一つの Key で表す。関連リソースに関わる管理の単位は、宣言の名前ごとに決まるため含めない。
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
 func RepositorySettingUnits() []Key {
-	return []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
+	return []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, ForkPullRequestApproval, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
 }
 
 // MergeMethods は、GitHub がすべてを無効にすることを受け付けないマージ方式の管理の単位を、YAML 設定仕様の表の並びで返す。
@@ -70,6 +72,8 @@ func (k Key) Area() Area {
 		return AreaWorkflowPermissions
 	case ActionsAccessLevel:
 		return AreaActionsAccess
+	case ForkPullRequestApproval:
+		return AreaForkPullRequestApproval
 	case RepositoryVariable:
 		return AreaRepositoryVariables
 	case EnvironmentResource, EnvironmentDeploymentBranchPolicy:
