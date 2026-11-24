@@ -33,7 +33,7 @@ func TestRulesetChangeOf(t *testing.T) {
 				DesiredState: []DesiredSetting{{Unit: unit, Value: desired}},
 				Operations: []UpdateOperation{{
 					Kind: tc.wantKind, Unit: unit, Value: desired,
-					RelevantSettings: []RelevantSetting{{Unit: unit, AnticipatedValue: github.Observed(tc.observed), AnticipatedRulesetIdentity: tc.identity}},
+					RelevantSettings: []RelevantSetting{{Unit: unit, AnticipatedValue: AnticipateValue(tc.observed), AnticipatedRulesetIdentity: tc.identity}},
 				}},
 			}
 			if got := rulesetChangeOf(s); !reflect.DeepEqual(got, want) {

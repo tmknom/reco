@@ -45,7 +45,7 @@ type UpdateOperation struct {
 }
 
 // UpdateOperationKind は、更新操作の種類。送る更新要求の形と、関連リソースを作るかどうかで分ける。
-// EnvironmentCreationWithMode と DeploymentBranchPolicyModeUpdate は同じ形の要求を送るが、作成かどうかで変更前提の基準と表示が変わるため分ける。
+// EnvironmentCreationWithMode と DeploymentBranchPolicyModeUpdate は同じ形の要求を送るが、作成かどうかで変更前提の基準、表示、失敗の示し方が変わるため分ける。
 type UpdateOperationKind int
 
 // ゼロ値をいずれかの種類と取り違えないよう 1 から始める。
@@ -86,7 +86,7 @@ const (
 type RelevantSetting struct {
 	Unit setting.Unit
 	// AnticipatedValue は、承認時に予定した値。関連リソースそのものでは、存在すること (値を伴う) か存在しないことである。
-	AnticipatedValue github.SettingObservation[setting.Value]
+	AnticipatedValue AnticipatedValue
 	// AnticipatedEnvironmentIdentity は、Environment が存在すると予定したときに、存在に加えて確かめる同一性の基準。ほかではゼロ値。
 	AnticipatedEnvironmentIdentity EnvironmentIdentity
 	// AnticipatedRulesetIdentity は、Ruleset が存在すると予定したときに、存在と値に加えて確かめる同一性の基準。ほかではゼロ値。
@@ -121,6 +121,24 @@ func (c LogicalChange) ExcludedFromOutsideSettings() []setting.Unit {
 // CreatesEnvironment は、この更新操作が Environment の作成かを返す。
 func (o UpdateOperation) CreatesEnvironment() bool {
 	return o.Kind == EnvironmentCreation || o.Kind == EnvironmentCreationWithMode
+}
+
+// Endpoint は、この更新操作が更新要求を送る更新エンドポイントを、設定の識別から引けるときだけ、それと真を返す。
+// 関連リソースの更新操作は、更新エンドポイントが名前ごとに別で、設定の識別だけでは引けないため偽を返す。
+// 更新要求を持たない設定は UpdateEndpointOf が panic する。
+// 未定義の種類は宛先が決まらないため、不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+func (o UpdateOperation) Endpoint() (github.UpdateEndpoint, bool) {
+	switch o.Kind {
+	case SettingUpdate, MergeMethodsUpdate:
+		return github.UpdateEndpointOf(o.Unit.Key), true
+	case EnvironmentCreation, EnvironmentCreationWithMode, DeploymentBranchPolicyModeUpdate,
+		DeploymentPatternAddition, DeploymentPatternRemoval,
+		RepositoryVariableCreation, RepositoryVariableValueUpdate, RepositoryVariableDeletion,
+		EnvironmentVariableCreation, EnvironmentVariableValueUpdate, EnvironmentVariableDeletion,
+		RulesetCreation, RulesetValueUpdate:
+		return 0, false
+	}
+	panic(fmt.Sprintf("changeplan: undefined kind %d of an update operation", int(o.Kind)))
 }
 
 // LogicalChanges は、選択したすべての対象リポジトリについて、論理的な設定変更を実行順で導く。
@@ -197,12 +215,12 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 		case s.Unit.Key == setting.SHAPinningRequired:
 			operation = shaPinningRequiredOperationOf(s)
 		case s.Unit.Key == setting.RepositoryVariable:
-			operation = variableOperationOf(s, s.Observed)
+			operation = variableOperationOf(s, AnticipateUnchanged(s.Observed))
 		case s.Unit.Key == setting.RepositoryPushProtection && s.Desired.Bool():
 			// GitHub は Secret scanning が無効のあいだ、有効にする更新に成功を応答して値を変えないため、更新直前に有効と確かめる。
 			// 計画時に無効だった場合は、先行する Secret scanning の変更が有効にすることが予定どおりの変化である
 			operation.RelevantSettings = append(operation.RelevantSettings, RelevantSetting{
-				Unit: setting.Unit{Key: setting.SecretScanningEnabled}, AnticipatedValue: github.Observed(setting.BoolValue(true)),
+				Unit: setting.Unit{Key: setting.SecretScanningEnabled}, AnticipatedValue: AnticipateValue(setting.BoolValue(true)),
 			})
 		}
 		change := LogicalChange{
@@ -216,7 +234,7 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 			// 2つ目の承認時に予定した値は、1つ目による予定どおりの変化を反映したポリシーである
 			change.Operations = append(change.Operations, UpdateOperation{
 				Kind: SettingUpdate, Unit: criteria.Unit, Value: criteria.Desired,
-				RelevantSettings: []RelevantSetting{{Unit: s.Unit, AnticipatedValue: github.Observed(s.Desired)}},
+				RelevantSettings: []RelevantSetting{{Unit: s.Unit, AnticipatedValue: AnticipateValue(s.Desired)}},
 			})
 		}
 		changes = append(changes, change)
@@ -272,14 +290,14 @@ func (r RepositoryPlan) settingPlanOf(unit setting.Unit) (SettingPlan, bool) {
 // operationOf は、変更予定 s の設定の値を送る更新操作を返す。
 // 基準は、s の計画時の観測結果、副作用として提示した設定のうち reco が観測するものの計画時の観測結果、副作用を示さなかった設定の計画時の観測結果である。
 func operationOf(s SettingPlan) UpdateOperation {
-	relevant := []RelevantSetting{{Unit: s.Unit, AnticipatedValue: s.Observed}}
+	relevant := []RelevantSetting{{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)}}
 	for _, effect := range s.SideEffects {
 		if key, ok := effect.Kind.ObservedSetting(); ok {
-			relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: key}, AnticipatedValue: effect.Observed})
+			relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: key}, AnticipatedValue: AnticipateUnchanged(effect.Observed)})
 		}
 	}
 	for _, unshown := range s.SettingsWithoutSideEffect {
-		relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: unshown.Key}, AnticipatedValue: unshown.Observed})
+		relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: unshown.Key}, AnticipatedValue: AnticipateUnchanged(unshown.Observed)})
 	}
 	return UpdateOperation{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, RelevantSettings: relevant}
 }
@@ -290,9 +308,9 @@ func operationOf(s SettingPlan) UpdateOperation {
 func shaPinningRequiredOperationOf(s SettingPlan) UpdateOperation {
 	var relevant []RelevantSetting
 	if s.Result == Mismatch {
-		relevant = append(relevant, RelevantSetting{Unit: s.Unit, AnticipatedValue: s.Observed})
+		relevant = append(relevant, RelevantSetting{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)})
 	}
-	relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: setting.ActionsEnabled}, AnticipatedValue: github.Observed(setting.BoolValue(true))})
+	relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: setting.ActionsEnabled}, AnticipatedValue: AnticipateValue(setting.BoolValue(true))})
 	return UpdateOperation{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, RelevantSettings: relevant}
 }
 
@@ -311,38 +329,20 @@ func targetsSelectedPolicy(s SettingPlan) bool {
 	return s.Unit.Key == setting.AllowedActions && s.Desired.AllowedActionsPolicy() == setting.AllowedActionsSelected
 }
 
-// checkUpdateEndpoint は、operation の更新要求の宛先を承認の前に決められるかを確かめ、決められなければ panic する。
-// 設定の更新操作は更新エンドポイントを引き、更新要求を持たない設定なら UpdateEndpointOf が panic する。戻り値を使わないのは、引けることの検査だけを目的とするため。
-// マージ方式は一つずつ送る更新要求を持たず、まとめた更新操作でだけ送るため、一つの設定の更新操作なら承認の前に panic する。
-// まとめた更新操作が送る設定が空か、マージ方式でない設定を含む場合も同じく panic する。どちらも、承認のあと先行する変更を送ってから止まらないようにするため。
-// 関連リソース (Environment、Repository Variable、Environment Variable、Ruleset) の更新操作は、更新エンドポイントが名前ごとに別で、設定の識別だけでは引けないため、引かずに通す。
-// ただし Ruleset の値の変更は宛先が計画時に観測した ID で決まるため、AnticipatedRulesetID を引けることを確かめる。
-// 未定義の種類は宛先が決まらないため、不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+// checkUpdateEndpoint は、operation の更新要求の宛先を承認の前に決められるかを確かめ、決められなければ panic する。どれも、承認のあと先行する変更を送ってから止まらないようにするため。
+// マージ方式は一つずつ送る更新要求を持たず、まとめた更新操作でだけ送るため、一つの設定の更新操作なら panic する。
+// Ruleset の値の変更は宛先が計画時に観測した ID で決まるため、AnticipatedRulesetID を引けることを確かめる。
+// Endpoint の戻り値を使わないのは、引けることの検査だけを目的とするため。最後に引くのは、マージ方式の破れを宛先の破れより具体的な理由で示すため。
 func checkUpdateEndpoint(operation UpdateOperation) {
-	switch operation.Kind {
-	case SettingUpdate:
-		if slices.Contains(setting.MergeMethods(), operation.Unit.Key) {
-			panic("changeplan: " + operation.Unit.String() + " is a merge method updated on its own")
-		}
-		github.UpdateEndpointOf(operation.Unit.Key)
-		return
-	case MergeMethodsUpdate:
-		if len(operation.Settings) == 0 || slices.ContainsFunc(operation.Settings, func(s DesiredSetting) bool {
-			return !slices.Contains(setting.MergeMethods(), s.Unit.Key)
-		}) {
-			panic("changeplan: merge methods update of " + operation.Unit.String() + " does not send only merge methods")
-		}
-		github.UpdateEndpointOf(operation.Unit.Key)
-		return
-	case EnvironmentCreation, EnvironmentCreationWithMode, DeploymentBranchPolicyModeUpdate,
-		DeploymentPatternAddition, DeploymentPatternRemoval,
-		RepositoryVariableCreation, RepositoryVariableValueUpdate, RepositoryVariableDeletion,
-		EnvironmentVariableCreation, EnvironmentVariableValueUpdate, EnvironmentVariableDeletion,
-		RulesetCreation:
-		return
-	case RulesetValueUpdate:
+	switch {
+	case operation.Kind == SettingUpdate && slices.Contains(setting.MergeMethods(), operation.Unit.Key):
+		panic("changeplan: " + operation.Unit.String() + " is a merge method updated on its own")
+	case operation.Kind == MergeMethodsUpdate && (len(operation.Settings) == 0 || slices.ContainsFunc(operation.Settings, func(s DesiredSetting) bool {
+		return !slices.Contains(setting.MergeMethods(), s.Unit.Key)
+	})):
+		panic("changeplan: merge methods update of " + operation.Unit.String() + " does not send only merge methods")
+	case operation.Kind == RulesetValueUpdate:
 		operation.AnticipatedRulesetID()
-		return
 	}
-	panic(fmt.Sprintf("changeplan: undefined kind %d of an update operation", int(operation.Kind)))
+	operation.Endpoint()
 }

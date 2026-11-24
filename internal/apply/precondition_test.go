@@ -15,21 +15,21 @@ import (
 func TestMatchesAnticipatedValue(t *testing.T) {
 	disabled := github.Unavailable[setting.Value](github.UnavailableActionsDisabled)
 	notSelected := github.Unavailable[setting.Value](github.UnavailableNotSelected)
-	criteria := func(patterns ...string) github.SettingObservation[setting.Value] {
-		return github.Observed(setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{PatternsAllowed: patterns}))
+	criteria := func(patterns ...string) setting.Value {
+		return setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{PatternsAllowed: patterns})
 	}
 	cases := []struct {
 		name        string
-		anticipated github.SettingObservation[setting.Value]
+		anticipated changeplan.AnticipatedValue
 		current     github.SettingObservation[setting.Value]
 		want        bool
 	}{
-		{name: "unavailable for the same reason is the same", anticipated: disabled, current: disabled, want: true},
-		{name: "unavailable for another reason differs", anticipated: disabled, current: notSelected, want: false},
-		{name: "observed value where unavailable was approved differs", anticipated: disabled, current: criteria("a/*"), want: false},
-		{name: "unavailable where an observed value was approved differs", anticipated: criteria("a/*"), current: disabled, want: false},
-		{name: "another observed value differs", anticipated: criteria("a/*"), current: criteria("b/*"), want: false},
-		{name: "observed values differing only in the order of patterns are the same", anticipated: criteria("a/*", "b/*"), current: criteria("b/*", "a/*"), want: true},
+		{name: "unavailable for the same reason is the same", anticipated: changeplan.AnticipateUnchanged(disabled), current: disabled, want: true},
+		{name: "unavailable for another reason differs", anticipated: changeplan.AnticipateUnchanged(disabled), current: notSelected, want: false},
+		{name: "observed value where unavailable was approved differs", anticipated: changeplan.AnticipateUnchanged(disabled), current: github.Observed(criteria("a/*")), want: false},
+		{name: "unavailable where a value was approved differs", anticipated: changeplan.AnticipateValue(criteria("a/*")), current: disabled, want: false},
+		{name: "another observed value differs", anticipated: changeplan.AnticipateValue(criteria("a/*")), current: github.Observed(criteria("b/*")), want: false},
+		{name: "observed values differing only in the order of patterns are the same", anticipated: changeplan.AnticipateValue(criteria("a/*", "b/*")), current: github.Observed(criteria("b/*", "a/*")), want: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -250,9 +250,9 @@ func TestMatchesRelevantSetting_EnvironmentExistence(t *testing.T) {
 	lookup := func(existing ...github.Environment) github.EnvironmentObservation {
 		return github.Environments{Existing: existing}.Lookup(name)
 	}
-	absentBasis := changeplan.RelevantSetting{Unit: unit, AnticipatedValue: github.Observed(setting.Absent())}
-	approvedBasis := changeplan.RelevantSetting{Unit: unit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedEnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(7)}
-	createdBasis := changeplan.RelevantSetting{Unit: unit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedEnvironmentIdentity: changeplan.CreatedByPrecedingOperation()}
+	absentBasis := changeplan.RelevantSetting{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Absent())}
+	approvedBasis := changeplan.RelevantSetting{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(7)}
+	createdBasis := changeplan.RelevantSetting{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: changeplan.CreatedByPrecedingOperation()}
 	approved := observedEnvironment(7, "production", setting.DeploymentBranchPolicyAll)
 	undetermined := observedEnvironment(9, "prodüction", setting.DeploymentBranchPolicyAll)
 	createdBase := lookup(observedEnvironment(8, "production", setting.DeploymentBranchPolicySelected))
@@ -301,11 +301,11 @@ func TestMatchesRelevantSetting_EnvironmentExistence(t *testing.T) {
 	}{
 		{
 			name:     "undetermined at approval panics even if still undetermined",
-			relevant: changeplan.RelevantSetting{Unit: unit, AnticipatedValue: github.Unavailable[setting.Value](github.UnavailableNameUndetermined)},
+			relevant: changeplan.RelevantSetting{Unit: unit, AnticipatedValue: changeplan.AnticipateUnchanged(github.Unavailable[setting.Value](github.UnavailableNameUndetermined))},
 			current:  []github.Environment{undetermined},
 		},
 		{name: "zero value at approval panics even if the environment exists", relevant: changeplan.RelevantSetting{Unit: unit}, current: []github.Environment{approved}},
-		{name: "existing at approval without an identity panics even if absent now", relevant: changeplan.RelevantSetting{Unit: unit, AnticipatedValue: github.Observed(setting.Present())}},
+		{name: "existing at approval without an identity panics even if absent now", relevant: changeplan.RelevantSetting{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Present())}},
 	}
 	for _, tc := range panicCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -346,9 +346,9 @@ func TestMatchesRelevantSetting_Ruleset(t *testing.T) {
 		approvedValue.BypassActors[0], approvedValue.BypassActors[1], {ActorType: setting.BypassActorUser, ActorID: 1, BypassMode: setting.BypassModeAlways},
 	}
 	approvedBasis := changeplan.RelevantSetting{
-		Unit: unit, AnticipatedValue: github.Observed(setting.RulesetValue(approvedValue)), AnticipatedRulesetIdentity: changeplan.ObservedRulesetIdentity(42),
+		Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.RulesetValue(approvedValue)), AnticipatedRulesetIdentity: changeplan.ObservedRulesetIdentity(42),
 	}
-	absentBasis := changeplan.RelevantSetting{Unit: unit, AnticipatedValue: github.Observed(setting.Absent())}
+	absentBasis := changeplan.RelevantSetting{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Absent())}
 	cases := []struct {
 		name     string
 		relevant changeplan.RelevantSetting
@@ -390,13 +390,13 @@ func TestMatchesRelevantSetting_Ruleset(t *testing.T) {
 	}{
 		{
 			name:     "existing at approval without an identity panics even if the same ruleset exists",
-			relevant: changeplan.RelevantSetting{Unit: unit, AnticipatedValue: github.Observed(setting.RulesetValue(approvedValue))},
+			relevant: changeplan.RelevantSetting{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.RulesetValue(approvedValue))},
 			current:  []github.Ruleset{github.InterpretedRuleset(42, "protect", approvedValue)},
 		},
 		{
 			name: "uninterpreted at approval panics even if still uninterpreted with the same ID",
 			relevant: changeplan.RelevantSetting{
-				Unit: unit, AnticipatedValue: github.Unavailable[setting.Value](github.UnavailableUninterpretedParts), AnticipatedRulesetIdentity: changeplan.ObservedRulesetIdentity(42),
+				Unit: unit, AnticipatedValue: changeplan.AnticipateUnchanged(github.Unavailable[setting.Value](github.UnavailableUninterpretedParts)), AnticipatedRulesetIdentity: changeplan.ObservedRulesetIdentity(42),
 			},
 			current: []github.Ruleset{uninterpreted},
 		},
@@ -780,7 +780,7 @@ func TestEnvironmentCreatedIn(t *testing.T) {
 	t.Run("change without a creation expecting a created environment panics", func(t *testing.T) {
 		change := deploymentPatternsChange(t, "production", observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll), selectedPolicy(branchPattern("main")))
 		change.Operations[1].RelevantSettings[0] = changeplan.RelevantSetting{
-			Unit: change.Operations[1].RelevantSettings[0].Unit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedEnvironmentIdentity: changeplan.CreatedByPrecedingOperation(),
+			Unit: change.Operations[1].RelevantSettings[0].Unit, AnticipatedValue: changeplan.AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: changeplan.CreatedByPrecedingOperation(),
 		}
 		defer func() {
 			if recover() == nil {

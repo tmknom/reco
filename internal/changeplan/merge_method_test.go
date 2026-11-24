@@ -122,7 +122,7 @@ func TestMergeMethodsChange(t *testing.T) {
 		return DesiredSetting{Unit: setting.Unit{Key: key}, Value: setting.BoolValue(value)}
 	}
 	relevant := func(key setting.Key, observed bool) RelevantSetting {
-		return RelevantSetting{Unit: setting.Unit{Key: key}, AnticipatedValue: github.Observed(setting.BoolValue(observed))}
+		return RelevantSetting{Unit: setting.Unit{Key: key}, AnticipatedValue: AnticipateValue(setting.BoolValue(observed))}
 	}
 	// change は、期待状態 state を一つの更新操作で送り、その計画時の観測値 anticipated を基準にする論理的な設定変更。
 	change := func(state []DesiredSetting, anticipated ...RelevantSetting) LogicalChange {

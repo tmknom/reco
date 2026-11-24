@@ -15,8 +15,15 @@ func (c *Client) CreateEnvironment(ctx context.Context, reference repository.Ref
 	return c.putEnvironment(ctx, "create environment", reference, name, nil)
 }
 
+// CreateEnvironmentWithDeploymentBranchPolicy は、reference のリポジトリに、デプロイ元制限の方式が mode の name の Environment を作る PUT を一度だけ送る。再送はしない。
+// 要求は UpdateEnvironmentDeploymentBranchPolicy と同じだが、失敗を作成として示すために分ける。利用者が承認したのは作成で、方式の変更ではないため。
+// 本文の組み方と、未定義の方式での panic は UpdateEnvironmentDeploymentBranchPolicy と同じである。
+func (c *Client) CreateEnvironmentWithDeploymentBranchPolicy(ctx context.Context, reference repository.Reference, name string, mode setting.DeploymentBranchPolicyMode) (UpdateOutcome, error) {
+	return c.putEnvironment(ctx, "create environment with deployment branch policy", reference, name, encodeDeploymentBranchPolicyMode(mode))
+}
+
 // UpdateEnvironmentDeploymentBranchPolicy は、reference のリポジトリの name の Environment のデプロイ元制限の方式を mode にする PUT を一度だけ送る。再送はしない。
-// name の Environment が存在しなければ、この要求は方式が mode の Environment を作る。
+// name の Environment が存在しなければ、この要求は方式が mode の Environment を作る。作成として送るときは CreateEnvironmentWithDeploymentBranchPolicy を使う。
 // 本文は deployment_branch_policy だけで、保護設定を併送しない。
 // selected は方式だけを送り、個別パターンは登録しない。登録は AddDeploymentPattern で一つずつ送る。
 // 未定義の方式は、本文を組めない不変条件の破れとして panic する。

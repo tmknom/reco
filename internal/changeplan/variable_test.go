@@ -33,9 +33,9 @@ func TestVariableOperationOf(t *testing.T) {
 			s := SettingPlan{Unit: tc.unit, Desired: desired, Result: Mismatch, Applicability: Applicable()}
 			want := UpdateOperation{
 				Kind: tc.wantKind, Unit: tc.unit, Value: desired,
-				RelevantSettings: []RelevantSetting{{Unit: tc.unit, AnticipatedValue: github.Observed(tc.anticipated)}},
+				RelevantSettings: []RelevantSetting{{Unit: tc.unit, AnticipatedValue: AnticipateValue(tc.anticipated)}},
 			}
-			if got := variableOperationOf(s, github.Observed(tc.anticipated)); !reflect.DeepEqual(got, want) {
+			if got := variableOperationOf(s, AnticipateValue(tc.anticipated)); !reflect.DeepEqual(got, want) {
 				t.Errorf("variableOperationOf() = %+v, want %+v", got, want)
 			}
 		})
@@ -57,9 +57,9 @@ func TestVariableOperationOf(t *testing.T) {
 			s := SettingPlan{Unit: tc.unit, Desired: setting.Absent(), Result: Mismatch, Applicability: Applicable()}
 			want := UpdateOperation{
 				Kind: tc.wantKind, Unit: tc.unit,
-				RelevantSettings: []RelevantSetting{{Unit: tc.unit, AnticipatedValue: github.Observed(tc.anticipated)}},
+				RelevantSettings: []RelevantSetting{{Unit: tc.unit, AnticipatedValue: AnticipateValue(tc.anticipated)}},
 			}
-			if got := variableOperationOf(s, github.Observed(tc.anticipated)); !reflect.DeepEqual(got, want) {
+			if got := variableOperationOf(s, AnticipateValue(tc.anticipated)); !reflect.DeepEqual(got, want) {
 				t.Errorf("variableOperationOf() = %+v, want %+v", got, want)
 			}
 		})
@@ -83,7 +83,7 @@ func TestVariableOperationOf(t *testing.T) {
 					t.Error("variableOperationOf() did not panic")
 				}
 			}()
-			variableOperationOf(SettingPlan{Unit: tc.unit, Desired: tc.desired, Result: Mismatch, Applicability: Applicable()}, tc.anticipated)
+			variableOperationOf(SettingPlan{Unit: tc.unit, Desired: tc.desired, Result: Mismatch, Applicability: Applicable()}, AnticipateUnchanged(tc.anticipated))
 		})
 	}
 }

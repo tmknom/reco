@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"net/http"
+	"os"
+	"reflect"
+	"regexp"
 	"testing"
 	"testing/iotest"
 )
@@ -12,6 +15,28 @@ func TestNew(t *testing.T) {
 	c := New("token")
 	if c.httpClient.Timeout <= 0 {
 		t.Errorf("http client timeout = %v, want a positive limit", c.httpClient.Timeout)
+	}
+}
+
+// TestClientMethodPrefixes は、Client の公開メソッドが、読み取りの Observe か、lint の forbidigo 規則が internal/apply の外で禁じる更新の接頭辞で始まることを確かめる。
+// 規則は更新メソッドを接頭辞で見分けるため、別の接頭辞の更新メソッドを足すと、ほかの package から呼んでも lint が検出しない。
+// 接頭辞は lint の設定から読み、その接頭辞を規則に足すか、名前を合わせるまで、このテストが失敗するようにする。
+//
+//trace:checks INV-003
+func TestClientMethodPrefixes(t *testing.T) {
+	config, err := os.ReadFile("../../scripts/golangci-lint/.golangci.yml")
+	if err != nil {
+		t.Fatalf("read lint configuration: %v", err)
+	}
+	rule := regexp.MustCompile(`pattern: \^github\\\.Client\\\.\(([A-Za-z|]+)\)`).FindSubmatch(config)
+	if rule == nil {
+		t.Fatal("lint configuration has no forbidigo pattern for update methods of github.Client")
+	}
+	prefixes := regexp.MustCompile(`^(Observe|` + string(rule[1]) + `)`)
+	for method := range reflect.TypeFor[*Client]().Methods() {
+		if !prefixes.MatchString(method.Name) {
+			t.Errorf("method %s starts with neither Observe nor a prefix of update methods forbidden outside internal/apply", method.Name)
+		}
 	}
 }
 

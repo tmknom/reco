@@ -47,7 +47,7 @@ func mergeMethodsChange(settings []SettingPlan) LogicalChange {
 			continue
 		}
 		desired = append(desired, DesiredSetting{Unit: s.Unit, Value: s.Desired})
-		relevant = append(relevant, RelevantSetting{Unit: s.Unit, AnticipatedValue: s.Observed})
+		relevant = append(relevant, RelevantSetting{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)})
 	}
 	if len(desired) == 0 {
 		panic("changeplan: no merge method change to bundle")

@@ -1231,7 +1231,7 @@ func deleteBranchOnMergeMismatch() changeplan.SettingPlan {
 func allowedActionsMismatch() changeplan.SettingPlan {
 	operation := allowedActionsChange().Operations[0]
 	return changeplan.SettingPlan{
-		Unit: operation.Unit, Observed: operation.RelevantSettings[0].AnticipatedValue, Desired: operation.Value, Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
+		Unit: operation.Unit, Observed: github.Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsAll)), Desired: operation.Value, Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 	}
 }
 
@@ -1239,8 +1239,8 @@ func allowedActionsMismatch() changeplan.SettingPlan {
 // 失われる値も変更前提の基準に並ぶ。
 func selectedToAllChange() changeplan.LogicalChange {
 	return singleUpdate(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), []changeplan.RelevantSetting{
-		{Unit: setting.Unit{Key: setting.AllowedActions}, AnticipatedValue: github.Observed(setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected))},
-		{Unit: setting.Unit{Key: setting.SelectedActions}, AnticipatedValue: github.Observed(setting.SelectedActionsCriteriaValue(lostCriteria))},
+		{Unit: setting.Unit{Key: setting.AllowedActions}, AnticipatedValue: changeplan.AnticipateValue(setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected))},
+		{Unit: setting.Unit{Key: setting.SelectedActions}, AnticipatedValue: changeplan.AnticipateValue(setting.SelectedActionsCriteriaValue(lostCriteria))},
 	})
 }
 
@@ -1259,7 +1259,7 @@ func enableActionsNotComparable() changeplan.SettingPlan {
 func enableSelectedChange() changeplan.LogicalChange {
 	change := toSelectedChange()
 	change.Operations[0].RelevantSettings = []changeplan.RelevantSetting{
-		{Unit: setting.Unit{Key: setting.AllowedActions}, AnticipatedValue: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)},
+		{Unit: setting.Unit{Key: setting.AllowedActions}, AnticipatedValue: changeplan.AnticipateUnchanged(github.Unavailable[setting.Value](github.UnavailableActionsDisabled))},
 	}
 	return change
 }

@@ -62,6 +62,10 @@ linters:
         linters:
           - forbidigo
         text: "use of `time\\.(Now|Since|Until)`"
+      - path: ^internal/(apply|github)/
+        linters:
+          - forbidigo
+        text: "only internal/apply sends update requests"
   settings:
     depguard:
       rules:
@@ -174,6 +178,10 @@ linters:
         - pattern: ^time\.(Now|Since|Until)$
         - pattern: ^os\.(Getenv|LookupEnv|Environ)$
         - pattern: ^slog\.(SetDefault|Default|With|Log|LogAttrs|Debug|Info|Warn|Error|DebugContext|InfoContext|WarnContext|ErrorContext)$
+        # 承認した変更を実行する経路を Apply に限るため、GitHub への更新要求を送るメソッドは internal/apply だけが呼ぶ
+        # 接頭辞の並びは internal/github のテストが読み、Client の公開メソッドがどれかで始まることを確かめる
+        - pattern: ^github\.Client\.(Update|Create|Delete|Add|Remove)\w*$
+          msg: only internal/apply sends update requests
     gocritic:
       disable-all: true
       enabled-checks:

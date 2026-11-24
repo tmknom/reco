@@ -78,6 +78,9 @@ func TestCreateEnvironmentPanicsOnUnaddressableName(t *testing.T) {
 		update func()
 	}{
 		{name: "create", update: func() { _, _ = c.CreateEnvironment(t.Context(), reference, "..") }},
+		{name: "create with deployment branch policy", update: func() {
+			_, _ = c.CreateEnvironmentWithDeploymentBranchPolicy(t.Context(), reference, "..", setting.DeploymentBranchPolicyAll)
+		}},
 		{name: "deployment branch policy", update: func() {
 			_, _ = c.UpdateEnvironmentDeploymentBranchPolicy(t.Context(), reference, "..", setting.DeploymentBranchPolicyAll)
 		}},
@@ -184,6 +187,32 @@ func TestUpdateEnvironmentDeploymentBranchPolicyErrorNamesTheOperation(t *testin
 	_, err := c.UpdateEnvironmentDeploymentBranchPolicy(t.Context(), mustReference(t, "example/project-a"), "Prod/Eu", setting.DeploymentBranchPolicyAll)
 	if err == nil || !strings.HasPrefix(err.Error(), `set deployment branch policy of environment "Prod/Eu" example/project-a: `) {
 		t.Errorf("error = %v, want it to start with the operation, the quoted name and example/project-a", err)
+	}
+}
+
+// TestCreateEnvironmentWithDeploymentBranchPolicy は、方式を伴う作成が方式を本文に入れて送り、
+// 失敗を方式の更新ではなく作成として示すことを確かめる。利用者が承認したのは作成のため。
+//
+//trace:checks INV-001 FR-011 FR-013
+func TestCreateEnvironmentWithDeploymentBranchPolicy(t *testing.T) {
+	var gotBody []byte
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusUnprocessableEntity)
+	})
+
+	_, err := c.CreateEnvironmentWithDeploymentBranchPolicy(t.Context(), mustReference(t, "example/project-a"), "Prod/Eu", setting.DeploymentBranchPolicySelected)
+
+	var got map[string]any
+	if err := json.Unmarshal(gotBody, &got); err != nil {
+		t.Fatalf("request body %q is not JSON: %v", gotBody, err)
+	}
+	want := map[string]any{"deployment_branch_policy": map[string]any{"protected_branches": false, "custom_branch_policies": true}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("request body = %v, want %v", got, want)
+	}
+	if err == nil || !strings.HasPrefix(err.Error(), `create environment with deployment branch policy "Prod/Eu" example/project-a: `) {
+		t.Errorf("error = %v, want it to start with the creation, the quoted name and example/project-a", err)
 	}
 }
 
