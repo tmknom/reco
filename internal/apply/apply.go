@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/tmknom/reco/internal/changeplan"
@@ -52,7 +51,6 @@ func Run(ctx context.Context, cfg Config) error {
 // applyPlan は、選択したすべての対象リポジトリの論理的な設定変更を確定してから、変更計画の全体に承認を一度だけ求め、宣言順に実行する。
 // 適用不能な変更予定が一つでもあれば、利用者がすべての理由を読めるよう変更計画を表示し、承認を求めずに止める。
 // executableChanges の拒否は最初の一件で返るため、それより先に変更計画の全体から適用不能を挙げる。
-// apply がまだ実行しない既存の Ruleset の値の変更が一つでもあれば、同じく変更計画を表示し、承認を求めずに止める。
 func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changeplan.Plan) error {
 	text := changeplandisplay.Text(cfg.Configuration.Path, p)
 	if notApplicable := p.NotApplicableError(); notApplicable != nil {
@@ -64,12 +62,6 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 	repositories, err := executableChanges(p)
 	if err != nil {
 		return err
-	}
-	if unsupported := unsupportedChangesError(repositories); unsupported != nil {
-		if _, err := io.WriteString(cfg.Out, text); err != nil {
-			return err
-		}
-		return fmt.Errorf("%w; no changes made", unsupported)
 	}
 	if !slices.ContainsFunc(p.Repositories, changeplan.RepositoryPlan.HasPlannedChanges) {
 		_, err := io.WriteString(cfg.Out, text)
@@ -105,25 +97,4 @@ func executableChanges(p changeplan.Plan) ([]repositoryChanges, error) {
 		repositories[i] = repositoryChanges{plan: r, changes: all[i]}
 	}
 	return repositories, nil
-}
-
-// unsupportedChangesError は、apply がまだ実行しない既存の Ruleset の値の変更を、
-// 利用者がすべてを読めるよう変更計画の並びで挙げた error を返す。なければ nil を返す。
-// Ruleset の論理的な設定変更は更新操作を一つだけ持つため、更新操作ごとに挙げれば論理的な設定変更ごとに一つになる。
-// 適用不能の拒否と同じく、対象リポジトリと管理の単位の組を "; " でつなぐ。
-func unsupportedChangesError(repositories []repositoryChanges) error {
-	var found []string
-	for _, r := range repositories {
-		for _, change := range r.changes {
-			for _, operation := range change.Operations {
-				if operation.Kind == changeplan.RulesetValueUpdate {
-					found = append(found, fmt.Sprintf("%s: %s is a change to an existing ruleset, which apply does not support yet", r.plan.Target, operation.Unit.String()))
-				}
-			}
-		}
-	}
-	if len(found) == 0 {
-		return nil
-	}
-	return errors.New("plan cannot be applied: " + strings.Join(found, "; "))
 }

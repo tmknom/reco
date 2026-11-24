@@ -417,7 +417,7 @@ func TestRepositoryPlan_LogicalChangesOfRulesets(t *testing.T) {
 	creation := SettingPlan{Unit: rulesetUnit(t, "zeta"), Observed: github.Observed(setting.Absent()), Desired: desired, Result: Mismatch, Applicability: Applicable()}
 	// 値が一致した Ruleset は、変更予定がないため論理的な設定変更にならない
 	matched := SettingPlan{Unit: rulesetUnit(t, "matched"), Observed: github.Observed(desired), Desired: desired, Result: Match}
-	valueChange := SettingPlan{Unit: rulesetUnit(t, "alpha"), Observed: github.Observed(setting.RulesetValue(disabled)), Desired: desired, Result: Mismatch, Applicability: Applicable()}
+	valueChange := SettingPlan{Unit: rulesetUnit(t, "alpha"), Observed: github.Observed(setting.RulesetValue(disabled)), RulesetIdentity: ObservedRulesetIdentity(42), Desired: desired, Result: Mismatch, Applicability: Applicable()}
 	plan := RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: []SettingPlan{mismatch, creation, matched, valueChange}}
 
 	got, err := plan.LogicalChanges()
@@ -445,7 +445,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, Observed: github.Observed(setting.Present()), Desired: setting.Present(),
 		EnvironmentIdentity: ObservedEnvironmentIdentity(7), Result: Match,
 	}
-	stagingEnvironment := RelevantSetting{Unit: stagingExistence.Unit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedIdentity: ObservedEnvironmentIdentity(7)}
+	stagingEnvironment := RelevantSetting{Unit: stagingExistence.Unit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedEnvironmentIdentity: ObservedEnvironmentIdentity(7)}
 	productionUnit := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
 	productionCreation := SettingPlan{Unit: productionUnit, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch, Applicability: Applicable()}
 	dev := mustEnvironmentName(t, "dev")
@@ -643,7 +643,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 	stagingPolicyChange := func(desired setting.Value, operations ...UpdateOperation) LogicalChange {
 		return LogicalChange{DesiredState: []DesiredSetting{{Unit: stagingPolicyUnit, Value: desired}}, Operations: operations}
 	}
-	stagingEnvironment := RelevantSetting{Unit: stagingUnit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedIdentity: ObservedEnvironmentIdentity(7)}
+	stagingEnvironment := RelevantSetting{Unit: stagingUnit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedEnvironmentIdentity: ObservedEnvironmentIdentity(7)}
 	// stagingModeUpdate は、計画時に observed だった staging の方式を desired の方式にする更新操作。
 	// 方式の変更の基準は、Environment が存在し ID が同じこと、方式が計画時の観測値と同じことの順に並ぶ
 	stagingModeUpdate := func(observed, desired setting.Value) UpdateOperation {
@@ -699,7 +699,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 		for _, step := range steps {
 			operations = append(operations, UpdateOperation{
 				Kind: step.kind, Unit: productionPolicyUnit, Pattern: step.pattern,
-				RelevantSettings: []RelevantSetting{{Unit: productionUnit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedIdentity: CreatedByPrecedingOperation()}, {Unit: productionPolicyUnit, AnticipatedValue: github.Observed(step.base)}},
+				RelevantSettings: []RelevantSetting{{Unit: productionUnit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedEnvironmentIdentity: CreatedByPrecedingOperation()}, {Unit: productionPolicyUnit, AnticipatedValue: github.Observed(step.base)}},
 			})
 		}
 		return operations
@@ -1176,7 +1176,13 @@ func TestCheckUpdateEndpoint(t *testing.T) {
 			operation: UpdateOperation{Kind: EnvironmentVariableCreation, Unit: setting.Unit{Key: setting.EnvironmentVariable, Environment: production, Variable: region}, Value: setting.VariableValue("a")},
 		},
 		{name: "ruleset creation passes without looking up an endpoint", operation: UpdateOperation{Kind: RulesetCreation, Unit: rulesetUnit(t, "protect"), Value: setting.RulesetValue(protectRuleset())}},
-		{name: "ruleset value update passes without looking up an endpoint", operation: UpdateOperation{Kind: RulesetValueUpdate, Unit: rulesetUnit(t, "protect"), Value: setting.RulesetValue(protectRuleset())}},
+		{
+			name: "ruleset value update based on an observed ID passes without looking up an endpoint",
+			operation: UpdateOperation{
+				Kind: RulesetValueUpdate, Unit: rulesetUnit(t, "protect"), Value: setting.RulesetValue(protectRuleset()),
+				RelevantSettings: []RelevantSetting{{Unit: rulesetUnit(t, "protect"), AnticipatedRulesetIdentity: ObservedRulesetIdentity(42)}},
+			},
+		},
 	}
 	for _, tc := range passing {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1194,6 +1200,7 @@ func TestCheckUpdateEndpoint(t *testing.T) {
 		operation UpdateOperation
 	}{
 		{name: "undefined kind panics", operation: UpdateOperation{Unit: autoMerge.Unit}},
+		{name: "ruleset value update without an observed ID panics", operation: UpdateOperation{Kind: RulesetValueUpdate, Unit: rulesetUnit(t, "protect"), Value: setting.RulesetValue(protectRuleset())}},
 		{name: "setting without an update request panics", operation: UpdateOperation{Kind: SettingUpdate, Unit: setting.Unit{Key: "general.unknown"}}},
 		{name: "merge method updated on its own panics", operation: UpdateOperation{Kind: SettingUpdate, Unit: squash.Unit, Value: squash.Value}},
 		{name: "merge methods update without a setting to send panics", operation: UpdateOperation{Kind: MergeMethodsUpdate, Unit: squash.Unit}},

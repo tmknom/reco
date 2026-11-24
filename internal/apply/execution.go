@@ -186,7 +186,7 @@ func sendUpdate(ctx context.Context, client *github.Client, target repository.Re
 	case changeplan.RulesetCreation:
 		return client.CreateRuleset(ctx, target, operation.Unit.Ruleset, operation.Value.Ruleset())
 	case changeplan.RulesetValueUpdate:
-		// applyPlan が既存の Ruleset の値の変更を承認の前に拒否するため、ここに届かない
+		return client.UpdateRulesetValue(ctx, target, operation.AnticipatedRulesetID(), operation.Unit.Ruleset, operation.Value.Ruleset())
 	}
 	panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))
 }

@@ -75,56 +75,6 @@ func TestExecutableChanges(t *testing.T) {
 	})
 }
 
-// TestUnsupportedChangesError は、apply がまだ実行しない既存の Ruleset の値の変更を持つ論理的な設定変更を、変更計画の並びですべて挙げ、作成は挙げないことを確かめる。
-//
-//trace:checks FR-008
-func TestUnsupportedChangesError(t *testing.T) {
-	zeta, alpha := mustReference(t, "owner/zeta"), mustReference(t, "owner/alpha")
-	repositoryOf := func(target repository.Reference, changes ...changeplan.LogicalChange) repositoryChanges {
-		return repositoryChanges{plan: changeplan.RepositoryPlan{Target: target, RepositoryID: 1}, changes: changes}
-	}
-	cases := []struct {
-		name         string
-		repositories []repositoryChanges
-		want         string
-	}{
-		{
-			name:         "ruleset value update is rejected naming the target and the ruleset",
-			repositories: []repositoryChanges{repositoryOf(zeta, rulesetValueUpdateChange(t, "protect"))},
-			want:         "plan cannot be applied: owner/zeta: rulesets.protect is a change to an existing ruleset, which apply does not support yet",
-		},
-		{
-			// 対象リポジトリの宣言の並びを名前順と逆にし、名前順に並べ替える実装と、最初の一件で打ち切る実装を失敗させる
-			name: "ruleset value updates across repositories are all listed in the order of the change plan",
-			repositories: []repositoryChanges{
-				repositoryOf(zeta, rulesetValueUpdateChange(t, "zeta-rule")),
-				repositoryOf(alpha),
-				repositoryOf(alpha, allowAutoMergeChange(), rulesetValueUpdateChange(t, "beta-rule"), rulesetValueUpdateChange(t, "alpha-rule")),
-			},
-			want: "plan cannot be applied: owner/zeta: rulesets.zeta-rule is a change to an existing ruleset, which apply does not support yet; " +
-				"owner/alpha: rulesets.beta-rule is a change to an existing ruleset, which apply does not support yet; " +
-				"owner/alpha: rulesets.alpha-rule is a change to an existing ruleset, which apply does not support yet",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if err := unsupportedChangesError(tc.repositories); err == nil || err.Error() != tc.want {
-				t.Errorf("unsupportedChangesError() = %v, want %q", err, tc.want)
-			}
-		})
-	}
-
-	t.Run("changes without a ruleset value update are not rejected", func(t *testing.T) {
-		repositories := []repositoryChanges{
-			repositoryOf(zeta, allowAutoMergeChange(), creationChange(t, "production"), variableCreationChange(t, "GO_VERSION", "1.27"), rulesetCreationChange(t, "protect")),
-			repositoryOf(alpha),
-		}
-		if err := unsupportedChangesError(repositories); err != nil {
-			t.Errorf("unsupportedChangesError() = %v, want nil", err)
-		}
-	})
-}
-
 // failAfterWriter は、n 回の書き込みに成功したあとの書き込みを失敗させる。
 type failAfterWriter struct {
 	n   int
@@ -549,96 +499,54 @@ func TestApplyPlan(t *testing.T) {
 	})
 }
 
-// TestApplyPlan_RulesetChangeRejectedBeforeApproval は、apply がまだ実行しない既存の Ruleset の値の変更を含む変更計画を、
-// 変更計画を表示したうえで、承認を求めず、どの対象リポジトリも更新せずに拒否することを確かめる。
+// TestApplyPlan_RulesetValueUpdateAndCreation は、既存の Ruleset の値の変更と Ruleset の作成が混ざる変更計画を、
+// 承認を一度だけ求めてから、宣言の並びで別々の論理的な設定変更として実行することを確かめる。
+// 値の変更を先に宣言し、作成を先に並べ替える実装を失敗させる。
 //
-//trace:checks INV-002 INV-003 FR-008
-func TestApplyPlan_RulesetChangeRejectedBeforeApproval(t *testing.T) {
-	disabled := setting.RulesetValue(protectRuleset(setting.RulesetEnforcementDisabled))
-	approve := func(calls *int) func(context.Context) error {
-		return func(context.Context) error {
-			*calls++
-			return nil
-		}
+//trace:checks INV-003 FR-010 FR-011
+func TestApplyPlan_RulesetValueUpdateAndCreation(t *testing.T) {
+	protect := githubtest.RulesetSummaryBody{ID: 42, Name: "protect"}
+	release := githubtest.RulesetSummaryBody{ID: 43, Name: "release"}
+	updated := protectRulesetBody(42, "protect", setting.RulesetEnforcementActive)
+	created := protectRulesetBody(43, "release", setting.RulesetEnforcementActive)
+	baseURL, server := newSequenceServer(t,
+		okRepository(1, false, false), okRulesets(protect), okRuleset(protectRulesetBody(42, "protect", setting.RulesetEnforcementDisabled)),
+		okRuleset(updated),
+		okRepository(1, false, false), okRulesets(protect), okRuleset(updated),
+		okRepository(1, false, false), okRulesets(protect),
+		createdRuleset(created),
+		okRepository(1, false, false), okRulesets(protect, release), okRuleset(created),
+	)
+	calls := 0
+	approve := func(context.Context) error {
+		calls++
+		return nil
 	}
+	var out bytes.Buffer
+	p := newPlan(t, rulesetValueMismatch(t, "protect", 42), rulesetMismatch(t, "release", setting.Absent()))
 
-	// 先頭の対象リポジトリを適用可能なほかの変更予定と Ruleset の作成にし、先頭の対象リポジトリから更新を始める実装と、作成を先に実行する実装を失敗させる
-	t.Run("ruleset value update is rejected with the change plan without approval or requests", func(t *testing.T) {
-		baseURL, server := newSequenceServer(t)
-		var out bytes.Buffer
-		calls := 0
-		cfg := Config{Configuration: configuration.File{Path: "./reco.yaml"}, Out: &out, Approve: approve(&calls), After: elapsedAtOnce}
-		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{
-			newRepositoryPlanOf(t, "owner/first", 1, allowAutoMergeMismatch(), rulesetMismatch(t, "release", setting.Absent())),
-			newRepositoryPlanOf(t, "owner/second", 2, rulesetMismatch(t, "protect", disabled)),
-		}}
+	err := applyPlan(context.Background(), Config{Out: &out, Approve: approve, After: elapsedAtOnce}, newClient(baseURL), p)
 
-		err := applyPlan(context.Background(), cfg, newClient(baseURL), p)
-
-		want := "plan cannot be applied: owner/second: rulesets.protect is a change to an existing ruleset, which apply does not support yet; no changes made"
-		if err == nil || err.Error() != want {
-			t.Errorf("applyPlan() error = %v, want %q", err, want)
-		}
-		// Ruleset の変更予定の文言は changeplandisplay が持つため、plan と同じ変更計画を書いたことだけを確かめる
-		if wantOut := changeplandisplay.Text("./reco.yaml", p); out.String() != wantOut {
-			t.Errorf("got Out %q, want %q", out.String(), wantOut)
-		}
-		if calls != 0 || len(server.Methods()) != 0 {
-			t.Errorf("approve calls = %d, requests = %v, want none", calls, server.Methods())
-		}
-	})
-
-	t.Run("not-applicable change is reported before the ruleset value update", func(t *testing.T) {
-		baseURL, server := newSequenceServer(t)
-		calls := 0
-		p := newPlan(t, rulesetMismatch(t, "protect", disabled), shaPinningRequiredNotApplicable())
-
-		err := applyPlan(context.Background(), Config{Out: &bytes.Buffer{}, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), p)
-
-		if wantErr := p.NotApplicableError().Error() + "; no changes made"; err == nil || err.Error() != wantErr {
-			t.Errorf("applyPlan() error = %v, want %q", err, wantErr)
-		}
-		if calls != 0 || len(server.Methods()) != 0 {
-			t.Errorf("approve calls = %d, requests = %v, want none", calls, server.Methods())
-		}
-	})
-
-	t.Run("change plan write failure is returned without approval", func(t *testing.T) {
-		calls := 0
-		err := applyPlan(context.Background(), Config{Out: failingWriter{}, Approve: approve(&calls)}, nil, newPlan(t, rulesetMismatch(t, "protect", disabled)))
-
-		if !errors.Is(err, errWrite) {
-			t.Errorf("applyPlan() error = %v, want %v", err, errWrite)
-		}
-		if calls != 0 {
-			t.Errorf("approve calls = %d, want none", calls)
-		}
-	})
-
-	t.Run("ruleset matching the declaration lets the other change be approved and applied", func(t *testing.T) {
-		baseURL, server := newSequenceServer(t, okRepository(1, false, false), okRepository(1, true, false), okRepository(1, true, false))
-		var out bytes.Buffer
-		calls := 0
-		active := setting.RulesetValue(protectRuleset(setting.RulesetEnforcementActive))
-		match := changeplan.SettingPlan{
-			Unit: setting.Unit{Key: setting.RulesetResource, Ruleset: mustRulesetName(t, "protect")}, Observed: github.Observed(active), Desired: active, Result: changeplan.Match,
-		}
-
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, allowAutoMergeMismatch(), match))
-
-		if err != nil {
-			t.Fatalf("applyPlan() error = %v", err)
-		}
-		if calls != 1 {
-			t.Errorf("approve calls = %d, want 1", calls)
-		}
-		if want := []string{"GET", "PATCH", "GET"}; !slices.Equal(server.Methods(), want) {
-			t.Errorf("requests = %v, want %v", server.Methods(), want)
-		}
-		if !strings.Contains(out.String(), "Apply complete.") {
-			t.Errorf("got Out %q, want it to contain %q", out.String(), "Apply complete.")
-		}
-	})
+	if err != nil {
+		t.Fatalf("applyPlan() error = %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("approve calls = %d, want 1", calls)
+	}
+	wantRequests := []string{
+		"GET /repos/owner/repo", "GET /repos/owner/repo/rulesets", "GET /repos/owner/repo/rulesets/42",
+		"PUT /repos/owner/repo/rulesets/42",
+		"GET /repos/owner/repo", "GET /repos/owner/repo/rulesets", "GET /repos/owner/repo/rulesets/42",
+		"GET /repos/owner/repo", "GET /repos/owner/repo/rulesets",
+		"POST /repos/owner/repo/rulesets",
+		"GET /repos/owner/repo", "GET /repos/owner/repo/rulesets", "GET /repos/owner/repo/rulesets/43",
+	}
+	if !slices.Equal(server.RequestLines(), wantRequests) {
+		t.Errorf("requests = %v, want %v", server.RequestLines(), wantRequests)
+	}
+	if !strings.Contains(out.String(), "Apply complete.") {
+		t.Errorf("got Out %q, want it to contain %q", out.String(), "Apply complete.")
+	}
 }
 
 const configSource = `repositories:

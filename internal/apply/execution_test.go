@@ -1866,6 +1866,19 @@ func TestSendUpdate(t *testing.T) {
 			}},
 		},
 		{
+			// 宛先は更新直前の観測から引かず、承認時に予定した ID にする。観測を空にし、観測から引く実装を失敗させる
+			name:      "ruleset value update is sent to the approved ID with the whole declared value and without the name",
+			operation: rulesetValueUpdateChange(t, "protect").Operations[0],
+			observed:  github.ObservationResult{},
+			response:  okRuleset(protectRulesetBody(42, "protect", setting.RulesetEnforcementActive)),
+			want: githubtest.Request{Method: http.MethodPut, Path: "/repos/owner/repo/rulesets/42", Body: map[string]any{
+				"target": "branch", "enforcement": "active",
+				"conditions":    map[string]any{"ref_name": map[string]any{"include": []any{"~DEFAULT_BRANCH"}, "exclude": []any{}}},
+				"bypass_actors": []any{map[string]any{"actor_type": "RepositoryRole", "actor_id": float64(5), "bypass_mode": "always"}},
+				"rules":         []any{map[string]any{"type": "deletion"}},
+			}},
+		},
+		{
 			name:      "variable deletion is sent to the declared name without a body",
 			operation: variableDeletionChange(t, "GO_VERSION", "1.26").Operations[0],
 			observed:  github.ObservationResult{RepositoryVariables: variables(github.Variable{Name: "GO_VERSION", Value: "1.26"})},
@@ -1920,8 +1933,6 @@ func TestSendUpdate(t *testing.T) {
 			}(),
 			observed: github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", nil))},
 		},
-		// apply は既存の Ruleset の値の変更を承認の前に拒否するため、値の変更の更新操作は更新要求を送る段階に届かない
-		{name: "ruleset value update panics", operation: rulesetValueUpdateChange(t, "protect").Operations[0]},
 	}
 	for _, tc := range panicCases {
 		t.Run(tc.name, func(t *testing.T) {

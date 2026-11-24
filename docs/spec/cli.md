@@ -507,12 +507,6 @@ Plan cannot be applied.
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-b: actions.permissions.sha_pinning_required is not applicable; example/project-c: actions.permissions.sha_pinning_required is not applicable; no changes made"}
 ```
 
-`apply` は、Ruleset の変更予定のうち作成を実行し、既存の Ruleset の値の変更はまだ実行しません。適用不能な変更予定がなく、既存の Ruleset の値の変更が一つでもあれば、変更計画を4章の `plan` と同じ形で stdout へ最後まで表示し、承認を求めず、どのリポジトリも更新せずにエラー終了します。同じ変更計画の Ruleset の作成も、ほかの変更予定も実行しません。stderr のエラーは、既存の Ruleset の値の変更のすべてを変更計画の並びで対象と設定を挙げ、`no changes made` を添えます。`plan` は同じ変更計画を表示して終了コード `0` で終えます。
-
-```text
-{"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-a: rulesets.protect-default-branch is a change to an existing ruleset, which apply does not support yet; no changes made"}
-```
-
 すべて変更不要の場合の表示例は次のとおりです。
 
 ```text
@@ -619,7 +613,7 @@ Repositories updated: 2
 
 Environment の方式の変更か Environment Variable の作成・値の変更・削除のあとに Environment が存在しなかった場合は、`not in effect (the environment does not exist)` と示します。宣言した方式や変数を持つ Environment がないためです。作成のあとに Environment が存在しなかった場合は、存在しないことを確認できているため、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Environment が現れ、存在を確かめられなかった場合は、reco が確認できなかったことを示す `not confirmed (environment existence unknown)` と示します。
 
-Ruleset の作成のあとに Ruleset が存在しなかった場合は、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Ruleset が現れ、存在を確かめられなかった場合は `not confirmed (ruleset existence unknown)` と示します。作成した Ruleset が reco の解釈しない部分を含んでいた場合は `not confirmed (the ruleset contains parts that reco does not interpret)` と示します。存在は確かめているものの、値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。解釈しなかったものは変更結果に並べず、`plan` が示します。
+Ruleset の作成か値の変更のあとに Ruleset が存在しなかった場合は、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Ruleset が現れ、存在を確かめられなかった場合は `not confirmed (ruleset existence unknown)` と示します。作成か値の変更をした Ruleset が reco の解釈しない部分を含んでいた場合は `not confirmed (the ruleset contains parts that reco does not interpret)` と示します。存在は確かめているものの、値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。解釈しなかったものは変更結果に並べず、`plan` が示します。
 
 変更対象外の設定は、管理設定と同じ形の名前で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` がデプロイを待たせる分数、`required_reviewers` が `reviewers: [User 583231, Team 42], prevent_self_review: true` の1行（レビュアーは GitHub が返した順）、`can_admins_bypass` が `true` か `false` です。`wait_timer` と `required_reviewers` は、その保護ルールがなければ `none` と示します。複数が変わっていれば、`wait_timer`、`required_reviewers`、`can_admins_bypass` の順に1行ずつ示します。保護設定は reco が宣言を受け付けず、`show` も表示しないため、名前と値の表記はここで定めます。
 
@@ -728,6 +722,14 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 
 ```text
 {"time":"...","level":"ERROR","msg":"command failed","error":"change rulesets.protect-default-branch failed: create ruleset \"protect-default-branch\" example/project-a: request not processable (HTTP 422)"}
+```
+
+次の例は、既存の Ruleset `protect-default-branch` の値の変更を承認したあと、外部主体がその Ruleset を変えた場合です。更新操作を一度も開始していないため、`Note:` を添えません。
+
+```text
+Applying changes...
+  example/project-a: not attempted
+    Precondition: rulesets.protect-default-branch changed since approval
 ```
 
 ```text
@@ -1137,7 +1139,7 @@ GitHub は、Ruleset への書き込みのアクセスを持たない利用者�
 | `apply`：変更完了、または変更不要 | `0` |
 | `show`：観測成功（観測不能な値を含み得る） | `0` |
 | `plan`：適用不能な変更・観測操作の失敗 | `1` |
-| `apply`：適用不能な変更・まだ実行しない変更（既存の Ruleset の値の変更）・承認拒否・承認不能・変更失敗・更新操作の成否不明・変更前提の不成立 | `1` |
+| `apply`：適用不能な変更・承認拒否・承認不能・変更失敗・更新操作の成否不明・変更前提の不成立 | `1` |
 | 入力不正、認証・権限・API 通信の失敗、対象の不一致や確認不能 | `1` |
 | GitHub API の HTTP リダイレクト応答（読み取り・更新） | `1` |
 | 更新成功応答後の再観測失敗・期待状態との不一致・変更対象外の設定の予期しない変化 | `1` |

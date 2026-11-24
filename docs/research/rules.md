@@ -160,6 +160,8 @@ Ruleset は、GitHub が付ける整数の `id` と、作成で必須の `name` 
 > - 同じ種類のルール：`deletion` を二つ送ると `200` を返し、一つにまとめて保存した。`pull_request` を二つ送ると `422` を返し、`errors` は `["Invalid rule 'pull_request': "]` だった
 > - 未知のルールの種類：`type: no_such_rule` のルールは `422` を返し、`message` は `Invalid request.\n\nInvalid property /rules/0: data matches no possible input. See \`documentation_url\`.` だった
 > - リポジトリのほかの設定：`pull_request` の `allowed_merge_methods` を `["squash"]` にする更新と、`enforcement` を `active` にして `deletion` だけを送る更新の前後で、`GET /repos/{owner}/{repo}` のマージ方式（`allow_squash_merge`、`allow_merge_commit`、`allow_rebase_merge`）、`allow_auto_merge`、`delete_branch_on_merge`、`allow_update_branch`、マージメッセージの4つのフィールドと、デフォルトブランチの Branch protection の取得の本文は変わらなかった
+> - `name` を除いた全体：`name` を送らず、`target`、`enforcement`、`conditions`、`bypass_actors`（`DeployKey` の `actor_id: null` を含む）、`rules`（必須の5項目だけの `pull_request` と `parameters` のない `deletion`）をすべて送った更新は `200` を返し、`name` と `id` を保ったまま、送った値で置き換えた
+> - 存在しない `ruleset_id`：削除した Ruleset の `id` への更新は `404`（`message` は `Not Found`）を返した
 > - `target` の変更：`target` を `branch` から `tag`（`conditions` を `refs/tags/` の名前に変えて）へ、`tag` から `branch` へ変える更新は、どちらも `200` で反映され、`id` は変わらなかった。`refs/heads/` の名前の `conditions` のまま `tag` に変える更新と、`deletion` と `pull_request` を持つまま `push` に変える更新は `422` だった
 
 | Relationship | Target | Target Type |
