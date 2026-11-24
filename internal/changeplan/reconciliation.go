@@ -28,6 +28,7 @@ func reconcile(desired configuration.DesiredState, observed github.ObservationRe
 	for _, managed := range desired.ManagedSettings() {
 		plan := newSettingPlan(managed.Unit, observed.Setting(managed.Unit), managed.Desired)
 		plan.EnvironmentIdentity = environmentIdentityOf(managed.Unit, observed)
+		plan.RulesetIdentity = rulesetIdentityOf(managed.Unit, observed)
 		plan.UninterpretedParts = uninterpretedPartsOf(managed.Unit, observed)
 		settings = append(settings, plan)
 	}
@@ -105,6 +106,20 @@ func environmentIdentityOf(unit setting.Unit, observed github.ObservationResult)
 		return EnvironmentIdentity{}
 	}
 	return ObservedEnvironmentIdentity(environment.ID)
+}
+
+// rulesetIdentityOf は、Ruleset そのものの管理の単位 unit について、計画時に存在を観測した Ruleset の ID を同一性の基準にして返す。
+// 解釈しない部分を含む Ruleset も、存在すれば基準を持つ。
+// ほかの管理の単位と、存在すると観測しなかった Ruleset では、基準がないゼロ値を返す。
+func rulesetIdentityOf(unit setting.Unit, observed github.ObservationResult) RulesetIdentity {
+	if unit.Key != setting.RulesetResource {
+		return RulesetIdentity{}
+	}
+	ruleset, ok := observed.Rulesets.Lookup(unit.Ruleset).Existing()
+	if !ok {
+		return RulesetIdentity{}
+	}
+	return ObservedRulesetIdentity(ruleset.ID)
 }
 
 // uninterpretedPartsOf は、Ruleset そのものの管理の単位 unit について、値が解釈しない部分を含むときだけ、その解釈しなかったものを返す。

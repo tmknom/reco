@@ -62,7 +62,7 @@ func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
 	if desired.Mode != setting.DeploymentBranchPolicySelected {
 		return change
 	}
-	created := RelevantSetting{Unit: s.Unit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedIdentity: CreatedByPrecedingOperation()}
+	created := RelevantSetting{Unit: s.Unit, AnticipatedValue: github.Observed(setting.Present()), AnticipatedEnvironmentIdentity: CreatedByPrecedingOperation()}
 	change.Operations = append(change.Operations, deploymentPatternOperations(policyUnit, created, emptySelected(), nil, desired.Patterns)...)
 	return change
 }
@@ -137,7 +137,7 @@ func deploymentPatternOperations(unit setting.Unit, environment RelevantSetting,
 
 // existenceBasis は、Environment の存在の計画 s を、計画時の存在の観測結果と ID を承認時に予定した値にした基準にして返す。
 func (s SettingPlan) existenceBasis() RelevantSetting {
-	return RelevantSetting{Unit: s.Unit, AnticipatedValue: s.Observed, AnticipatedIdentity: s.EnvironmentIdentity}
+	return RelevantSetting{Unit: s.Unit, AnticipatedValue: s.Observed, AnticipatedEnvironmentIdentity: s.EnvironmentIdentity}
 }
 
 // isOfAbsentEnvironment は、s が、属する Environment が存在しないことを理由に比較不能な、方式か変数の計画かを返す。

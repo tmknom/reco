@@ -13,16 +13,6 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// okRulesets は、rulesets を一覧の全体とする Ruleset の一覧の取得の正常応答。
-func okRulesets(rulesets ...githubtest.RulesetSummaryBody) response {
-	return response{status: http.StatusOK, body: githubtest.RulesetsBody(rulesets).JSON()}
-}
-
-// okRuleset は、Ruleset の詳細の取得の正常応答。
-func okRuleset(ruleset githubtest.RulesetBody) response {
-	return response{status: http.StatusOK, body: ruleset.JSON()}
-}
-
 // TestExecuteChange_Rulesets は、Ruleset の作成を、一覧と名指した Ruleset の詳細の読み直しで確かめて一度だけ送るつなぎ目を確かめる。
 // 名前で引く規則は、github の Rulesets.Lookup のテストが確かめている。
 //
@@ -154,6 +144,96 @@ func TestExecuteChange_Rulesets(t *testing.T) {
 			}
 			if got.desiredUnavailable.reason != tc.wantReason {
 				t.Errorf("desiredUnavailable.reason = %v, want %v", got.desiredUnavailable.reason, tc.wantReason)
+			}
+			if got.result() != tc.wantResult {
+				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)
+			}
+		})
+	}
+}
+
+// TestExecuteChange_RulesetValueUpdate は、Ruleset の値の変更を、一覧と名指した Ruleset の詳細の読み直しで確かめて、
+// 承認時に予定した ID へ一度だけ PUT で送るつなぎ目を確かめる。
+// 値の全体と ID の比べ方は TestMatchesRelevantSetting_Ruleset、本文は TestSendUpdate が確かめている。
+//
+//trace:checks INV-001 INV-004 INV-005 FR-010 FR-011 FR-012 FR-013
+func TestExecuteChange_RulesetValueUpdate(t *testing.T) {
+	const (
+		getRepository = "GET /repos/owner/repo"
+		getRulesets   = "GET /repos/owner/repo/rulesets"
+		getProtect    = "GET /repos/owner/repo/rulesets/42"
+		putProtect    = "PUT /repos/owner/repo/rulesets/42"
+	)
+	protect := githubtest.RulesetSummaryBody{ID: 42, Name: "protect"}
+	approved := protectRulesetBody(42, "protect", setting.RulesetEnforcementDisabled)
+	updated := protectRulesetBody(42, "protect", setting.RulesetEnforcementActive)
+	before := []response{okRepository(1, false, false), okRulesets(protect), okRuleset(approved)}
+	beforeRequests := []string{getRepository, getRulesets, getProtect}
+	// readAfter は、値の変更のあとの観測を times 回、同じ一覧と詳細で返す応答と、その要求の並び。
+	readAfter := func(times int, detail githubtest.RulesetBody) ([]response, []string) {
+		var responses []response
+		var requests []string
+		for range times {
+			responses = append(responses, okRepository(1, false, false), okRulesets(protect), okRuleset(detail))
+			requests = append(requests, getRepository, getRulesets, getProtect)
+		}
+		return responses, requests
+	}
+	matching, matchingRequests := readAfter(1, updated)
+	unchanged, unchangedRequests := readAfter(1+len(reobservationDelays), approved)
+	cases := []struct {
+		name         string
+		responses    []response
+		wantRequests []string
+		wantPrecond  preconditionCheck
+		wantUpdate   github.UpdateOutcome
+		wantDesired  desiredStateConfirmation
+		wantResult   changeResult
+	}{
+		{
+			name:         "ruleset as approved before the update is replaced once and completes",
+			responses:    slices.Concat(before, []response{okRuleset(updated)}, matching),
+			wantRequests: slices.Concat(beforeRequests, []string{putProtect}, matchingRequests),
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
+		{
+			// 承認したのは値の変更で、作成ではない。存在しなくなった Ruleset を作成に切り替えない
+			name:         "ruleset deleted before the update sends neither PUT nor POST",
+			responses:    []response{okRepository(1, false, false), okRulesets()},
+			wantRequests: []string{getRepository, getRulesets},
+			wantPrecond:  preconditionCurrentValueChanged,
+			wantResult:   notAttempted,
+		},
+		{
+			name:         "ruleset whose value differs from the declaration in every read after the update is a mismatch",
+			responses:    slices.Concat(before, []response{okRuleset(updated)}, unchanged),
+			wantRequests: slices.Concat(beforeRequests, []string{putProtect}, unchangedRequests),
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMismatch,
+			wantResult:   failed,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, server := newSequenceServer(t, tc.responses...)
+
+			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), rulesetValueUpdateChange(t, "protect"), elapsedAtOnce, &updateInterval{})
+
+			if !slices.Equal(server.RequestLines(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", server.RequestLines(), tc.wantRequests)
+			}
+			if got.operation(0).precondition != tc.wantPrecond {
+				t.Errorf("precondition = %v, want %v", got.operation(0).precondition, tc.wantPrecond)
+			}
+			if tc.wantPrecond == preconditionHolds && got.operation(0).update != tc.wantUpdate {
+				t.Errorf("update = %v, want %v", got.operation(0).update, tc.wantUpdate)
+			}
+			if got.confirmation != tc.wantDesired {
+				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
 			}
 			if got.result() != tc.wantResult {
 				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)

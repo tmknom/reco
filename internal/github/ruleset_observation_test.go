@@ -99,3 +99,30 @@ func TestRulesetObservation_UninterpretedParts(t *testing.T) {
 		RulesetObservation{state: resourceExisting, ruleset: unreadRuleset(1, "protect")}.UninterpretedParts()
 	})
 }
+
+//trace:checks INV-004
+func TestRulesetObservation_Existing(t *testing.T) {
+	parts := []UninterpretedPart{{Kind: UninterpretedRuleType, Name: "non_fast_forward"}}
+	interpreted := InterpretedRuleset(42, "protect", interpretedRulesetValue())
+	uninterpreted := UninterpretedRuleset(43, "protect", parts)
+	cases := []struct {
+		name        string
+		observation RulesetObservation
+		want        Ruleset
+		wantOK      bool
+	}{
+		{name: "an existing interpreted ruleset is returned with its ID and name", observation: RulesetObservation{state: resourceExisting, ruleset: interpreted}, want: interpreted, wantOK: true},
+		{name: "an existing ruleset with uninterpreted parts is returned", observation: RulesetObservation{state: resourceExisting, ruleset: uninterpreted}, want: uninterpreted, wantOK: true},
+		{name: "an absent ruleset is not returned", observation: RulesetObservation{state: resourceAbsent}},
+		{name: "an unavailable ruleset is not returned", observation: RulesetObservation{state: resourceUnavailable, reason: UnavailablePrivateRepository}},
+		{name: "the zero value is not returned", observation: RulesetObservation{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := tc.observation.Existing()
+			if ok != tc.wantOK || !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Existing() = (%+v, %v), want (%+v, %v)", got, ok, tc.want, tc.wantOK)
+			}
+		})
+	}
+}

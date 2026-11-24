@@ -87,8 +87,10 @@ type RelevantSetting struct {
 	Unit setting.Unit
 	// AnticipatedValue は、承認時に予定した値。関連リソースそのものでは、存在すること (値を伴う) か存在しないことである。
 	AnticipatedValue github.SettingObservation[setting.Value]
-	// AnticipatedIdentity は、Environment が存在すると予定したときに、存在に加えて確かめる同一性の基準。ほかではゼロ値。
-	AnticipatedIdentity EnvironmentIdentity
+	// AnticipatedEnvironmentIdentity は、Environment が存在すると予定したときに、存在に加えて確かめる同一性の基準。ほかではゼロ値。
+	AnticipatedEnvironmentIdentity EnvironmentIdentity
+	// AnticipatedRulesetIdentity は、Ruleset が存在すると予定したときに、存在と値に加えて確かめる同一性の基準。ほかではゼロ値。
+	AnticipatedRulesetIdentity RulesetIdentity
 }
 
 // Units は、c が変える管理設定の管理の単位を、期待状態の並びで返す。
@@ -314,6 +316,7 @@ func targetsSelectedPolicy(s SettingPlan) bool {
 // マージ方式は一つずつ送る更新要求を持たず、まとめた更新操作でだけ送るため、一つの設定の更新操作なら承認の前に panic する。
 // まとめた更新操作が送る設定が空か、マージ方式でない設定を含む場合も同じく panic する。どちらも、承認のあと先行する変更を送ってから止まらないようにするため。
 // 関連リソース (Environment、Repository Variable、Environment Variable、Ruleset) の更新操作は、更新エンドポイントが名前ごとに別で、設定の識別だけでは引けないため、引かずに通す。
+// ただし Ruleset の値の変更は宛先が計画時に観測した ID で決まるため、AnticipatedRulesetID を引けることを確かめる。
 // 未定義の種類は宛先が決まらないため、不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func checkUpdateEndpoint(operation UpdateOperation) {
 	switch operation.Kind {
@@ -335,7 +338,10 @@ func checkUpdateEndpoint(operation UpdateOperation) {
 		DeploymentPatternAddition, DeploymentPatternRemoval,
 		RepositoryVariableCreation, RepositoryVariableValueUpdate, RepositoryVariableDeletion,
 		EnvironmentVariableCreation, EnvironmentVariableValueUpdate, EnvironmentVariableDeletion,
-		RulesetCreation, RulesetValueUpdate:
+		RulesetCreation:
+		return
+	case RulesetValueUpdate:
+		operation.AnticipatedRulesetID()
 		return
 	}
 	panic(fmt.Sprintf("changeplan: undefined kind %d of an update operation", int(operation.Kind)))

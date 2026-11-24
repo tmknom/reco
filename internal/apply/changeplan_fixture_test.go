@@ -121,7 +121,7 @@ func modeChange(t *testing.T, name string, approved github.Environment, desired 
 		RelevantSettings: []changeplan.RelevantSetting{
 			{
 				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, AnticipatedValue: github.Observed(setting.Present()),
-				AnticipatedIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID),
+				AnticipatedEnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID),
 			},
 			{Unit: policy, AnticipatedValue: github.Observed(setting.DeploymentBranchPolicyValue(approved.DeploymentBranchPolicy()))},
 		},
@@ -346,6 +346,15 @@ func rulesetMismatch(t *testing.T, name string, observed setting.Value) changepl
 	}
 }
 
+// rulesetValueMismatch は、計画時に ID が id で enforcement が disabled の protectRuleset と観測した、宣言の名前 name の Ruleset を、
+// enforcement が active の protectRuleset にする適用可能な値の変更予定。
+func rulesetValueMismatch(t *testing.T, name string, id github.RulesetID) changeplan.SettingPlan {
+	t.Helper()
+	plan := rulesetMismatch(t, name, setting.RulesetValue(protectRuleset(setting.RulesetEnforcementDisabled)))
+	plan.RulesetIdentity = changeplan.ObservedRulesetIdentity(id)
+	return plan
+}
+
 // rulesetCreationChange は、計画時に存在しなかった name の Ruleset を作成する論理的な設定変更。
 // 変更前提の基準を手で写さず、changeplan が導いた論理的な設定変更を使う。
 func rulesetCreationChange(t *testing.T, name string) changeplan.LogicalChange {
@@ -353,9 +362,9 @@ func rulesetCreationChange(t *testing.T, name string) changeplan.LogicalChange {
 	return onlyLogicalChange(t, newRepositoryPlan(t, rulesetMismatch(t, name, setting.Absent())))
 }
 
-// rulesetValueUpdateChange は、計画時に enforcement が disabled と観測した name の Ruleset の値を、宣言の値に置き換える論理的な設定変更。
+// rulesetValueUpdateChange は、計画時に ID が 42 で enforcement が disabled と観測した name の Ruleset の値を、宣言の値に置き換える論理的な設定変更。
 // 変更前提の基準を手で写さず、changeplan が導いた論理的な設定変更を使う。
 func rulesetValueUpdateChange(t *testing.T, name string) changeplan.LogicalChange {
 	t.Helper()
-	return onlyLogicalChange(t, newRepositoryPlan(t, rulesetMismatch(t, name, setting.RulesetValue(protectRuleset(setting.RulesetEnforcementDisabled)))))
+	return onlyLogicalChange(t, newRepositoryPlan(t, rulesetValueMismatch(t, name, 42)))
 }

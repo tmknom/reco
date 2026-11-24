@@ -42,9 +42,12 @@ type SettingPlan struct {
 	// EnvironmentIdentity は、Environment そのものの計画で、計画時に存在を観測した Environment の ID。承認されると変更前提の同一性の基準になる。
 	// ほかの計画と、存在しない Environment の計画ではゼロ値。
 	EnvironmentIdentity EnvironmentIdentity
-	Desired             setting.Value
-	Result              ReconciliationResult
-	Applicability       Applicability
+	// RulesetIdentity は、Ruleset そのものの計画で、計画時に存在を観測した Ruleset の ID。承認されると変更前提の同一性の基準になる。
+	// ほかの計画と、存在しない Ruleset の計画ではゼロ値。
+	RulesetIdentity RulesetIdentity
+	Desired         setting.Value
+	Result          ReconciliationResult
+	Applicability   Applicability
 	// SideEffects は変更予定に伴う副作用。副作用がなければ nil。
 	SideEffects []SideEffect
 	// SettingsWithoutSideEffect は、副作用を示さなかった設定。変更前提にだけ含める。当たらなければ nil。

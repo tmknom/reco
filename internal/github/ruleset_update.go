@@ -19,9 +19,25 @@ func (c *Client) CreateRuleset(ctx context.Context, reference repository.Referen
 	return describeUpdateOutcome(fmt.Sprintf("create ruleset %q", name.String()), reference, status, err)
 }
 
-// rulesetCreationBody は、作成の POST の本文。トップレベルのフィールドは省略せずにすべて送る (Rulesets の設計の更新方式)。
+// UpdateRulesetValue は、reference のリポジトリの、ID が id の Ruleset の値を value にする PUT を一度だけ送る。再送はしない。
+// 宛先は呼び出し側が承認時に予定した ID で、name は本文に入れず、エラーの文言にだけ使う。
+// 応答の本文の扱いは CreateRuleset と同じで、更新の契約を確かめるためだけに読む。
+func (c *Client) UpdateRulesetValue(ctx context.Context, reference repository.Reference, id RulesetID, name setting.RulesetName, value setting.Ruleset) (UpdateOutcome, error) {
+	status, data, err := c.send(ctx, http.MethodPut, c.rulesetURL(reference, id), encodeRulesetValueUpdate(name, value), http.StatusOK)
+	if err == nil {
+		_, err = decodeRuleset(data)
+	}
+	return describeUpdateOutcome(fmt.Sprintf("update ruleset %q", name.String()), reference, status, err)
+}
+
+// rulesetCreationBody は、作成の POST の本文。名前と、値の全体を送る。
 type rulesetCreationBody struct {
-	Name         string                `json:"name"`
+	Name string `json:"name"`
+	rulesetValueBody
+}
+
+// rulesetValueBody は、Ruleset の値の全体の本文。トップレベルのフィールドは省略せずにすべて送る (Rulesets の設計の更新方式)。
+type rulesetValueBody struct {
 	Target       string                `json:"target"`
 	Enforcement  string                `json:"enforcement"`
 	Conditions   rulesetConditionsBody `json:"conditions"`
@@ -60,11 +76,21 @@ type pullRequestParametersBody struct {
 }
 
 // encodeRulesetCreation は、名前 name と値 value を作成の POST の本文にする。
-// 空の集合は null ではなく [] で送る。null の扱いが公開資料にないため。
-// ref_name を持たない値は宣言から作られず、その POST の挙動も確かめていないため、補わずに不変条件の破れとして panic する。
 func encodeRulesetCreation(name setting.RulesetName, value setting.Ruleset) []byte {
+	return mustMarshalJSON(rulesetCreationBody{Name: name.String(), rulesetValueBody: newRulesetValueBody(name, value)})
+}
+
+// encodeRulesetValueUpdate は、値 value を値の変更の PUT の本文にする。名前 name は本文に入れず、panic の文言にだけ使う。
+func encodeRulesetValueUpdate(name setting.RulesetName, value setting.Ruleset) []byte {
+	return mustMarshalJSON(newRulesetValueBody(name, value))
+}
+
+// newRulesetValueBody は、値 value を本文の値の全体にする。
+// 空の集合は null ではなく [] で送る。null の扱いが公開資料にないため。
+// ref_name を持たない値は宣言から作られず、その送信の挙動も確かめていないため、補わずに不変条件の破れとして panic する。
+func newRulesetValueBody(name setting.RulesetName, value setting.Ruleset) rulesetValueBody {
 	if value.Conditions.RefName == nil {
-		panic(fmt.Sprintf("github: ruleset %q to create has no ref_name condition", name.String()))
+		panic(fmt.Sprintf("github: ruleset %q to send has no ref_name condition", name.String()))
 	}
 	actors := make([]bypassActorBody, len(value.BypassActors))
 	for i, a := range value.BypassActors {
@@ -77,8 +103,7 @@ func encodeRulesetCreation(name setting.RulesetName, value setting.Ruleset) []by
 	for i, r := range value.Rules {
 		rules[i] = encodeRulesetRule(r)
 	}
-	return mustMarshalJSON(rulesetCreationBody{
-		Name:        name.String(),
+	return rulesetValueBody{
 		Target:      string(value.Target),
 		Enforcement: string(value.Enforcement),
 		Conditions: rulesetConditionsBody{RefName: refNameConditionBody{
@@ -87,7 +112,7 @@ func encodeRulesetCreation(name setting.RulesetName, value setting.Ruleset) []by
 		}},
 		BypassActors: actors,
 		Rules:        rules,
-	})
+	}
 }
 
 // encodeRulesetRule は、ルール rule を本文の要素にする。

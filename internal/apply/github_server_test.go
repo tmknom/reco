@@ -135,6 +135,16 @@ func createdVariable() response {
 	return response{status: http.StatusCreated, body: `{}`}
 }
 
+// okRulesets は、rulesets を一覧の全体とする Ruleset の一覧の取得の正常応答。
+func okRulesets(rulesets ...githubtest.RulesetSummaryBody) response {
+	return response{status: http.StatusOK, body: githubtest.RulesetsBody(rulesets).JSON()}
+}
+
+// okRuleset は、Ruleset の詳細の取得と値の変更の正常応答。GitHub は値の変更にも 200 で、Ruleset の全体を詳細の取得と同じ形で返す。
+func okRuleset(ruleset githubtest.RulesetBody) response {
+	return response{status: http.StatusOK, body: ruleset.JSON()}
+}
+
 // createdRuleset は、Ruleset の作成の正常応答。GitHub は 201 で、作った Ruleset の全体を詳細の取得と同じ形で返す。
 func createdRuleset(ruleset githubtest.RulesetBody) response {
 	return response{status: http.StatusCreated, body: ruleset.JSON()}
