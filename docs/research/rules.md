@@ -136,7 +136,7 @@ Ruleset は、GitHub が付ける整数の `id` と、作成で必須の `name` 
 > - 省略したフィールド：`name` と `enforcement` だけで作成すると、`target` は `branch`、`bypass_actors` は `[]`、`conditions` は `{}`、`rules` は `[]` で作られた。`bypass_actors` だけを省略した作成でも `bypass_actors` は `[]` だった
 > - 空の配列の明示：`include: []`、`exclude: []`、`bypass_actors: []`、`rules: []` を送った作成は `201` を返し、どれも `[]` で作られた
 > - ルールの順序：作成の応答と取得は、送った `rules` の順を保った（2例）
-> - 作成直後の取得：作成（5回）の直後の取得と一覧は、どれも作成した Ruleset を含み、取得の本文は作成の応答と一致した
+> - 作成直後の取得：作成（5回）の直後の取得と一覧は、どれも作成した Ruleset を含み、取得の本文は作成の応答と一致した。reco の `apply` による作成（3回）は、どれも更新後の観測で作成した Ruleset を確かめて完了した。要求を数えた1回では、`201` の直後の一覧と取得が作成した Ruleset を返し、観測し直しは起きなかった
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -152,7 +152,7 @@ Ruleset は、GitHub が付ける整数の `id` と、作成で必須の `name` 
 > [!NOTE]
 > 次は、reco の開発者が実際の動作で確認した事項です（公開リポジトリで確認）。
 >
-> - 更新の応答：`200` を返し、本文は Ruleset の全体だった。本文は、直後の取得の本文と一致した。更新（10回）の直後の取得と一覧は、どれも更新後の値（一覧は `updated_at`）を返した
+> - 更新の応答：`200` を返し、本文は Ruleset の全体だった。本文は、直後の取得の本文と一致した。更新（10回）の直後の取得と一覧は、どれも更新後の値（一覧は `updated_at`）を返した。reco の `apply` による `name` を除いた全体の更新（6回）は、どれも更新後の観測で宣言した値を確かめて完了した。要求を数えた1回では、`200` の直後の取得が更新後の値を返し、観測し直しは起きなかった
 > - 省略したフィールド：`rules`、`bypass_actors`、`conditions` のいずれか一つを省略した更新は、省略したフィールドの既存の値を保持した。`rules` を省略した更新では、`pull_request` の任意のパラメータ（7.1）の既定でない値も保持された。`enforcement` だけ、`name` だけの更新も、ほかのフィールドを保持した
 > - 送った配列：`rules` は既存の配列を置き換えた。`pull_request` と `deletion` を持つ Ruleset に `deletion` だけを送ると、`pull_request` は消えた。`rules: []` と `bypass_actors: []` は、どちらも空の配列を保存した
 > - ルールの順序：取得が返す `rules` の順は、送った順と違う場合があった。`[deletion, pull_request]` を送って `[pull_request, deletion]` を返した例と、`[pull_request, deletion]` を送って `[deletion, pull_request]` を返した例がある。`[non_fast_forward, deletion, creation]` を送ると、`[deletion, non_fast_forward, creation]` を返した例と `[deletion, creation, non_fast_forward]` を返した例がある。更新の応答と直後の取得の順は一致した
