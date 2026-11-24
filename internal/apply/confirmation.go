@@ -21,32 +21,34 @@ const (
 	desiredStateUnavailable
 )
 
+// unavailableDesiredSetting は、期待状態の確認で期待値と比べる設定が観測不能だった管理設定と、その理由。
+// 確認結果の表示は、理由だけでなく管理設定の種類からも文言を選ぶため、二つを組で持つ。
+type unavailableDesiredSetting struct {
+	unit   setting.Unit
+	reason github.UnavailableReason
+}
+
 // confirmDesiredState は、更新後の観測が、論理的な設定変更の期待状態と一致するかを判定する。
 // 観測できた値に期待値と異なるものがあれば、ほかの設定が観測不能でも不一致にする。
-// そうでなく期待値と比べる設定に観測不能があれば、値を確認できていないため確認失敗にし、最初に観測不能だった設定の理由を返す。
+// そうでなく期待値と比べる設定に観測不能があれば、値を確認できていないため確認失敗にし、期待状態の並びで最初に観測不能だった管理設定を返す。
 // 期待状態のない論理的な設定変更を一致にすると何も確かめずに完了になるため、不変条件の破れとして panic する。
-func confirmDesiredState(approvedID repository.ID, change changeplan.LogicalChange, observed github.ObservationResult) (desiredStateConfirmation, github.UnavailableReason) {
+func confirmDesiredState(approvedID repository.ID, change changeplan.LogicalChange, observed github.ObservationResult) (desiredStateConfirmation, unavailableDesiredSetting) {
 	if len(change.DesiredState) == 0 {
 		panic("apply: logical change has no desired state to confirm")
 	}
 	if observed.RepositoryID != approvedID {
-		return desiredStateIdentityMismatch, 0
+		return desiredStateIdentityMismatch, unavailableDesiredSetting{}
 	}
 	// 不一致は mismatchedDesiredSettings から導き、不一致の確認結果が一致しなかった管理設定を必ず伴うようにする
 	if len(mismatchedDesiredSettings(change, observed)) > 0 {
-		return desiredStateMismatch, 0
+		return desiredStateMismatch, unavailableDesiredSetting{}
 	}
-	var reason github.UnavailableReason
 	for _, desired := range change.DesiredState {
-		confirmation, settingReason := confirmDesiredSetting(desired, observed)
-		if confirmation == desiredStateUnavailable && reason == 0 {
-			reason = settingReason
+		if confirmation, reason := confirmDesiredSetting(desired, observed); confirmation == desiredStateUnavailable {
+			return desiredStateUnavailable, unavailableDesiredSetting{unit: desired.Unit, reason: reason}
 		}
 	}
-	if reason != 0 {
-		return desiredStateUnavailable, reason
-	}
-	return desiredStateMatches, 0
+	return desiredStateMatches, unavailableDesiredSetting{}
 }
 
 // mismatchedDesiredSettings は、change の期待状態のうち、observed で期待値と異なる値を観測した管理設定を、期待状態の並びで返す。観測不能だった管理設定は含めない。

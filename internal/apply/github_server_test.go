@@ -8,6 +8,7 @@ import (
 
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/githubtest"
+	"github.com/tmknom/reco/internal/setting"
 )
 
 // response は stub が順に返す応答。disconnect が真なら本文を返さずに接続を切る。
@@ -132,6 +133,21 @@ func okVariables(variables ...githubtest.VariableBody) response {
 // createdVariable は、Repository Variable と Environment Variable の作成の正常応答。GitHub は 201 で、変数を含まない空のオブジェクトを返す。
 func createdVariable() response {
 	return response{status: http.StatusCreated, body: `{}`}
+}
+
+// createdRuleset は、Ruleset の作成の正常応答。GitHub は 201 で、作った Ruleset の全体を詳細の取得と同じ形で返す。
+func createdRuleset(ruleset githubtest.RulesetBody) response {
+	return response{status: http.StatusCreated, body: ruleset.JSON()}
+}
+
+// protectRulesetBody は、protectRuleset(enforcement) と同じ値を持つ、ID が id で名前が name の Ruleset の詳細の本文。
+func protectRulesetBody(id int64, name string, enforcement setting.RulesetEnforcement) githubtest.RulesetBody {
+	return githubtest.RulesetBody{
+		ID: id, Name: name, Target: "branch", Enforcement: string(enforcement),
+		Include: []string{"~DEFAULT_BRANCH"}, Exclude: []string{},
+		BypassActors: []githubtest.BypassActorBody{{ActorType: "RepositoryRole", ActorID: 5, BypassMode: "always"}},
+		Rules:        []string{githubtest.DeletionRuleBody},
+	}
 }
 
 // okDeploymentPatterns は、patterns を一覧の全体とする個別パターンの一覧の取得の正常応答。

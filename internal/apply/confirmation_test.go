@@ -35,8 +35,8 @@ func TestConfirmDesiredState(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got, reason := confirmDesiredState(1, change, tc.observed); got != tc.want || reason != 0 {
-				t.Errorf("confirmDesiredState() = %v, %v, want %v without a reason", got, reason, tc.want)
+			if got, unavailable := confirmDesiredState(1, change, tc.observed); got != tc.want || unavailable != (unavailableDesiredSetting{}) {
+				t.Errorf("confirmDesiredState() = %v, %v, want %v without an unavailable setting", got, unavailable, tc.want)
 			}
 		})
 	}
@@ -100,11 +100,21 @@ func TestConfirmDesiredState(t *testing.T) {
 	for _, tc := range selectedCases {
 		t.Run(tc.name, func(t *testing.T) {
 			observed := github.ObservationResult{RepositoryID: 1, ActionsPermissions: tc.observed}
-			if got, reason := confirmDesiredState(1, tc.change, observed); got != tc.want || reason != tc.wantReason {
-				t.Errorf("confirmDesiredState() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)
+			if got, unavailable := confirmDesiredState(1, tc.change, observed); got != tc.want || unavailable.reason != tc.wantReason {
+				t.Errorf("confirmDesiredState() = %v, %v, want %v, %v", got, unavailable.reason, tc.want, tc.wantReason)
 			}
 		})
 	}
+
+	// 確認結果の表示は、観測不能だった管理設定の種類から文言を選ぶため、理由と同じ管理設定を返す
+	t.Run("unavailable desired values return the first unavailable setting in the order of the desired state", func(t *testing.T) {
+		change := toSelectedChange()
+		observed := github.ObservationResult{RepositoryID: 1, ActionsPermissions: actionsDisabled()}
+		want := unavailableDesiredSetting{unit: change.DesiredState[0].Unit, reason: github.UnavailableActionsDisabled}
+		if _, got := confirmDesiredState(1, change, observed); got != want {
+			t.Errorf("confirmDesiredState() unavailable setting = %v, want %v", got, want)
+		}
+	})
 
 	t.Run("logical change without a desired state panics", func(t *testing.T) {
 		defer func() {
@@ -200,8 +210,8 @@ func TestConfirmDesiredState_Environments(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			observed := github.ObservationResult{RepositoryID: 1, Environments: tc.environments}
-			if got, reason := confirmDesiredState(1, tc.change, observed); got != tc.want || reason != tc.wantReason {
-				t.Errorf("confirmDesiredState() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)
+			if got, unavailable := confirmDesiredState(1, tc.change, observed); got != tc.want || unavailable.reason != tc.wantReason {
+				t.Errorf("confirmDesiredState() = %v, %v, want %v, %v", got, unavailable.reason, tc.want, tc.wantReason)
 			}
 		})
 	}
@@ -252,8 +262,8 @@ func TestConfirmDesiredState_RepositoryVariables(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			observed := github.ObservationResult{RepositoryID: 1, RepositoryVariables: tc.variables}
-			if got, reason := confirmDesiredState(1, tc.change, observed); got != tc.want || reason != 0 {
-				t.Errorf("confirmDesiredState() = %v, %v, want %v without a reason", got, reason, tc.want)
+			if got, unavailable := confirmDesiredState(1, tc.change, observed); got != tc.want || unavailable != (unavailableDesiredSetting{}) {
+				t.Errorf("confirmDesiredState() = %v, %v, want %v without an unavailable setting", got, unavailable, tc.want)
 			}
 		})
 	}
@@ -280,8 +290,8 @@ func TestConfirmDesiredState_EnvironmentVariables(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			observed := github.ObservationResult{RepositoryID: 1, Environments: environments(tc.existing...)}
-			if got, reason := confirmDesiredState(1, change, observed); got != tc.want || reason != tc.wantReason {
-				t.Errorf("confirmDesiredState() = %v, %v, want %v, %v", got, reason, tc.want, tc.wantReason)
+			if got, unavailable := confirmDesiredState(1, change, observed); got != tc.want || unavailable.reason != tc.wantReason {
+				t.Errorf("confirmDesiredState() = %v, %v, want %v, %v", got, unavailable.reason, tc.want, tc.wantReason)
 			}
 		})
 	}

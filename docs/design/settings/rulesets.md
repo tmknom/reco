@@ -1,6 +1,6 @@
 # Rulesets の設計
 
-設定宣言の `rulesets`（[YAML 設定仕様](../../spec/configuration.md) 10章）に属する、リポジトリの Ruleset の設計を定めます。Ruleset の変更の実行はまだ行わず、本文書は観測、照合、適用可能性を定めます。文書の構成は [設定ごとの設計](README.md) に従います。関連リソースに共通する規則は [ドメインモデル](../domain.md) の関連リソースと存在に従い、ここでは繰り返しません。
+設定宣言の `rulesets`（[YAML 設定仕様](../../spec/configuration.md) 10章）に属する、リポジトリの Ruleset の設計を定めます。Ruleset の変更のうち、実行するのは存在しない Ruleset の作成だけで、既存の Ruleset の値の変更はまだ実行しません。文書の構成は [設定ごとの設計](README.md) に従います。関連リソースに共通する規則は [ドメインモデル](../domain.md) の関連リソースと存在に従い、ここでは繰り返しません。
 
 ## 設定と管理の単位
 
@@ -142,6 +142,49 @@ Ruleset の変更予定に、変更に伴う副作用と再開する設定はあ
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub Rules API 仕様](../../research/rules.md) | Repository File |
 
+## 論理的な設定変更と更新操作
+
+Ruleset の変更予定は、Ruleset ごとに、一つの更新操作からなる一つの論理的な設定変更です。作成は値を一つの要求で設定するため、作成と値の設定を分けません。論理的な設定変更は、Security の論理的な設定変更のあとに、宣言の `rulesets` の並びで実行します。
+
+| 変更予定 | 更新操作 | 関係する現在値と承認時に予定した値 | 期待状態 |
+|---|---|---|---|
+| 作成 | `POST /repos/{owner}/{repo}/rulesets` | 宣言の名前の Ruleset が存在しないこと | 存在し、値が宣言と同じであること |
+
+作成の「存在しないこと」は、GitHub と同じく、名前を ASCII の大文字小文字を区別せずに比べます。解釈しない部分を含む Ruleset と判定できない名前の扱いは、ドメインモデルの変更前提と期待状態の確認に従います。
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `alignment` | `FR-010` | Functional Requirement |
+| `alignment` | `FR-012` | Functional Requirement |
+| `alignment` | `INV-004` | Invariant |
+| `alignment` | `INV-005` | Invariant |
+| `grounding` | [GitHub Rules API 仕様](../../research/rules.md) | Repository File |
+
+## 更新方式
+
+作成の `POST` には、`name`（設定宣言の綴り）、`target`、`enforcement`、`conditions`（`{"ref_name": {"include": [...], "exclude": [...]}}`）、`bypass_actors`、`rules` をすべて送ります。トップレベルのフィールドを省略しないのは、省略したときの既定値を reco が値として持たないためです。本文の細則は次のとおりです。
+
+- **空の集合**：`include`、`exclude`、`bypass_actors`、`rules` が空なら `[]` を送る。`[]` を明示した `POST` が空の配列で作ることを確かめている（GitHub Rules API 仕様 4.1）
+- **並び**：`include`、`exclude`、`bypass_actors`、`rules` は宣言の並びで送る。比較は並びを問わないため、GitHub が並びを保つことには依拠しない
+- **`DeployKey`**：`actor_id: null` を送る。公式資料が `DeployKey` では `null` にするとし、`null` の `POST` が受け付けられることを確かめている（同 6章）
+- **`pull_request`**：`parameters` に宣言できる5項目だけを送る。任意の3項目は既定値で作られ、観測では既定値を解釈できる値として読むため、期待状態と一致する（同 7.1）
+- **`deletion`**：`{"type": "deletion"}` だけを送り、`parameters` を持たせない（同 7.2）
+
+正常応答は `201` で、本文は詳細の取得と同じ形です（同 4.1）。更新の契約は詳細の取得契約で、本文が適合しなければ成否不明とします。解釈しない部分を含む本文は契約に適合する応答として成功とし、作成した値は更新後の観測で確かめます。存在しない `RepositoryRole` の ID に GitHub は `500` を返して変更を反映しませんが（同 1章）、`5xx` の一般の扱いどおり成否不明とします。
+
+この更新エンドポイントで reco が観測するのは作成する Ruleset だけのため、更新後に比べる変更対象外の設定はありません。
+
+### 防げない競合
+
+更新直前の観測と `POST` のあいだに外部主体が同じ名前（大文字小文字だけが違う名前を含む）の Ruleset を作った場合、GitHub は `422` で作成を拒否し、Ruleset を作りません（GitHub Rules API 仕様 2章）。同じ名前の Ruleset が二つになることはなく、作成は更新操作の失敗になります。
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `alignment` | `FR-011` | Functional Requirement |
+| `alignment` | `FR-013` | Functional Requirement |
+| `alignment` | `INV-001` | Invariant |
+| `grounding` | [GitHub Rules API 仕様](../../research/rules.md) | Repository File |
+
 ## シナリオと反例
 
 | 状況 | 解釈 | 誤った解釈 |
@@ -156,6 +199,7 @@ Ruleset の変更予定に、変更に伴う副作用と再開する設定はあ
 | 宣言と同じ名前の Tag Ruleset がある | 解釈しない部分を含む観測不能で、適用不能。作成も計画しない（名前は `target` をまたいで一意） | 別の `target` なので Branch Ruleset を作成する。または、`tag` から `branch` へ変える |
 | GitHub 上に `non_fast_forward` を持つ Ruleset を、`pull_request` と `deletion` だけで宣言した | 解釈しない部分を含む観測不能で、適用不能 | 宣言にないルールなので外す |
 | 非公開リポジトリで `rulesets` を宣言した | 比較不能で適用不能。Ruleset の要求を送らない。ほかの設定の照合は続ける | 一覧を送り、`403` で観測操作の失敗にする |
+| 作成を承認したあと、外部主体が大文字小文字だけが違う名前の Ruleset を作った | 関係する現在値の変化。`POST` を送らず未実行 | 綴りが違うので作成する。または、同じ値なので完了 |
 
 | Relationship | Target | Target Type |
 |---|---|---|

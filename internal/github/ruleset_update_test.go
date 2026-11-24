@@ -1,0 +1,207 @@
+package github
+
+import (
+	"errors"
+	"io"
+	"net/http"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	"github.com/tmknom/reco/internal/setting"
+)
+
+//trace:checks INV-001 FR-011
+func TestEncodeRulesetCreation(t *testing.T) {
+	pullRequest := setting.PullRequestRule(setting.PullRequestParameters{
+		RequiredApprovingReviewCount:   1,
+		DismissStaleReviewsOnPush:      true,
+		RequireCodeOwnerReview:         false,
+		RequireLastPushApproval:        true,
+		RequiredReviewThreadResolution: false,
+	})
+	full := setting.Ruleset{
+		Target:      setting.RulesetTargetBranch,
+		Enforcement: setting.RulesetEnforcementActive,
+		Conditions:  setting.RulesetConditions{RefName: &setting.RefNameCondition{Include: []string{"~DEFAULT_BRANCH", "refs/heads/release"}, Exclude: []string{"refs/heads/tmp"}}},
+		BypassActors: []setting.BypassActor{
+			{ActorType: setting.BypassActorRepositoryRole, ActorID: 5, BypassMode: setting.BypassModeAlways},
+			{ActorType: setting.BypassActorDeployKey, BypassMode: setting.BypassModeAlways},
+		},
+		Rules: []setting.RulesetRule{pullRequest, setting.DeletionRule()},
+	}
+	cases := []struct {
+		name    string
+		ruleset string
+		value   setting.Ruleset
+		// want は、キーの並びとエスケープの形まで固定するため、本文の JSON の文字列で持つ。
+		want string
+	}{
+		{
+			name:    "sends every field in the declared order, with null actor_id for DeployKey and only five pull_request parameters",
+			ruleset: "protect",
+			value:   full,
+			want: `{"name":"protect","target":"branch","enforcement":"active",` +
+				`"conditions":{"ref_name":{"include":["~DEFAULT_BRANCH","refs/heads/release"],"exclude":["refs/heads/tmp"]}},` +
+				`"bypass_actors":[{"actor_type":"RepositoryRole","actor_id":5,"bypass_mode":"always"},{"actor_type":"DeployKey","actor_id":null,"bypass_mode":"always"}],` +
+				`"rules":[{"type":"pull_request","parameters":{"required_approving_review_count":1,"dismiss_stale_reviews_on_push":true,"require_code_owner_review":false,"require_last_push_approval":true,"required_review_thread_resolution":false}},{"type":"deletion"}]}`,
+		},
+		{
+			name:    "nil collections are sent as empty arrays",
+			ruleset: "protect",
+			value: setting.Ruleset{
+				Target:      setting.RulesetTargetBranch,
+				Enforcement: setting.RulesetEnforcementDisabled,
+				Conditions:  setting.RulesetConditions{RefName: &setting.RefNameCondition{}},
+			},
+			want: `{"name":"protect","target":"branch","enforcement":"disabled","conditions":{"ref_name":{"include":[],"exclude":[]}},"bypass_actors":[],"rules":[]}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := string(encodeRulesetCreation(mustRulesetName(t, tc.ruleset), tc.value)); got != tc.want {
+				t.Errorf("encodeRulesetCreation() = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestEncodeRulesetCreationPanics は、宣言から作られない値を補って送らず、不変条件の破れとして止めることを確かめる。
+func TestEncodeRulesetCreationPanics(t *testing.T) {
+	cases := []struct {
+		name  string
+		value setting.Ruleset
+	}{
+		{name: "conditions without ref_name panics", value: setting.Ruleset{Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive}},
+		{name: "undefined rule type panics", value: setting.Ruleset{
+			Target:      setting.RulesetTargetBranch,
+			Enforcement: setting.RulesetEnforcementActive,
+			Conditions:  setting.RulesetConditions{RefName: &setting.RefNameCondition{}},
+			Rules:       []setting.RulesetRule{{}},
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Error("encodeRulesetCreation() did not panic")
+				}
+			}()
+			encodeRulesetCreation(mustRulesetName(t, "protect"), tc.value)
+		})
+	}
+}
+
+//trace:checks INV-001 FR-011 INV-005
+func TestCreateRuleset(t *testing.T) {
+	cases := []struct {
+		name string
+		body []byte
+	}{
+		{name: "201 with a body that meets the read contract succeeds", body: rulesetDetail(t, nil)},
+		{name: "201 with a body that has uninterpreted parts succeeds", body: rulesetDetail(t, func(body map[string]any) {
+			body["rules"] = []any{map[string]any{"type": "non_fast_forward"}}
+		})},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var received atomic.Int32
+			var gotMethod, gotPath, gotRawQuery, gotContentType string
+			var gotBody []byte
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				received.Add(1)
+				gotMethod, gotPath, gotRawQuery, gotContentType = r.Method, r.URL.EscapedPath(), r.URL.RawQuery, r.Header.Get("Content-Type")
+				gotBody, _ = io.ReadAll(r.Body)
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write(tc.body)
+			})
+			name, value := mustRulesetName(t, "protect"), interpretedRulesetValue()
+
+			outcome, err := c.CreateRuleset(t.Context(), mustReference(t, "owner/repo"), name, value)
+			if err != nil || outcome != UpdateSucceeded {
+				t.Fatalf("CreateRuleset() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+			}
+
+			if n := received.Load(); n != 1 {
+				t.Errorf("server received %d requests, want 1", n)
+			}
+			if gotMethod != http.MethodPost || gotPath != "/repos/owner/repo/rulesets" || gotRawQuery != "" {
+				t.Errorf("request = %s %s?%s, want POST /repos/owner/repo/rulesets without a query", gotMethod, gotPath, gotRawQuery)
+			}
+			if gotContentType != "application/json" {
+				t.Errorf("Content-Type = %q, want application/json", gotContentType)
+			}
+			if want := string(encodeRulesetCreation(name, value)); string(gotBody) != want {
+				t.Errorf("request body = %s, want %s", gotBody, want)
+			}
+		})
+	}
+}
+
+// TestCreateRulesetOutcome は、作成の応答の分類と、要求を送り直さないこと、GitHub が返した本文を文言に入れないことを確かめる。
+//
+//trace:checks FR-013 INV-005 QR-001
+func TestCreateRulesetOutcome(t *testing.T) {
+	const bodyMarker = "Name must be unique"
+	cases := []struct {
+		name        string
+		handler     http.HandlerFunc
+		wantOutcome UpdateOutcome
+		wantErr     error
+	}{
+		{
+			name: "422 is rejected without the response body",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_, _ = w.Write([]byte(`{"message":"Validation Failed","errors":["` + bodyMarker + `"]}`))
+			},
+			wantOutcome: UpdateRejected,
+			wantErr:     ErrUnprocessable,
+		},
+		{
+			name: "200 is unknown",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write(rulesetDetail(t, nil))
+			},
+			wantOutcome: UpdateUnknown,
+			wantErr:     ErrUnexpectedResponse,
+		},
+		{
+			name: "201 with a body missing fields is unknown",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(`{}`))
+			},
+			wantOutcome: UpdateUnknown,
+			wantErr:     ErrUnexpectedResponse,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var received atomic.Int32
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				received.Add(1)
+				tc.handler(w, r)
+			})
+
+			outcome, err := c.CreateRuleset(t.Context(), mustReference(t, "example/project-a"), mustRulesetName(t, "protect"), interpretedRulesetValue())
+
+			if outcome != tc.wantOutcome {
+				t.Errorf("CreateRuleset() outcome = %v, want %v", outcome, tc.wantOutcome)
+			}
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("CreateRuleset() error = %v, want %v", err, tc.wantErr)
+			}
+			if want := `create ruleset "protect" example/project-a: `; !strings.HasPrefix(err.Error(), want) {
+				t.Errorf("error = %q, want prefix %q", err, want)
+			}
+			if strings.Contains(err.Error(), bodyMarker) {
+				t.Errorf("error = %q, must not contain the response body", err)
+			}
+			if n := received.Load(); n != 1 {
+				t.Errorf("server received %d requests, want 1", n)
+			}
+		})
+	}
+}

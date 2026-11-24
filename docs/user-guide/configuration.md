@@ -303,7 +303,7 @@ Private vulnerability reporting の設定で気をつけることは次のとお
 
 ## Ruleset
 
-`rulesets` には、ブランチへの操作を制限する Ruleset を、名前ごとに並べます。Ruleset の作成と変更は、まだ `apply` で実行できません。`plan` で差分を確かめられます。
+`rulesets` には、ブランチへの操作を制限する Ruleset を、名前ごとに並べます。書いた名前の Ruleset が GitHub 上になければ、`apply` が作成します。既存の Ruleset の内容は、まだ `apply` で変えられません。`plan` で差分を確かめられます。
 
 ```yaml
 repositories:

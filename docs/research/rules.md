@@ -134,6 +134,7 @@ Ruleset は、GitHub が付ける整数の `id` と、作成で必須の `name` 
 >
 > - 作成の応答：`201` を返し、本文は Ruleset の全体（`bypass_actors` と `current_user_can_bypass` を含む）だった。本文は、直後の取得の本文と `updated_at` を含めて一致した
 > - 省略したフィールド：`name` と `enforcement` だけで作成すると、`target` は `branch`、`bypass_actors` は `[]`、`conditions` は `{}`、`rules` は `[]` で作られた。`bypass_actors` だけを省略した作成でも `bypass_actors` は `[]` だった
+> - 空の配列の明示：`include: []`、`exclude: []`、`bypass_actors: []`、`rules: []` を送った作成は `201` を返し、どれも `[]` で作られた
 > - ルールの順序：作成の応答と取得は、送った `rules` の順を保った（2例）
 > - 作成直後の取得：作成（5回）の直後の取得と一覧は、どれも作成した Ruleset を含み、取得の本文は作成の応答と一致した
 
@@ -201,7 +202,7 @@ Ruleset は、GitHub が付ける整数の `id` と、作成で必須の `name` 
 >
 > - `RepositoryRole`：`actor_id` が `2`、`4`、`5` は `200` で保存された。`1` と `3` は `422`（`Actor base role does not have write permissions`）、`6` は `422`（`Invalid bypass actor: ...`）、`999` は `500` を返した（1章）。`actor_id` を省略すると `422`（`actor_id is required for RepositoryRole`）だった。Admin ロールの所有者のトークンでの取得では、`actor_id: 5`、`bypass_mode: always` の Bypass を持つ Ruleset の `current_user_can_bypass` が `always`、Bypass のない Ruleset では `never` だった
 > - `Integration`：同じリポジトリの既存の Ruleset に登録されていた `actor_id`（`29110`）は `200` で保存された。GitHub Actions の App の ID（`15368`）と存在しない ID は `422`（`Actor ... integration must be part of the ruleset source or owner organization`）だった
-> - `DeployKey`：`bypass_mode: always` は `200` で保存され、取得は `actor_id: null` を返した。`actor_id: 1` を送っても `null` で保存された。`bypass_mode: pull_request` は `422`（`deploy key bypass mode must not be 'PULL_REQUEST'`）だった
+> - `DeployKey`：`bypass_mode: always` は `200` で保存され、取得は `actor_id: null` を返した。`actor_id: 1` を送っても `null` で保存された。作成で `actor_id: null` を送ると `201` を返し、`null` で保存された。`bypass_mode: pull_request` は `422`（`deploy key bypass mode must not be 'PULL_REQUEST'`）だった
 > - `User`：トークンの所有者の ID は `200` で保存された
 > - `Team` と `OrganizationAdmin`：`Team` は `422`（`Actor  team must be part of the ruleset source or owner organization` ほか）、`OrganizationAdmin` は `actor_id` の有無によらず `422`（`ruleset source must be in an organization`）だった
 > - `bypass_mode`：`RepositoryRole` の `pull_request` と `exempt` は `200` で保存された。`bypass_mode` を省略すると `always` で保存された
