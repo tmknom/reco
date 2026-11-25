@@ -21,6 +21,7 @@ type Value struct {
 	accessLevel     AccessLevel
 	approvalPolicy  ForkPullRequestApprovalPolicy
 	conditions      PrivateForkPullRequestWorkflowConditions
+	days            int
 	branchPolicy    DeploymentBranchPolicy
 	securityUpdates DependabotSecurityUpdatesState
 	variable        string
@@ -38,6 +39,7 @@ const (
 	kindAccessLevel
 	kindForkPullRequestApprovalPolicy
 	kindPrivateForkPullRequestWorkflowConditions
+	kindRetentionDays
 	kindDeploymentBranchPolicy
 	kindDependabotSecurityUpdates
 	kindVariable
@@ -81,6 +83,11 @@ func ForkPullRequestApprovalPolicyValue(policy ForkPullRequestApprovalPolicy) Va
 // PrivateForkPullRequestWorkflowConditionsValue は、非公開リポジトリの Fork Pull Request ワークフローの実行条件の値を作る。
 func PrivateForkPullRequestWorkflowConditionsValue(conditions PrivateForkPullRequestWorkflowConditions) Value {
 	return Value{kind: kindPrivateForkPullRequestWorkflowConditions, conditions: conditions}
+}
+
+// RetentionDaysValue は、保持日数の値を作る。範囲の外の日数も観測値としてあり得るため、範囲を確かめない。
+func RetentionDaysValue(days int) Value {
+	return Value{kind: kindRetentionDays, days: days}
 }
 
 // DeploymentBranchPolicyValue は、Environment のデプロイ元制限の値を作る。
@@ -136,6 +143,7 @@ func (v Value) Equal(other Value) bool {
 		v.accessLevel == other.accessLevel &&
 		v.approvalPolicy == other.approvalPolicy &&
 		v.conditions == other.conditions &&
+		v.days == other.days &&
 		v.branchPolicy.equal(other.branchPolicy) &&
 		v.securityUpdates.Enabled() == other.securityUpdates.Enabled() &&
 		v.variable == other.variable &&
@@ -165,6 +173,8 @@ func (v Value) String() string {
 			", send_write_tokens_to_workflows: " + strconv.FormatBool(v.conditions.SendWriteTokensToWorkflows) +
 			", send_secrets_and_variables: " + strconv.FormatBool(v.conditions.SendSecretsAndVariables) +
 			", require_approval_for_fork_pr_workflows: " + strconv.FormatBool(v.conditions.RequireApprovalForForkPullRequestWorkflows)
+	case kindRetentionDays:
+		return strconv.Itoa(v.days)
 	case kindDeploymentBranchPolicy:
 		if v.branchPolicy.Mode == DeploymentBranchPolicySelected {
 			return string(v.branchPolicy.Mode) + " " + v.branchPolicy.PatternsString()
@@ -247,6 +257,14 @@ func (v Value) PrivateForkPullRequestWorkflowConditions() PrivateForkPullRequest
 		panic("setting: value is not private fork pull request workflow conditions")
 	}
 	return v.conditions
+}
+
+// RetentionDays は、保持日数の値を返す。それ以外の値は不変条件の破れのため panic する。
+func (v Value) RetentionDays() int {
+	if v.kind != kindRetentionDays {
+		panic("setting: value is not retention days")
+	}
+	return v.days
 }
 
 // DeploymentBranchPolicy は、Environment のデプロイ元制限の値を返す。それ以外の値は不変条件の破れのため panic する。

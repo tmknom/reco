@@ -247,6 +247,43 @@ func TestDocumentPrivateForkPullRequestWorkflows(t *testing.T) {
 	}
 }
 
+// TestDocumentRetention は、保持日数を正の整数だけで受け付け、上限は確かめないことを確かめる。
+// 整数の表記 (引用符、小数、符号) の規則は intValue のテストが確かめるため、intValue の誤りを返すつなぎ目だけを確かめる。
+//
+//trace:checks FR-001
+func TestDocumentRetention(t *testing.T) {
+	cases := []struct {
+		name       string
+		src        string
+		want       int
+		wantReason string
+	}{
+		{name: "one day is the smallest accepted value", src: "days: 1\n", want: 1},
+		{name: "days above any maximum on GitHub is accepted because the maximum is observed", src: "days: 99999\n", want: 99999},
+		{name: "zero days is rejected as not a positive integer", src: "days: 0\n", wantReason: "P.days (line 1, column 7): must be a positive integer; got 0"},
+		{name: "quoted days is rejected as not an integer", src: "days: \"30\"\n", wantReason: `P.days (line 1, column 7): must be an integer; got "30"`},
+		{name: "unknown key is rejected listing days", src: "days: 30\nmaximum_allowed_days: 90\n", wantReason: `unknown key "maximum_allowed_days"; expected days`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.retention(doc.root, "P")
+			if tc.wantReason != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("retention() error = %v, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("retention() error = %v", err)
+			}
+			if got.Days == nil || *got.Days != tc.want {
+				t.Errorf("retention() = %+v, want days %d", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestDocumentDeclaration は、各階層で要求するキーの集合 (スキーマ) と、各段階へ渡すパスを確かめる。
 // 各段階が持つ規則 (マッピングやシーケンスの形、真偽値、name の形式) は、段階ごとのテストが確かめる。
 //
@@ -505,6 +542,20 @@ func TestDocumentDeclaration(t *testing.T) {
 			}},
 		},
 		{
+			name: "retention alone is read into the retention desired state",
+			src:  second + "    actions:\n      retention:\n        days: 30\n",
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				{
+					Reference: mustReference(t, "owner/second"),
+					Desired: DesiredState{
+						General:   General{AllowAutoMerge: new(false)},
+						Retention: Retention{Days: new(30)},
+					},
+				},
+			}},
+		},
+		{
 			name: "private_repositories alone is read into the private fork pull request workflows desired state",
 			src:  second + "    actions:\n      fork_pull_requests:\n        private_repositories:\n          run_workflows_from_fork_pull_requests: true\n          send_write_tokens_to_workflows: false\n          send_secrets_and_variables: false\n          require_approval_for_fork_pr_workflows: true\n",
 			want: Declaration{Repositories: []RepositoryDeclaration{
@@ -666,6 +717,13 @@ func TestDocumentDeclaration(t *testing.T) {
 			src:        second + "    actions:\n      fork_pull_requests:\n        approval_policy: everyone\n",
 			wantPath:   "repositories[1].actions.fork_pull_requests.approval_policy",
 			wantReason: "must be first_time_contributors_new_to_github",
+		},
+		// Retention
+		{
+			name:       "invalid days is rejected at actions.retention.days",
+			src:        second + "    actions:\n      retention:\n        days: 0\n",
+			wantPath:   "repositories[1].actions.retention.days",
+			wantReason: "must be a positive integer",
 		},
 		{
 			name:       "empty variables is rejected at actions.variables",

@@ -10,12 +10,13 @@ import (
 
 // Applicability は、変更予定 (不一致または比較不能と照合した設定) を安全に変更できるかの判断。
 // ゼロ値は、一致した設定に判断がないことを表し、三つ目の判断ではない。
-// フィールドを公開しないのは、適用不能だけが理由を伴い、理由に添える未管理設定は伴う理由のときだけ持つ状態を、
-// Applicable と NotApplicable を通してしか作れなくするため。
+// フィールドを公開しないのは、適用不能だけが理由を伴い、理由に添える未管理設定や上限は伴う理由のときだけ持つ状態を、
+// Applicable、NotApplicable、NotApplicableAboveMaximum を通してしか作れなくするため。
 type Applicability struct {
 	applicable        bool
 	reason            NotApplicableReason
 	unmanagedSettings []setting.Key
+	maximumAllowed    int
 }
 
 // NotApplicableReason は、変更予定が適用不能である理由。文言は表示が決める。
@@ -40,6 +41,9 @@ const (
 	NotApplicableNoMergeMethodEnabled
 	// NotApplicableUninterpretedParts は、存在する関連リソースの値が reco の解釈しない部分を含むこと。
 	NotApplicableUninterpretedParts
+	// NotApplicableAboveMaximumAllowed は、期待値が、計画時に観測した設定できる値の範囲の上限を超えること。上限を伴う。
+	// この理由を持つのは保持日数の変更予定だけである。
+	NotApplicableAboveMaximumAllowed
 )
 
 // Applicable は、適用可能の判断を返す。
@@ -49,12 +53,18 @@ func Applicable() Applicability {
 
 // NotApplicable は、理由 reason による適用不能の判断を返す。unmanagedSettings は、理由に添える、成り立っていない条件に関わる未管理設定。
 // 未管理設定を伴う理由は NotApplicableNoMergeMethodEnabled (無効のまま残るマージ方式) だけで、そのときは一つ以上を伴う。
-// 理由がないか、理由と未管理設定の有無が食い違う判断は、表示が対処を示せないため不変条件の破れとして panic する。
+// 理由がないか、理由と未管理設定の有無が食い違う判断と、上限を伴う理由は、表示が対処を示せないため不変条件の破れとして panic する。
+// 上限を伴う理由は NotApplicableAboveMaximum で作る。
 func NotApplicable(reason NotApplicableReason, unmanagedSettings ...setting.Key) Applicability {
-	if reason == 0 || (reason == NotApplicableNoMergeMethodEnabled) != (len(unmanagedSettings) > 0) {
+	if reason == 0 || reason == NotApplicableAboveMaximumAllowed || (reason == NotApplicableNoMergeMethodEnabled) != (len(unmanagedSettings) > 0) {
 		panic(fmt.Sprintf("changeplan: not-applicable reason %d with %d unmanaged settings", int(reason), len(unmanagedSettings)))
 	}
 	return Applicability{reason: reason, unmanagedSettings: unmanagedSettings}
+}
+
+// NotApplicableAboveMaximum は、期待値が計画時に観測した上限 maximum を超えることによる適用不能の判断を返す。
+func NotApplicableAboveMaximum(maximum int) Applicability {
+	return Applicability{reason: NotApplicableAboveMaximumAllowed, maximumAllowed: maximum}
 }
 
 // IsApplicable は、適用可能と判断したかを返す。
@@ -77,6 +87,11 @@ func (a Applicability) UnmanagedSettings() []setting.Key {
 	return a.unmanagedSettings
 }
 
+// MaximumAllowed は、適用不能の理由に添える、計画時に観測した上限を返す。伴わなければ 0 を返す。
+func (a Applicability) MaximumAllowed() int {
+	return a.maximumAllowed
+}
+
 // judgeApplicability は、管理設定の計画 s の観測結果と、同じリポジトリの管理設定の計画 settings の期待値と、
 // 計画時の観測結果 observed (同じ設定の領域の未管理設定の値) から、変更予定を安全に適用できるかを判断する。
 // 不一致は、設定ごとの設計の更新方式で、前提の設定を持つ依存する設定を除いて追加の条件なしに適用できる。
@@ -94,6 +109,10 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 		// GitHub は Secret scanning が無効のあいだ、push protection を有効にする更新に成功を応答して値を変えない
 		if s.Unit.Key == setting.RepositoryPushProtection && s.Desired.Bool() && !prerequisiteAvailable(setting.SecretScanningEnabled, settings, observed) {
 			return NotApplicable(NotApplicableSecretScanningRemainsDisabled)
+		}
+		// GitHub は上限を超える値の更新を拒否し、値を変えない
+		if s.Unit.Key == setting.RetentionDays && s.Desired.RetentionDays() > observed.Retention.MaximumAllowedDays {
+			return NotApplicableAboveMaximum(observed.Retention.MaximumAllowedDays)
 		}
 		if left := mergeMethodsLeftDisabled(s, settings, observed); len(left) > 0 {
 			return NotApplicable(NotApplicableNoMergeMethodEnabled, left...)

@@ -31,6 +31,7 @@ type DesiredState struct {
 	ActionsAccess                   ActionsAccess
 	ForkPullRequestApproval         ForkPullRequestApproval
 	PrivateForkPullRequestWorkflows PrivateForkPullRequestWorkflows
+	Retention                       Retention
 	// RepositoryVariables は宣言の並びのまま持ち、actions.variables を省略したリポジトリでは nil。
 	RepositoryVariables []VariableDeclaration
 	// Environments は宣言の並びのまま持ち、environments を省略したリポジトリでは nil。
@@ -107,6 +108,11 @@ type ForkPullRequestApproval struct {
 type PrivateForkPullRequestWorkflows struct {
 	// Conditions は設定グループの期待値で、4項目を一体として持つ。
 	Conditions *setting.PrivateForkPullRequestWorkflowConditions
+}
+
+// Retention は、保持期間の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
+type Retention struct {
+	Days *int
 }
 
 // Dependabot は、Dependabot の領域の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
@@ -216,6 +222,11 @@ func (d DesiredState) value(key setting.Key) (value setting.Value, ok bool) {
 	case setting.PrivateForkPullRequestWorkflows:
 		if conditions := d.PrivateForkPullRequestWorkflows.Conditions; conditions != nil {
 			return setting.PrivateForkPullRequestWorkflowConditionsValue(*conditions), true
+		}
+		return setting.Value{}, false
+	case setting.RetentionDays:
+		if days := d.Retention.Days; days != nil {
+			return setting.RetentionDaysValue(*days), true
 		}
 		return setting.Value{}, false
 	case setting.DependabotAlerts:

@@ -90,6 +90,11 @@ func TestClientUpdate(t *testing.T) {
 			},
 		},
 		{
+			name: "retention days sends only days without the maximum", key: setting.RetentionDays,
+			value:       setting.RetentionDaysValue(30),
+			wantRequest: "PUT /repos/owner/repo/actions/permissions/artifact-and-log-retention", wantBody: map[string]any{"days": float64(30)},
+		},
+		{
 			name: "secret_scanning true sends only the nested secret_scanning status enabled", key: setting.SecretScanningEnabled,
 			value:       setting.BoolValue(true),
 			wantRequest: "PATCH /repos/owner/repo",
@@ -994,6 +999,28 @@ func TestUpdateForkPullRequestApprovalPolicyRejected(t *testing.T) {
 		t.Fatalf("updateForkPullRequestApprovalPolicy() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrUnprocessable)
 	}
 	if !strings.HasPrefix(err.Error(), "update fork pull request approval owner/repo: ") {
+		t.Errorf("error = %q, want it to start with the operation and owner/repo", err)
+	}
+	if n := received.Load(); n != 1 {
+		t.Errorf("server received %d requests, want 1", n)
+	}
+}
+
+// TestUpdateRetentionDaysRejected は、GitHub が拒否した更新要求を拒否と判定し、操作と対象を error に添えることを確かめる。
+//
+//trace:checks FR-013 INV-005
+func TestUpdateRetentionDaysRejected(t *testing.T) {
+	var received atomic.Int32
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		received.Add(1)
+		w.WriteHeader(http.StatusConflict)
+	})
+
+	outcome, err := c.updateRetentionDays(t.Context(), mustReference(t, "owner/repo"), 120)
+	if outcome != UpdateRejected || !errors.Is(err, ErrConflict) {
+		t.Fatalf("updateRetentionDays() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrConflict)
+	}
+	if !strings.HasPrefix(err.Error(), "update retention owner/repo: ") {
 		t.Errorf("error = %q, want it to start with the operation and owner/repo", err)
 	}
 	if n := received.Load(); n != 1 {

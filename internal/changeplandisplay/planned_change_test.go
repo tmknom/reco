@@ -150,6 +150,23 @@ func TestPlannedChangeText(t *testing.T) {
 				"    Applicability: not applicable (the repository is private; remove approval_policy, which applies only to public repositories)\n",
 		},
 		{
+			name: "shortening retention days shows one line without a side effect or a note",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.RetentionDays}, Observed: github.Observed(setting.RetentionDaysValue(90)), Desired: setting.RetentionDaysValue(30),
+				Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
+			},
+			want: "  actions.retention.days: 90 -> 30\n",
+		},
+		{
+			name: "retention days over the maximum shows the declared days and the maximum",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.RetentionDays}, Observed: github.Observed(setting.RetentionDaysValue(90)), Desired: setting.RetentionDaysValue(120),
+				Result: changeplan.Mismatch, Applicability: changeplan.NotApplicableAboveMaximum(90),
+			},
+			want: "  actions.retention.days: 90 -> 120\n" +
+				"    Applicability: not applicable (120 days exceeds the maximum of 90 days that GitHub allows for this repository; declare days: 90 or less)\n",
+		},
+		{
 			name: "private fork pull request workflows mismatch shows the values on separate lines and notes each enabled transmission in order",
 			s: changeplan.SettingPlan{
 				Unit:     setting.Unit{Key: setting.PrivateForkPullRequestWorkflows},

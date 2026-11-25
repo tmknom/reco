@@ -61,6 +61,7 @@ reco が管理可能な設定は、次のとおりです。具体的な設定方
 | ほかのリポジトリのワークフローに、このリポジトリの Actions と再利用可能なワークフローを使わせるか（非公開リポジトリだけ） | 「Actions」の「General」ページの「Access」の欄 |
 | Fork からの Pull Request のワークフローの実行に承認が要るユーザーの範囲（公開リポジトリだけ） | 「Actions」の「General」ページの「Approval for running fork pull request workflows from contributors」の欄 |
 | Fork からの Pull Request のワークフローを実行するか、書き込み権限を持つ `GITHUB_TOKEN` や Secrets と Variables を渡すか、実行に承認を求めるか（非公開リポジトリだけ） | 「Actions」の「General」ページの「Fork pull request workflows」の欄 |
+| チェック、ワークフローの実行、コミットのステータス、Artifact、Log を保持する日数 | 「Actions」の「General」ページの「Check, workflow run, status, artifact and log retention」の欄 |
 | ワークフローから読む Repository Variables の名前と値 | 「Secrets and variables」の「Actions」ページの「Variables」タブ |
 | デプロイ先の Environment があるか（なければ作成する） | 「Environments」ページの Environment の一覧 |
 | Environment へデプロイできるブランチとタグを、制限しないか、保護ルールのあるブランチに限るか、選んだパターンに限るか | 「Environments」ページの Environment の「Deployment branches and tags」の欄の「No restriction」、「Protected branches only」、「Selected branches and tags」 |

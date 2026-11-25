@@ -1,6 +1,6 @@
 # Environments の設計
 
-設定宣言の `environments`（[YAML 設定仕様](../../spec/configuration.md) 9章）に属する設定の設計を定めます。文書の構成は [設定ごとの設計](README.md) に従います。関連リソースに共通する規則は [ドメインモデル](../domain.md) の関連リソースと存在に従い、ここでは繰り返しません。
+設定宣言の `environments`（[YAML 設定仕様](../../spec/configuration.md) 10章）に属する設定の設計を定めます。文書の構成は [設定ごとの設計](README.md) に従います。関連リソースに共通する規則は [ドメインモデル](../domain.md) の関連リソースと存在に従い、ここでは繰り返しません。
 
 ## 設定と管理の単位
 
@@ -30,7 +30,7 @@ Environment Variable の管理の単位は、属する先の Environment の名�
 
 ## 観測
 
-Environments は、`GET /repos/{owner}/{repo}/environments` の全ページで読みます（[GitHub API 通信の設計](../github-access.md) 2.3節）。一覧の成功応答が、作成と削除の直後も含めて存在する Environment をすべて含むことと、GitHub が ASCII の英字の大文字小文字だけが違う名前を同じ Environment とみなすことを、実際の動作で確かめています（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 2章・3.1）。GitHub はほかの違い（アクセントの有無など）も同じとみなすため、宣言の名前は同一性を判定できる名前に限り（YAML 設定仕様 9.1節）、判定できない名前の扱いはドメインモデルの同一性を判定できる名前に従います。一覧に、Unicode の単純な大文字小文字の畳み込みで同じになる名前が二つ以上あれば、取得契約に適合しない応答とします。GitHub は二つを同じ Environment とみなすはずで、どちらを照合し更新するかが決まらないためです。一覧の要素は個別取得の本文と全フィールドが一致するため（同 3.1）、個別取得は送りません。
+Environments は、`GET /repos/{owner}/{repo}/environments` の全ページで読みます（[GitHub API 通信の設計](../github-access.md) 2.3節）。一覧の成功応答が、作成と削除の直後も含めて存在する Environment をすべて含むことと、GitHub が ASCII の英字の大文字小文字だけが違う名前を同じ Environment とみなすことを、実際の動作で確かめています（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 2章・3.1）。GitHub はほかの違い（アクセントの有無など）も同じとみなすため、宣言の名前は同一性を判定できる名前に限り（YAML 設定仕様 10.1節）、判定できない名前の扱いはドメインモデルの同一性を判定できる名前に従います。一覧に、Unicode の単純な大文字小文字の畳み込みで同じになる名前が二つ以上あれば、取得契約に適合しない応答とします。GitHub は二つを同じ Environment とみなすはずで、どちらを照合し更新するかが決まらないためです。一覧の要素は個別取得の本文と全フィールドが一致するため（同 3.1）、個別取得は送りません。
 
 Environment の取得契約は、`id`、`name`、`deployment_branch_policy`、`protection_rules`、`can_admins_bypass` がそろうことです。`can_admins_bypass` は公式のスキーマにありませんが、常に返ることを確かめています（同 3.2）。方式は `deployment_branch_policy` から、`null` を `all`、`protected_branches` だけが真を `protected_branches`、`custom_branch_policies` だけが真を `selected` と読みます。二つが同じ値の組は GitHub が更新で受け付けないため（同 1章）、取得で受けたら取得契約に適合しない応答とします。保護ルールは `type` で読み分け、`wait_timer` と `required_reviewers` の値だけを読みます。
 
@@ -53,7 +53,7 @@ Environments と Environment Variables に、取得条件による観測不能�
 
 ## 適用可能性と副作用
 
-Environments と Environment Variables に固有の適用不能の条件はありません。名前の同一性を判定できないことと、属する先が存在しないことによる適用可能性は、ドメインモデルの照合と変更予定に従います。変数を書いた Environment は `environments[]` に書いた Environment で、存在することを宣言しているため（YAML 設定仕様 9.3節）、属する先が宣言されていないことによる適用不能は生じません。非公開リポジトリでも Environment Variables の一覧、作成、更新を利用できたため（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 1.1）、公開範囲による適用不能も設けません。一つの Environment の変数の件数の上限（100件）と値の長さの上限は、計画の時点で確かめません。
+Environments と Environment Variables に固有の適用不能の条件はありません。名前の同一性を判定できないことと、属する先が存在しないことによる適用可能性は、ドメインモデルの照合と変更予定に従います。変数を書いた Environment は `environments[]` に書いた Environment で、存在することを宣言しているため（YAML 設定仕様 10.3節）、属する先が宣言されていないことによる適用不能は生じません。非公開リポジトリでも Environment Variables の一覧、作成、更新を利用できたため（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 1.1）、公開範囲による適用不能も設けません。一つの Environment の変数の件数の上限（100件）と値の長さの上限は、計画の時点で確かめません。
 
 Environment と Environment Variable の変更予定に、変更に伴う副作用と再開する設定はありません。方式を `selected` から変えて個別パターンがなくなることは、デプロイ元制限という管理設定の値の変更です（ドメインモデルの一覧の全体を宣言する設定との違い）。
 

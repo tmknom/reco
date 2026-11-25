@@ -97,9 +97,7 @@ func writeActionsAccess(b *strings.Builder, a github.ActionsAccess) {
 }
 
 // writeRetention は actions.retention を書く。
-// 設定宣言がまだ受け付けないため、すべての行を YAML のコメントにし、その前の行で書けないことを示す。
 // 上限は設定宣言に書けない値のため、値の位置ではなく行末のコメントに書く。
 func writeRetention(b *strings.Builder, r github.Retention) {
-	fmt.Fprintf(b, "      # reco does not accept the retention period in the configuration file yet\n"+
-		"      # retention:\n      #   days: %d # maximum allowed: %d\n", r.Days, r.MaximumAllowedDays)
+	fmt.Fprintf(b, "      retention:\n        days: %d # maximum allowed: %d\n", r.Days, r.MaximumAllowedDays)
 }

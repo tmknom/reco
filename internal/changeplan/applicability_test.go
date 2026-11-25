@@ -447,6 +447,41 @@ func TestJudgeApplicability_MergeMethods(t *testing.T) {
 	}
 }
 
+// TestJudgeApplicability_RetentionDays は、保持日数の期待値を計画時に観測した上限と比べ、上限を超える変更予定を、上限を伴って適用不能にすることを確かめる。
+//
+//trace:checks FR-006
+func TestJudgeApplicability_RetentionDays(t *testing.T) {
+	cases := []struct {
+		name     string
+		observed int
+		desired  int
+		maximum  int
+		want     Applicability
+	}{
+		{name: "desired days equal to the maximum is applicable", observed: 30, desired: 90, maximum: 90, want: Applicable()},
+		{name: "desired days over the maximum is not applicable with the maximum", observed: 90, desired: 91, maximum: 90, want: NotApplicableAboveMaximum(90)},
+		{name: "observed days over the maximum does not prevent a change within it", observed: 120, desired: 90, maximum: 90, want: Applicable()},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := newSettingPlan(setting.Unit{Key: setting.RetentionDays}, github.Observed(setting.RetentionDaysValue(tc.observed)), setting.RetentionDaysValue(tc.desired))
+			observed := github.ObservationResult{Retention: &github.Retention{Days: tc.observed, MaximumAllowedDays: tc.maximum}}
+			if got := judgeApplicability(plan, []SettingPlan{plan}, observed); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("judgeApplicability() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+
+	// 上限があとから下がったときに生じる状況で、reco が送る更新がない
+	t.Run("matching days over the maximum is not judged", func(t *testing.T) {
+		plan := newSettingPlan(setting.Unit{Key: setting.RetentionDays}, github.Observed(setting.RetentionDaysValue(120)), setting.RetentionDaysValue(120))
+		observed := github.ObservationResult{Retention: &github.Retention{Days: 120, MaximumAllowedDays: 90}}
+		if got := judgeApplicability(plan, []SettingPlan{plan}, observed); !reflect.DeepEqual(got, Applicability{}) {
+			t.Errorf("judgeApplicability() = %+v, want no judgment", got)
+		}
+	})
+}
+
 func TestNotApplicable_PanicsOnInconsistentReason(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -456,6 +491,7 @@ func TestNotApplicable_PanicsOnInconsistentReason(t *testing.T) {
 		{name: "missing reason", reason: 0},
 		{name: "no merge method enabled without merge methods left disabled", reason: NotApplicableNoMergeMethodEnabled},
 		{name: "reason without unmanaged settings given unmanaged settings", reason: NotApplicablePublicRepository, unmanaged: []setting.Key{setting.AllowRebaseMerge}},
+		{name: "above the maximum allowed must be built with NotApplicableAboveMaximum", reason: NotApplicableAboveMaximumAllowed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -477,6 +513,7 @@ func TestApplicability(t *testing.T) {
 		wantNotApplicable bool
 		wantReason        NotApplicableReason
 		wantUnmanaged     []setting.Key
+		wantMaximum       int
 	}{
 		{name: "no judgment is neither applicable nor not applicable", in: Applicability{}},
 		{name: "applicable has no reason", in: Applicable(), wantApplicable: true},
@@ -484,6 +521,10 @@ func TestApplicability(t *testing.T) {
 		{
 			name: "no merge method enabled has the merge methods left disabled", in: NotApplicable(NotApplicableNoMergeMethodEnabled, setting.AllowRebaseMerge),
 			wantNotApplicable: true, wantReason: NotApplicableNoMergeMethodEnabled, wantUnmanaged: []setting.Key{setting.AllowRebaseMerge},
+		},
+		{
+			name: "above the maximum has the maximum", in: NotApplicableAboveMaximum(90),
+			wantNotApplicable: true, wantReason: NotApplicableAboveMaximumAllowed, wantMaximum: 90,
 		},
 	}
 	for _, tc := range cases {
@@ -499,6 +540,9 @@ func TestApplicability(t *testing.T) {
 			}
 			if got := tc.in.UnmanagedSettings(); !slices.Equal(got, tc.wantUnmanaged) {
 				t.Errorf("UnmanagedSettings() = %v, want %v", got, tc.wantUnmanaged)
+			}
+			if got := tc.in.MaximumAllowed(); got != tc.wantMaximum {
+				t.Errorf("MaximumAllowed() = %d, want %d", got, tc.wantMaximum)
 			}
 		})
 	}

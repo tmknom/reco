@@ -26,7 +26,7 @@ reco [--log-level LEVEL] apply [--config PATH] [--repo OWNER/REPO]
 
 ## `show`
 
-`--repo` で指定したリポジトリの、設定ファイルに書ける設定の現在の値を表示します。設定ファイルを書く前に、今の値を確かめるときに使います。Artifact と Log の保持期間は、まだ設定ファイルに書けませんが、今の値をコメントとして表示します。
+`--repo` で指定したリポジトリの、設定ファイルに書ける設定の現在の値を表示します。設定ファイルを書く前に、今の値を確かめるときに使います。
 
 ```bash
 $ reco show --repo example/project-a
@@ -56,9 +56,8 @@ repositories:
           send_write_tokens_to_workflows: false
           send_secrets_and_variables: false
           require_approval_for_fork_pr_workflows: false
-      # reco does not accept the retention period in the configuration file yet
-      # retention:
-      #   days: 90 # maximum allowed: 400
+      retention:
+        days: 90 # maximum allowed: 400
       variables:
         - name: "GO_VERSION"
           value: "1.27"
@@ -92,9 +91,8 @@ repositories:
 | `# variables: none` | `actions` の下では Repository Variables が、Environment の下ではその Environment の変数（Environment Variables）が一つもない |
 | `# environments: none` | Environment が一つもない |
 | `# access:` と `#   access_level: unavailable (the repository is public)` | 公開リポジトリのため、`access_level` を読み取れない。この設定は非公開リポジトリにだけ書ける |
-| `# reco does not accept the retention period in the configuration file yet` | 続くコメントの行の `retention`（Artifact と Log の保持期間）は、いまの reco では設定ファイルに書けない。今の値を確かめるためだけに表示している |
 | `# approval_policy: unavailable (the repository is private)` / `# private_repositories: unavailable (the repository is public)` | Fork からの Pull Request のワークフローの承認ポリシー（`approval_policy`）は公開リポジトリにだけ、実行条件（`private_repositories`）は非公開リポジトリにだけあるため、非公開リポジトリでは `approval_policy` を、公開リポジトリでは `private_repositories` を読み取れない。読み取れた側は、`fork_pull_requests` とともに設定ファイルに書ける行として表示する |
-| `#   days: 90 # maximum allowed: 400` | 保持日数は90日で、このリポジトリで設定できる上限は400日 |
+| `days: 90 # maximum allowed: 400` | 保持日数は90日で、このリポジトリで設定できる上限は400日 |
 | `dependabot_security_updates: true # paused by GitHub (still enabled)` | Dependabot security updates は有効だが、GitHub が一時停止している。設定ファイルでは `true` と書いたのと同じ |
 | `# secret_scanning: unavailable (the repository is private)` / `# secret_scanning_push_protection: unavailable (the repository is private)` / `# private_vulnerability_reporting: unavailable (the repository is private)` | 非公開リポジトリのため、Secret scanning、リポジトリの push protection、Private vulnerability reporting の値を読み取れない |
 | `# rulesets: none` | Ruleset が一つもない |

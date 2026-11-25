@@ -1100,3 +1100,42 @@ func TestGenerate_PrivateForkPullRequestWorkflows(t *testing.T) {
 		}
 	})
 }
+
+const retentionSource = `repositories:
+  - name: owner/repo
+    actions:
+      retention:
+        days: 120
+`
+
+// TestGenerate_RetentionDays は、保持日数の照合と適用可能性が、同じ読み取りで観測した上限を使うことを確かめる。
+//
+//trace:checks FR-005 FR-006
+func TestGenerate_RetentionDays(t *testing.T) {
+	file := configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(retentionSource)}}, Name: "reco.yaml", Path: "./reco.yaml"}
+	server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+		"GET /repos/owner/repo": githubtest.OK(githubtest.RepositoryBody{ID: 7}.JSON()),
+		"GET /repos/owner/repo/actions/permissions/artifact-and-log-retention": githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 90}.JSON()),
+	}))
+	client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+	got, err := Generate(context.Background(), client, file, nil)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if want := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions/artifact-and-log-retention"}; !slices.Equal(server.RequestLines(), want) {
+		t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+	}
+	want := []SettingPlan{{
+		Unit:     setting.Unit{Key: setting.RetentionDays},
+		Observed: github.Observed(setting.RetentionDaysValue(90)),
+		Desired:  setting.RetentionDaysValue(120),
+		Result:   Mismatch, Applicability: NotApplicableAboveMaximum(90),
+	}}
+	if len(got.Repositories) != 1 {
+		t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
+	}
+	if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
+		t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
+	}
+}

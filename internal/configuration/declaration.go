@@ -220,12 +220,12 @@ func (d document) deploymentPattern(n *yaml.Node, path string) (setting.Deployme
 	return setting.DeploymentPattern{Type: patternType, Name: name}, nil
 }
 
-// actions は、Actions の階層のうち reco が受け付ける permissions、workflow、access、fork_pull_requests、variables だけを読み、desired の該当する領域を埋める。
+// actions は、Actions の階層のうち reco が受け付ける permissions、workflow、access、fork_pull_requests、retention、variables だけを読み、desired の該当する領域を埋める。
 // 領域ごとの戻り値を並べず desired を埋めるのは、Actions の領域が多く、領域を足すたびに戻り値とその受け取りを直さずに済ませるため。
 // 失敗したときに途中まで埋まった desired は、呼び出し元が捨てる。
 // どれも任意のキーだが、空のマッピングは拒否されるため、成功すればどれかは必ずある。
 func (d document) actions(n *yaml.Node, path string, desired *DesiredState) error {
-	entries, err := d.mappingEntries(n, path, nil, []string{"permissions", "workflow", "access", "fork_pull_requests", "variables"})
+	entries, err := d.mappingEntries(n, path, nil, []string{"permissions", "workflow", "access", "fork_pull_requests", "retention", "variables"})
 	if err != nil {
 		return err
 	}
@@ -246,6 +246,11 @@ func (d document) actions(n *yaml.Node, path string, desired *DesiredState) erro
 	}
 	if value, ok := entries["fork_pull_requests"]; ok {
 		if desired.ForkPullRequestApproval, desired.PrivateForkPullRequestWorkflows, err = d.forkPullRequests(value, path+".fork_pull_requests"); err != nil {
+			return err
+		}
+	}
+	if value, ok := entries["retention"]; ok {
+		if desired.Retention, err = d.retention(value, path+".retention"); err != nil {
 			return err
 		}
 	}
@@ -467,6 +472,24 @@ func (d document) access(n *yaml.Node, path string) (ActionsAccess, error) {
 		return ActionsAccess{}, err
 	}
 	return ActionsAccess{AccessLevel: &level}, nil
+}
+
+// retention は、保持期間を読む。キーは days だけのため必須として渡す。空のマッピングは mappingEntries が拒否する。
+// 上限はリポジトリごとに観測してはじめて分かるため確かめず、GitHub の下限の 1 だけを確かめる。
+func (d document) retention(n *yaml.Node, path string) (Retention, error) {
+	entries, err := d.mappingEntries(n, path, []string{"days"}, nil)
+	if err != nil {
+		return Retention{}, err
+	}
+	daysNode := entries["days"]
+	days, err := d.intValue(daysNode, path+".days")
+	if err != nil {
+		return Retention{}, err
+	}
+	if days < 1 {
+		return Retention{}, invalid(daysNode, path+".days", "must be a positive integer; got %d", days)
+	}
+	return Retention{Days: &days}, nil
 }
 
 // forkPullRequests は、Fork からの Pull Request のワークフローの設定を、承認ポリシーと実行条件の二つの領域に分けて読む。
