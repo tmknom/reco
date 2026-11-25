@@ -214,7 +214,15 @@ jobs:
           assets="${RUNNER_TEMP}/release-assets"
           mkdir "${assets}"
           cp dist/SHA256SUMS "${assets}/"
-          for name in $(awk '{print $2}' dist/SHA256SUMS); do
+          # awk の失敗を set -e で止めるため、コマンド置換で受けてから配列にする。
+          # 空の入力でも空文字列の要素が1つできるため、件数を確かめてからループする
+          listed="$(awk '{print $2}' dist/SHA256SUMS)"
+          mapfile -t names <<< "${listed}"
+          if [[ "${#names[@]}" -ne 12 ]]; then
+            echo "::error::SHA256SUMS lists ${#names[@]} files, but 12 are expected"
+            exit 1
+          fi
+          for name in "${names[@]}"; do
             path="$(jq -r --arg name "${name}" \
               '[.[] | select(.name == $name) | .path] | unique |
                 if length == 1 then .[0] else error("\(length) paths found for \($name)") end' \
@@ -232,12 +240,13 @@ jobs:
           set -euo pipefail
           version_number="${VERSION#v}"
           prefix="${APP_NAME}_${version_number}_"
-          binaries="$(printf "${prefix}%s\n" \
-            darwin_amd64 darwin_arm64 \
-            linux_amd64 linux_arm64 \
-            windows_amd64.exe windows_arm64.exe | sort)"
-          sboms="$(sed 's/$/.sbom.json/' <<< "${binaries}")"
-          expected_listed="$(printf '%s\n' ${binaries} ${sboms} | sort)"
+          binaries=()
+          sboms=()
+          for target in darwin_amd64 darwin_arm64 linux_amd64 linux_arm64 windows_amd64.exe windows_arm64.exe; do
+            binaries+=("${prefix}${target}")
+            sboms+=("${prefix}${target}.sbom.json")
+          done
+          expected_listed="$(printf '%s\n' "${binaries[@]}" "${sboms[@]}" | sort)"
           listed="$(awk '{print $2}' SHA256SUMS | sort)"
           if [[ "${listed}" != "${expected_listed}" ]]; then
             echo "::error::SHA256SUMS does not list exactly the six binaries and six SBOMs"
@@ -248,7 +257,7 @@ jobs:
           # 配布名と中身の取り違えを検出するよう、Go がバイナリに記録したビルド設定の GOOS と GOARCH がファイル名と一致することを確かめる。
           # あわせて、cgo を使わず、.goreleaser.yaml で固定した CPU の下限（GOAMD64、GOARM64）でビルドされたことも確かめる。
           # go version -m はバイナリを実行せずに読む
-          for file in ${binaries}; do
+          for file in "${binaries[@]}"; do
             target="${file#"${prefix}"}"
             target="${target%.exe}"
             arch="${target#*_}"
@@ -271,7 +280,7 @@ jobs:
           done
 
           # SBOM が対象のバイナリを記述していることだけを確かめ、記載内容の正確さは確かめない
-          for file in ${binaries}; do
+          for file in "${binaries[@]}"; do
             digest="$(sha256sum "${file}" | awk '{print $1}')"
             if ! jq -e --arg name "${file}" --arg digest "${digest}" \
               '(.spdxVersion | startswith("SPDX-")) and .name == $name and
@@ -292,7 +301,7 @@ jobs:
 
           # Upload はディレクトリごとアップロードするため、バイナリの実行で生じたファイルも含めて、
           # 配布するファイルと SHA256SUMS 以外がないことを、実行の後に確かめる
-          expected="$(printf '%s\n' ${expected_listed} SHA256SUMS | sort)"
+          expected="$(printf '%s\n' "${binaries[@]}" "${sboms[@]}" SHA256SUMS | sort)"
           files="$(find . -type f -printf '%P\n' | sort)"
           if [[ "${files}" != "${expected}" ]]; then
             echo "::error::The collected files do not match the six binaries, six SBOMs, and SHA256SUMS"
@@ -627,12 +636,11 @@ jobs:
           set -euo pipefail
           # 列挙が空だと検証が1回も走らずに成功し、重複があると別のファイルが欠けるため、
           # 期待するバイナリ 6 件と SBOM 6 件に一致することを確かめる
-          binaries="$(printf "${APP_NAME}_${VERSION#v}_%s\n" \
-            darwin_amd64 darwin_arm64 \
-            linux_amd64 linux_arm64 \
-            windows_amd64.exe windows_arm64.exe)"
-          sboms="$(sed 's/$/.sbom.json/' <<< "${binaries}")"
-          expected="$(printf '%s\n' ${binaries} ${sboms} | sort)"
+          files=()
+          for target in darwin_amd64 darwin_arm64 linux_amd64 linux_arm64 windows_amd64.exe windows_arm64.exe; do
+            files+=("${APP_NAME}_${VERSION#v}_${target}" "${APP_NAME}_${VERSION#v}_${target}.sbom.json")
+          done
+          expected="$(printf '%s\n' "${files[@]}" | sort)"
           listed="$(awk '{print $2}' SHA256SUMS | sort)"
           if [[ "${listed}" != "${expected}" ]]; then
             echo "::error::SHA256SUMS does not list exactly the six binaries and six SBOMs"
@@ -644,7 +652,7 @@ jobs:
           # gh attestation verify はファイルの digest だけで Attestation を照合するため、
           # 署名された subject の名前もファイル名と一致することを確かめ、ファイル同士の中身の入れ替えを検出する。
           # 成功しても何も出力しないため、結果を出力する
-          for file in ${expected}; do
+          for file in "${files[@]}"; do
             digest="$(sha256sum "${file}" | awk '{print $1}')"
             gh attestation verify "${file}" \
               --repo "${GITHUB_REPOSITORY}" \
@@ -710,8 +718,10 @@ jobs:
         run: |
           set -euo pipefail
           echo "${IMAGE_REF}" > container-image.txt
-          # プロセス置換の失敗は set -e で止まらないため、件数を確かめてから公開する
-          mapfile -t files < <(awk '{print $2}' SHA256SUMS)
+          # awk の失敗を set -e で止めるため、コマンド置換で受けてから配列にする。
+          # 空の入力でも空文字列の要素が1つできるため、件数を確かめてから公開する
+          listed="$(awk '{print $2}' SHA256SUMS)"
+          mapfile -t files <<< "${listed}"
           if [[ "${#files[@]}" -ne 12 ]]; then
             echo "::error::SHA256SUMS lists ${#files[@]} files, but 12 are expected"
             exit 1
@@ -784,7 +794,15 @@ jobs:
           # 対象は SHA256SUMS に列挙されたバイナリと SBOM で、diff -r により正規の成果物と同じ 12 件である。
           # gh attestation verify は TTY がないと成功しても何も出力しないため、結果を出力する
           cd "${published}"
-          for file in $(awk '{print $2}' SHA256SUMS); do
+          # awk の失敗を set -e で止めるため、コマンド置換で受けてから配列にする。
+          # 空の入力でも空文字列の要素が1つできるため、件数を確かめてからループする
+          listed="$(awk '{print $2}' SHA256SUMS)"
+          mapfile -t files <<< "${listed}"
+          if [[ "${#files[@]}" -ne 12 ]]; then
+            echo "::error::SHA256SUMS lists ${#files[@]} files, but 12 are expected"
+            exit 1
+          fi
+          for file in "${files[@]}"; do
             gh attestation verify "${file}" \
               --repo "${GITHUB_REPOSITORY}" \
               --signer-workflow "${SIGNER_WORKFLOW}" \
