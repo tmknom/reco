@@ -23,10 +23,10 @@ func rulesetChangeText(s changeplan.SettingPlan) string {
 	case changeplan.Match:
 		return ""
 	case changeplan.Mismatch:
-		observed, _ := s.Observed.Value()
-		if observed.Equal(setting.Absent()) {
+		if s.IsCreation() {
 			fmt.Fprintf(&b, "  %s: absent -> present\n%s", s.Unit.String(), rulesetValueLines(s.Desired.Ruleset()))
 		} else {
+			observed, _ := s.Observed.Value()
 			fmt.Fprintf(&b, "  %s:\n%s", s.Unit.String(), rulesetDifferenceLines(observed.Ruleset(), s.Desired.Ruleset()))
 		}
 	case changeplan.NotComparable:

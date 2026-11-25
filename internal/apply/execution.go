@@ -258,8 +258,8 @@ func comparedUnits(change changeplan.LogicalChange) []setting.Unit {
 	var units []setting.Unit
 	for _, operation := range change.Operations {
 		units = append(units, operation.Unit)
-		for _, relevant := range operation.RelevantSettings {
-			units = append(units, relevant.Unit)
+		for _, basis := range operation.PreconditionBases {
+			units = append(units, basis.Unit)
 		}
 	}
 	return append(units, change.Units()...)
@@ -279,14 +279,14 @@ func observeAfterUpdate(ctx context.Context, client *github.Client, r changeplan
 	for i := 0; ; i++ {
 		observed, err := client.ObserveRepositoryForNamedResources(ctx, r.Target, observationResources(change), areas...)
 		if err != nil {
-			return github.ObservationResult{}, desiredStateUnconfirmed, unavailableDesiredSetting{}, err
+			return github.ObservationResult{}, desiredStateObservationFailed, unavailableDesiredSetting{}, err
 		}
 		confirmation, unavailable := confirmDesiredState(r.RepositoryID, change, observed)
 		if (confirmation != desiredStateMismatch && confirmation != desiredStateUnavailable) || i == len(retryDelays) {
 			return observed, confirmation, unavailable, nil
 		}
 		if err := waitFor(ctx, after, retryDelays[i]); err != nil {
-			return github.ObservationResult{}, desiredStateUnconfirmed, unavailableDesiredSetting{}, fmt.Errorf("wait before reading %s again after the update: %w", r.Target, err)
+			return github.ObservationResult{}, desiredStateObservationFailed, unavailableDesiredSetting{}, fmt.Errorf("wait before reading %s again after the update: %w", r.Target, err)
 		}
 	}
 }

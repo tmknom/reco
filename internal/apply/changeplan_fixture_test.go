@@ -11,7 +11,7 @@ import (
 
 // accessLevelChange は、access_level を none から user にする論理的な設定変更。
 func accessLevelChange() changeplan.LogicalChange {
-	return singleUpdate(setting.ActionsAccessLevel, setting.AccessLevelValue(setting.AccessUser), relevantTo(setting.ActionsAccessLevel, setting.AccessLevelValue(setting.AccessNone)))
+	return singleUpdate(setting.ActionsAccessLevel, setting.AccessLevelValue(setting.AccessUser), basesOf(setting.ActionsAccessLevel, setting.AccessLevelValue(setting.AccessNone)))
 }
 
 // forkPullRequestApprovalChange は、Fork Pull Request ワークフローの承認ポリシーを first_time_contributors から all_external_contributors にする論理的な設定変更。
@@ -19,13 +19,13 @@ func forkPullRequestApprovalChange() changeplan.LogicalChange {
 	return singleUpdate(
 		setting.ForkPullRequestApproval,
 		setting.ForkPullRequestApprovalPolicyValue(setting.ForkPullRequestApprovalAllExternalContributors),
-		relevantTo(setting.ForkPullRequestApproval, setting.ForkPullRequestApprovalPolicyValue(setting.ForkPullRequestApprovalFirstTimeContributors)),
+		basesOf(setting.ForkPullRequestApproval, setting.ForkPullRequestApprovalPolicyValue(setting.ForkPullRequestApprovalFirstTimeContributors)),
 	)
 }
 
 // retentionDaysChange は、保持日数を 90 から 120 にする論理的な設定変更。上限は関係する現在値に含まない。
 func retentionDaysChange() changeplan.LogicalChange {
-	return singleUpdate(setting.RetentionDays, setting.RetentionDaysValue(120), relevantTo(setting.RetentionDays, setting.RetentionDaysValue(90)))
+	return singleUpdate(setting.RetentionDays, setting.RetentionDaysValue(120), basesOf(setting.RetentionDays, setting.RetentionDaysValue(90)))
 }
 
 // privateForkPullRequestWorkflowsChange は、非公開リポジトリの Fork Pull Request ワークフローの実行条件を、
@@ -34,18 +34,18 @@ func privateForkPullRequestWorkflowsChange() changeplan.LogicalChange {
 	return singleUpdate(
 		setting.PrivateForkPullRequestWorkflows,
 		setting.PrivateForkPullRequestWorkflowConditionsValue(setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true}),
-		relevantTo(setting.PrivateForkPullRequestWorkflows, setting.PrivateForkPullRequestWorkflowConditionsValue(setting.PrivateForkPullRequestWorkflowConditions{})),
+		basesOf(setting.PrivateForkPullRequestWorkflows, setting.PrivateForkPullRequestWorkflowConditionsValue(setting.PrivateForkPullRequestWorkflowConditions{})),
 	)
 }
 
 // allowAutoMergeChange は、allow_auto_merge を false から true にする論理的な設定変更。
 func allowAutoMergeChange() changeplan.LogicalChange {
-	return singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), relevantTo(setting.AllowAutoMerge, setting.BoolValue(false)))
+	return singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), basesOf(setting.AllowAutoMerge, setting.BoolValue(false)))
 }
 
 // deleteBranchOnMergeChange は、delete_branch_on_merge を false から true にする論理的な設定変更。
 func deleteBranchOnMergeChange() changeplan.LogicalChange {
-	return singleUpdate(setting.DeleteBranchOnMerge, setting.BoolValue(true), relevantTo(setting.DeleteBranchOnMerge, setting.BoolValue(false)))
+	return singleUpdate(setting.DeleteBranchOnMerge, setting.BoolValue(true), basesOf(setting.DeleteBranchOnMerge, setting.BoolValue(false)))
 }
 
 // defaultWorkflowPermissionsChange は、default_workflow_permissions を write から read にする論理的な設定変更。
@@ -53,13 +53,13 @@ func defaultWorkflowPermissionsChange() changeplan.LogicalChange {
 	return singleUpdate(
 		setting.DefaultWorkflowPermissions,
 		setting.PermissionLevelValue(setting.PermissionRead),
-		relevantTo(setting.DefaultWorkflowPermissions, setting.PermissionLevelValue(setting.PermissionWrite)),
+		basesOf(setting.DefaultWorkflowPermissions, setting.PermissionLevelValue(setting.PermissionWrite)),
 	)
 }
 
 // canApprovePullRequestReviewsChange は、can_approve_pull_request_reviews を true から false にする論理的な設定変更。
 func canApprovePullRequestReviewsChange() changeplan.LogicalChange {
-	return singleUpdate(setting.CanApprovePullRequestReviews, setting.BoolValue(false), relevantTo(setting.CanApprovePullRequestReviews, setting.BoolValue(true)))
+	return singleUpdate(setting.CanApprovePullRequestReviews, setting.BoolValue(false), basesOf(setting.CanApprovePullRequestReviews, setting.BoolValue(true)))
 }
 
 // allowedActionsChange は、Actions 許可ポリシーを all から local_only にする、副作用のない論理的な設定変更。
@@ -67,7 +67,7 @@ func allowedActionsChange() changeplan.LogicalChange {
 	return singleUpdate(
 		setting.AllowedActions,
 		setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly),
-		relevantTo(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsAll)),
+		basesOf(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsAll)),
 	)
 }
 
@@ -77,13 +77,13 @@ func selectedActionsChange() changeplan.LogicalChange {
 	return singleUpdate(
 		setting.SelectedActions,
 		setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{VerifiedAllowed: true, PatternsAllowed: []string{"a/*", "b/*"}}),
-		relevantTo(setting.SelectedActions, setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{PatternsAllowed: []string{"a/*", "b/*"}})),
+		basesOf(setting.SelectedActions, setting.SelectedActionsCriteriaValue(setting.SelectedActionsCriteria{PatternsAllowed: []string{"a/*", "b/*"}})),
 	)
 }
 
 // enableActionsChange は、enableActionsNotComparable から導く論理的な設定変更。基準はどちらも Actions が無効による観測不能。
 func enableActionsChange() changeplan.LogicalChange {
-	return singleUpdate(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly), []changeplan.RelevantSetting{
+	return singleUpdate(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly), []changeplan.PreconditionBasis{
 		{Unit: setting.Unit{Key: setting.AllowedActions}, AnticipatedValue: changeplan.AnticipateUnchanged(github.Unavailable[setting.Value](github.UnavailableActionsDisabled))},
 		{Unit: setting.Unit{Key: setting.SelectedActions}, AnticipatedValue: changeplan.AnticipateUnchanged(github.Unavailable[setting.Value](github.UnavailableActionsDisabled))},
 	})
@@ -91,12 +91,12 @@ func enableActionsChange() changeplan.LogicalChange {
 
 // enabledStateChange は、Actions の有効状態を to にする論理的な設定変更。基準は有効状態の反対の観測値だけである。
 func enabledStateChange(to bool) changeplan.LogicalChange {
-	return singleUpdate(setting.ActionsEnabled, setting.BoolValue(to), relevantTo(setting.ActionsEnabled, setting.BoolValue(!to)))
+	return singleUpdate(setting.ActionsEnabled, setting.BoolValue(to), basesOf(setting.ActionsEnabled, setting.BoolValue(!to)))
 }
 
 // shaPinningRequiredChange は、Actions が有効のリポジトリで sha_pinning_required を false から true にする論理的な設定変更。
 func shaPinningRequiredChange() changeplan.LogicalChange {
-	return singleUpdate(setting.SHAPinningRequired, setting.BoolValue(true), []changeplan.RelevantSetting{
+	return singleUpdate(setting.SHAPinningRequired, setting.BoolValue(true), []changeplan.PreconditionBasis{
 		{Unit: setting.Unit{Key: setting.SHAPinningRequired}, AnticipatedValue: changeplan.AnticipateValue(setting.BoolValue(false))},
 		{Unit: setting.Unit{Key: setting.ActionsEnabled}, AnticipatedValue: changeplan.AnticipateValue(setting.BoolValue(true))},
 	})
@@ -104,7 +104,7 @@ func shaPinningRequiredChange() changeplan.LogicalChange {
 
 // shaPinningRequiredAfterEnablingChange は、Actions が無効のリポジトリで、Actions を有効にする変更のあとに sha_pinning_required を true にする論理的な設定変更。
 func shaPinningRequiredAfterEnablingChange() changeplan.LogicalChange {
-	return singleUpdate(setting.SHAPinningRequired, setting.BoolValue(true), relevantTo(setting.ActionsEnabled, setting.BoolValue(true)))
+	return singleUpdate(setting.SHAPinningRequired, setting.BoolValue(true), basesOf(setting.ActionsEnabled, setting.BoolValue(true)))
 }
 
 // creationChange は、計画時に存在しなかった name の Environment を、デプロイ元制限を送らずに作成する論理的な設定変更。
@@ -116,7 +116,7 @@ func creationChange(t *testing.T, name string) changeplan.LogicalChange {
 		DesiredState: []changeplan.DesiredSetting{{Unit: unit, Value: setting.Present()}},
 		Operations: []changeplan.UpdateOperation{{
 			Kind: changeplan.EnvironmentCreation, Unit: unit,
-			RelevantSettings: []changeplan.RelevantSetting{{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Absent())}},
+			PreconditionBases: []changeplan.PreconditionBasis{{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Absent())}},
 		}},
 	}
 }
@@ -130,7 +130,7 @@ func creationWithModeChange(t *testing.T, name string, mode setting.DeploymentBr
 		DesiredState: []changeplan.DesiredSetting{{Unit: unit, Value: setting.Present()}, {Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}, Value: modeValue(mode)}},
 		Operations: []changeplan.UpdateOperation{{
 			Kind: changeplan.EnvironmentCreationWithMode, Unit: unit, Mode: mode,
-			RelevantSettings: []changeplan.RelevantSetting{{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Absent())}},
+			PreconditionBases: []changeplan.PreconditionBasis{{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Absent())}},
 		}},
 	}
 }
@@ -142,7 +142,7 @@ func modeChange(t *testing.T, name string, approved github.Environment, desired 
 	policy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}
 	return changeplan.LogicalChange{DesiredState: []changeplan.DesiredSetting{{Unit: policy, Value: modeValue(desired)}}, Operations: []changeplan.UpdateOperation{{
 		Kind: changeplan.DeploymentBranchPolicyModeUpdate, Unit: policy, Mode: desired,
-		RelevantSettings: []changeplan.RelevantSetting{
+		PreconditionBases: []changeplan.PreconditionBasis{
 			{
 				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, AnticipatedValue: changeplan.AnticipateValue(setting.Present()),
 				AnticipatedEnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID),
@@ -163,17 +163,17 @@ func newRepositoryPlanOf(t *testing.T, name string, id repository.ID, settings .
 	return changeplan.RepositoryPlan{Target: mustReference(t, name), RepositoryID: id, Settings: settings}
 }
 
-// relevantTo は、key の設定だけを関係する現在値の設定とし、承認時に予定した値を観測値 observed とする変更前提の基準。
-func relevantTo(key setting.Key, observed setting.Value) []changeplan.RelevantSetting {
-	return []changeplan.RelevantSetting{{Unit: setting.Unit{Key: key}, AnticipatedValue: changeplan.AnticipateValue(observed)}}
+// basesOf は、key の設定だけを関係する現在値に当たる設定とし、承認時に予定した値を観測値 observed とする変更前提の基準。
+func basesOf(key setting.Key, observed setting.Value) []changeplan.PreconditionBasis {
+	return []changeplan.PreconditionBasis{{Unit: setting.Unit{Key: key}, AnticipatedValue: changeplan.AnticipateValue(observed)}}
 }
 
 // singleUpdate は、key を desired にする更新操作一つからなる論理的な設定変更。
-func singleUpdate(key setting.Key, desired setting.Value, relevant []changeplan.RelevantSetting) changeplan.LogicalChange {
+func singleUpdate(key setting.Key, desired setting.Value, bases []changeplan.PreconditionBasis) changeplan.LogicalChange {
 	unit := setting.Unit{Key: key}
 	return changeplan.LogicalChange{
 		DesiredState: []changeplan.DesiredSetting{{Unit: unit, Value: desired}},
-		Operations:   []changeplan.UpdateOperation{{Kind: changeplan.SettingUpdate, Unit: unit, Value: desired, RelevantSettings: relevant}},
+		Operations:   []changeplan.UpdateOperation{{Kind: changeplan.SettingUpdate, Unit: unit, Value: desired, PreconditionBases: bases}},
 	}
 }
 

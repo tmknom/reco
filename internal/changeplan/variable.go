@@ -22,16 +22,16 @@ func variableOperationOf(s SettingPlan, anticipated AnticipatedValue) UpdateOper
 		panic(fmt.Sprintf("changeplan: %s is not a variable", s.Unit.Key))
 	}
 	value, _ := anticipated.Value()
-	relevant := []RelevantSetting{{Unit: s.Unit, AnticipatedValue: anticipated}}
+	bases := []PreconditionBasis{{Unit: s.Unit, AnticipatedValue: anticipated}}
 	if s.Desired.Equal(setting.Absent()) {
 		if value.Equal(setting.Absent()) {
 			panic(fmt.Sprintf("changeplan: deletion of %s is planned while it is absent", s.Unit.String()))
 		}
-		return UpdateOperation{Kind: deletion, Unit: s.Unit, RelevantSettings: relevant}
+		return UpdateOperation{Kind: deletion, Unit: s.Unit, PreconditionBases: bases}
 	}
 	kind := valueUpdate
 	if value.Equal(setting.Absent()) {
 		kind = creation
 	}
-	return UpdateOperation{Kind: kind, Unit: s.Unit, Value: s.Desired, RelevantSettings: relevant}
+	return UpdateOperation{Kind: kind, Unit: s.Unit, Value: s.Desired, PreconditionBases: bases}
 }

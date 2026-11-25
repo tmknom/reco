@@ -33,7 +33,7 @@ func TestVariableOperationOf(t *testing.T) {
 			s := SettingPlan{Unit: tc.unit, Desired: desired, Result: Mismatch, Applicability: Applicable()}
 			want := UpdateOperation{
 				Kind: tc.wantKind, Unit: tc.unit, Value: desired,
-				RelevantSettings: []RelevantSetting{{Unit: tc.unit, AnticipatedValue: AnticipateValue(tc.anticipated)}},
+				PreconditionBases: []PreconditionBasis{{Unit: tc.unit, AnticipatedValue: AnticipateValue(tc.anticipated)}},
 			}
 			if got := variableOperationOf(s, AnticipateValue(tc.anticipated)); !reflect.DeepEqual(got, want) {
 				t.Errorf("variableOperationOf() = %+v, want %+v", got, want)
@@ -57,7 +57,7 @@ func TestVariableOperationOf(t *testing.T) {
 			s := SettingPlan{Unit: tc.unit, Desired: setting.Absent(), Result: Mismatch, Applicability: Applicable()}
 			want := UpdateOperation{
 				Kind: tc.wantKind, Unit: tc.unit,
-				RelevantSettings: []RelevantSetting{{Unit: tc.unit, AnticipatedValue: AnticipateValue(tc.anticipated)}},
+				PreconditionBases: []PreconditionBasis{{Unit: tc.unit, AnticipatedValue: AnticipateValue(tc.anticipated)}},
 			}
 			if got := variableOperationOf(s, AnticipateValue(tc.anticipated)); !reflect.DeepEqual(got, want) {
 				t.Errorf("variableOperationOf() = %+v, want %+v", got, want)

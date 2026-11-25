@@ -12,8 +12,9 @@ import (
 // ReconciliationResult は、期待値と観測結果の照合結果。
 type ReconciliationResult int
 
+// ゼロ値を一致と取り違えないよう 1 から始める。一致は計画時の観測で確かめた事実で、照合していない計画を変更不要として消さないため。
 const (
-	Match ReconciliationResult = iota
+	Match ReconciliationResult = iota + 1
 	Mismatch
 	NotComparable
 )

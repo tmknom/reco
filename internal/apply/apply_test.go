@@ -1287,7 +1287,7 @@ func allowedActionsMismatch() changeplan.SettingPlan {
 // selectedToAllChange は、Actions 許可ポリシーを selected から all にし、lostCriteria を失わせる副作用を伴う論理的な設定変更。
 // 失われる値も変更前提の基準に並ぶ。
 func selectedToAllChange() changeplan.LogicalChange {
-	return singleUpdate(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), []changeplan.RelevantSetting{
+	return singleUpdate(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), []changeplan.PreconditionBasis{
 		{Unit: setting.Unit{Key: setting.AllowedActions}, AnticipatedValue: changeplan.AnticipateValue(setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected))},
 		{Unit: setting.Unit{Key: setting.SelectedActions}, AnticipatedValue: changeplan.AnticipateValue(setting.SelectedActionsCriteriaValue(lostCriteria))},
 	})
@@ -1307,7 +1307,7 @@ func enableActionsNotComparable() changeplan.SettingPlan {
 // 選択方式の Actions 許可条件を declaredCriteria にする、二つの更新操作からなる論理的な設定変更。
 func enableSelectedChange() changeplan.LogicalChange {
 	change := toSelectedChange()
-	change.Operations[0].RelevantSettings = []changeplan.RelevantSetting{
+	change.Operations[0].PreconditionBases = []changeplan.PreconditionBasis{
 		{Unit: setting.Unit{Key: setting.AllowedActions}, AnticipatedValue: changeplan.AnticipateUnchanged(github.Unavailable[setting.Value](github.UnavailableActionsDisabled))},
 	}
 	return change
@@ -1323,11 +1323,11 @@ func toSelectedChange() changeplan.LogicalChange {
 		Operations: []changeplan.UpdateOperation{
 			{
 				Kind: changeplan.SettingUpdate, Unit: policy, Value: selected,
-				RelevantSettings: relevantTo(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly)),
+				PreconditionBases: basesOf(setting.AllowedActions, setting.AllowedActionsPolicyValue(setting.AllowedActionsLocalOnly)),
 			},
 			{
 				Kind: changeplan.SettingUpdate, Unit: criteria, Value: declared,
-				RelevantSettings: relevantTo(setting.AllowedActions, selected),
+				PreconditionBases: basesOf(setting.AllowedActions, selected),
 			},
 		},
 	}

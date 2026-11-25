@@ -79,18 +79,54 @@ func TestPlan_NotApplicableError(t *testing.T) {
 	}
 }
 
+// TestSettingPlan_IsCreation は、作成を、存在しないと確かめた関連リソースの不一致とする定義を確かめる。
+//
 //trace:checks FR-007
-func TestSettingPlan_IsEnvironmentCreation(t *testing.T) {
-	production := mustEnvironmentName(t, "production")
+func TestSettingPlan_IsCreation(t *testing.T) {
+	environment := setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "production")}
+	ruleset := rulesetUnit(t, "protect")
+	absent := github.Observed(setting.Absent())
+	disabled := protectRuleset()
+	disabled.Enforcement = setting.RulesetEnforcementDisabled
 	cases := []struct {
 		name string
 		plan SettingPlan
 		want bool
 	}{
-		{name: "mismatch of an environment is a creation", plan: SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Result: Mismatch}, want: true},
-		{name: "matched environment is not a creation", plan: SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Result: Match}},
-		{name: "environment whose existence cannot be determined is not a creation", plan: SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Result: NotComparable}},
-		{name: "mismatch of a setting in an environment is not a creation", plan: SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Result: Mismatch}},
+		{name: "mismatch of an absent environment is a creation", plan: SettingPlan{Unit: environment, Observed: absent, Desired: setting.Present(), Result: Mismatch}, want: true},
+		{
+			name: "mismatch of an existing ruleset is a value change, not a creation",
+			plan: SettingPlan{Unit: ruleset, Observed: github.Observed(setting.RulesetValue(disabled)), Desired: setting.RulesetValue(protectRuleset()), Result: Mismatch},
+		},
+		{
+			name: "variable declared absent and observed absent is not a creation",
+			plan: SettingPlan{Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: mustVariableName(t, "REGION")}, Observed: absent, Desired: setting.Absent(), Result: Match},
+		},
+		{name: "environment whose existence cannot be determined is not a creation", plan: SettingPlan{Unit: environment, Observed: github.Unavailable[setting.Value](github.UnavailableNameUndetermined), Desired: setting.Present(), Result: NotComparable}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.plan.IsCreation(); got != tc.want {
+				t.Errorf("IsCreation() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
+//trace:checks FR-007
+func TestSettingPlan_IsEnvironmentCreation(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	absent := github.Observed(setting.Absent())
+	cases := []struct {
+		name string
+		plan SettingPlan
+		want bool
+	}{
+		{name: "creation of an environment is an environment creation", plan: SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: absent, Desired: setting.Present(), Result: Mismatch}, want: true},
+		{
+			name: "creation of a variable in an environment is not an environment creation",
+			plan: SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentVariable, Environment: production, Variable: mustVariableName(t, "REGION")}, Observed: absent, Desired: setting.VariableValue("eu"), Result: Mismatch},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -128,6 +164,16 @@ func TestSettingPlan_IsPlannedChange(t *testing.T) {
 			}
 		})
 	}
+
+	// 照合結果を設定し損ねた計画を、変更不要として黙って消すことも、変更予定として表示に流すこともしないため
+	t.Run("plan without a reconciliation result panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("IsPlannedChange() did not panic")
+			}
+		}()
+		SettingPlan{}.IsPlannedChange()
+	})
 }
 
 //trace:checks FR-008

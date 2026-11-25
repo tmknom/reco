@@ -266,8 +266,8 @@ func TestObservationAreas(t *testing.T) {
 		},
 		{
 			// どの変更予定にも生じない組。基準の設定の領域を読まないと、観測結果にその値がないことを確かめる
-			name:   "relevant setting in another area is also read",
-			change: singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), relevantTo(setting.DefaultWorkflowPermissions, setting.PermissionLevelValue(setting.PermissionRead))),
+			name:   "precondition basis in another area is also read",
+			change: singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), basesOf(setting.DefaultWorkflowPermissions, setting.PermissionLevelValue(setting.PermissionRead))),
 			want:   []setting.Area{setting.AllowAutoMerge.Area(), setting.DefaultWorkflowPermissions.Area()},
 		},
 		{
@@ -342,10 +342,10 @@ func TestObservationResources(t *testing.T) {
 		},
 		{
 			// どの変更予定にも生じない組。更新操作の宛先の Environment を、期待状態に頼らずに読むことを確かめる
-			name: "environment of an update destination is named without its relevant settings and desired state",
+			name: "environment of an update destination is named without its precondition bases and desired state",
 			change: func() changeplan.LogicalChange {
 				change := creationChange(t, "production")
-				change.Operations[0].RelevantSettings = nil
+				change.Operations[0].PreconditionBases = nil
 				change.DesiredState = nil
 				return change
 			}(),
@@ -353,8 +353,8 @@ func TestObservationResources(t *testing.T) {
 		},
 		{
 			// どの変更予定にも生じない組。関係する現在値の Environment を読まないと、変更前提で個別パターンを比べられないことを確かめる
-			name:   "environment of a relevant setting is also named",
-			change: singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), []changeplan.RelevantSetting{{Unit: stagingPolicy, AnticipatedValue: changeplan.AnticipateValue(modeValue(setting.DeploymentBranchPolicyAll))}}),
+			name:   "environment of a precondition basis is also named",
+			change: singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), []changeplan.PreconditionBasis{{Unit: stagingPolicy, AnticipatedValue: changeplan.AnticipateValue(modeValue(setting.DeploymentBranchPolicyAll))}}),
 			want:   github.NamedResources{Environments: []setting.EnvironmentName{staging}},
 		},
 		{
@@ -465,7 +465,7 @@ func TestExecuteChange(t *testing.T) {
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
 			wantUpdate:  github.UpdateUnknown,
-			wantDesired: desiredStateUnconfirmed,
+			wantDesired: desiredStateObservationFailed,
 			wantResult:  failed,
 			wantCauses:  []error{github.ErrCommunicationFailure, github.ErrUnexpectedResponse},
 		},
@@ -488,7 +488,7 @@ func TestExecuteChange(t *testing.T) {
 			wantMethods: []string{"GET", "PATCH", "GET"},
 			wantPrecond: preconditionHolds,
 			wantUpdate:  github.UpdateSucceeded,
-			wantDesired: desiredStateUnconfirmed,
+			wantDesired: desiredStateObservationFailed,
 			wantResult:  failed,
 			wantCauses:  []error{github.ErrUnexpectedResponse},
 		},
@@ -546,7 +546,7 @@ func TestExecuteChange(t *testing.T) {
 			wantDelays:  allDelays[:1],
 			wantPrecond: preconditionHolds,
 			wantUpdate:  github.UpdateSucceeded,
-			wantDesired: desiredStateUnconfirmed,
+			wantDesired: desiredStateObservationFailed,
 			wantResult:  failed,
 			wantCauses:  []error{github.ErrUnexpectedResponse},
 		},
@@ -615,7 +615,7 @@ func TestExecuteChange(t *testing.T) {
 			wantMethods: []string{"GET", "GET", "PUT", "GET", "GET"},
 			wantPrecond: preconditionHolds,
 			wantUpdate:  github.UpdateSucceeded,
-			wantDesired: desiredStateUnconfirmed,
+			wantDesired: desiredStateObservationFailed,
 			wantResult:  failed,
 			wantCauses:  []error{github.ErrUnexpectedResponse},
 		},
@@ -704,8 +704,8 @@ func TestExecuteChange(t *testing.T) {
 		if got.operation(0).update != github.UpdateSucceeded {
 			t.Errorf("update = %v, want %v", got.operation(0).update, github.UpdateSucceeded)
 		}
-		if got.confirmation != desiredStateUnconfirmed {
-			t.Errorf("confirmation = %v, want %v", got.confirmation, desiredStateUnconfirmed)
+		if got.confirmation != desiredStateObservationFailed {
+			t.Errorf("confirmation = %v, want %v", got.confirmation, desiredStateObservationFailed)
 		}
 		if !errors.Is(got.cause, context.Canceled) {
 			t.Errorf("cause = %v, want it to wrap %v", got.cause, context.Canceled)

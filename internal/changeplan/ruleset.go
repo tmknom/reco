@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/tmknom/reco/internal/github"
-	"github.com/tmknom/reco/internal/setting"
 )
 
 // rulesetChangeOf は、Ruleset の変更予定 s を、更新操作一つの論理的な設定変更にする。
@@ -16,14 +15,14 @@ func rulesetChangeOf(s SettingPlan) LogicalChange {
 		panic(fmt.Sprintf("changeplan: %s is not a mismatch to change", s.Unit.String()))
 	}
 	kind := RulesetValueUpdate
-	if value, _ := s.Observed.Value(); value.Equal(setting.Absent()) {
+	if s.IsCreation() {
 		kind = RulesetCreation
 	}
 	return LogicalChange{
 		DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}},
 		Operations: []UpdateOperation{{
 			Kind: kind, Unit: s.Unit, Value: s.Desired,
-			RelevantSettings: []RelevantSetting{{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed), AnticipatedRulesetIdentity: s.RulesetIdentity}},
+			PreconditionBases: []PreconditionBasis{{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed), AnticipatedRulesetIdentity: s.RulesetIdentity}},
 		}},
 	}
 }
@@ -32,11 +31,11 @@ func rulesetChangeOf(s SettingPlan) LogicalChange {
 // 宛先は更新直前の観測から引かず、計画時に観測した ID に固定する (INV-004)。
 // 更新操作の管理の単位の変更前提に、観測した ID の基準がなければ、宛先を決められない不変条件の破れとして panic する。
 func (o UpdateOperation) AnticipatedRulesetID() github.RulesetID {
-	for _, relevant := range o.RelevantSettings {
-		if !relevant.Unit.Same(o.Unit) {
+	for _, basis := range o.PreconditionBases {
+		if !basis.Unit.Same(o.Unit) {
 			continue
 		}
-		if id, ok := relevant.AnticipatedRulesetIdentity.ID(); ok {
+		if id, ok := basis.AnticipatedRulesetIdentity.ID(); ok {
 			return id
 		}
 	}

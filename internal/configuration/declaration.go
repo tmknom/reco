@@ -639,17 +639,22 @@ func (d document) security(n *yaml.Node, path string) (Dependabot, SecretScannin
 		}
 		*field.dst = &v
 	}
-	if disablesPrerequisiteOfEnabled(dependabot.Alerts, dependabot.SecurityUpdates) {
-		return Dependabot{}, SecretScanning{}, PrivateVulnerabilityReporting{}, invalid(n, path, "dependabot_alerts false cannot be declared with dependabot_security_updates true")
-	}
-	if disablesPrerequisiteOfEnabled(secretScanning.Enabled, secretScanning.PushProtection) {
-		return Dependabot{}, SecretScanning{}, PrivateVulnerabilityReporting{}, invalid(n, path, "secret_scanning false cannot be declared with secret_scanning_push_protection true")
+	desired := DesiredState{Dependabot: dependabot, SecretScanning: secretScanning}
+	for _, d := range setting.Dependencies() {
+		if disablesPrerequisiteOfEnabled(desired, d) {
+			return Dependabot{}, SecretScanning{}, PrivateVulnerabilityReporting{}, invalid(n, path, "%s false cannot be declared with %s true", d.Prerequisite.DeclaredKeyName(), d.Dependent.DeclaredKeyName())
+		}
 	}
 	return dependabot, secretScanning, privateVulnerabilityReporting, nil
 }
 
-// disablesPrerequisiteOfEnabled は、前提の設定を false、依存する設定を true と宣言しているかを返す。
-// GitHub はこの状態を保てないため (YAML 設定仕様の Security)、どちらの組でも拒否する。
-func disablesPrerequisiteOfEnabled(prerequisite, dependent *bool) bool {
-	return prerequisite != nil && !*prerequisite && dependent != nil && *dependent
+// disablesPrerequisiteOfEnabled は、設定の依存関係 d の前提の設定を false、依存する設定を有効と宣言しているかを返す。
+// GitHub はこの状態を保てないため (YAML 設定仕様の Security)、どの設定の依存関係でも拒否する。
+func disablesPrerequisiteOfEnabled(desired DesiredState, d setting.Dependency) bool {
+	prerequisite, ok := desired.value(d.Prerequisite)
+	if !ok || prerequisite.Bool() {
+		return false
+	}
+	dependent, ok := desired.value(d.Dependent)
+	return ok && !dependent.Equal(d.DisabledDependent)
 }

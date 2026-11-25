@@ -84,7 +84,7 @@ func TestCheckPrecondition(t *testing.T) {
 		})
 	}
 
-	// 関係する現在値の設定が複数並ぶ変更と、承認時に予定した値が観測不能の変更。値の比べ方は TestMatchesAnticipatedValue が確かめる
+	// 変更前提の基準が複数並ぶ変更と、承認時に予定した値が観測不能の変更。値の比べ方は TestMatchesAnticipatedValue が確かめる
 	actionsCases := []struct {
 		name   string
 		change changeplan.LogicalChange
@@ -140,7 +140,7 @@ func TestCheckPrecondition(t *testing.T) {
 		})
 	}
 
-	t.Run("update operation without relevant settings panics", func(t *testing.T) {
+	t.Run("update operation without precondition bases panics", func(t *testing.T) {
 		defer func() {
 			if recover() == nil {
 				t.Error("checkPrecondition() did not panic")
@@ -241,53 +241,53 @@ func TestPrecedingUpdateNotReflected(t *testing.T) {
 	}
 }
 
-// TestMatchesRelevantSetting_EnvironmentExistence は、承認時に予定した Environment の存在と同一性の基準が、更新直前の観測と同じかの規則を確かめる。
+// TestMatchesPreconditionBasis_EnvironmentExistence は、承認時に予定した Environment の存在と同一性の基準が、更新直前の観測と同じかの規則を確かめる。
 //
 //trace:checks INV-001 INV-004 FR-010
-func TestMatchesRelevantSetting_EnvironmentExistence(t *testing.T) {
+func TestMatchesPreconditionBasis_EnvironmentExistence(t *testing.T) {
 	name := mustEnvironmentName(t, "production")
 	unit := setting.Unit{Key: setting.EnvironmentResource, Environment: name}
 	lookup := func(existing ...github.Environment) github.EnvironmentObservation {
 		return github.Environments{Existing: existing}.Lookup(name)
 	}
-	absentBasis := changeplan.RelevantSetting{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Absent())}
-	approvedBasis := changeplan.RelevantSetting{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(7)}
-	createdBasis := changeplan.RelevantSetting{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: changeplan.CreatedByPrecedingOperation()}
+	absentBasis := changeplan.PreconditionBasis{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Absent())}
+	approvedBasis := changeplan.PreconditionBasis{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(7)}
+	createdBasis := changeplan.PreconditionBasis{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: changeplan.CreatedByPrecedingOperation()}
 	approved := observedEnvironment(7, "production", setting.DeploymentBranchPolicyAll)
 	undetermined := observedEnvironment(9, "prodüction", setting.DeploymentBranchPolicyAll)
 	createdBase := lookup(observedEnvironment(8, "production", setting.DeploymentBranchPolicySelected))
 	cases := []struct {
-		name     string
-		relevant changeplan.RelevantSetting
-		current  []github.Environment
+		name    string
+		basis   changeplan.PreconditionBasis
+		current []github.Environment
 		// created は、同じ論理的な設定変更が作成した Environment の ID の基準。基準がないことはゼロ値で表す。
 		created github.EnvironmentObservation
 		want    bool
 	}{
-		{name: "absent at approval and still absent is the same", relevant: absentBasis, current: []github.Environment{observedEnvironment(9, "staging", setting.DeploymentBranchPolicyAll)}, want: true},
-		{name: "absent at approval and existing now differs", relevant: absentBasis, current: []github.Environment{approved}, want: false},
-		{name: "absent at approval and undetermined now differs", relevant: absentBasis, current: []github.Environment{undetermined}, want: false},
+		{name: "absent at approval and still absent is the same", basis: absentBasis, current: []github.Environment{observedEnvironment(9, "staging", setting.DeploymentBranchPolicyAll)}, want: true},
+		{name: "absent at approval and existing now differs", basis: absentBasis, current: []github.Environment{approved}, want: false},
+		{name: "absent at approval and undetermined now differs", basis: absentBasis, current: []github.Environment{undetermined}, want: false},
 		{
-			name: "existing with the same ID is the same even if the spelling and the mode differ", relevant: approvedBasis,
+			name: "existing with the same ID is the same even if the spelling and the mode differ", basis: approvedBasis,
 			current: []github.Environment{observedEnvironment(7, "PRODUCTION", setting.DeploymentBranchPolicyProtectedBranches)}, want: true,
 		},
-		{name: "existing with another ID differs", relevant: approvedBasis, current: []github.Environment{observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll)}, want: false},
-		{name: "existing at approval and absent now differs", relevant: approvedBasis, want: false},
-		{name: "created without a base ID yet is as expected when it exists", relevant: createdBasis, current: []github.Environment{observedEnvironment(8, "production", setting.DeploymentBranchPolicySelected)}, want: true},
+		{name: "existing with another ID differs", basis: approvedBasis, current: []github.Environment{observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll)}, want: false},
+		{name: "existing at approval and absent now differs", basis: approvedBasis, want: false},
+		{name: "created without a base ID yet is as expected when it exists", basis: createdBasis, current: []github.Environment{observedEnvironment(8, "production", setting.DeploymentBranchPolicySelected)}, want: true},
 		{
-			name: "created with an ID other than the base is not as expected", relevant: createdBasis, created: createdBase,
+			name: "created with an ID other than the base is not as expected", basis: createdBasis, created: createdBase,
 			current: []github.Environment{observedEnvironment(9, "production", setting.DeploymentBranchPolicySelected)}, want: false,
 		},
 		{
-			name: "created with the base ID is as expected", relevant: createdBasis, created: createdBase,
+			name: "created with the base ID is as expected", basis: createdBasis, created: createdBase,
 			current: []github.Environment{observedEnvironment(8, "Production", setting.DeploymentBranchPolicyAll)}, want: true,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			observed := github.ObservationResult{RepositoryID: 1, Environments: environments(tc.current...)}
-			if got := matchesRelevantSetting(tc.relevant, observed, tc.created); got != tc.want {
-				t.Errorf("matchesRelevantSetting() = %v, want %v", got, tc.want)
+			if got := matchesPreconditionBasis(tc.basis, observed, tc.created); got != tc.want {
+				t.Errorf("matchesPreconditionBasis() = %v, want %v", got, tc.want)
 			}
 		})
 	}
@@ -295,35 +295,35 @@ func TestMatchesRelevantSetting_EnvironmentExistence(t *testing.T) {
 	// changeplan が作らない基準。承認の前に適用不能として止める観測不能と、同一性の基準のない存在は、更新直前の観測によらず不変条件の破れとして止める。
 	// 更新直前の観測を、基準を受け付けたときに成立する側の形にして、比べた結果で隠れないことを確かめる
 	panicCases := []struct {
-		name     string
-		relevant changeplan.RelevantSetting
-		current  []github.Environment
+		name    string
+		basis   changeplan.PreconditionBasis
+		current []github.Environment
 	}{
 		{
-			name:     "undetermined at approval panics even if still undetermined",
-			relevant: changeplan.RelevantSetting{Unit: unit, AnticipatedValue: changeplan.AnticipateUnchanged(github.Unavailable[setting.Value](github.UnavailableNameUndetermined))},
-			current:  []github.Environment{undetermined},
+			name:    "undetermined at approval panics even if still undetermined",
+			basis:   changeplan.PreconditionBasis{Unit: unit, AnticipatedValue: changeplan.AnticipateUnchanged(github.Unavailable[setting.Value](github.UnavailableNameUndetermined))},
+			current: []github.Environment{undetermined},
 		},
-		{name: "zero value at approval panics even if the environment exists", relevant: changeplan.RelevantSetting{Unit: unit}, current: []github.Environment{approved}},
-		{name: "existing at approval without an identity panics even if absent now", relevant: changeplan.RelevantSetting{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Present())}},
+		{name: "zero value at approval panics even if the environment exists", basis: changeplan.PreconditionBasis{Unit: unit}, current: []github.Environment{approved}},
+		{name: "existing at approval without an identity panics even if absent now", basis: changeplan.PreconditionBasis{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Present())}},
 	}
 	for _, tc := range panicCases {
 		t.Run(tc.name, func(t *testing.T) {
 			defer func() {
 				if recover() == nil {
-					t.Error("matchesRelevantSetting() did not panic")
+					t.Error("matchesPreconditionBasis() did not panic")
 				}
 			}()
-			matchesRelevantSetting(tc.relevant, github.ObservationResult{RepositoryID: 1, Environments: environments(tc.current...)}, github.EnvironmentObservation{})
+			matchesPreconditionBasis(tc.basis, github.ObservationResult{RepositoryID: 1, Environments: environments(tc.current...)}, github.EnvironmentObservation{})
 		})
 	}
 }
 
-// TestMatchesRelevantSetting_Ruleset は、承認時に予定した Ruleset の存在、値の全体、ID の基準が、更新直前の観測と同じかの規則を確かめる。
+// TestMatchesPreconditionBasis_Ruleset は、承認時に予定した Ruleset の存在、値の全体、ID の基準が、更新直前の観測と同じかの規則を確かめる。
 // 名前で引く規則は github の Rulesets.Lookup、値の集合としての比べ方は setting の Ruleset のテストが確かめる。
 //
 //trace:checks INV-001 INV-004 FR-010
-func TestMatchesRelevantSetting_Ruleset(t *testing.T) {
+func TestMatchesPreconditionBasis_Ruleset(t *testing.T) {
 	name := mustRulesetName(t, "protect")
 	unit := setting.Unit{Key: setting.RulesetResource, Ruleset: name}
 	// approvedValue は、順序の違いを作れるよう、ルールと Bypass を二つずつ持つ
@@ -345,37 +345,37 @@ func TestMatchesRelevantSetting_Ruleset(t *testing.T) {
 	added.BypassActors = []setting.BypassActor{
 		approvedValue.BypassActors[0], approvedValue.BypassActors[1], {ActorType: setting.BypassActorUser, ActorID: 1, BypassMode: setting.BypassModeAlways},
 	}
-	approvedBasis := changeplan.RelevantSetting{
+	approvedBasis := changeplan.PreconditionBasis{
 		Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.RulesetValue(approvedValue)), AnticipatedRulesetIdentity: changeplan.ObservedRulesetIdentity(42),
 	}
-	absentBasis := changeplan.RelevantSetting{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Absent())}
+	absentBasis := changeplan.PreconditionBasis{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Absent())}
 	cases := []struct {
-		name     string
-		relevant changeplan.RelevantSetting
-		current  []github.Ruleset
-		want     bool
+		name    string
+		basis   changeplan.PreconditionBasis
+		current []github.Ruleset
+		want    bool
 	}{
-		{name: "same ID and same value is the same", relevant: approvedBasis, current: []github.Ruleset{github.InterpretedRuleset(42, "protect", approvedValue)}, want: true},
-		{name: "value differing only in order is the same", relevant: approvedBasis, current: []github.Ruleset{github.InterpretedRuleset(42, "protect", reordered)}, want: true},
-		{name: "name differing only in case with the same ID and value is the same", relevant: approvedBasis, current: []github.Ruleset{github.InterpretedRuleset(42, "PROTECT", approvedValue)}, want: true},
-		{name: "same value with another ID differs", relevant: approvedBasis, current: []github.Ruleset{github.InterpretedRuleset(43, "protect", approvedValue)}, want: false},
-		{name: "same ID with an added bypass actor the declaration does not change differs", relevant: approvedBasis, current: []github.Ruleset{github.InterpretedRuleset(42, "protect", added)}, want: false},
-		{name: "deleted ruleset differs", relevant: approvedBasis, want: false},
-		{name: "same ID under another name differs", relevant: approvedBasis, current: []github.Ruleset{github.InterpretedRuleset(42, "renamed", approvedValue)}, want: false},
+		{name: "same ID and same value is the same", basis: approvedBasis, current: []github.Ruleset{github.InterpretedRuleset(42, "protect", approvedValue)}, want: true},
+		{name: "value differing only in order is the same", basis: approvedBasis, current: []github.Ruleset{github.InterpretedRuleset(42, "protect", reordered)}, want: true},
+		{name: "name differing only in case with the same ID and value is the same", basis: approvedBasis, current: []github.Ruleset{github.InterpretedRuleset(42, "PROTECT", approvedValue)}, want: true},
+		{name: "same value with another ID differs", basis: approvedBasis, current: []github.Ruleset{github.InterpretedRuleset(43, "protect", approvedValue)}, want: false},
+		{name: "same ID with an added bypass actor the declaration does not change differs", basis: approvedBasis, current: []github.Ruleset{github.InterpretedRuleset(42, "protect", added)}, want: false},
+		{name: "deleted ruleset differs", basis: approvedBasis, want: false},
+		{name: "same ID under another name differs", basis: approvedBasis, current: []github.Ruleset{github.InterpretedRuleset(42, "renamed", approvedValue)}, want: false},
 		{
-			name: "same ID with uninterpreted parts differs", relevant: approvedBasis,
+			name: "same ID with uninterpreted parts differs", basis: approvedBasis,
 			current: []github.Ruleset{github.UninterpretedRuleset(42, "protect", []github.UninterpretedPart{{Kind: github.UninterpretedRuleType, Name: "non_fast_forward"}})},
 			want:    false,
 		},
-		{name: "only an undetermined name differs", relevant: approvedBasis, current: []github.Ruleset{github.InterpretedRuleset(42, "protëct", approvedValue)}, want: false},
-		{name: "absent at approval and still absent is the same", relevant: absentBasis, current: []github.Ruleset{github.InterpretedRuleset(7, "other", approvedValue)}, want: true},
-		{name: "absent at approval and existing now differs", relevant: absentBasis, current: []github.Ruleset{github.InterpretedRuleset(42, "protect", approvedValue)}, want: false},
+		{name: "only an undetermined name differs", basis: approvedBasis, current: []github.Ruleset{github.InterpretedRuleset(42, "protëct", approvedValue)}, want: false},
+		{name: "absent at approval and still absent is the same", basis: absentBasis, current: []github.Ruleset{github.InterpretedRuleset(7, "other", approvedValue)}, want: true},
+		{name: "absent at approval and existing now differs", basis: absentBasis, current: []github.Ruleset{github.InterpretedRuleset(42, "protect", approvedValue)}, want: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			observed := github.ObservationResult{RepositoryID: 1, Rulesets: &github.Rulesets{Existing: github.Observed(tc.current)}}
-			if got := matchesRelevantSetting(tc.relevant, observed, github.EnvironmentObservation{}); got != tc.want {
-				t.Errorf("matchesRelevantSetting() = %v, want %v", got, tc.want)
+			if got := matchesPreconditionBasis(tc.basis, observed, github.EnvironmentObservation{}); got != tc.want {
+				t.Errorf("matchesPreconditionBasis() = %v, want %v", got, tc.want)
 			}
 		})
 	}
@@ -384,18 +384,18 @@ func TestMatchesRelevantSetting_Ruleset(t *testing.T) {
 	// 更新直前の観測を基準を受け付けたときに成立する側の形にしても、不変条件の破れとして止める
 	uninterpreted := github.UninterpretedRuleset(42, "protect", []github.UninterpretedPart{{Kind: github.UninterpretedRuleType, Name: "non_fast_forward"}})
 	panicCases := []struct {
-		name     string
-		relevant changeplan.RelevantSetting
-		current  []github.Ruleset
+		name    string
+		basis   changeplan.PreconditionBasis
+		current []github.Ruleset
 	}{
 		{
-			name:     "existing at approval without an identity panics even if the same ruleset exists",
-			relevant: changeplan.RelevantSetting{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.RulesetValue(approvedValue))},
-			current:  []github.Ruleset{github.InterpretedRuleset(42, "protect", approvedValue)},
+			name:    "existing at approval without an identity panics even if the same ruleset exists",
+			basis:   changeplan.PreconditionBasis{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.RulesetValue(approvedValue))},
+			current: []github.Ruleset{github.InterpretedRuleset(42, "protect", approvedValue)},
 		},
 		{
 			name: "uninterpreted at approval panics even if still uninterpreted with the same ID",
-			relevant: changeplan.RelevantSetting{
+			basis: changeplan.PreconditionBasis{
 				Unit: unit, AnticipatedValue: changeplan.AnticipateUnchanged(github.Unavailable[setting.Value](github.UnavailableUninterpretedParts)), AnticipatedRulesetIdentity: changeplan.ObservedRulesetIdentity(42),
 			},
 			current: []github.Ruleset{uninterpreted},
@@ -405,17 +405,17 @@ func TestMatchesRelevantSetting_Ruleset(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			defer func() {
 				if recover() == nil {
-					t.Error("matchesRelevantSetting() did not panic")
+					t.Error("matchesPreconditionBasis() did not panic")
 				}
 			}()
 			observed := github.ObservationResult{RepositoryID: 1, Rulesets: &github.Rulesets{Existing: github.Observed(tc.current)}}
-			matchesRelevantSetting(tc.relevant, observed, github.EnvironmentObservation{})
+			matchesPreconditionBasis(tc.basis, observed, github.EnvironmentObservation{})
 		})
 	}
 }
 
 // TestCheckPrecondition_Environments は、Environment の作成と方式の変更の更新直前の判定表を確かめる。
-// 存在の比べ方は TestMatchesRelevantSetting_EnvironmentExistence、方式の値の比べ方は TestMatchesAnticipatedValue が確かめる。
+// 存在の比べ方は TestMatchesPreconditionBasis_EnvironmentExistence、方式の値の比べ方は TestMatchesAnticipatedValue が確かめる。
 //
 //trace:checks INV-001 INV-004 FR-010
 func TestCheckPrecondition_Environments(t *testing.T) {
@@ -779,8 +779,8 @@ func TestEnvironmentCreatedIn(t *testing.T) {
 	})
 	t.Run("change without a creation expecting a created environment panics", func(t *testing.T) {
 		change := deploymentPatternsChange(t, "production", observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll), selectedPolicy(branchPattern("main")))
-		change.Operations[1].RelevantSettings[0] = changeplan.RelevantSetting{
-			Unit: change.Operations[1].RelevantSettings[0].Unit, AnticipatedValue: changeplan.AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: changeplan.CreatedByPrecedingOperation(),
+		change.Operations[1].PreconditionBases[0] = changeplan.PreconditionBasis{
+			Unit: change.Operations[1].PreconditionBases[0].Unit, AnticipatedValue: changeplan.AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: changeplan.CreatedByPrecedingOperation(),
 		}
 		defer func() {
 			if recover() == nil {

@@ -40,8 +40,8 @@ type UpdateOperation struct {
 	Pattern setting.DeploymentPattern
 	// Settings は、MergeMethodsUpdate が一つの更新要求で送る管理設定とその値を、計画の並びで持つ。
 	Settings []DesiredSetting
-	// RelevantSettings は、この更新操作の変更前提の基準。変わっていたことを報告するときに優先する順に並べる。
-	RelevantSettings []RelevantSetting
+	// PreconditionBases は、この更新操作の変更前提の基準。変わっていたことを報告するときに優先する順に並べる。
+	PreconditionBases []PreconditionBasis
 }
 
 // UpdateOperationKind は、更新操作の種類。送る更新要求の形と、関連リソースを作るかどうかで分ける。
@@ -82,8 +82,8 @@ const (
 	RulesetValueUpdate
 )
 
-// RelevantSetting は、変更前提で比べる関係する現在値の設定と、その承認時に予定した値。
-type RelevantSetting struct {
+// PreconditionBasis は、変更前提の基準で、関係する現在値に当たる設定と、その承認時に予定した値の組。
+type PreconditionBasis struct {
 	Unit setting.Unit
 	// AnticipatedValue は、承認時に予定した値。関連リソースそのものでは、存在すること (値を伴う) か存在しないことである。
 	AnticipatedValue AnticipatedValue
@@ -219,7 +219,7 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 		case s.Unit.Key == setting.RepositoryPushProtection && s.Desired.Bool():
 			// GitHub は Secret scanning が無効のあいだ、有効にする更新に成功を応答して値を変えないため、更新直前に有効と確かめる。
 			// 計画時に無効だった場合は、先行する Secret scanning の変更が有効にすることが予定どおりの変化である
-			operation.RelevantSettings = append(operation.RelevantSettings, RelevantSetting{
+			operation.PreconditionBases = append(operation.PreconditionBases, PreconditionBasis{
 				Unit: setting.Unit{Key: setting.SecretScanningEnabled}, AnticipatedValue: AnticipateValue(setting.BoolValue(true)),
 			})
 		}
@@ -234,7 +234,7 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 			// 2つ目の承認時に予定した値は、1つ目による予定どおりの変化を反映したポリシーである
 			change.Operations = append(change.Operations, UpdateOperation{
 				Kind: SettingUpdate, Unit: criteria.Unit, Value: criteria.Desired,
-				RelevantSettings: []RelevantSetting{{Unit: s.Unit, AnticipatedValue: AnticipateValue(s.Desired)}},
+				PreconditionBases: []PreconditionBasis{{Unit: s.Unit, AnticipatedValue: AnticipateValue(s.Desired)}},
 			})
 		}
 		changes = append(changes, change)
@@ -248,15 +248,15 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 }
 
 // executionOrder は、管理設定の計画を論理的な設定変更の実行順に並べて返す。基本は計画の並び (変更予定の表示順) である。
-// 前提の設定と依存する設定の組ごとに、前提の設定の期待値が無効のときだけ、依存する設定の計画をその直前に移す。
+// 設定の依存関係ごとに、前提の設定の期待値が無効のときだけ、依存する設定の計画をその直前に移す。
 // 先に前提の設定を無効にすると、GitHub が依存する設定も無効にし、その変更前提が成り立たなくなるため。
 // 前提の設定がすでに無効で一致しているなら、依存する設定の変更予定は、有効にする向きが適用不能でこの並びまで届かず、
 // 無効にする向きはすでに無効のため変更予定にならない。
 func (r RepositoryPlan) executionOrder() []SettingPlan {
 	ordered := r.Settings
-	for _, d := range settingDependencies() {
-		prerequisite := slices.IndexFunc(ordered, func(s SettingPlan) bool { return s.Unit.Key == d.prerequisite })
-		dependent := slices.IndexFunc(ordered, func(s SettingPlan) bool { return s.Unit.Key == d.dependent })
+	for _, d := range setting.Dependencies() {
+		prerequisite := slices.IndexFunc(ordered, func(s SettingPlan) bool { return s.Unit.Key == d.Prerequisite })
+		dependent := slices.IndexFunc(ordered, func(s SettingPlan) bool { return s.Unit.Key == d.Dependent })
 		if prerequisite < 0 || dependent < 0 || ordered[prerequisite].Desired.Bool() {
 			continue
 		}
@@ -290,28 +290,28 @@ func (r RepositoryPlan) settingPlanOf(unit setting.Unit) (SettingPlan, bool) {
 // operationOf は、変更予定 s の設定の値を送る更新操作を返す。
 // 基準は、s の計画時の観測結果、副作用として提示した設定のうち reco が観測するものの計画時の観測結果、副作用を示さなかった設定の計画時の観測結果である。
 func operationOf(s SettingPlan) UpdateOperation {
-	relevant := []RelevantSetting{{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)}}
+	bases := []PreconditionBasis{{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)}}
 	for _, effect := range s.SideEffects {
 		if key, ok := effect.Kind.ObservedSetting(); ok {
-			relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: key}, AnticipatedValue: AnticipateUnchanged(effect.Observed)})
+			bases = append(bases, PreconditionBasis{Unit: setting.Unit{Key: key}, AnticipatedValue: AnticipateUnchanged(effect.Observed)})
 		}
 	}
-	for _, unshown := range s.SettingsWithoutSideEffect {
-		relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: unshown.Key}, AnticipatedValue: AnticipateUnchanged(unshown.Observed)})
+	for _, unaffected := range s.SettingsExpectedUnaffected {
+		bases = append(bases, PreconditionBasis{Unit: setting.Unit{Key: unaffected.Key}, AnticipatedValue: AnticipateUnchanged(unaffected.Observed)})
 	}
-	return UpdateOperation{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, RelevantSettings: relevant}
+	return UpdateOperation{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, PreconditionBases: bases}
 }
 
 // shaPinningRequiredOperationOf は、sha_pinning_required の変更予定 s の更新操作を返す。
 // 更新要求は必須の enabled に true を送るため、Actions が有効であることを基準に載せ、無効のリポジトリへ送って Actions を有効にしないようにする。
 // 計画時に Actions が無効で観測不能だった値は基準に載せない（ドメインモデルの承認と変更前提）。
 func shaPinningRequiredOperationOf(s SettingPlan) UpdateOperation {
-	var relevant []RelevantSetting
+	var bases []PreconditionBasis
 	if s.Result == Mismatch {
-		relevant = append(relevant, RelevantSetting{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)})
+		bases = append(bases, PreconditionBasis{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)})
 	}
-	relevant = append(relevant, RelevantSetting{Unit: setting.Unit{Key: setting.ActionsEnabled}, AnticipatedValue: AnticipateValue(setting.BoolValue(true))})
-	return UpdateOperation{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, RelevantSettings: relevant}
+	bases = append(bases, PreconditionBasis{Unit: setting.Unit{Key: setting.ActionsEnabled}, AnticipatedValue: AnticipateValue(setting.BoolValue(true))})
+	return UpdateOperation{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, PreconditionBases: bases}
 }
 
 // sideEffectSettingsOf は、変更予定 s の副作用として提示した設定のうち reco が観測するものを返す。

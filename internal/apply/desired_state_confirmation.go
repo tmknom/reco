@@ -8,7 +8,8 @@ import (
 )
 
 // desiredStateConfirmation は、更新後の観測で期待状態を確かめた結果。
-// desiredStateUnconfirmed、desiredStateIdentityMismatch、desiredStateUnavailable は、どれも確認失敗を理由で分けたもの。
+// desiredStateObservationFailed、desiredStateIdentityMismatch、desiredStateUnavailable は、どれも確認失敗を理由で分けたもの。
+// desiredStateObservationFailed は、更新後の観測操作が失敗したか、観測を待つあいだに中断されたことを表す。
 // desiredStateUnavailable は、期待値と比べる設定が理由を伴う観測不能だったことを表す。
 type desiredStateConfirmation int
 
@@ -16,7 +17,7 @@ const (
 	desiredStateNotChecked desiredStateConfirmation = iota
 	desiredStateMatches
 	desiredStateMismatch
-	desiredStateUnconfirmed
+	desiredStateObservationFailed
 	desiredStateIdentityMismatch
 	desiredStateUnavailable
 )
