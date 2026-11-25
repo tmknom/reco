@@ -83,7 +83,7 @@ repositories:
 
 ## GitHub Actions の設定
 
-`actions` には、`permissions`（Actions の実行許可）、`workflow`（ワークフローの権限）、`access`（ほかのリポジトリのワークフローからのアクセス）、`fork_pull_requests`（Fork からの Pull Request のワークフローの承認）、`variables`（Repository Variables）を書きます。使わないものは省けます。
+`actions` には、`permissions`（Actions の実行許可）、`workflow`（ワークフローの権限）、`access`（ほかのリポジトリのワークフローからのアクセス）、`fork_pull_requests`（Fork からの Pull Request のワークフローの承認と実行条件）、`variables`（Repository Variables）を書きます。使わないものは省けます。
 
 ### Actions の実行許可
 
@@ -152,9 +152,11 @@ repositories:
 - `organization` は設定ファイルに書けない。Organization が所有するリポジトリのための値で、reco が扱うユーザー所有のリポジトリでは GitHub が受け付けないため。Organization から移転したリポジトリなどで `show` が `organization` を示したときは、`none` か `user` を書けば、書いた値に変わる
 - Actions が無効のリポジトリでも書ける
 
-### Fork からの Pull Request のワークフローの承認
+### Fork からの Pull Request のワークフロー
 
-`actions.fork_pull_requests` には、次のキーを書きます。
+`actions.fork_pull_requests` には、公開リポジトリ用の `approval_policy` と、非公開リポジトリ用の `private_repositories` の、どちらか一方か両方を書きます。両方を書いたときは、リポジトリの公開範囲に合わない側のために `apply` できません。合わない側を消してください。
+
+#### 公開リポジトリの承認
 
 | キー | 値 | 意味 |
 |---|---|---|
@@ -171,6 +173,36 @@ repositories:
 - この設定は公開リポジトリにだけ適用される。非公開リポジトリに書くと `apply` できない
 - 値は小文字で書く。`FIRST_TIME_CONTRIBUTORS` のような大文字の値は、GitHub が受け付けないため書けない
 - Actions が無効のリポジトリでも書ける
+
+#### 非公開リポジトリの実行条件
+
+`actions.fork_pull_requests.private_repositories` には、次の4つのキーをすべて書きます。
+
+```yaml
+repositories:
+  - name: example/private-project
+    actions:
+      fork_pull_requests:
+        private_repositories:
+          run_workflows_from_fork_pull_requests: true
+          send_write_tokens_to_workflows: false
+          send_secrets_and_variables: false
+          require_approval_for_fork_pr_workflows: true
+```
+
+| キー | 値 | 意味 |
+|---|---|---|
+| `run_workflows_from_fork_pull_requests` | `true` / `false` | Fork からの Pull Request で起動したワークフローを実行できるか。`true` だけなら、ワークフローは読み取り専用の `GITHUB_TOKEN` で、Secrets を使わずに動く |
+| `send_write_tokens_to_workflows` | `true` / `false` | そのワークフローに、書き込み権限を持つ `GITHUB_TOKEN` を渡すか |
+| `send_secrets_and_variables` | `true` / `false` | そのワークフローで、Secrets と Variables を使えるようにするか |
+| `require_approval_for_fork_pr_workflows` | `true` / `false` | そのワークフローの実行に、書き込み権限を持つユーザーの承認を求めるか |
+
+- 4つは一組の設定で、一部だけは書けない。足りないキーはエラーで示される
+- `run_workflows_from_fork_pull_requests` が `false` なら、ほかの3つも `false` と書く。GitHub は実行を許可しないあいだ、ほかの3つを `false` にするため、`true` を書くとエラーになる
+- 書き込み権限を持つ `GITHUB_TOKEN` か Secrets と Variables が、Fork からの Pull Request で起動したワークフローに渡るようになる変更には、`plan` と `apply` の変更計画に `Note:` の行が付く（[コマンドリファレンス](commands.md#plan)）
+- この設定は非公開リポジトリにだけ適用される。公開リポジトリに書くと `apply` できない。`fork_pull_requests` にほかのキーがなければ、`fork_pull_requests` ごと消す
+- Actions が無効のリポジトリでも書ける
+- いまの reco は、この設定の違いを `plan` で確かめるところまで扱う。`apply` ではまだ変えられない
 
 ### Repository Variables
 

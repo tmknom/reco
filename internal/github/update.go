@@ -15,7 +15,8 @@ type updateRequestFunc func(c *Client, ctx context.Context, reference repository
 
 // Update は、reference のリポジトリの key の設定を value にする更新要求を、UpdateEndpointOf(key) へ一度だけ送る。再送はしない。
 // error が nil になるのは UpdateSucceeded のときだけで、呼び出し側は error から結果を導かない。
-// マージ方式は一つずつ送る経路を持たず (UpdateMergeMethods)、渡されたら不変条件の破れとして要求を送る前に panic する。
+// マージ方式は一つずつ送る経路を持たず (UpdateMergeMethods)、実行条件は apply がまだ実行しないため送る経路を持たない。
+// どちらも渡されたら不変条件の破れとして要求を送る前に panic する。
 func (c *Client) Update(ctx context.Context, reference repository.Reference, key setting.Key, value setting.Value) (UpdateOutcome, error) {
 	request := updateRequestOf(key)
 	if request.send == nil {
@@ -176,7 +177,7 @@ func enablementMethod(enabled bool) string {
 
 // updateRequest は、一つの設定を変える更新要求の、送り先の更新エンドポイントと送り方の組。
 // 送る更新要求と比べる設定の範囲を別々の場所で足し忘れないよう、同じ switch から返す。
-// 一つずつ送る経路を持たない設定 (マージ方式) では send が nil である。
+// 一つずつ送る経路を持たない設定 (マージ方式と、apply がまだ実行しない実行条件) では send が nil である。
 type updateRequest struct {
 	endpoint UpdateEndpoint
 	send     updateRequestFunc
@@ -223,6 +224,8 @@ func updateRequestOf(key setting.Key) updateRequest {
 		return updateRequest{ForkPullRequestApprovalEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
 			return c.updateForkPullRequestApprovalPolicy(ctx, reference, value.ForkPullRequestApprovalPolicy())
 		}}
+	case setting.PrivateForkPullRequestWorkflows:
+		return updateRequest{endpoint: PrivateForkPullRequestWorkflowsEndpoint}
 	case setting.DependabotAlerts:
 		return updateRequest{DependabotAlertsEndpoint, boolUpdate((*Client).updateDependabotAlerts)}
 	case setting.DependabotSecurityUpdates:

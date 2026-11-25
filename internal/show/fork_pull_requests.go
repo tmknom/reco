@@ -25,10 +25,9 @@ func writeForkPullRequests(b *strings.Builder, approval github.ForkPullRequestAp
 	if !ok {
 		panic("show: private_repositories is unavailable on a private repository")
 	}
-	fmt.Fprintf(b, "      # reco does not accept private_repositories in the configuration file yet\n"+
-		"      # fork_pull_requests:\n      #   approval_policy: unavailable (the repository is private)\n      #   private_repositories:\n"+
-		"      #     run_workflows_from_fork_pull_requests: %t\n      #     send_write_tokens_to_workflows: %t\n"+
-		"      #     send_secrets_and_variables: %t\n      #     require_approval_for_fork_pr_workflows: %t\n",
+	fmt.Fprintf(b, "      fork_pull_requests:\n        # approval_policy: unavailable (the repository is private)\n        private_repositories:\n"+
+		"          run_workflows_from_fork_pull_requests: %t\n          send_write_tokens_to_workflows: %t\n"+
+		"          send_secrets_and_variables: %t\n          require_approval_for_fork_pr_workflows: %t\n",
 		conditions.RunWorkflowsFromForkPullRequests, conditions.SendWriteTokensToWorkflows,
 		conditions.SendSecretsAndVariables, conditions.RequireApprovalForForkPullRequestWorkflows)
 }

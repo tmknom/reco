@@ -38,6 +38,14 @@ func TestUpdateEndpointObservedSettings(t *testing.T) {
 		}
 	})
 
+	// 承認ポリシーは別の更新エンドポイントのため、実行条件を変える更新の前後で比べない。
+	t.Run("private fork pull request workflows endpoint observes only the execution conditions", func(t *testing.T) {
+		want := []setting.Key{setting.PrivateForkPullRequestWorkflows}
+		if got := PrivateForkPullRequestWorkflowsEndpoint.ObservedSettings(); !slices.Equal(got, want) {
+			t.Errorf("ObservedSettings() = %v, want %v", got, want)
+		}
+	})
+
 	t.Run("undefined update endpoint panics", func(t *testing.T) {
 		defer func() {
 			if recover() == nil {

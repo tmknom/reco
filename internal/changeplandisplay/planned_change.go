@@ -12,7 +12,7 @@ import (
 
 const unreadWhileDisabled = "reco cannot read them while GitHub Actions is disabled"
 
-// PlannedChangeText は、変更予定を CLI 仕様の現在 -> 期待値の形で返し、適用不能の理由、再開する設定、副作用をその下に添える。
+// PlannedChangeText は、変更予定を CLI 仕様の現在 -> 期待値の形で返し、適用不能の理由、変更予定の注記、再開する設定、副作用をその下に添える。
 // 末尾に改行を含む複数行になりうる。一致は空文字列を返す。
 func PlannedChangeText(s changeplan.SettingPlan) string {
 	if s.Unit.Key == setting.RulesetResource {
@@ -41,6 +41,9 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 	b.WriteString(deploymentPatternChangesText(s))
 	if s.Applicability.IsNotApplicable() {
 		fmt.Fprintf(&b, "    Applicability: not applicable (%s)\n", notApplicableReasonText(s))
+	}
+	for _, note := range s.Notes() {
+		fmt.Fprintf(&b, "    Note: %s\n", plannedChangeNoteText(note))
 	}
 	if len(s.ResumedSettings) > 0 {
 		fmt.Fprintf(&b, "    Previous settings: %s\n", resumedSettingsText(s.ResumedSettings))
@@ -74,7 +77,7 @@ func repositoryStateText(reason github.UnavailableReason) string {
 }
 
 // notApplicableReasonText は、適用不能の理由を、利用者が対処を選べる CLI 仕様の文言で返す。
-// 非公開リポジトリの理由は複数の設定が持つため、直し方に挙げるキーを s の管理の単位から決める。
+// 公開範囲の理由は複数の設定が持つため、直し方に挙げるキーを s の管理の単位から決める。
 // 未定義の理由は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func notApplicableReasonText(s changeplan.SettingPlan) string {
 	key := s.Unit.Key
@@ -82,7 +85,7 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 	case changeplan.NotApplicableActionsRemainDisabled:
 		return "GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it"
 	case changeplan.NotApplicablePublicRepository:
-		return "the repository is public; remove access_level, which applies only to private repositories"
+		return "the repository is public; remove " + declaredKeyName(key) + ", which applies only to private repositories"
 	case changeplan.NotApplicableNameUndetermined:
 		if key == setting.RulesetResource {
 			return "a ruleset on GitHub has a name reco cannot compare, such as one with non-ASCII characters; remove this ruleset from the configuration"
@@ -95,7 +98,7 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 		if key == setting.ForkPullRequestApproval {
 			return "the repository is private; remove approval_policy, which applies only to public repositories"
 		}
-		return "the repository is private; remove " + string(key)[strings.LastIndex(string(key), ".")+1:] + ", which reco manages only on public repositories"
+		return "the repository is private; remove " + declaredKeyName(key) + ", which reco manages only on public repositories"
 	case changeplan.NotApplicableSecretScanningRemainsDisabled:
 		return "Secret scanning is disabled; declare secret_scanning: true to enable it"
 	case changeplan.NotApplicableNoMergeMethodEnabled:
@@ -104,6 +107,11 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 		return "the ruleset on GitHub contains parts that reco does not interpret; remove this ruleset from the configuration"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(s.Applicability.Reason())))
+}
+
+// declaredKeyName は、管理の単位 key を宣言した、設定ファイルの最も内側のキーを返す。
+func declaredKeyName(key setting.Key) string {
+	return string(key)[strings.LastIndex(string(key), ".")+1:]
 }
 
 // noMergeMethodEnabledText は、更新後に有効なマージ方式が残らない理由を、無効のまま残るマージ方式と、そのどれかを有効にする宣言で返す。
@@ -169,10 +177,22 @@ func sideEffectText(effect changeplan.SideEffect) string {
 	panic(fmt.Sprintf("changeplandisplay: undefined side effect kind %d", int(effect.Kind)))
 }
 
+// plannedChangeNoteText は、変更予定の注記を CLI 仕様の Note: の文言で返す。文言は設定の意味の事実だけを述べ、評価を含めない。
+// 未定義の種類は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+func plannedChangeNoteText(note changeplan.PlannedChangeNote) string {
+	switch note {
+	case changeplan.NoteForkWorkflowsGetWriteTokens:
+		return "Workflows triggered by pull requests from forks get a GITHUB_TOKEN with write permissions"
+	case changeplan.NoteForkWorkflowsGetSecretsAndVariables:
+		return "Workflows triggered by pull requests from forks can use secrets and variables"
+	}
+	panic(fmt.Sprintf("changeplandisplay: undefined planned change note %d", int(note)))
+}
+
 // showsValuesOnSeparateLines は、現在と期待値を別の行に書くかを返す。
-// 選択方式の Actions 許可条件と、個別パターンを並べる selected のデプロイ元制限は値が長く、1 行では -> を見つけにくい。
+// 選択方式の Actions 許可条件、非公開リポジトリの Fork Pull Request ワークフローの実行条件、個別パターンを並べる selected のデプロイ元制限は値が長く、1 行では -> を見つけにくい。
 func showsValuesOnSeparateLines(s changeplan.SettingPlan) bool {
-	if s.Unit.Key == setting.SelectedActions {
+	if s.Unit.Key == setting.SelectedActions || s.Unit.Key == setting.PrivateForkPullRequestWorkflows {
 		return true
 	}
 	if s.Unit.Key != setting.EnvironmentDeploymentBranchPolicy {

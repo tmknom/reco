@@ -25,19 +25,18 @@ func TestWriteForkPullRequests(t *testing.T) {
 				"        # private_repositories: unavailable (the repository is public)\n",
 		},
 		{
-			name:     "private repository keeps every line as a comment under the notice about private_repositories",
+			name:     "private repository shows the conditions as declarable values and the unavailable approval policy as a comment",
 			approval: github.ForkPullRequestApproval{ApprovalPolicy: github.Unavailable[setting.ForkPullRequestApprovalPolicy](github.UnavailablePrivateRepository)},
 			workflows: github.PrivateForkPullRequestWorkflows{Conditions: github.Observed(setting.PrivateForkPullRequestWorkflowConditions{
 				RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true,
 			})},
-			want: "      # reco does not accept private_repositories in the configuration file yet\n" +
-				"      # fork_pull_requests:\n" +
-				"      #   approval_policy: unavailable (the repository is private)\n" +
-				"      #   private_repositories:\n" +
-				"      #     run_workflows_from_fork_pull_requests: true\n" +
-				"      #     send_write_tokens_to_workflows: false\n" +
-				"      #     send_secrets_and_variables: true\n" +
-				"      #     require_approval_for_fork_pr_workflows: false\n",
+			want: "      fork_pull_requests:\n" +
+				"        # approval_policy: unavailable (the repository is private)\n" +
+				"        private_repositories:\n" +
+				"          run_workflows_from_fork_pull_requests: true\n" +
+				"          send_write_tokens_to_workflows: false\n" +
+				"          send_secrets_and_variables: true\n" +
+				"          require_approval_for_fork_pr_workflows: false\n",
 		},
 	}
 	for _, tc := range cases {

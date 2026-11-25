@@ -205,6 +205,48 @@ func TestDocumentSelectedActions(t *testing.T) {
 	}
 }
 
+// TestDocumentPrivateForkPullRequestWorkflows は、実行条件の4項目がすべて必須であることと、
+// 実行を許可しないまま、ほかの3項目のどれかを有効にする組み合わせの拒否、判定の順序を確かめる。
+//
+//trace:checks FR-001
+func TestDocumentPrivateForkPullRequestWorkflows(t *testing.T) {
+	const enabled = "run_workflows_from_fork_pull_requests: true\nsend_write_tokens_to_workflows: false\nsend_secrets_and_variables: true\nrequire_approval_for_fork_pr_workflows: false\n"
+	const disabled = "run_workflows_from_fork_pull_requests: false\nsend_write_tokens_to_workflows: false\nsend_secrets_and_variables: false\nrequire_approval_for_fork_pr_workflows: false\n"
+	cases := []struct {
+		name       string
+		src        string
+		want       setting.PrivateForkPullRequestWorkflowConditions
+		wantReason string
+	}{
+		{name: "four items are read into their own fields", src: enabled, want: setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true}},
+		{name: "swapped bool values are read into their own fields", src: "run_workflows_from_fork_pull_requests: true\nsend_write_tokens_to_workflows: true\nsend_secrets_and_variables: false\nrequire_approval_for_fork_pr_workflows: true\n", want: setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, SendWriteTokensToWorkflows: true, RequireApprovalForForkPullRequestWorkflows: true}},
+		{name: "all false is valid", src: disabled, want: setting.PrivateForkPullRequestWorkflowConditions{}},
+		{name: "only two items are rejected naming both missing items in definition order", src: "run_workflows_from_fork_pull_requests: true\nsend_secrets_and_variables: false\n", wantReason: "missing send_write_tokens_to_workflows, require_approval_for_fork_pr_workflows; private_repositories requires all of run_workflows_from_fork_pull_requests, send_write_tokens_to_workflows, send_secrets_and_variables, require_approval_for_fork_pr_workflows"},
+		{name: "unknown key is rejected listing the four items", src: enabled + "approval_policy: all_external_contributors\n", wantReason: `unknown key "approval_policy"; expected run_workflows_from_fork_pull_requests, send_write_tokens_to_workflows, send_secrets_and_variables, require_approval_for_fork_pr_workflows`},
+		{name: "run disabled with write tokens enabled is rejected naming it", src: strings.Replace(disabled, "send_write_tokens_to_workflows: false", "send_write_tokens_to_workflows: true", 1), wantReason: "P (line 1, column 1): run_workflows_from_fork_pull_requests false cannot be declared with send_write_tokens_to_workflows true; GitHub saves them as false"},
+		{name: "run disabled with two items enabled is rejected naming both in definition order", src: "run_workflows_from_fork_pull_requests: false\nsend_write_tokens_to_workflows: false\nsend_secrets_and_variables: true\nrequire_approval_for_fork_pr_workflows: true\n", wantReason: "cannot be declared with send_secrets_and_variables true, require_approval_for_fork_pr_workflows true;"},
+		{name: "invalid value is reported before the combination", src: "run_workflows_from_fork_pull_requests: \"false\"\nsend_write_tokens_to_workflows: false\nsend_secrets_and_variables: true\nrequire_approval_for_fork_pr_workflows: false\n", wantReason: "P.run_workflows_from_fork_pull_requests (line 1, column 40): must be true or false"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.privateForkPullRequestWorkflows(doc.root, "P")
+			if tc.wantReason != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("privateForkPullRequestWorkflows() error = %v, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("privateForkPullRequestWorkflows() error = %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("privateForkPullRequestWorkflows() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestDocumentDeclaration は、各階層で要求するキーの集合 (スキーマ) と、各段階へ渡すパスを確かめる。
 // 各段階が持つ規則 (マッピングやシーケンスの形、真偽値、name の形式) は、段階ごとのテストが確かめる。
 //
@@ -463,6 +505,36 @@ func TestDocumentDeclaration(t *testing.T) {
 			}},
 		},
 		{
+			name: "private_repositories alone is read into the private fork pull request workflows desired state",
+			src:  second + "    actions:\n      fork_pull_requests:\n        private_repositories:\n          run_workflows_from_fork_pull_requests: true\n          send_write_tokens_to_workflows: false\n          send_secrets_and_variables: false\n          require_approval_for_fork_pr_workflows: true\n",
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				{
+					Reference: mustReference(t, "owner/second"),
+					Desired: DesiredState{
+						General:                         General{AllowAutoMerge: new(false)},
+						PrivateForkPullRequestWorkflows: PrivateForkPullRequestWorkflows{Conditions: &setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, RequireApprovalForForkPullRequestWorkflows: true}},
+					},
+				},
+			}},
+		},
+		{
+			name: "approval_policy and private_repositories together are read into their own desired states",
+			src:  second + "    actions:\n      access:\n        access_level: none\n      fork_pull_requests:\n        approval_policy: first_time_contributors\n        private_repositories:\n          run_workflows_from_fork_pull_requests: true\n          send_write_tokens_to_workflows: false\n          send_secrets_and_variables: false\n          require_approval_for_fork_pr_workflows: true\n",
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				{
+					Reference: mustReference(t, "owner/second"),
+					Desired: DesiredState{
+						General:                         General{AllowAutoMerge: new(false)},
+						ActionsAccess:                   ActionsAccess{AccessLevel: new(setting.AccessNone)},
+						ForkPullRequestApproval:         ForkPullRequestApproval{ApprovalPolicy: new(setting.ForkPullRequestApprovalFirstTimeContributors)},
+						PrivateForkPullRequestWorkflows: PrivateForkPullRequestWorkflows{Conditions: &setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, RequireApprovalForForkPullRequestWorkflows: true}},
+					},
+				},
+			}},
+		},
+		{
 			name:       "unknown key in actions is rejected listing permissions, workflow, and access",
 			src:        second + "    actions:\n      secrets: {}\n",
 			wantPath:   "repositories[1].actions",
@@ -581,7 +653,13 @@ func TestDocumentDeclaration(t *testing.T) {
 			name:       "unknown key in fork_pull_requests is rejected",
 			src:        second + "    actions:\n      fork_pull_requests:\n        approval_policy: first_time_contributors\n        days: 30\n",
 			wantPath:   "repositories[1].actions.fork_pull_requests",
-			wantReason: `unknown key "days"; expected approval_policy`,
+			wantReason: `unknown key "days"; expected approval_policy, private_repositories`,
+		},
+		{
+			name:       "invalid private_repositories is rejected at actions.fork_pull_requests.private_repositories",
+			src:        second + "    actions:\n      fork_pull_requests:\n        private_repositories:\n          run_workflows_from_fork_pull_requests: true\n",
+			wantPath:   "repositories[1].actions.fork_pull_requests.private_repositories",
+			wantReason: "missing send_write_tokens_to_workflows",
 		},
 		{
 			name:       "undefined approval_policy is rejected at actions.fork_pull_requests.approval_policy",

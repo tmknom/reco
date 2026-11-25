@@ -74,7 +74,7 @@ repositories:
 | `repositories` | シーケンス | 1件以上のリポジトリごとの宣言を含む |
 | `repositories[]` | マッピング | `name` と、少なくとも一つの管理設定を含む `general`、`actions`、`environments`、`security`、`rulesets` のいずれかを持つ |
 | `repositories[].name` | 文字列 | 必須。空でない `OWNER/REPO` 形式 |
-| `general`、`actions`、`permissions`、`selected_actions`、`workflow`、`access`、`fork_pull_requests`、`security` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions`、`workflow`、`access`、`fork_pull_requests`、`variables` のうち一つ以上を含めばよい |
+| `general`、`actions`、`permissions`、`selected_actions`、`workflow`、`access`、`fork_pull_requests`、`private_repositories`、`security` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions`、`workflow`、`access`、`fork_pull_requests`、`variables` のうち一つ以上を含めばよい |
 | `variables`（`actions` 配下） | シーケンス | 使用する場合は、1件以上の変数の宣言を含む（8章） |
 | `environments` | シーケンス | 使用する場合は、1件以上の Environment の宣言を含む（9章） |
 | `variables`（`environments[]` 配下） | シーケンス | 使用する場合は、1件以上の変数の宣言を含む（9.3節） |
@@ -254,12 +254,20 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 | YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
 |---|---|---|---|---|
 | `actions.fork_pull_requests.approval_policy` | 文字列 | `first_time_contributors_new_to_github` / `first_time_contributors` / `all_external_contributors` | Fork からの Pull Request のワークフローの実行に承認が要るユーザーの範囲 | 独立 |
+| `actions.fork_pull_requests.private_repositories.run_workflows_from_fork_pull_requests` | 真偽値 | `true` / `false` | Fork からの Pull Request で起動したワークフローを実行できるか | 非公開リポジトリの Fork Pull Request ワークフローの実行条件（設定グループ） |
+| `actions.fork_pull_requests.private_repositories.send_write_tokens_to_workflows` | 真偽値 | `true` / `false` | そのワークフローに、書き込み権限を持つ `GITHUB_TOKEN` を渡すか | 非公開リポジトリの Fork Pull Request ワークフローの実行条件（設定グループ） |
+| `actions.fork_pull_requests.private_repositories.send_secrets_and_variables` | 真偽値 | `true` / `false` | そのワークフローで、Secrets と Variables を使えるようにするか | 非公開リポジトリの Fork Pull Request ワークフローの実行条件（設定グループ） |
+| `actions.fork_pull_requests.private_repositories.require_approval_for_fork_pr_workflows` | 真偽値 | `true` / `false` | そのワークフローの実行に、書き込み権限を持つユーザーの承認を求めるか | 非公開リポジトリの Fork Pull Request ワークフローの実行条件（設定グループ） |
 
 初めてのコントリビューターは、このリポジトリにコミットか Pull Request がマージされたことのないユーザーです。`first_time_contributors_new_to_github` では、初めてのコントリビューターのうち、GitHub に登録して間もないユーザーに承認が要ります。`first_time_contributors` では、初めてのコントリビューターすべてに承認が要ります。`all_external_contributors` では、リポジトリのメンバーか所有者でも Organization のメンバーでもない、すべてのユーザーに承認が要ります（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 7章）。
 
 値は大文字小文字を区別して比べ、`FIRST_TIME_CONTRIBUTORS` のような大文字の表記を受け付けません。GitHub が、大文字の値も定義にない値も拒否するためです（同 7.2）。
 
-`approval_policy` は公開リポジトリにだけ適用される設定です。`actions.permissions` の宣言によらず宣言でき、`actions.permissions.enabled: false` と同時にも宣言できます。`fork_pull_requests` が持てるキーは `approval_policy` だけです。
+`approval_policy` は公開リポジトリにだけ適用される設定です。`actions.permissions` の宣言によらず宣言でき、`actions.permissions.enabled: false` と同時にも宣言できます。
+
+`private_repositories` の4項目は、非公開リポジトリの Fork Pull Request ワークフローの実行条件を表し、 **一つの設定グループ** として扱います（同 8章）。非公開リポジトリにだけ適用される設定で、`approval_policy` と同じく、`actions.permissions` の宣言によらず、`actions.permissions.enabled: false` と同時にも宣言できます。
+
+`fork_pull_requests` は `approval_policy` と `private_repositories` のどちらか一つ以上を持ちます。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -267,6 +275,19 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 | `alignment` | `FR-006` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
+
+### 7.1 `private_repositories` の入力の組み合わせ
+
+| `run_workflows_from_fork_pull_requests` | ほかの3項目 | 判定 |
+|---|---|---|
+| `true` | すべて指定（値は任意） | 有効 |
+| `false` | すべて `false` で指定 | 有効 |
+| `false` | すべて指定し、一つ以上が `true` | エラー |
+| 4項目のどれかを省略 | 4項目のどれかを省略 | エラー（足りないキーをすべて示す） |
+
+4項目を必須とする点は **reco 固有の入力契約** です。GitHub REST API では `run_workflows_from_fork_pull_requests` 以外の3項目は任意パラメータですが、reco は実行条件の期待状態を一意に定めるため、4項目を必須とします。
+
+`run_workflows_from_fork_pull_requests: false` とほかの3項目の `true` を同時に宣言できないのは、GitHub がこの組み合わせの更新を受け付けたうえで、3項目を `false` で保存するためです（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 8.2）。この誤りは、4項目の値の誤り（真偽値でない表記など）より後に示します。組み合わせは4項目の真偽値から決まり、値が真偽値でなければ判定できないためです。
 
 ## 8. Repository Variables
 
@@ -650,6 +671,7 @@ rules:
 | `allowed_actions: "selected"` | 値の形式は有効。ただし `selected_actions` の3項目も必要 |
 | `access_level: organization` | エラー（宣言で受け付ける値ではない） |
 | `approval_policy: FIRST_TIME_CONTRIBUTORS` | エラー（定義された文字列に完全一致しない） |
+| `run_workflows_from_fork_pull_requests: false` と `send_secrets_and_variables: true` を同時に宣言 | エラー（実行を許可しないまま、Secrets と Variables の送信を有効にできない） |
 | `value: "1.27"`（変数の値） | 有効 |
 | `value: 1.27`（変数の値） | エラー（文字列ではない。`"1.27"` を直し方として示す） |
 | `value: ""`（変数の値） | エラー（空文字列） |

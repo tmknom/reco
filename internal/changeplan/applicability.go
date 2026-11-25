@@ -124,7 +124,7 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 			return Applicable()
 		}
 		return NotApplicable(NotApplicableActionsRemainDisabled)
-	case s.Unit.Key == setting.ActionsAccessLevel && reason == github.UnavailablePublicRepository:
+	case (s.Unit.Key == setting.ActionsAccessLevel || s.Unit.Key == setting.PrivateForkPullRequestWorkflows) && reason == github.UnavailablePublicRepository:
 		// 公開範囲は reco が変える設定ではないため、同じリポジトリのほかの宣言では解消しない
 		return NotApplicable(NotApplicablePublicRepository)
 	case reason == github.UnavailablePrivateRepository &&

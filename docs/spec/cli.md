@@ -94,7 +94,7 @@ $ GH_TOKEN=$(gh auth token) reco plan
 
 照合結果と適用可能性は別に示します。不一致（Mismatch）でも適用不能な場合があり、比較不能（Not Comparable）でも条件を確認できれば適用可能な変更予定となります。観測操作そのものの失敗は比較不能に含めず、エラーとして報告します。
 
-集計では、変更予定のあるリポジトリ数と変更予定数を示します。変更予定のあるリポジトリ数は、そのすべてが適用可能であることを意味しません。変更予定数は、確認済みの差分と比較不能な設定予定を合わせて管理設定の単位で数えます。二つを区別するのは変更予定の行の現在値であり、集計では区別しません。比較不能な設定予定も、宣言した値へ変える変更として利用者が承認するものだからです。更新要求の数や論理的な設定変更の数とは同一視しません。選択方式の Actions 許可条件（Selected actions の3項目）は一つの設定グループとして集計し、上位の Actions 許可ポリシーとは区別します。変更の必要がないと確認できた場合に限り `No changes.` と表示します。
+集計では、変更予定のあるリポジトリ数と変更予定数を示します。変更予定のあるリポジトリ数は、そのすべてが適用可能であることを意味しません。変更予定数は、確認済みの差分と比較不能な設定予定を合わせて管理設定の単位で数えます。二つを区別するのは変更予定の行の現在値であり、集計では区別しません。比較不能な設定予定も、宣言した値へ変える変更として利用者が承認するものだからです。更新要求の数や論理的な設定変更の数とは同一視しません。選択方式の Actions 許可条件（Selected actions の3項目）は一つの設定グループとして集計し、上位の Actions 許可ポリシーとは区別します。非公開リポジトリの Fork Pull Request ワークフローの実行条件（`private_repositories` の4項目）も、一つの設定グループとして集計します。変更の必要がないと確認できた場合に限り `No changes.` と表示します。
 
 一つのリポジトリに複数の変更予定があるときは、[YAML 設定仕様](configuration.md) の章と表の並びで表示します。設定宣言での記述順には従いません。
 
@@ -241,6 +241,20 @@ Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
+非公開リポジトリの Fork Pull Request ワークフローの実行条件の変更予定も、4項目を並べた値が長いため、同じく現在値と期待値を1行ずつ示します。次の例の `Note:` は、変更予定に添える行（後述）です。
+
+```text
+Repository: example/private-project
+  actions.fork_pull_requests.private_repositories:
+    run_workflows_from_fork_pull_requests: false, send_write_tokens_to_workflows: false, send_secrets_and_variables: false, require_approval_for_fork_pr_workflows: false
+    -> run_workflows_from_fork_pull_requests: true, send_write_tokens_to_workflows: true, send_secrets_and_variables: true, require_approval_for_fork_pr_workflows: true
+    Note: Workflows triggered by pull requests from forks get a GITHUB_TOKEN with write permissions
+    Note: Workflows triggered by pull requests from forks can use secrets and variables
+
+Plan: 1 repository to update, 1 change
+Repositories checked: 1
+```
+
 ```text
 $ reco plan
 No changes.
@@ -279,7 +293,7 @@ Repositories checked: 1
 |---|---|---|
 | Actions が無効 | `(GitHub Actions disabled)` | Actions が動いておらず、この設定は効いていない |
 | Actions 許可ポリシーが `selected` でない（選択方式の Actions 許可条件だけに当たる） | `(not in use)` | 選択方式の Actions 許可条件が使われていない |
-| リポジトリが公開（`access_level` だけに当たる） | `(public repository)` | この設定は公開リポジトリに適用されない |
+| リポジトリが公開（`access_level` と、非公開リポジトリの Fork Pull Request ワークフローの実行条件に当たる） | `(public repository)` | この設定は公開リポジトリに適用されない |
 | リポジトリが非公開（Secret scanning の有効状態、リポジトリの push protection、Private vulnerability reporting の有効状態に当たる） | `(private repository)` | この設定は非公開リポジトリでは利用できない |
 | リポジトリが非公開（Fork Pull Request ワークフローの承認ポリシーに当たる） | `(private repository)` | この設定は非公開リポジトリに適用されない |
 | 属する先の Environment が存在しない（Environment の中の設定と Environment Variable に当たる） | `(environment absent)` | Environment がないため、この設定や変数もない |
@@ -313,13 +327,14 @@ Plan: 1 repository to update, 2 changes
 Repositories checked: 1
 ```
 
-変更予定に添える行には、次の三つがあります。どれも変更予定の行の下に示し、変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。どの変更予定にどの行を添えるか（適用不能になる条件、変更に伴う副作用、再開する設定）は、[設定ごとの設計](../design/settings/README.md) の各文書の「適用可能性と副作用」が定めます。
+変更予定に添える行には、次の四つがあり、この順に示します。どれも変更予定の行の下に示し、変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。どの変更予定にどの行を添えるか（適用不能になる条件、変更予定の注記、再開する設定、変更に伴う副作用）は、[設定ごとの設計](../design/settings/README.md) の各文書の「適用可能性と副作用」が定めます。
 
 - **`Applicability: not applicable (<理由>)`**：安全な変更に必要な条件を確認できない変更予定に、変更予定の行のすぐ下に添える。理由は、セミコロンの前に何が成り立っていないかを、後ろに設定ファイルの直し方を示す
+- **`Note:`**：変更予定の注記（[ドメインモデル](../design/domain.md) の計画）を示す。宣言した変更が GitHub 上で何を意味するかの事実を述べ、reco による設定の良し悪しの評価は含めない。適用可能性を変えず、承認とは別の確認も求めない。宣言の外で起きる変化ではないため、`Side effect:` とは別の行にする。後で示す、変更結果の末尾の注記（5.2節）とは、字下げと示す場面で区別される
 - **`Previous settings:`**：再開する設定（[ドメインモデル](../design/domain.md) の計画）を示す。値を示せないときは、残っていた値で再開することと、値を示せない理由を示す。値が失われるわけではないため、`Side effect:` とは別の行にし、`Side effect:` の前に示す
 - **`Side effect:`**：宣言した変更に伴って GitHub が管理範囲外の設定を削除するか変える場合に、その設定と、reco が観測する設定なら現在値を示す。reco が観測しない設定は、起きる変化だけを示す。値を取得できず失われるかどうかが分からないときは、失われる可能性と値を示せない理由を示す。副作用を伴う変更予定の最後の行として示す
 
-`Side effect:` を添えた変更予定は適用可能であり、利用者が承認すれば実行します。`Side effect:` は、変更が完了したあとも残る影響だけを示します。一つの変更の更新操作のあいだだけ生じる中間状態（[アーキテクチャ設計](../design/architecture.md) 5.4）は示しません。完了すれば残らず、利用者が承認の前に避ける手段もないためです。中間状態が残るのは変更が完了しなかった場合で、そのときは変更結果が `failed` と注記で示します（5.2節）。
+`Side effect:` を添えた変更予定は適用可能であり、利用者が承認すれば実行します。`Side effect:` は、変更が完了したあとも残る影響だけを示します。一つの変更の更新操作のあいだだけ生じる中間状態（[アーキテクチャ設計](../design/architecture.md) 5.4）は示しません。完了すれば残らず、利用者が承認の前に避ける手段もないためです。中間状態が残るのは変更が完了しなかった場合で、そのときは変更結果が `failed` と、変更結果の注記で示します（5.2節）。
 
 適用不能な変更予定が一つでもあれば、`Repositories checked:` の後に空行を挟んで `Plan cannot be applied.` を一度だけ表示します。集計は、適用不能な変更予定と、適用不能な変更予定だけを持つリポジトリも数えます。適用不能の表示例は次のとおりです。
 
@@ -343,6 +358,14 @@ Plan: 1 repository to update, 1 change
 Repositories checked: 1
 
 Plan cannot be applied.
+```
+
+```text
+Repository: example/project-a
+  actions.fork_pull_requests.private_repositories:
+    (public repository)
+    -> run_workflows_from_fork_pull_requests: true, send_write_tokens_to_workflows: false, send_secrets_and_variables: false, require_approval_for_fork_pr_workflows: true
+    Applicability: not applicable (the repository is public; remove private_repositories, which applies only to private repositories)
 ```
 
 ```text
@@ -514,6 +537,12 @@ Plan cannot be applied.
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-b: actions.permissions.sha_pinning_required is not applicable; example/project-c: actions.permissions.sha_pinning_required is not applicable; no changes made"}
 ```
 
+非公開リポジトリの Fork Pull Request ワークフローの実行条件の変更予定は、`apply` がまだ実行しません。適用不能な変更予定がなく、実行条件の変更予定が一つでもあれば、変更計画を4章の `plan` と同じ形（変更予定の注記を含む）で stdout へ最後まで表示し、承認を求めず、どのリポジトリも更新せずにエラー終了します。同じ変更計画のほかの変更予定も実行しません。stderr のエラーは、実行条件の変更予定のすべてを変更計画の並びで対象と設定を挙げ、`no changes made` を添えます。`plan` は同じ変更計画を表示して終了コード `0` で終えます。
+
+```text
+{"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/private-project: actions.fork_pull_requests.private_repositories is a change that apply does not support yet; no changes made"}
+```
+
 すべて変更不要の場合の表示例は次のとおりです。
 
 ```text
@@ -596,7 +625,7 @@ Repositories updated: 2
 
 すべてのリポジトリが `updated` または `no change` のときに限り、`Apply complete.` と、`updated` のリポジトリの数を `Repositories updated:` として示します。`no change` のリポジトリは数に含めません。
 
-いずれかの論理的な設定変更で更新操作を開始しており、完了しなかった論理的な設定変更があるときは、変更結果の末尾に注記（`Note:`）を添えます。開始した更新操作に成否不明があれば自動で再送していないことを、なければ自動ロールバックを行っていないことを示します。どちらの注記にも、`reco plan` で残りの変更を確かめられることを添えます（`Run reco plan to see the remaining changes.`）。一つの変更の途中で止まった場合も、`plan` は先行する更新操作のあとの現在値を変更計画に示すため、利用者は残った中間状態と残りの変更を同じ表示で確かめられます。複数の更新操作からなる論理的な設定変更では、すべての更新操作を判定に含めます。この判定は、選択したすべてのリポジトリの論理的な設定変更について行います。先に完了したリポジトリのあとで別のリポジトリが完了しなかった場合も、適用済みの変更が残るため注記を添えます。
+いずれかの論理的な設定変更で更新操作を開始しており、完了しなかった論理的な設定変更があるときは、変更結果の末尾に **変更結果の注記**（`Note:`）を添えます。開始した更新操作に成否不明があれば自動で再送していないことを、なければ自動ロールバックを行っていないことを示します。どちらの変更結果の注記にも、`reco plan` で残りの変更を確かめられることを添えます（`Run reco plan to see the remaining changes.`）。一つの変更の途中で止まった場合も、`plan` は先行する更新操作のあとの現在値を変更計画に示すため、利用者は残った中間状態と残りの変更を同じ表示で確かめられます。複数の更新操作からなる論理的な設定変更では、すべての更新操作を判定に含めます。この判定は、選択したすべてのリポジトリの論理的な設定変更について行います。先に完了したリポジトリのあとで別のリポジトリが完了しなかった場合も、適用済みの変更が残るため変更結果の注記を添えます。
 
 論理的な設定変更ごとに結果を表示するときは、論理的な設定変更を、それが変える管理設定の名前で示します。二つ以上の管理設定を変える論理的な設定変更は、変更計画に示す順に ` + ` でつないで示します（`actions.permissions.allowed_actions + actions.permissions.selected_actions`、`general.allow_squash_merge + general.allow_merge_commit + general.allow_rebase_merge`、`environments.<名前> + environments.<名前>.deployment_branch_policy`）。名前は設定宣言の綴りです。同じ管理設定を変える更新操作が複数あっても、その管理設定の名前は一度だけ示します。変更結果を一つにまとめても、承認の前に提示する変更予定は管理設定ごとの行のままです。選択方式の Actions 許可条件の3項目は、個別の変更として示しません。
 
@@ -939,14 +968,13 @@ repositories:
         can_approve_pull_request_reviews: false
       access:
         access_level: none
-      # reco does not accept private_repositories in the configuration file yet
-      # fork_pull_requests:
-      #   approval_policy: unavailable (the repository is private)
-      #   private_repositories:
-      #     run_workflows_from_fork_pull_requests: false
-      #     send_write_tokens_to_workflows: false
-      #     send_secrets_and_variables: false
-      #     require_approval_for_fork_pr_workflows: false
+      fork_pull_requests:
+        # approval_policy: unavailable (the repository is private)
+        private_repositories:
+          run_workflows_from_fork_pull_requests: false
+          send_write_tokens_to_workflows: false
+          send_secrets_and_variables: false
+          require_approval_for_fork_pr_workflows: false
       # reco does not accept the retention period in the configuration file yet
       # retention:
       #   days: 90 # maximum allowed: 400
@@ -963,7 +991,7 @@ repositories:
 
 表示するのは、設定宣言に書ける管理設定と関連リソースに限ります。Environment の保護設定（`wait_timer`、`required_reviewers`、`can_admins_bypass`）のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
 
-`actions` の `fork_pull_requests` の `private_repositories` と `retention` は、この規定の例外です。設定宣言はまだこの二つを受け付けませんが、受け付けるときに使う予定のキーで値を示します。値を示すときは、キーとその下の行を YAML のコメントとして示し、その前の行で、設定ファイルに書けないことを示します。コメントにするのは、表示を設定宣言として読めるままにし、書けない設定であることを利用者が行を見て分かるようにするためです。公開リポジトリの `private_repositories` は値を示さず、取得条件によって確認できない設定の示し方（後述）に従うため、前の行を置きません。非公開リポジトリでは、`fork_pull_requests` の下に設定宣言として読める行がないため、`fork_pull_requests` のキーごとコメントにし、その前の行で `private_repositories` を設定ファイルに書けないことを示します。子のない `fork_pull_requests` は、空のマッピングとして設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 12.1節）。
+`actions` の `retention` は、この規定の例外です。設定宣言はまだ `retention` を受け付けませんが、受け付けるときに使う予定のキーで値を示します。値を示すときは、キーとその下の行を YAML のコメントとして示し、その前の行で、設定ファイルに書けないことを示します。コメントにするのは、表示を設定宣言として読めるままにし、書けない設定であることを利用者が行を見て分かるようにするためです。
 
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
@@ -999,7 +1027,7 @@ Actions が無効のリポジトリでは、`enabled` だけを示します。
       #   access_level: unavailable (the repository is public)
 ```
 
-Fork からの Pull Request のワークフローの設定は、`fork_pull_requests` に示します。Fork Pull Request ワークフローの承認ポリシーを `approval_policy` に、GitHub が返した値（`first_time_contributors_new_to_github`、`first_time_contributors`、`all_external_contributors`）で示します。非公開リポジトリの Fork Pull Request ワークフローの実行条件を `private_repositories` に、4項目（`run_workflows_from_fork_pull_requests`、`send_write_tokens_to_workflows`、`send_secrets_and_variables`、`require_approval_for_fork_pr_workflows`）を `true` か `false` で、GitHub が返したとおりに示します。非公開リポジトリでは `approval_policy` の値の位置に `unavailable (the repository is private)` と、公開リポジトリでは `private_repositories` の値の位置に `unavailable (the repository is public)` と示します。公開リポジトリの表示は次のとおりで、`fork_pull_requests` と `approval_policy` は設定宣言として読めます。
+Fork からの Pull Request のワークフローの設定は、`fork_pull_requests` に示します。Fork Pull Request ワークフローの承認ポリシーを `approval_policy` に、GitHub が返した値（`first_time_contributors_new_to_github`、`first_time_contributors`、`all_external_contributors`）で示します。非公開リポジトリの Fork Pull Request ワークフローの実行条件を `private_repositories` に、4項目（`run_workflows_from_fork_pull_requests`、`send_write_tokens_to_workflows`、`send_secrets_and_variables`、`require_approval_for_fork_pr_workflows`）を `true` か `false` で、GitHub が返したとおりに示します。非公開リポジトリでは `approval_policy` の値の位置に `unavailable (the repository is private)` と、公開リポジトリでは `private_repositories` の値の位置に `unavailable (the repository is public)` と示します。公開リポジトリの表示は次のとおりで、`fork_pull_requests` と `approval_policy` は設定宣言として読めます。非公開リポジトリの表示は、この章の冒頭の例のとおりで、`fork_pull_requests` と `private_repositories` 以下が設定宣言として読めます。
 
 ```text
       fork_pull_requests:
@@ -1145,7 +1173,7 @@ Ruleset が一つもないときは `# rulesets: none` と示します。非公�
 
 GitHub は、Ruleset への書き込みのアクセスを持たない利用者には Bypass を返しません（[GitHub Rules API 仕様](../research/rules.md) 3.2）。この場合は、下に述べる権限の不足による欠落として、`bypass_actors` を示してエラーとします。
 
-表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。解釈しない部分を含む Ruleset（`name` だけが値として残り、必須のキーの欠落になる）、`enforcement: evaluate` や `conditions: {}` の Ruleset、`2`・`4`・`5` 以外の `RepositoryRole` の Bypass、GitHub が重複して返した Ruleset のパターンや Bypass の主体、ASCII 以外の文字を含む Ruleset の名前、`organization` の `access_level`、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable や Environment Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 12章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
+表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。解釈しない部分を含む Ruleset（`name` だけが値として残り、必須のキーの欠落になる）、`enforcement: evaluate` や `conditions: {}` の Ruleset、`2`・`4`・`5` 以外の `RepositoryRole` の Bypass、GitHub が重複して返した Ruleset のパターンや Bypass の主体、ASCII 以外の文字を含む Ruleset の名前、`organization` の `access_level`、`run_workflows_from_fork_pull_requests` が `false` でほかの3項目のどれかが `true` の Fork Pull Request ワークフローの実行条件、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable や Environment Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 12章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
 
 権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。行を省かず、欠けた項目を示してエラーとします。
 
@@ -1158,7 +1186,7 @@ GitHub は、Ruleset への書き込みのアクセスを持たない利用者�
 
 ## 7. 出力と終了コード
 
-観測した設定状態、変更計画、変更結果、`--help` と `--version` による使い方・バージョンは標準出力（stdout）へ表示します。エラー、警告、承認プロンプト、診断ログは標準エラー出力（stderr）へ表示します。変更結果に添える注記（`Note:`）は変更結果の一部として stdout へ表示します。
+観測した設定状態、変更計画、変更結果、`--help` と `--version` による使い方・バージョンは標準出力（stdout）へ表示します。エラー、警告、承認プロンプト、診断ログは標準エラー出力（stderr）へ表示します。変更予定の注記（`Note:`）は変更計画の一部として、変更結果の注記（`Note:`）は変更結果の一部として、どちらも stdout へ表示します。
 
 エラーは、診断ログと同じ JSON の1行で stderr へ表示します。`msg` は `command failed` とし、`error` に対象と理由を可能な範囲で示します。エラーは `--log-level` の値によらず表示します。
 
@@ -1175,7 +1203,7 @@ GitHub は、Ruleset への書き込みのアクセスを持たない利用者�
 | `apply`：変更完了、または変更不要 | `0` |
 | `show`：観測成功（観測不能な値を含み得る） | `0` |
 | `plan`：適用不能な変更・観測操作の失敗 | `1` |
-| `apply`：適用不能な変更・承認拒否・承認不能・変更失敗・更新操作の成否不明・変更前提の不成立 | `1` |
+| `apply`：適用不能な変更・まだ実行しない変更（非公開リポジトリの Fork Pull Request ワークフローの実行条件の変更予定）・承認拒否・承認不能・変更失敗・更新操作の成否不明・変更前提の不成立 | `1` |
 | 入力不正、認証・権限・API 通信の失敗、対象の不一致や確認不能 | `1` |
 | GitHub API の HTTP リダイレクト応答（読み取り・更新） | `1` |
 | 更新成功応答後の再観測失敗・期待状態との不一致・変更対象外の設定の予期しない変化 | `1` |

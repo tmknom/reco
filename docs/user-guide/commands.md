@@ -26,7 +26,7 @@ reco [--log-level LEVEL] apply [--config PATH] [--repo OWNER/REPO]
 
 ## `show`
 
-`--repo` で指定したリポジトリの、設定ファイルに書ける設定の現在の値を表示します。設定ファイルを書く前に、今の値を確かめるときに使います。非公開リポジトリの Fork からの Pull Request のワークフローの実行条件と、Artifact と Log の保持期間は、まだ設定ファイルに書けませんが、今の値をコメントとして表示します。
+`--repo` で指定したリポジトリの、設定ファイルに書ける設定の現在の値を表示します。設定ファイルを書く前に、今の値を確かめるときに使います。Artifact と Log の保持期間は、まだ設定ファイルに書けませんが、今の値をコメントとして表示します。
 
 ```bash
 $ reco show --repo example/project-a
@@ -49,14 +49,13 @@ repositories:
         can_approve_pull_request_reviews: false
       access:
         access_level: none
-      # reco does not accept private_repositories in the configuration file yet
-      # fork_pull_requests:
-      #   approval_policy: unavailable (the repository is private)
-      #   private_repositories:
-      #     run_workflows_from_fork_pull_requests: false
-      #     send_write_tokens_to_workflows: false
-      #     send_secrets_and_variables: false
-      #     require_approval_for_fork_pr_workflows: false
+      fork_pull_requests:
+        # approval_policy: unavailable (the repository is private)
+        private_repositories:
+          run_workflows_from_fork_pull_requests: false
+          send_write_tokens_to_workflows: false
+          send_secrets_and_variables: false
+          require_approval_for_fork_pr_workflows: false
       # reco does not accept the retention period in the configuration file yet
       # retention:
       #   days: 90 # maximum allowed: 400
@@ -93,8 +92,8 @@ repositories:
 | `# variables: none` | `actions` の下では Repository Variables が、Environment の下ではその Environment の変数（Environment Variables）が一つもない |
 | `# environments: none` | Environment が一つもない |
 | `# access:` と `#   access_level: unavailable (the repository is public)` | 公開リポジトリのため、`access_level` を読み取れない。この設定は非公開リポジトリにだけ書ける |
-| `# reco does not accept private_repositories in the configuration file yet` / `# reco does not accept the retention period in the configuration file yet` | 続くコメントの行のうち `private_repositories`（非公開リポジトリの Fork からの Pull Request のワークフローの実行条件）と `retention`（Artifact と Log の保持期間）は、いまの reco では設定ファイルに書けない。今の値を確かめるためだけに表示している。非公開リポジトリでは、`fork_pull_requests` の下には、設定ファイルに書ける行がないため、`fork_pull_requests` ごとコメントになる |
-| `#   approval_policy: unavailable (the repository is private)` / `# private_repositories: unavailable (the repository is public)` | Fork からの Pull Request のワークフローの承認ポリシー（`approval_policy`）は公開リポジトリにだけ、実行条件（`private_repositories`）は非公開リポジトリにだけあるため、非公開リポジトリでは `approval_policy` を、公開リポジトリでは `private_repositories` を読み取れない。公開リポジトリでは、`fork_pull_requests` と `approval_policy` は設定ファイルに書ける行として表示する |
+| `# reco does not accept the retention period in the configuration file yet` | 続くコメントの行の `retention`（Artifact と Log の保持期間）は、いまの reco では設定ファイルに書けない。今の値を確かめるためだけに表示している |
+| `# approval_policy: unavailable (the repository is private)` / `# private_repositories: unavailable (the repository is public)` | Fork からの Pull Request のワークフローの承認ポリシー（`approval_policy`）は公開リポジトリにだけ、実行条件（`private_repositories`）は非公開リポジトリにだけあるため、非公開リポジトリでは `approval_policy` を、公開リポジトリでは `private_repositories` を読み取れない。読み取れた側は、`fork_pull_requests` とともに設定ファイルに書ける行として表示する |
 | `#   days: 90 # maximum allowed: 400` | 保持日数は90日で、このリポジトリで設定できる上限は400日 |
 | `dependabot_security_updates: true # paused by GitHub (still enabled)` | Dependabot security updates は有効だが、GitHub が一時停止している。設定ファイルでは `true` と書いたのと同じ |
 | `# secret_scanning: unavailable (the repository is private)` / `# secret_scanning_push_protection: unavailable (the repository is private)` / `# private_vulnerability_reporting: unavailable (the repository is private)` | 非公開リポジトリのため、Secret scanning、リポジトリの push protection、Private vulnerability reporting の値を読み取れない |
@@ -140,6 +139,8 @@ Repositories checked: 1
 | `Patterns to remove:`、`Patterns to add:` | Environment のデプロイを許可するパターンのうち、設定ファイルにないものと、GitHub 上にないもの |
 | `rulesets.<名前>: absent -> present` と、その下の `target:` から `rules:` までの行 | 設定ファイルに書いた Ruleset が GitHub 上にない。下の行は、作成する Ruleset の内容 |
 | `rulesets.<名前>:` と、その下の変わる部分の行 | Ruleset の内容が設定ファイルと違う。`... to remove:` の行は、設定ファイルにないためなくなるパターン、迂回できる主体、ルール。`... to add:` の行は加わるもの。`enforcement: disabled -> active` や `Rule pull_request: ...` の行は、値が変わる項目。`conditions: {} -> ref_name` の行は、GitHub 上の Ruleset が対象のブランチの条件を持たないことを示す |
+| `actions.fork_pull_requests.private_repositories:` の下に、今の値の行と `-> <書いた値>` の行 | 非公開リポジトリの Fork からの Pull Request のワークフローの実行条件。4項目をまとめて一つの変更として示す |
+| `Note:` | すぐ上の変更が GitHub 上で何を意味するか。Fork からの Pull Request で起動したワークフローに、書き込み権限を持つ `GITHUB_TOKEN` が渡るようになること、Secrets と Variables が使えるようになることを示す。変更を止めるものではなく、承認の前に読むための行である |
 | `Side effect:` | この変更に伴って GitHub が消すか変える値 |
 | `Previous settings:` | Actions を有効に戻すと、設定ファイルに書いていない設定は、無効にする前の値で再開すること |
 | `Plan:` | 変える予定のリポジトリの数と、変える設定の数 |
@@ -187,6 +188,8 @@ Repositories updated: 1
 | `Apply complete.` | すべてのリポジトリが `updated` か `no change` だった |
 
 変更計画に `Plan cannot be applied.` が出たときは、承認を求めず、どのリポジトリの設定も変えずにエラーで終わります。直し方は [Troubleshooting](troubleshooting.md#plan-cannot-be-applied-と表示された) にあります。
+
+変更計画に `actions.fork_pull_requests.private_repositories` の変更があるときも、変更計画を表示したうえで、承認を求めず、どのリポジトリの設定も変えずにエラーで終わります。いまの reco は、この変更を `plan` で確かめるところまで扱い、`apply` ではまだ変えません。
 
 `apply` は、設定ファイルに書いた Ruleset を、書いた順に一つずつ処理します。GitHub 上になければ作成し、あって内容が違えば、書いた内容で全体を置き換えます。置き換える直前の確認は [承認のあとで設定が変わったら止まる](safety.md#承認のあとで設定が変わったら止まる) にあります。
 

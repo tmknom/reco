@@ -64,7 +64,7 @@ func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDe
 		}
 	}
 	if hasActions {
-		if desired.ActionsPermissions, desired.WorkflowPermissions, desired.ActionsAccess, desired.ForkPullRequestApproval, desired.RepositoryVariables, err = d.actions(actionsNode, path+".actions"); err != nil {
+		if err = d.actions(actionsNode, path+".actions", &desired); err != nil {
 			return RepositoryDeclaration{}, err
 		}
 	}
@@ -220,44 +220,41 @@ func (d document) deploymentPattern(n *yaml.Node, path string) (setting.Deployme
 	return setting.DeploymentPattern{Type: patternType, Name: name}, nil
 }
 
-// actions は、Actions の階層のうち reco が受け付ける permissions、workflow、access、fork_pull_requests、variables だけを読む。
+// actions は、Actions の階層のうち reco が受け付ける permissions、workflow、access、fork_pull_requests、variables だけを読み、desired の該当する領域を埋める。
+// 領域ごとの戻り値を並べず desired を埋めるのは、Actions の領域が多く、領域を足すたびに戻り値とその受け取りを直さずに済ませるため。
+// 失敗したときに途中まで埋まった desired は、呼び出し元が捨てる。
 // どれも任意のキーだが、空のマッピングは拒否されるため、成功すればどれかは必ずある。
-func (d document) actions(n *yaml.Node, path string) (ActionsPermissions, WorkflowPermissions, ActionsAccess, ForkPullRequestApproval, []VariableDeclaration, error) {
+func (d document) actions(n *yaml.Node, path string, desired *DesiredState) error {
 	entries, err := d.mappingEntries(n, path, nil, []string{"permissions", "workflow", "access", "fork_pull_requests", "variables"})
 	if err != nil {
-		return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, ForkPullRequestApproval{}, nil, err
+		return err
 	}
-	var permissions ActionsPermissions
 	if value, ok := entries["permissions"]; ok {
-		if permissions, err = d.permissions(value, path+".permissions"); err != nil {
-			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, ForkPullRequestApproval{}, nil, err
+		if desired.ActionsPermissions, err = d.permissions(value, path+".permissions"); err != nil {
+			return err
 		}
 	}
-	var workflow WorkflowPermissions
 	if value, ok := entries["workflow"]; ok {
-		if workflow, err = d.workflow(value, path+".workflow"); err != nil {
-			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, ForkPullRequestApproval{}, nil, err
+		if desired.WorkflowPermissions, err = d.workflow(value, path+".workflow"); err != nil {
+			return err
 		}
 	}
-	var access ActionsAccess
 	if value, ok := entries["access"]; ok {
-		if access, err = d.access(value, path+".access"); err != nil {
-			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, ForkPullRequestApproval{}, nil, err
+		if desired.ActionsAccess, err = d.access(value, path+".access"); err != nil {
+			return err
 		}
 	}
-	var approval ForkPullRequestApproval
 	if value, ok := entries["fork_pull_requests"]; ok {
-		if approval, err = d.forkPullRequests(value, path+".fork_pull_requests"); err != nil {
-			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, ForkPullRequestApproval{}, nil, err
+		if desired.ForkPullRequestApproval, desired.PrivateForkPullRequestWorkflows, err = d.forkPullRequests(value, path+".fork_pull_requests"); err != nil {
+			return err
 		}
 	}
-	var variables []VariableDeclaration
 	if value, ok := entries["variables"]; ok {
-		if variables, err = d.variables(value, path+".variables"); err != nil {
-			return ActionsPermissions{}, WorkflowPermissions{}, ActionsAccess{}, ForkPullRequestApproval{}, nil, err
+		if desired.RepositoryVariables, err = d.variables(value, path+".variables"); err != nil {
+			return err
 		}
 	}
-	return permissions, workflow, access, approval, variables, nil
+	return nil
 }
 
 // variables は、変数の宣言の並びを宣言の順のまま読む。
@@ -472,18 +469,76 @@ func (d document) access(n *yaml.Node, path string) (ActionsAccess, error) {
 	return ActionsAccess{AccessLevel: &level}, nil
 }
 
-// forkPullRequests は、Fork からの Pull Request のワークフローの設定を読む。
-// 受け付けるキーは approval_policy だけのため必須として渡す。空のマッピングは mappingEntries が拒否する。
-func (d document) forkPullRequests(n *yaml.Node, path string) (ForkPullRequestApproval, error) {
-	entries, err := d.mappingEntries(n, path, []string{"approval_policy"}, nil)
+// forkPullRequests は、Fork からの Pull Request のワークフローの設定を、承認ポリシーと実行条件の二つの領域に分けて読む。
+// どちらのキーも任意だが、空のマッピングは mappingEntries が拒否するため、成功すればどちらかは必ずある。
+// 公開範囲に合わない側の宣言は、観測のあとに適用不能として扱うため、ここでは拒否しない。
+func (d document) forkPullRequests(n *yaml.Node, path string) (ForkPullRequestApproval, PrivateForkPullRequestWorkflows, error) {
+	entries, err := d.mappingEntries(n, path, nil, []string{"approval_policy", "private_repositories"})
 	if err != nil {
-		return ForkPullRequestApproval{}, err
+		return ForkPullRequestApproval{}, PrivateForkPullRequestWorkflows{}, err
 	}
-	policy, err := d.forkPullRequestApprovalPolicyValue(entries["approval_policy"], path+".approval_policy")
+	var approval ForkPullRequestApproval
+	if value, ok := entries["approval_policy"]; ok {
+		policy, err := d.forkPullRequestApprovalPolicyValue(value, path+".approval_policy")
+		if err != nil {
+			return ForkPullRequestApproval{}, PrivateForkPullRequestWorkflows{}, err
+		}
+		approval.ApprovalPolicy = &policy
+	}
+	var workflows PrivateForkPullRequestWorkflows
+	if value, ok := entries["private_repositories"]; ok {
+		conditions, err := d.privateForkPullRequestWorkflows(value, path+".private_repositories")
+		if err != nil {
+			return ForkPullRequestApproval{}, PrivateForkPullRequestWorkflows{}, err
+		}
+		workflows.Conditions = &conditions
+	}
+	return approval, workflows, nil
+}
+
+// privateForkPullRequestWorkflows は、4項目がそろった実行条件を読む。
+// 一部の項目だけの宣言は、残りの項目の期待値が決まらないため拒否し、足りない項目をすべて示す。
+// 実行を許可しないまま、ほかの項目を有効にする組み合わせは4つの真偽値で決まるため、値の誤りを先に示す。
+func (d document) privateForkPullRequestWorkflows(n *yaml.Node, path string) (setting.PrivateForkPullRequestWorkflowConditions, error) {
+	keys := []string{"run_workflows_from_fork_pull_requests", "send_write_tokens_to_workflows", "send_secrets_and_variables", "require_approval_for_fork_pr_workflows"}
+	entries, err := d.mappingEntries(n, path, nil, keys)
 	if err != nil {
-		return ForkPullRequestApproval{}, err
+		return setting.PrivateForkPullRequestWorkflowConditions{}, err
 	}
-	return ForkPullRequestApproval{ApprovalPolicy: &policy}, nil
+	var missing []string
+	for _, k := range keys {
+		if _, ok := entries[k]; !ok {
+			missing = append(missing, k)
+		}
+	}
+	if len(missing) > 0 {
+		return setting.PrivateForkPullRequestWorkflowConditions{}, invalid(n, path, "missing %s; private_repositories requires all of %s", strings.Join(missing, ", "), strings.Join(keys, ", "))
+	}
+	values := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		v, err := d.boolValue(entries[k], path+"."+k)
+		if err != nil {
+			return setting.PrivateForkPullRequestWorkflowConditions{}, err
+		}
+		values[k] = v
+	}
+	if !values["run_workflows_from_fork_pull_requests"] {
+		var enabled []string
+		for _, k := range keys[1:] {
+			if values[k] {
+				enabled = append(enabled, k+" true")
+			}
+		}
+		if len(enabled) > 0 {
+			return setting.PrivateForkPullRequestWorkflowConditions{}, invalid(n, path, "run_workflows_from_fork_pull_requests false cannot be declared with %s; GitHub saves them as false", strings.Join(enabled, ", "))
+		}
+	}
+	return setting.PrivateForkPullRequestWorkflowConditions{
+		RunWorkflowsFromForkPullRequests:           values["run_workflows_from_fork_pull_requests"],
+		SendWriteTokensToWorkflows:                 values["send_write_tokens_to_workflows"],
+		SendSecretsAndVariables:                    values["send_secrets_and_variables"],
+		RequireApprovalForForkPullRequestWorkflows: values["require_approval_for_fork_pr_workflows"],
+	}, nil
 }
 
 // general は general の設定を読む。マージ方式の組み合わせの規則は 3 つの値で決まるため、すべての値の誤りを先に示す。
