@@ -91,3 +91,21 @@ func TestKeyArea_UnknownKeyPanics(t *testing.T) {
 	}()
 	Key("general.unknown").Area()
 }
+
+// TestKey_DeclaredKeyName は、管理の単位を宣言するキーとして、キーのパスの最も内側の要素を返し、パスが一つの要素だけならそれを返すことを確かめる。
+func TestKey_DeclaredKeyName(t *testing.T) {
+	tests := []struct {
+		key  Key
+		want string
+	}{
+		{key: DependabotAlerts, want: "dependabot_alerts"},
+		{key: RulesetResource, want: "rulesets"},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.key), func(t *testing.T) {
+			if got := tt.key.DeclaredKeyName(); got != tt.want {
+				t.Errorf("DeclaredKeyName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

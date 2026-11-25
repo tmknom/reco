@@ -157,7 +157,7 @@ func TestPossibleCause(t *testing.T) {
 		},
 		{
 			name:   "unconfirmed state after a successful update has no possible cause",
-			record: changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateUnconfirmed},
+			record: changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateObservationFailed},
 			want:   false,
 		},
 	}
@@ -232,7 +232,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 		},
 		{
 			name:   "success with an unconfirmed state",
-			record: changeRecord{change: change, operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateUnconfirmed},
+			record: changeRecord{change: change, operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateObservationFailed},
 			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not confirmed (read failed)\n\n" +
 				rollbackNote,
 		},

@@ -122,16 +122,16 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	newRepositoryPlan := func(settings ...SettingPlan) RepositoryPlan {
 		return RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: settings}
 	}
-	relevant := func(key setting.Key, anticipated AnticipatedValue) RelevantSetting {
-		return RelevantSetting{Unit: setting.Unit{Key: key}, AnticipatedValue: anticipated}
+	basis := func(key setting.Key, anticipated AnticipatedValue) PreconditionBasis {
+		return PreconditionBasis{Unit: setting.Unit{Key: key}, AnticipatedValue: anticipated}
 	}
 	// settingUpdate は、key の値 desired を送る更新操作。
-	settingUpdate := func(key setting.Key, desired setting.Value, relevant ...RelevantSetting) UpdateOperation {
-		return UpdateOperation{Kind: SettingUpdate, Unit: setting.Unit{Key: key}, Value: desired, RelevantSettings: relevant}
+	settingUpdate := func(key setting.Key, desired setting.Value, bases ...PreconditionBasis) UpdateOperation {
+		return UpdateOperation{Kind: SettingUpdate, Unit: setting.Unit{Key: key}, Value: desired, PreconditionBases: bases}
 	}
 	// settingChange は、key を desired にする期待状態と、その値を送る更新操作一つからなる論理的な設定変更。
-	settingChange := func(key setting.Key, desired setting.Value, relevant ...RelevantSetting) LogicalChange {
-		return LogicalChange{DesiredState: []DesiredSetting{{Unit: setting.Unit{Key: key}, Value: desired}}, Operations: []UpdateOperation{settingUpdate(key, desired, relevant...)}}
+	settingChange := func(key setting.Key, desired setting.Value, bases ...PreconditionBasis) LogicalChange {
+		return LogicalChange{DesiredState: []DesiredSetting{{Unit: setting.Unit{Key: key}, Value: desired}}, Operations: []UpdateOperation{settingUpdate(key, desired, bases...)}}
 	}
 
 	t.Run("merge method changes are one logical change at the first one and allow_update_branch is another", func(t *testing.T) {
@@ -143,9 +143,9 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
 		want := []LogicalChange{
-			settingChange(setting.AllowAutoMerge, setting.BoolValue(true), relevant(setting.AllowAutoMerge, AnticipateValue(setting.BoolValue(false)))),
+			settingChange(setting.AllowAutoMerge, setting.BoolValue(true), basis(setting.AllowAutoMerge, AnticipateValue(setting.BoolValue(false)))),
 			mergeMethodsChange([]SettingPlan{squash, rebase}),
-			settingChange(setting.AllowUpdateBranch, setting.BoolValue(true), relevant(setting.AllowUpdateBranch, AnticipateValue(setting.BoolValue(false)))),
+			settingChange(setting.AllowUpdateBranch, setting.BoolValue(true), basis(setting.AllowUpdateBranch, AnticipateValue(setting.BoolValue(false)))),
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() =\n%+v\nwant\n%+v", got, want)
@@ -164,7 +164,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
-		want := []LogicalChange{settingChange(setting.AllowAutoMerge, setting.BoolValue(true), relevant(setting.AllowAutoMerge, AnticipateValue(setting.BoolValue(false))))}
+		want := []LogicalChange{settingChange(setting.AllowAutoMerge, setting.BoolValue(true), basis(setting.AllowAutoMerge, AnticipateValue(setting.BoolValue(false))))}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
 		}
@@ -177,8 +177,8 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
 		want := []LogicalChange{
-			settingChange(setting.DeleteBranchOnMerge, setting.BoolValue(true), relevant(setting.DeleteBranchOnMerge, AnticipateValue(setting.BoolValue(false)))),
-			settingChange(setting.AllowAutoMerge, setting.BoolValue(true), relevant(setting.AllowAutoMerge, AnticipateValue(setting.BoolValue(false)))),
+			settingChange(setting.DeleteBranchOnMerge, setting.BoolValue(true), basis(setting.DeleteBranchOnMerge, AnticipateValue(setting.BoolValue(false)))),
+			settingChange(setting.AllowAutoMerge, setting.BoolValue(true), basis(setting.AllowAutoMerge, AnticipateValue(setting.BoolValue(false)))),
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
@@ -192,7 +192,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
-		want := []LogicalChange{settingChange(setting.ActionsEnabled, setting.BoolValue(true), relevant(setting.ActionsEnabled, AnticipateValue(setting.BoolValue(false))))}
+		want := []LogicalChange{settingChange(setting.ActionsEnabled, setting.BoolValue(true), basis(setting.ActionsEnabled, AnticipateValue(setting.BoolValue(false))))}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
 		}
@@ -213,7 +213,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
-		want := []LogicalChange{settingChange(setting.AllowedActions, policy(setting.AllowedActionsLocalOnly), relevant(setting.AllowedActions, AnticipateValue(policy(setting.AllowedActionsAll))))}
+		want := []LogicalChange{settingChange(setting.AllowedActions, policy(setting.AllowedActionsLocalOnly), basis(setting.AllowedActions, AnticipateValue(policy(setting.AllowedActionsAll))))}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
 		}
@@ -227,8 +227,8 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 		}
 		want := []LogicalChange{settingChange(
 			setting.AllowedActions, policy(setting.AllowedActionsAll),
-			relevant(setting.AllowedActions, AnticipateValue(policy(setting.AllowedActionsSelected))),
-			relevant(setting.SelectedActions, AnticipateValue(criteria)),
+			basis(setting.AllowedActions, AnticipateValue(policy(setting.AllowedActionsSelected))),
+			basis(setting.SelectedActions, AnticipateValue(criteria)),
 		)}
 		want[0].SideEffectSettings = []setting.Unit{{Key: setting.SelectedActions}}
 		if !reflect.DeepEqual(got, want) {
@@ -245,7 +245,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
-		want := []LogicalChange{settingChange(setting.AllowedActions, policy(setting.AllowedActionsLocalOnly), relevant(setting.AllowedActions, AnticipateUnchanged(disabled)), relevant(setting.SelectedActions, AnticipateUnchanged(disabled)))}
+		want := []LogicalChange{settingChange(setting.AllowedActions, policy(setting.AllowedActionsLocalOnly), basis(setting.AllowedActions, AnticipateUnchanged(disabled)), basis(setting.SelectedActions, AnticipateUnchanged(disabled)))}
 		want[0].SideEffectSettings = []setting.Unit{{Key: setting.SelectedActions}}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
@@ -260,7 +260,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	}
 	// toSelected は、ポリシーを selected にする更新操作のあとに続く、選択方式の Actions 許可条件の更新操作。
 	// 基準は1つ目による予定どおりの変化を反映したポリシーだけで、2つ目がすべて上書きする3項目は並ばない。
-	toSelected := settingUpdate(setting.SelectedActions, criteria, relevant(setting.AllowedActions, AnticipateValue(policy(setting.AllowedActionsSelected))))
+	toSelected := settingUpdate(setting.SelectedActions, criteria, basis(setting.AllowedActions, AnticipateValue(policy(setting.AllowedActionsSelected))))
 	// toSelectedDesired は、ポリシーと許可条件をまとめた論理的な設定変更の期待状態で、ポリシー、許可条件の順に並ぶ。
 	toSelectedDesired := []DesiredSetting{{Unit: setting.Unit{Key: setting.AllowedActions}, Value: policy(setting.AllowedActionsSelected)}, {Unit: setting.Unit{Key: setting.SelectedActions}, Value: criteria}}
 	workflow := SettingPlan{
@@ -274,12 +274,12 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
 		want := []LogicalChange{
-			settingChange(setting.AllowAutoMerge, setting.BoolValue(true), relevant(setting.AllowAutoMerge, AnticipateValue(setting.BoolValue(false)))),
+			settingChange(setting.AllowAutoMerge, setting.BoolValue(true), basis(setting.AllowAutoMerge, AnticipateValue(setting.BoolValue(false)))),
 			{DesiredState: toSelectedDesired, Operations: []UpdateOperation{
-				settingUpdate(setting.AllowedActions, policy(setting.AllowedActionsSelected), relevant(setting.AllowedActions, AnticipateValue(policy(setting.AllowedActionsAll)))),
+				settingUpdate(setting.AllowedActions, policy(setting.AllowedActionsSelected), basis(setting.AllowedActions, AnticipateValue(policy(setting.AllowedActionsAll)))),
 				toSelected,
 			}},
-			settingChange(workflow.Unit.Key, workflow.Desired, relevant(workflow.Unit.Key, AnticipateUnchanged(workflow.Observed))),
+			settingChange(workflow.Unit.Key, workflow.Desired, basis(workflow.Unit.Key, AnticipateUnchanged(workflow.Observed))),
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
@@ -293,7 +293,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
 		want := []LogicalChange{{DesiredState: toSelectedDesired, Operations: []UpdateOperation{
-			settingUpdate(setting.AllowedActions, policy(setting.AllowedActionsSelected), relevant(setting.AllowedActions, AnticipateUnchanged(disabled))),
+			settingUpdate(setting.AllowedActions, policy(setting.AllowedActionsSelected), basis(setting.AllowedActions, AnticipateUnchanged(disabled))),
 			toSelected,
 		}}}
 		if !reflect.DeepEqual(got, want) {
@@ -379,8 +379,8 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 	shaPinningMismatch := SettingPlan{
 		Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable(),
 	}
-	actionsEnabled := relevant(setting.ActionsEnabled, AnticipateValue(setting.BoolValue(true)))
-	shaPinningChange := settingChange(setting.SHAPinningRequired, setting.BoolValue(true), relevant(setting.SHAPinningRequired, AnticipateValue(setting.BoolValue(false))), actionsEnabled)
+	actionsEnabled := basis(setting.ActionsEnabled, AnticipateValue(setting.BoolValue(true)))
+	shaPinningChange := settingChange(setting.SHAPinningRequired, setting.BoolValue(true), basis(setting.SHAPinningRequired, AnticipateValue(setting.BoolValue(false))), actionsEnabled)
 
 	t.Run("sha_pinning_required mismatch is relevant to its observed value and then to actions being enabled", func(t *testing.T) {
 		got, err := newRepositoryPlan(shaPinningMismatch).LogicalChanges()
@@ -399,7 +399,7 @@ func TestRepositoryPlan_LogicalChanges(t *testing.T) {
 			t.Fatalf("LogicalChanges() error = %v", err)
 		}
 		want := []LogicalChange{
-			settingChange(setting.ActionsEnabled, setting.BoolValue(true), relevant(setting.ActionsEnabled, AnticipateValue(setting.BoolValue(false)))),
+			settingChange(setting.ActionsEnabled, setting.BoolValue(true), basis(setting.ActionsEnabled, AnticipateValue(setting.BoolValue(false)))),
 			settingChange(setting.SHAPinningRequired, setting.BoolValue(true), actionsEnabled),
 		}
 		if !reflect.DeepEqual(got, want) {
@@ -439,7 +439,7 @@ func TestRepositoryPlan_LogicalChangesOfRepositoryVariables(t *testing.T) {
 		{DesiredState: []DesiredSetting{{Unit: mismatch.Unit, Value: mismatch.Desired}}, Operations: []UpdateOperation{operationOf(mismatch)}},
 		{DesiredState: []DesiredSetting{{Unit: creation.Unit, Value: creation.Desired}}, Operations: []UpdateOperation{variableOperationOf(creation, AnticipateUnchanged(creation.Observed))}},
 		{DesiredState: []DesiredSetting{{Unit: deletion.Unit, Value: setting.Absent()}}, Operations: []UpdateOperation{{
-			Kind: RepositoryVariableDeletion, Unit: deletion.Unit, RelevantSettings: []RelevantSetting{{Unit: deletion.Unit, AnticipatedValue: AnticipateUnchanged(deletion.Observed)}},
+			Kind: RepositoryVariableDeletion, Unit: deletion.Unit, PreconditionBases: []PreconditionBasis{{Unit: deletion.Unit, AnticipatedValue: AnticipateUnchanged(deletion.Observed)}},
 		}}},
 		{DesiredState: []DesiredSetting{{Unit: valueChange.Unit, Value: valueChange.Desired}}, Operations: []UpdateOperation{variableOperationOf(valueChange, AnticipateUnchanged(valueChange.Observed))}},
 	}
@@ -487,7 +487,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, Observed: github.Observed(setting.Present()), Desired: setting.Present(),
 		EnvironmentIdentity: ObservedEnvironmentIdentity(7), Result: Match,
 	}
-	stagingEnvironment := RelevantSetting{Unit: stagingExistence.Unit, AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: ObservedEnvironmentIdentity(7)}
+	stagingEnvironment := PreconditionBasis{Unit: stagingExistence.Unit, AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: ObservedEnvironmentIdentity(7)}
 	productionUnit := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
 	productionCreation := SettingPlan{Unit: productionUnit, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch, Applicability: Applicable()}
 	dev := mustEnvironmentName(t, "dev")
@@ -495,10 +495,10 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 	variablePlan := func(unit setting.Unit, observed github.SettingObservation[setting.Value], result ReconciliationResult) SettingPlan {
 		return SettingPlan{Unit: unit, Observed: observed, Desired: setting.VariableValue("eu"), Result: result, Applicability: Applicable()}
 	}
-	variableChange := func(kind UpdateOperationKind, unit setting.Unit, relevant ...RelevantSetting) LogicalChange {
+	variableChange := func(kind UpdateOperationKind, unit setting.Unit, bases ...PreconditionBasis) LogicalChange {
 		return LogicalChange{
 			DesiredState: []DesiredSetting{{Unit: unit, Value: setting.VariableValue("eu")}},
-			Operations:   []UpdateOperation{{Kind: kind, Unit: unit, Value: setting.VariableValue("eu"), RelevantSettings: relevant}},
+			Operations:   []UpdateOperation{{Kind: kind, Unit: unit, Value: setting.VariableValue("eu"), PreconditionBases: bases}},
 		}
 	}
 	absentVariable := github.Observed(setting.Absent())
@@ -511,7 +511,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 			name:     "value change of an existing environment is based on the environment and then the planned value",
 			settings: []SettingPlan{stagingExistence, variablePlan(environmentVariableUnit(staging, region), github.Observed(setting.VariableValue("us")), Mismatch)},
 			want: []LogicalChange{variableChange(EnvironmentVariableValueUpdate, environmentVariableUnit(staging, region),
-				stagingEnvironment, RelevantSetting{Unit: environmentVariableUnit(staging, region), AnticipatedValue: AnticipateValue(setting.VariableValue("us"))})},
+				stagingEnvironment, PreconditionBasis{Unit: environmentVariableUnit(staging, region), AnticipatedValue: AnticipateValue(setting.VariableValue("us"))})},
 		},
 		{
 			name: "variables of an environment to create follow its creation one change each and are based only on their absence",
@@ -523,10 +523,10 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 			want: []LogicalChange{
 				{
 					DesiredState: []DesiredSetting{{Unit: productionUnit, Value: setting.Present()}},
-					Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: productionUnit, RelevantSettings: []RelevantSetting{{Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Absent())}}}},
+					Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: productionUnit, PreconditionBases: []PreconditionBasis{{Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Absent())}}}},
 				},
-				variableChange(EnvironmentVariableCreation, environmentVariableUnit(production, region), RelevantSetting{Unit: environmentVariableUnit(production, region), AnticipatedValue: AnticipateUnchanged(absentVariable)}),
-				variableChange(EnvironmentVariableCreation, environmentVariableUnit(production, debug), RelevantSetting{Unit: environmentVariableUnit(production, debug), AnticipatedValue: AnticipateUnchanged(absentVariable)}),
+				variableChange(EnvironmentVariableCreation, environmentVariableUnit(production, region), PreconditionBasis{Unit: environmentVariableUnit(production, region), AnticipatedValue: AnticipateUnchanged(absentVariable)}),
+				variableChange(EnvironmentVariableCreation, environmentVariableUnit(production, debug), PreconditionBasis{Unit: environmentVariableUnit(production, debug), AnticipatedValue: AnticipateUnchanged(absentVariable)}),
 			},
 		},
 		{
@@ -536,7 +536,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 			}},
 			want: []LogicalChange{{
 				DesiredState: []DesiredSetting{{Unit: environmentVariableUnit(staging, region), Value: setting.Absent()}},
-				Operations: []UpdateOperation{{Kind: EnvironmentVariableDeletion, Unit: environmentVariableUnit(staging, region), RelevantSettings: []RelevantSetting{
+				Operations: []UpdateOperation{{Kind: EnvironmentVariableDeletion, Unit: environmentVariableUnit(staging, region), PreconditionBases: []PreconditionBasis{
 					stagingEnvironment, {Unit: environmentVariableUnit(staging, region), AnticipatedValue: AnticipateValue(setting.VariableValue("us"))},
 				}}},
 			}},
@@ -554,12 +554,12 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 			want: []LogicalChange{
 				{
 					DesiredState: []DesiredSetting{{Unit: productionUnit, Value: setting.Present()}, {Unit: environmentVariableUnit(production, debug), Value: setting.Absent()}},
-					Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: productionUnit, RelevantSettings: []RelevantSetting{{Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Absent())}}}},
+					Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: productionUnit, PreconditionBases: []PreconditionBasis{{Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Absent())}}}},
 				},
-				variableChange(EnvironmentVariableCreation, environmentVariableUnit(production, region), RelevantSetting{Unit: environmentVariableUnit(production, region), AnticipatedValue: AnticipateUnchanged(absentVariable)}),
+				variableChange(EnvironmentVariableCreation, environmentVariableUnit(production, region), PreconditionBasis{Unit: environmentVariableUnit(production, region), AnticipatedValue: AnticipateUnchanged(absentVariable)}),
 				{
 					DesiredState: []DesiredSetting{{Unit: devUnit, Value: setting.Present()}, {Unit: environmentVariableUnit(dev, region), Value: setting.Absent()}},
-					Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: devUnit, RelevantSettings: []RelevantSetting{{Unit: devUnit, AnticipatedValue: AnticipateValue(setting.Absent())}}}},
+					Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: devUnit, PreconditionBases: []PreconditionBasis{{Unit: devUnit, AnticipatedValue: AnticipateValue(setting.Absent())}}}},
 				},
 			},
 		},
@@ -581,7 +581,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 				},
 				Operations: []UpdateOperation{{
 					Kind: EnvironmentCreationWithMode, Unit: productionUnit, Mode: setting.DeploymentBranchPolicyAll,
-					RelevantSettings: []RelevantSetting{{Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Absent())}},
+					PreconditionBases: []PreconditionBasis{{Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Absent())}},
 				}},
 			}},
 		},
@@ -664,18 +664,18 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 		DesiredState: []DesiredSetting{{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Value: setting.BoolValue(true)}},
 		Operations: []UpdateOperation{{
 			Kind: SettingUpdate, Unit: setting.Unit{Key: setting.AllowAutoMerge}, Value: setting.BoolValue(true),
-			RelevantSettings: []RelevantSetting{{Unit: setting.Unit{Key: setting.AllowAutoMerge}, AnticipatedValue: AnticipateValue(setting.BoolValue(false))}},
+			PreconditionBases: []PreconditionBasis{{Unit: setting.Unit{Key: setting.AllowAutoMerge}, AnticipatedValue: AnticipateValue(setting.BoolValue(false))}},
 		}},
 	}
 	// 作成の基準は存在しないことだけで、方式を宣言していても方式の基準は並ばない
-	productionAbsent := []RelevantSetting{{Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Absent())}}
+	productionAbsent := []PreconditionBasis{{Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Absent())}}
 	createProduction := LogicalChange{
 		DesiredState: []DesiredSetting{{Unit: productionUnit, Value: setting.Present()}},
-		Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: productionUnit, RelevantSettings: productionAbsent}},
+		Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: productionUnit, PreconditionBases: productionAbsent}},
 	}
 	// createProductionWithMode は、デプロイ元制限を desired と宣言した作成の、期待状態と、方式を送る作成の更新操作に、operations を続けたもの。
 	createProductionWithMode := func(desired setting.Value, operations ...UpdateOperation) LogicalChange {
-		creation := UpdateOperation{Kind: EnvironmentCreationWithMode, Unit: productionUnit, Mode: desired.DeploymentBranchPolicy().Mode, RelevantSettings: productionAbsent}
+		creation := UpdateOperation{Kind: EnvironmentCreationWithMode, Unit: productionUnit, Mode: desired.DeploymentBranchPolicy().Mode, PreconditionBases: productionAbsent}
 		return LogicalChange{
 			DesiredState: []DesiredSetting{{Unit: productionUnit, Value: setting.Present()}, {Unit: productionPolicyUnit, Value: desired}},
 			Operations:   append([]UpdateOperation{creation}, operations...),
@@ -685,13 +685,13 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 	stagingPolicyChange := func(desired setting.Value, operations ...UpdateOperation) LogicalChange {
 		return LogicalChange{DesiredState: []DesiredSetting{{Unit: stagingPolicyUnit, Value: desired}}, Operations: operations}
 	}
-	stagingEnvironment := RelevantSetting{Unit: stagingUnit, AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: ObservedEnvironmentIdentity(7)}
+	stagingEnvironment := PreconditionBasis{Unit: stagingUnit, AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: ObservedEnvironmentIdentity(7)}
 	// stagingModeUpdate は、計画時に observed だった staging の方式を desired の方式にする更新操作。
 	// 方式の変更の基準は、Environment が存在し ID が同じこと、方式が計画時の観測値と同じことの順に並ぶ
 	stagingModeUpdate := func(observed, desired setting.Value) UpdateOperation {
 		return UpdateOperation{
 			Kind: DeploymentBranchPolicyModeUpdate, Unit: stagingPolicyUnit, Mode: desired.DeploymentBranchPolicy().Mode,
-			RelevantSettings: []RelevantSetting{stagingEnvironment, {Unit: stagingPolicyUnit, AnticipatedValue: AnticipateValue(observed)}},
+			PreconditionBases: []PreconditionBasis{stagingEnvironment, {Unit: stagingPolicyUnit, AnticipatedValue: AnticipateValue(observed)}},
 		}
 	}
 	changeStagingMode := stagingPolicyChange(protected, stagingModeUpdate(all, protected))
@@ -730,7 +730,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 		for _, step := range steps {
 			operations = append(operations, UpdateOperation{
 				Kind: step.kind, Unit: stagingPolicyUnit, Pattern: step.pattern,
-				RelevantSettings: []RelevantSetting{stagingEnvironment, {Unit: stagingPolicyUnit, AnticipatedValue: AnticipateValue(step.base)}},
+				PreconditionBases: []PreconditionBasis{stagingEnvironment, {Unit: stagingPolicyUnit, AnticipatedValue: AnticipateValue(step.base)}},
 			})
 		}
 		return operations
@@ -741,7 +741,7 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 		for _, step := range steps {
 			operations = append(operations, UpdateOperation{
 				Kind: step.kind, Unit: productionPolicyUnit, Pattern: step.pattern,
-				RelevantSettings: []RelevantSetting{{Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: CreatedByPrecedingOperation()}, {Unit: productionPolicyUnit, AnticipatedValue: AnticipateValue(step.base)}},
+				PreconditionBases: []PreconditionBasis{{Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: CreatedByPrecedingOperation()}, {Unit: productionPolicyUnit, AnticipatedValue: AnticipateValue(step.base)}},
 			})
 		}
 		return operations
@@ -1022,25 +1022,25 @@ func TestRepositoryPlan_LogicalChangesOfSecretScanning(t *testing.T) {
 		})
 	}
 
-	self := func(s SettingPlan) RelevantSetting {
-		return RelevantSetting{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)}
+	self := func(s SettingPlan) PreconditionBasis {
+		return PreconditionBasis{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)}
 	}
 	enabling := mismatch(setting.RepositoryPushProtection, false, true)
 	disabling := mismatch(setting.RepositoryPushProtection, true, false)
 	changes := []struct {
-		name         string
-		plan         SettingPlan
-		wantRelevant []RelevantSetting
+		name      string
+		plan      SettingPlan
+		wantBases []PreconditionBasis
 	}{
 		{
-			name:         "enabling push protection is relevant to secret scanning being enabled",
-			plan:         enabling,
-			wantRelevant: []RelevantSetting{self(enabling), {Unit: setting.Unit{Key: setting.SecretScanningEnabled}, AnticipatedValue: AnticipateValue(setting.BoolValue(true))}},
+			name:      "enabling push protection is relevant to secret scanning being enabled",
+			plan:      enabling,
+			wantBases: []PreconditionBasis{self(enabling), {Unit: setting.Unit{Key: setting.SecretScanningEnabled}, AnticipatedValue: AnticipateValue(setting.BoolValue(true))}},
 		},
 		{
-			name:         "disabling push protection is relevant only to itself",
-			plan:         disabling,
-			wantRelevant: []RelevantSetting{self(disabling)},
+			name:      "disabling push protection is relevant only to itself",
+			plan:      disabling,
+			wantBases: []PreconditionBasis{self(disabling)},
 		},
 	}
 	for _, tc := range changes {
@@ -1051,7 +1051,7 @@ func TestRepositoryPlan_LogicalChangesOfSecretScanning(t *testing.T) {
 			}
 			want := []LogicalChange{{
 				DesiredState: []DesiredSetting{{Unit: tc.plan.Unit, Value: tc.plan.Desired}},
-				Operations:   []UpdateOperation{{Kind: SettingUpdate, Unit: tc.plan.Unit, Value: tc.plan.Desired, RelevantSettings: tc.wantRelevant}},
+				Operations:   []UpdateOperation{{Kind: SettingUpdate, Unit: tc.plan.Unit, Value: tc.plan.Desired, PreconditionBases: tc.wantBases}},
 			}}
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
@@ -1068,10 +1068,10 @@ func TestRepositoryPlan_LogicalChangesOfDependabot(t *testing.T) {
 	updatesValue := func(state setting.DependabotSecurityUpdatesState) setting.Value {
 		return setting.DependabotSecurityUpdatesValue(state)
 	}
-	alerts := func(observed, desired bool, without ...SettingWithoutSideEffect) SettingPlan {
+	alerts := func(observed, desired bool, unaffected ...SettingExpectedUnaffected) SettingPlan {
 		return SettingPlan{
 			Unit: setting.Unit{Key: setting.DependabotAlerts}, Observed: github.Observed(setting.BoolValue(observed)), Desired: setting.BoolValue(desired),
-			Result: Mismatch, Applicability: Applicable(), SettingsWithoutSideEffect: without,
+			Result: Mismatch, Applicability: Applicable(), SettingsExpectedUnaffected: unaffected,
 		}
 	}
 	updates := func(observed, desired setting.DependabotSecurityUpdatesState) SettingPlan {
@@ -1086,11 +1086,11 @@ func TestRepositoryPlan_LogicalChangesOfDependabot(t *testing.T) {
 		return plan
 	}
 	// changeOf は、計画 s の期待値を送る更新操作一つからなる論理的な設定変更で、基準は s の計画時の観測値と extra である。
-	changeOf := func(s SettingPlan, extra ...RelevantSetting) LogicalChange {
-		relevant := append([]RelevantSetting{{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)}}, extra...)
+	changeOf := func(s SettingPlan, extra ...PreconditionBasis) LogicalChange {
+		bases := append([]PreconditionBasis{{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)}}, extra...)
 		return LogicalChange{
 			DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}},
-			Operations:   []UpdateOperation{{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, RelevantSettings: relevant}},
+			Operations:   []UpdateOperation{{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, PreconditionBases: bases}},
 		}
 	}
 	withSideEffectSettings := func(c LogicalChange, units ...setting.Unit) LogicalChange {
@@ -1137,15 +1137,15 @@ func TestRepositoryPlan_LogicalChangesOfDependabot(t *testing.T) {
 		withSideEffect := alerts(true, false)
 		withSideEffect.SideEffects = []SideEffect{{Kind: SideEffectDependencyGraphDisabled}, {Kind: SideEffectSecurityUpdatesDisabled, Observed: paused}}
 		disabled := github.Observed(updatesValue(setting.DependabotSecurityUpdatesDisabled))
-		disabledUpdates := RelevantSetting{Unit: setting.Unit{Key: setting.DependabotSecurityUpdates}, AnticipatedValue: AnticipateUnchanged(disabled)}
-		withoutSideEffect := alerts(true, false, SettingWithoutSideEffect{Key: setting.DependabotSecurityUpdates, Observed: disabled})
-		withoutSideEffect.SideEffects = []SideEffect{{Kind: SideEffectDependencyGraphDisabled}}
+		disabledUpdates := PreconditionBasis{Unit: setting.Unit{Key: setting.DependabotSecurityUpdates}, AnticipatedValue: AnticipateUnchanged(disabled)}
+		expectedUnaffected := alerts(true, false, SettingExpectedUnaffected{Key: setting.DependabotSecurityUpdates, Observed: disabled})
+		expectedUnaffected.SideEffects = []SideEffect{{Kind: SideEffectDependencyGraphDisabled}}
 		for _, tc := range []struct {
 			plan SettingPlan
 			want LogicalChange
 		}{
-			{plan: withSideEffect, want: withSideEffectSettings(changeOf(withSideEffect, RelevantSetting{Unit: setting.Unit{Key: setting.DependabotSecurityUpdates}, AnticipatedValue: AnticipateUnchanged(paused)}), setting.Unit{Key: setting.DependabotSecurityUpdates})},
-			{plan: withoutSideEffect, want: changeOf(withoutSideEffect, disabledUpdates)},
+			{plan: withSideEffect, want: withSideEffectSettings(changeOf(withSideEffect, PreconditionBasis{Unit: setting.Unit{Key: setting.DependabotSecurityUpdates}, AnticipatedValue: AnticipateUnchanged(paused)}), setting.Unit{Key: setting.DependabotSecurityUpdates})},
+			{plan: expectedUnaffected, want: changeOf(expectedUnaffected, disabledUpdates)},
 		} {
 			got, err := newRepositoryPlan(tc.plan).LogicalChanges()
 			if err != nil {
@@ -1214,7 +1214,7 @@ func TestCheckUpdateEndpoint(t *testing.T) {
 			name: "ruleset value update based on an observed ID passes without looking up an endpoint",
 			operation: UpdateOperation{
 				Kind: RulesetValueUpdate, Unit: rulesetUnit(t, "protect"), Value: setting.RulesetValue(protectRuleset()),
-				RelevantSettings: []RelevantSetting{{Unit: rulesetUnit(t, "protect"), AnticipatedRulesetIdentity: ObservedRulesetIdentity(42)}},
+				PreconditionBases: []PreconditionBasis{{Unit: rulesetUnit(t, "protect"), AnticipatedRulesetIdentity: ObservedRulesetIdentity(42)}},
 			},
 		},
 	}

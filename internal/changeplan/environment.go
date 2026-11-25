@@ -38,7 +38,7 @@ func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
 		panic(fmt.Sprintf("changeplan: %s is a planned change other than a creation", s.Unit.String()))
 	}
 	change := LogicalChange{DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}}}
-	existence := []RelevantSetting{s.existenceBasis()}
+	existence := []PreconditionBasis{s.existenceBasis()}
 	// 方式の単位は作成の綴りで作り、期待状態と更新操作が作成と同じ綴りの名前を示すようにする
 	policyUnit := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: s.Unit.Environment}
 	policy, ok := r.settingPlanOf(policyUnit)
@@ -54,15 +54,15 @@ func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
 		}
 	}
 	if !ok {
-		change.Operations = []UpdateOperation{{Kind: EnvironmentCreation, Unit: s.Unit, RelevantSettings: existence}}
+		change.Operations = []UpdateOperation{{Kind: EnvironmentCreation, Unit: s.Unit, PreconditionBases: existence}}
 		return change
 	}
 	desired := policy.Desired.DeploymentBranchPolicy()
-	change.Operations = []UpdateOperation{{Kind: EnvironmentCreationWithMode, Unit: s.Unit, Mode: desired.Mode, RelevantSettings: existence}}
+	change.Operations = []UpdateOperation{{Kind: EnvironmentCreationWithMode, Unit: s.Unit, Mode: desired.Mode, PreconditionBases: existence}}
 	if desired.Mode != setting.DeploymentBranchPolicySelected {
 		return change
 	}
-	created := RelevantSetting{Unit: s.Unit, AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: CreatedByPrecedingOperation()}
+	created := PreconditionBasis{Unit: s.Unit, AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: CreatedByPrecedingOperation()}
 	change.Operations = append(change.Operations, deploymentPatternOperations(policyUnit, created, emptySelected(), nil, desired.Patterns)...)
 	return change
 }
@@ -78,7 +78,7 @@ func (r RepositoryPlan) environmentVariableOperationOf(s SettingPlan) (UpdateOpe
 	switch {
 	case ok && existence.Result == Match && s.Result == Mismatch:
 		operation := variableOperationOf(s, AnticipateUnchanged(s.Observed))
-		operation.RelevantSettings = append([]RelevantSetting{existence.existenceBasis()}, operation.RelevantSettings...)
+		operation.PreconditionBases = append([]PreconditionBasis{existence.existenceBasis()}, operation.PreconditionBases...)
 		return operation, true
 	case ok && existence.IsEnvironmentCreation() && isDeclaredAbsentInAbsentEnvironment(s):
 		return UpdateOperation{}, false
@@ -91,7 +91,7 @@ func (r RepositoryPlan) environmentVariableOperationOf(s SettingPlan) (UpdateOpe
 // deploymentBranchPolicyOperations は、存在する Environment のデプロイ元制限の不一致 s を実現する更新操作を、実行順に返す。
 // environment は、その Environment の存在と ID の基準である。
 // 方式が selected でない期待値は、個別パターンを持っていても加える更新操作を並べない。宣言していない要素を送らないため。
-func deploymentBranchPolicyOperations(s SettingPlan, environment RelevantSetting) []UpdateOperation {
+func deploymentBranchPolicyOperations(s SettingPlan, environment PreconditionBasis) []UpdateOperation {
 	observed, _ := s.Observed.Value()
 	before, after := observed.DeploymentBranchPolicy(), s.Desired.DeploymentBranchPolicy()
 	if before.Mode == setting.DeploymentBranchPolicySelected && after.Mode == setting.DeploymentBranchPolicySelected {
@@ -99,7 +99,7 @@ func deploymentBranchPolicyOperations(s SettingPlan, environment RelevantSetting
 	}
 	operations := []UpdateOperation{{
 		Kind: DeploymentBranchPolicyModeUpdate, Unit: s.Unit, Mode: after.Mode,
-		RelevantSettings: []RelevantSetting{environment, {Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)}},
+		PreconditionBases: []PreconditionBasis{environment, {Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)}},
 	}}
 	if after.Mode != setting.DeploymentBranchPolicySelected {
 		return operations
@@ -114,14 +114,14 @@ func emptySelected() setting.DeploymentBranchPolicy {
 
 // deploymentPatternOperations は、個別パターンを取り除く更新操作、加える更新操作の順に並べる。
 // from は最初の更新操作の基準のデプロイ元制限で、各更新操作の基準は、直前までの更新操作を反映した値にする。
-func deploymentPatternOperations(unit setting.Unit, environment RelevantSetting, from setting.DeploymentBranchPolicy, remove, add []setting.DeploymentPattern) []UpdateOperation {
+func deploymentPatternOperations(unit setting.Unit, environment PreconditionBasis, from setting.DeploymentBranchPolicy, remove, add []setting.DeploymentPattern) []UpdateOperation {
 	patterns := slices.Clone(from.Patterns)
 	var operations []UpdateOperation
 	next := func(kind UpdateOperationKind, pattern setting.DeploymentPattern) {
 		base := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: patterns})
 		operations = append(operations, UpdateOperation{
 			Kind: kind, Unit: unit, Pattern: pattern,
-			RelevantSettings: []RelevantSetting{environment, {Unit: unit, AnticipatedValue: AnticipateValue(base)}},
+			PreconditionBases: []PreconditionBasis{environment, {Unit: unit, AnticipatedValue: AnticipateValue(base)}},
 		})
 	}
 	for _, pattern := range remove {
@@ -136,8 +136,8 @@ func deploymentPatternOperations(unit setting.Unit, environment RelevantSetting,
 }
 
 // existenceBasis は、Environment の存在の計画 s を、計画時の存在の観測結果と ID を承認時に予定した値にした基準にして返す。
-func (s SettingPlan) existenceBasis() RelevantSetting {
-	return RelevantSetting{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed), AnticipatedEnvironmentIdentity: s.EnvironmentIdentity}
+func (s SettingPlan) existenceBasis() PreconditionBasis {
+	return PreconditionBasis{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed), AnticipatedEnvironmentIdentity: s.EnvironmentIdentity}
 }
 
 // isOfAbsentEnvironment は、s が、属する Environment が存在しないことを理由に比較不能な、方式か変数の計画かを返す。

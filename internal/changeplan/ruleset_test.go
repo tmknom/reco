@@ -33,7 +33,7 @@ func TestRulesetChangeOf(t *testing.T) {
 				DesiredState: []DesiredSetting{{Unit: unit, Value: desired}},
 				Operations: []UpdateOperation{{
 					Kind: tc.wantKind, Unit: unit, Value: desired,
-					RelevantSettings: []RelevantSetting{{Unit: unit, AnticipatedValue: AnticipateValue(tc.observed), AnticipatedRulesetIdentity: tc.identity}},
+					PreconditionBases: []PreconditionBasis{{Unit: unit, AnticipatedValue: AnticipateValue(tc.observed), AnticipatedRulesetIdentity: tc.identity}},
 				}},
 			}
 			if got := rulesetChangeOf(s); !reflect.DeepEqual(got, want) {
@@ -69,7 +69,7 @@ func TestUpdateOperation_AnticipatedRulesetID(t *testing.T) {
 	other := rulesetUnit(t, "release")
 	operation := UpdateOperation{
 		Kind: RulesetValueUpdate, Unit: unit,
-		RelevantSettings: []RelevantSetting{
+		PreconditionBases: []PreconditionBasis{
 			{Unit: other, AnticipatedRulesetIdentity: ObservedRulesetIdentity(7)},
 			{Unit: unit, AnticipatedRulesetIdentity: ObservedRulesetIdentity(42)},
 		},
@@ -82,8 +82,8 @@ func TestUpdateOperation_AnticipatedRulesetID(t *testing.T) {
 		name      string
 		operation UpdateOperation
 	}{
-		{name: "relevant setting of another ruleset panics", operation: UpdateOperation{Kind: RulesetValueUpdate, Unit: unit, RelevantSettings: []RelevantSetting{{Unit: other, AnticipatedRulesetIdentity: ObservedRulesetIdentity(7)}}}},
-		{name: "relevant setting without an observed ID panics", operation: UpdateOperation{Kind: RulesetValueUpdate, Unit: unit, RelevantSettings: []RelevantSetting{{Unit: unit}}}},
+		{name: "precondition basis of another ruleset panics", operation: UpdateOperation{Kind: RulesetValueUpdate, Unit: unit, PreconditionBases: []PreconditionBasis{{Unit: other, AnticipatedRulesetIdentity: ObservedRulesetIdentity(7)}}}},
+		{name: "precondition basis without an observed ID panics", operation: UpdateOperation{Kind: RulesetValueUpdate, Unit: unit, PreconditionBases: []PreconditionBasis{{Unit: unit}}}},
 	}
 	for _, tc := range panics {
 		t.Run(tc.name, func(t *testing.T) {

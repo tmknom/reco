@@ -1033,6 +1033,34 @@ func TestDocumentSecurity(t *testing.T) {
 	}
 }
 
+// TestDisablesPrerequisiteOfEnabled は、前提の設定を false、依存する設定を有効と宣言した組だけを拒否の対象とする規則を確かめる。
+// 拒否されないケースは、拒否される宣言 (前提の設定が false、依存する設定が true) の条件を 1 つだけ変えて作る。
+func TestDisablesPrerequisiteOfEnabled(t *testing.T) {
+	on, off := true, false
+	dependabot := setting.Dependencies()[0]
+	secretScanning := setting.Dependencies()[1]
+	cases := []struct {
+		name       string
+		desired    DesiredState
+		dependency setting.Dependency
+		want       bool
+	}{
+		{name: "disabled alerts with enabled security updates is rejected", desired: DesiredState{Dependabot: Dependabot{Alerts: &off, SecurityUpdates: &on}}, dependency: dependabot, want: true},
+		{name: "disabled secret scanning with enabled push protection is rejected", desired: DesiredState{SecretScanning: SecretScanning{Enabled: &off, PushProtection: &on}}, dependency: secretScanning, want: true},
+		{name: "omitted prerequisite is not rejected", desired: DesiredState{Dependabot: Dependabot{SecurityUpdates: &on}}, dependency: dependabot},
+		{name: "enabled prerequisite is not rejected", desired: DesiredState{Dependabot: Dependabot{Alerts: &on, SecurityUpdates: &on}}, dependency: dependabot},
+		{name: "omitted dependent is not rejected", desired: DesiredState{Dependabot: Dependabot{Alerts: &off}}, dependency: dependabot},
+		{name: "disabled dependent is not rejected", desired: DesiredState{Dependabot: Dependabot{Alerts: &off, SecurityUpdates: &off}}, dependency: dependabot},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := disablesPrerequisiteOfEnabled(tc.desired, tc.dependency); got != tc.want {
+				t.Errorf("disablesPrerequisiteOfEnabled() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestDocumentEnvironments は、environments の並びが持つ規則 (空の拒否、同一とみなす名前の重複、宣言の並びの保持) を確かめる。
 // 拒否のケースは、受理される入力 (base) の条件を 1 つだけ変えて作る。
 //

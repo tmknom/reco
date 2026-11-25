@@ -79,9 +79,9 @@ func TestSideEffects(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, without := sideEffects(tc.plan, tc.observed, []SettingPlan{tc.plan})
-			if !reflect.DeepEqual(got, tc.want) || without != nil {
-				t.Errorf("sideEffects() = %+v, %+v, want %+v, nil", got, without, tc.want)
+			got, unaffected := sideEffects(tc.plan, tc.observed, []SettingPlan{tc.plan})
+			if !reflect.DeepEqual(got, tc.want) || unaffected != nil {
+				t.Errorf("sideEffects() = %+v, %+v, want %+v, nil", got, unaffected, tc.want)
 			}
 		})
 	}
@@ -103,7 +103,7 @@ func TestSideEffects_DependabotAlerts(t *testing.T) {
 		// declaresUpdates は、同じリポジトリで dependabot_security_updates を false と宣言するか。
 		declaresUpdates bool
 		want            []SideEffect
-		wantWithout     []SettingWithoutSideEffect
+		wantUnaffected  []SettingExpectedUnaffected
 	}{
 		{
 			name:     "enabling alerts enables the dependency graph",
@@ -117,10 +117,10 @@ func TestSideEffects_DependabotAlerts(t *testing.T) {
 			want:     []SideEffect{graphDisabled, {Kind: SideEffectSecurityUpdatesDisabled, Observed: updatesValue(setting.DependabotSecurityUpdatesEnabled)}},
 		},
 		{
-			name:        "disabling alerts keeps the undeclared disabled security updates as a setting without side effect",
-			observed:    observation(true, setting.DependabotSecurityUpdatesDisabled),
-			want:        []SideEffect{graphDisabled},
-			wantWithout: []SettingWithoutSideEffect{{Key: setting.DependabotSecurityUpdates, Observed: updatesValue(setting.DependabotSecurityUpdatesDisabled)}},
+			name:           "disabling alerts keeps the undeclared disabled security updates as a setting expected unaffected",
+			observed:       observation(true, setting.DependabotSecurityUpdatesDisabled),
+			want:           []SideEffect{graphDisabled},
+			wantUnaffected: []SettingExpectedUnaffected{{Key: setting.DependabotSecurityUpdates, Observed: updatesValue(setting.DependabotSecurityUpdatesDisabled)}},
 		},
 		{
 			name:            "disabling alerts leaves declared security updates to the plan",
@@ -145,9 +145,9 @@ func TestSideEffects_DependabotAlerts(t *testing.T) {
 			if tc.declaresUpdates {
 				settings = append(settings, newSettingPlan(setting.Unit{Key: setting.DependabotSecurityUpdates}, tc.observed.Setting(setting.Unit{Key: setting.DependabotSecurityUpdates}), setting.DependabotSecurityUpdatesValue(setting.DependabotSecurityUpdatesDisabled)))
 			}
-			got, without := sideEffects(plan, tc.observed, settings)
-			if !reflect.DeepEqual(got, tc.want) || !reflect.DeepEqual(without, tc.wantWithout) {
-				t.Errorf("sideEffects() = %+v, %+v, want %+v, %+v", got, without, tc.want, tc.wantWithout)
+			got, unaffected := sideEffects(plan, tc.observed, settings)
+			if !reflect.DeepEqual(got, tc.want) || !reflect.DeepEqual(unaffected, tc.wantUnaffected) {
+				t.Errorf("sideEffects() = %+v, %+v, want %+v, %+v", got, unaffected, tc.want, tc.wantUnaffected)
 			}
 		})
 	}
@@ -169,7 +169,7 @@ func TestSideEffects_SecretScanning(t *testing.T) {
 		// declaresPushProtection は、同じリポジトリで secret_scanning_push_protection を false と宣言するか。
 		declaresPushProtection bool
 		want                   []SideEffect
-		wantWithout            []SettingWithoutSideEffect
+		wantUnaffected         []SettingExpectedUnaffected
 	}{
 		{
 			name:     "disabling secret scanning disables the undeclared enabled push protection",
@@ -177,9 +177,9 @@ func TestSideEffects_SecretScanning(t *testing.T) {
 			want:     []SideEffect{{Kind: SideEffectPushProtectionDisabled, Observed: github.Observed(setting.BoolValue(true))}},
 		},
 		{
-			name:        "disabling secret scanning keeps the undeclared disabled push protection as a setting without side effect",
-			observed:    public(true, false),
-			wantWithout: []SettingWithoutSideEffect{{Key: setting.RepositoryPushProtection, Observed: github.Observed(setting.BoolValue(false))}},
+			name:           "disabling secret scanning keeps the undeclared disabled push protection as a setting expected unaffected",
+			observed:       public(true, false),
+			wantUnaffected: []SettingExpectedUnaffected{{Key: setting.RepositoryPushProtection, Observed: github.Observed(setting.BoolValue(false))}},
 		},
 		{
 			name:                   "disabling secret scanning leaves declared push protection to the plan",
@@ -203,9 +203,9 @@ func TestSideEffects_SecretScanning(t *testing.T) {
 			if tc.declaresPushProtection {
 				settings = append(settings, newSettingPlan(setting.Unit{Key: setting.RepositoryPushProtection}, tc.observed.Setting(setting.Unit{Key: setting.RepositoryPushProtection}), setting.BoolValue(false)))
 			}
-			got, without := sideEffects(plan, tc.observed, settings)
-			if !reflect.DeepEqual(got, tc.want) || !reflect.DeepEqual(without, tc.wantWithout) {
-				t.Errorf("sideEffects() = %+v, %+v, want %+v, %+v", got, without, tc.want, tc.wantWithout)
+			got, unaffected := sideEffects(plan, tc.observed, settings)
+			if !reflect.DeepEqual(got, tc.want) || !reflect.DeepEqual(unaffected, tc.wantUnaffected) {
+				t.Errorf("sideEffects() = %+v, %+v, want %+v, %+v", got, unaffected, tc.want, tc.wantUnaffected)
 			}
 		})
 	}
@@ -250,4 +250,25 @@ func TestSideEffectKind_ObservedSettingOfUnknownKindPanics(t *testing.T) {
 		}
 	}()
 	SideEffectKind(0).ObservedSetting()
+}
+
+// TestDependentDisabledSideEffect は、どの設定の依存関係の依存する設定にも、その設定が無効になる副作用の種類があり、依存する設定でない設定を不変条件の破れとすることを確かめる。
+// 設定の依存関係を足して副作用の種類を足し忘れたことを、計画を作る前に検出するため、設定の依存関係の一覧を走査する。
+func TestDependentDisabledSideEffect(t *testing.T) {
+	for _, d := range setting.Dependencies() {
+		t.Run(string(d.Dependent), func(t *testing.T) {
+			if key, ok := dependentDisabledSideEffect(d.Dependent).ObservedSetting(); !ok || key != d.Dependent {
+				t.Errorf("dependentDisabledSideEffect(%s).ObservedSetting() = %s, %t, want %s, true", d.Dependent, key, ok, d.Dependent)
+			}
+		})
+	}
+
+	t.Run("setting that is not a dependent panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("dependentDisabledSideEffect() did not panic")
+			}
+		}()
+		dependentDisabledSideEffect(setting.AllowAutoMerge)
+	})
 }

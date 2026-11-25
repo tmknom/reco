@@ -279,7 +279,7 @@ func confirmationText(record changeRecord) string {
 			return "does not match"
 		}
 		return "does not match (" + mismatchedSettingsText(record.mismatchedSettings) + ")"
-	case desiredStateUnconfirmed:
+	case desiredStateObservationFailed:
 		return "not confirmed (read failed)"
 	case desiredStateIdentityMismatch:
 		return "not confirmed (repository ID changed)"

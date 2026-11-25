@@ -58,7 +58,7 @@ func TestDeploymentBranchPolicyOperationsIgnoresPatternsOfAnotherMode(t *testing
 	staging := mustEnvironmentName(t, "staging")
 	all := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll})
 	modeChange := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}, Observed: github.Observed(all), Desired: protectedWithPattern(), Result: Mismatch, Applicability: Applicable()}
-	got := deploymentBranchPolicyOperations(modeChange, RelevantSetting{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}})
+	got := deploymentBranchPolicyOperations(modeChange, PreconditionBasis{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}})
 	if len(got) != 1 || got[0].Kind != DeploymentBranchPolicyModeUpdate || got[0].Mode != setting.DeploymentBranchPolicyProtectedBranches {
 		t.Errorf("deploymentBranchPolicyOperations() = %+v, want one mode update sending protected_branches", got)
 	}

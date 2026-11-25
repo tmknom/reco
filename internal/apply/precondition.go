@@ -27,30 +27,30 @@ const (
 // created は、同じ論理的な設定変更が作成した Environment の ID の基準である。
 // 基準のない更新操作を成立にすると何も確かめずに更新するため、不変条件の破れとして panic する。
 func checkPrecondition(approvedID repository.ID, operation changeplan.UpdateOperation, observed github.ObservationResult, created github.EnvironmentObservation) (preconditionCheck, setting.Unit) {
-	if len(operation.RelevantSettings) == 0 {
-		panic("apply: " + operation.Unit.String() + " has no relevant settings to check before the update")
+	if len(operation.PreconditionBases) == 0 {
+		panic("apply: " + operation.Unit.String() + " has no precondition basis to check before the update")
 	}
 	if observed.RepositoryID != approvedID {
 		return preconditionIdentityMismatch, setting.Unit{}
 	}
-	for _, relevant := range operation.RelevantSettings {
-		if !matchesRelevantSetting(relevant, observed, created) {
-			return preconditionCurrentValueChanged, relevant.Unit
+	for _, basis := range operation.PreconditionBases {
+		if !matchesPreconditionBasis(basis, observed, created) {
+			return preconditionCurrentValueChanged, basis.Unit
 		}
 	}
 	return preconditionHolds, setting.Unit{}
 }
 
-// matchesRelevantSetting は、関係する現在値の設定 relevant が、更新直前の観測 observed で承認時に予定した値と同じかを返す。
+// matchesPreconditionBasis は、変更前提の基準 basis の設定が、更新直前の観測 observed で承認時に予定した値と同じかを返す。
 // Environment そのものは、存在に加えて同一性を確かめるため、一覧から一度だけ引いた観測結果で両方を比べる。
-func matchesRelevantSetting(relevant changeplan.RelevantSetting, observed github.ObservationResult, created github.EnvironmentObservation) bool {
-	switch relevant.Unit.Key {
+func matchesPreconditionBasis(basis changeplan.PreconditionBasis, observed github.ObservationResult, created github.EnvironmentObservation) bool {
+	switch basis.Unit.Key {
 	case setting.EnvironmentResource:
-		return matchesAnticipatedEnvironment(relevant, observed.Environments.Lookup(relevant.Unit.Environment), created)
+		return matchesAnticipatedEnvironment(basis, observed.Environments.Lookup(basis.Unit.Environment), created)
 	case setting.RulesetResource:
-		return matchesAnticipatedRuleset(relevant, observed.Rulesets.Lookup(relevant.Unit.Ruleset))
+		return matchesAnticipatedRuleset(basis, observed.Rulesets.Lookup(basis.Unit.Ruleset))
 	default:
-		return matchesAnticipatedValue(relevant.AnticipatedValue, observed.Setting(relevant.Unit))
+		return matchesAnticipatedValue(basis.AnticipatedValue, observed.Setting(basis.Unit))
 	}
 }
 
@@ -69,7 +69,7 @@ func matchesAnticipatedValue(anticipated changeplan.AnticipatedValue, current gi
 	}
 }
 
-// matchesAnticipatedEnvironment は、Environment そのものの基準 relevant が、更新直前に引いた観測結果 current と同じかを返す。
+// matchesAnticipatedEnvironment は、Environment そのものの基準 basis が、更新直前に引いた観測結果 current と同じかを返す。
 // 存在はリポジトリ設定と同じ判定で比べる。判定できない名前が現れた観測は、存在しないことを意味しないため、存在しないと予定した基準と同じにならない。
 // 存在すると予定したときは、さらに同じ実体かを確かめる。同じ名前で作り直された Environment は、承認した変更の相手ではないため、ID が違えば同じとしない。
 // 綴りと中の設定は比べない。
@@ -77,43 +77,43 @@ func matchesAnticipatedValue(anticipated changeplan.AnticipatedValue, current gi
 // 承認の時点で ID が定まらないため。それより後の更新操作では、created の ID と比べる。
 // 存在するか存在しないかのどちらでもない基準 (観測不能、ゼロ値) は承認の前に適用不能として止め、存在すると予定した基準には changeplan が同一性の基準を必ず添える。
 // どちらかが破れた形を受け付けると、確かめていない Environment を更新し得るため、更新直前の観測によらず不変条件の破れとして panic する。
-func matchesAnticipatedEnvironment(relevant changeplan.RelevantSetting, current github.EnvironmentObservation, created github.EnvironmentObservation) bool {
-	anticipated, ok := relevant.AnticipatedValue.Value()
+func matchesAnticipatedEnvironment(basis changeplan.PreconditionBasis, current github.EnvironmentObservation, created github.EnvironmentObservation) bool {
+	anticipated, ok := basis.AnticipatedValue.Value()
 	if !ok {
-		panic("apply: " + relevant.Unit.String() + " is anticipated to be neither present nor absent")
+		panic("apply: " + basis.Unit.String() + " is anticipated to be neither present nor absent")
 	}
-	_, hasID := relevant.AnticipatedEnvironmentIdentity.ID()
-	if anticipated.Equal(setting.Present()) && !hasID && !relevant.AnticipatedEnvironmentIdentity.IsCreatedByPrecedingOperation() {
-		panic("apply: " + relevant.Unit.String() + " is anticipated to exist without an identity to check")
+	_, hasID := basis.AnticipatedEnvironmentIdentity.ID()
+	if anticipated.Equal(setting.Present()) && !hasID && !basis.AnticipatedEnvironmentIdentity.IsCreatedByPrecedingOperation() {
+		panic("apply: " + basis.Unit.String() + " is anticipated to exist without an identity to check")
 	}
-	if !matchesAnticipatedValue(relevant.AnticipatedValue, current.Existence()) {
+	if !matchesAnticipatedValue(basis.AnticipatedValue, current.Existence()) {
 		return false
 	}
 	existing, exists := current.Existing()
 	if !exists {
 		return true
 	}
-	if id, ok := relevant.AnticipatedEnvironmentIdentity.ID(); ok {
+	if id, ok := basis.AnticipatedEnvironmentIdentity.ID(); ok {
 		return existing.ID == id
 	}
 	base, hasBase := created.Existing()
 	return !hasBase || existing.ID == base.ID
 }
 
-// matchesAnticipatedRuleset は、Ruleset そのものの基準 relevant が、更新直前に名前で引いた観測結果 current と同じかを返す。
+// matchesAnticipatedRuleset は、Ruleset そのものの基準 basis が、更新直前に名前で引いた観測結果 current と同じかを返す。
 // 綴りは比べない。
 // 存在するか存在しないかのどちらでもない基準 (観測不能、ゼロ値) は承認の前に適用不能として止め、値を伴う存在の基準には changeplan が ID の基準を必ず添える。
 // どちらかが破れた形を受け付けると、確かめていない Ruleset を置き換え得るため、更新直前の観測によらず不変条件の破れとして panic する。
-func matchesAnticipatedRuleset(relevant changeplan.RelevantSetting, current github.RulesetObservation) bool {
-	anticipated, ok := relevant.AnticipatedValue.Value()
+func matchesAnticipatedRuleset(basis changeplan.PreconditionBasis, current github.RulesetObservation) bool {
+	anticipated, ok := basis.AnticipatedValue.Value()
 	if !ok {
-		panic("apply: " + relevant.Unit.String() + " is anticipated to be neither present nor absent")
+		panic("apply: " + basis.Unit.String() + " is anticipated to be neither present nor absent")
 	}
-	id, hasID := relevant.AnticipatedRulesetIdentity.ID()
+	id, hasID := basis.AnticipatedRulesetIdentity.ID()
 	if !anticipated.Equal(setting.Absent()) && !hasID {
-		panic("apply: " + relevant.Unit.String() + " is anticipated to exist without an identity to check")
+		panic("apply: " + basis.Unit.String() + " is anticipated to exist without an identity to check")
 	}
-	if !matchesAnticipatedValue(relevant.AnticipatedValue, current.SettingObservation()) {
+	if !matchesAnticipatedValue(basis.AnticipatedValue, current.SettingObservation()) {
 		return false
 	}
 	existing, exists := current.Existing()
@@ -129,8 +129,8 @@ func environmentCreatedIn(change changeplan.LogicalChange, before []github.Obser
 	creation := change.Operations[0]
 	if !creation.CreatesEnvironment() {
 		for _, operation := range change.Operations {
-			for _, relevant := range operation.RelevantSettings {
-				if relevant.AnticipatedEnvironmentIdentity.IsCreatedByPrecedingOperation() {
+			for _, basis := range operation.PreconditionBases {
+				if basis.AnticipatedEnvironmentIdentity.IsCreatedByPrecedingOperation() {
 					panic("apply: " + operation.Unit.String() + " expects an environment created by a preceding update in a change without a creation")
 				}
 			}

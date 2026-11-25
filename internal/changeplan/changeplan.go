@@ -50,8 +50,8 @@ type SettingPlan struct {
 	Applicability   Applicability
 	// SideEffects は変更予定に伴う副作用。副作用がなければ nil。
 	SideEffects []SideEffect
-	// SettingsWithoutSideEffect は、副作用を示さなかった設定。変更前提にだけ含める。当たらなければ nil。
-	SettingsWithoutSideEffect []SettingWithoutSideEffect
+	// SettingsExpectedUnaffected は、副作用を示さなかった設定。変更前提にだけ含める。当たらなければ nil。
+	SettingsExpectedUnaffected []SettingExpectedUnaffected
 	// ResumedSettings は、Actions を有効にする変更予定に添える再開する設定。当たらなければ nil。
 	ResumedSettings []setting.Key
 	// UninterpretedParts は、値が解釈しない部分を含むことを理由に比較不能な計画でだけ、その解釈しなかったものを観測の並びで持つ。ほかの計画では nil。
@@ -131,14 +131,30 @@ func (s SettingPlan) EnablesActionsByPolicy() bool {
 	return s.Unit.Key == setting.AllowedActions && s.Result == NotComparable && s.Observed.UnavailableReason() == github.UnavailableActionsDisabled
 }
 
+// IsCreation は、この変更予定が作成 (存在しないと確かめた関連リソースの不一致) かを返す。
+// 作成かどうかを読む処理ごとに条件を組み立てると、存在しないことの宣言を受け付ける種類で削除を作成と取り違えるため、ここだけで判定する。
+// 存在しないことは関連リソースの観測値にだけ現れるため、Key で関連リソースに限らない。
+// 不一致は観測値があるときにだけ生じるため、観測値のない不一致は Equal が不変条件の破れとして panic する。
+func (s SettingPlan) IsCreation() bool {
+	if s.Result != Mismatch {
+		return false
+	}
+	observed, _ := s.Observed.Value()
+	return observed.Equal(setting.Absent())
+}
+
 // IsEnvironmentCreation は、この変更予定が Environment の作成かを返す。
 func (s SettingPlan) IsEnvironmentCreation() bool {
-	return s.Unit.Key == setting.EnvironmentResource && s.Result == Mismatch
+	return s.Unit.Key == setting.EnvironmentResource && s.IsCreation()
 }
 
 // IsPlannedChange は、この管理設定が変更予定 (不一致か比較不能の管理設定) かを返す。
 // 変更予定かどうかを読む処理ごとに条件を組み立てると定義が食い違うため、ここだけで判定する。
+// 照合結果のない計画は、変更不要とも変更予定とも決められないため、不変条件の破れとして panic する。
 func (s SettingPlan) IsPlannedChange() bool {
+	if s.Result == 0 {
+		panic(fmt.Sprintf("changeplan: %q has no reconciliation result", s.Unit.Key))
+	}
 	return s.Result != Match
 }
 
@@ -152,7 +168,7 @@ func generateRepositoryPlan(ctx context.Context, client *github.Client, target c
 	settings := reconcile(target.Desired, observed)
 	for i := range settings {
 		settings[i].Applicability = judgeApplicability(settings[i], settings, observed)
-		settings[i].SideEffects, settings[i].SettingsWithoutSideEffect = sideEffects(settings[i], observed, settings)
+		settings[i].SideEffects, settings[i].SettingsExpectedUnaffected = sideEffects(settings[i], observed, settings)
 		settings[i].ResumedSettings = resumedSettings(settings[i], settings)
 	}
 	return RepositoryPlan{Target: target.Reference, RepositoryID: observed.RepositoryID, Settings: settings}, nil

@@ -41,19 +41,19 @@ func mergeMethodsLeftDisabled(s SettingPlan, settings []SettingPlan, observed gi
 // マージ方式の変更予定がなければ送るものがないため、不変条件の破れとして panic する。
 func mergeMethodsChange(settings []SettingPlan) LogicalChange {
 	var desired []DesiredSetting
-	var relevant []RelevantSetting
+	var bases []PreconditionBasis
 	for _, s := range settings {
 		if !slices.Contains(setting.MergeMethods(), s.Unit.Key) || !s.IsPlannedChange() {
 			continue
 		}
 		desired = append(desired, DesiredSetting{Unit: s.Unit, Value: s.Desired})
-		relevant = append(relevant, RelevantSetting{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)})
+		bases = append(bases, PreconditionBasis{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)})
 	}
 	if len(desired) == 0 {
 		panic("changeplan: no merge method change to bundle")
 	}
 	return LogicalChange{
 		DesiredState: desired,
-		Operations:   []UpdateOperation{{Kind: MergeMethodsUpdate, Unit: desired[0].Unit, Settings: desired, RelevantSettings: relevant}},
+		Operations:   []UpdateOperation{{Kind: MergeMethodsUpdate, Unit: desired[0].Unit, Settings: desired, PreconditionBases: bases}},
 	}
 }

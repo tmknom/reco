@@ -126,7 +126,7 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 		{
 			name: "push protection shown as a side effect of disabling secret scanning is not compared",
 			change: func() changeplan.LogicalChange {
-				change := singleUpdate(setting.SecretScanningEnabled, setting.BoolValue(false), relevantTo(setting.SecretScanningEnabled, setting.BoolValue(true)))
+				change := singleUpdate(setting.SecretScanningEnabled, setting.BoolValue(false), basesOf(setting.SecretScanningEnabled, setting.BoolValue(true)))
 				change.SideEffectSettings = []setting.Unit{{Key: setting.RepositoryPushProtection}}
 				return change
 			}(),
@@ -136,7 +136,7 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 		},
 		{
 			name:   "push protection not shown as a side effect of disabling secret scanning is compared",
-			change: singleUpdate(setting.SecretScanningEnabled, setting.BoolValue(false), append(relevantTo(setting.SecretScanningEnabled, setting.BoolValue(true)), relevantTo(setting.RepositoryPushProtection, setting.BoolValue(false))...)),
+			change: singleUpdate(setting.SecretScanningEnabled, setting.BoolValue(false), append(basesOf(setting.SecretScanningEnabled, setting.BoolValue(true)), basesOf(setting.RepositoryPushProtection, setting.BoolValue(false))...)),
 			before: []github.ObservationResult{{SecretScanning: publicSecretScanning(true, false)}},
 			after:  github.ObservationResult{SecretScanning: publicSecretScanning(false, true)},
 			want:   []unexpectedOutsideChange{{Setting: string(setting.RepositoryPushProtection), Before: "false", After: "true"}},
@@ -294,7 +294,7 @@ func TestOutsideChangesAt(t *testing.T) {
 		},
 		{
 			name:     "secret scanning change reports different general settings and the other secret scanning setting",
-			change:   singleUpdate(setting.RepositoryPushProtection, setting.BoolValue(false), relevantTo(setting.RepositoryPushProtection, setting.BoolValue(true))),
+			change:   singleUpdate(setting.RepositoryPushProtection, setting.BoolValue(false), basesOf(setting.RepositoryPushProtection, setting.BoolValue(true))),
 			endpoint: github.RepositoryEndpoint,
 			before:   github.ObservationResult{General: github.General{AllowAutoMerge: false}, SecretScanning: publicSecretScanning(true, true)},
 			after:    github.ObservationResult{General: github.General{AllowAutoMerge: true}, SecretScanning: publicSecretScanning(false, false)},

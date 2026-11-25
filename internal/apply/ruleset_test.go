@@ -120,7 +120,7 @@ func TestExecuteChange_Rulesets(t *testing.T) {
 			wantRequests: []string{getRepository, getRulesets, postRuleset, getRepository, getRulesets},
 			wantPrecond:  preconditionHolds,
 			wantUpdate:   github.UpdateSucceeded,
-			wantDesired:  desiredStateUnconfirmed,
+			wantDesired:  desiredStateObservationFailed,
 			wantResult:   failed,
 		},
 	}
@@ -154,7 +154,7 @@ func TestExecuteChange_Rulesets(t *testing.T) {
 
 // TestExecuteChange_RulesetValueUpdate は、Ruleset の値の変更を、一覧と名指した Ruleset の詳細の読み直しで確かめて、
 // 承認時に予定した ID へ一度だけ PUT で送るつなぎ目を確かめる。
-// 値の全体と ID の比べ方は TestMatchesRelevantSetting_Ruleset、本文は TestSendUpdate が確かめている。
+// 値の全体と ID の比べ方は TestMatchesPreconditionBasis_Ruleset、本文は TestSendUpdate が確かめている。
 //
 //trace:checks INV-001 INV-004 INV-005 FR-010 FR-011 FR-012 FR-013
 func TestExecuteChange_RulesetValueUpdate(t *testing.T) {
