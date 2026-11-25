@@ -60,7 +60,7 @@ reco が管理可能な設定は、次のとおりです。具体的な設定方
 | GitHub Actions に Pull Request の作成と承認を許すか | 「Actions」の「General」ページの「Workflow permissions」の欄の「Allow GitHub Actions to create and approve pull requests」 |
 | ほかのリポジトリのワークフローに、このリポジトリの Actions と再利用可能なワークフローを使わせるか（非公開リポジトリだけ） | 「Actions」の「General」ページの「Access」の欄 |
 | Fork からの Pull Request のワークフローの実行に承認が要るユーザーの範囲（公開リポジトリだけ） | 「Actions」の「General」ページの「Approval for running fork pull request workflows from contributors」の欄 |
-| Fork からの Pull Request のワークフローを実行するか、書き込み権限を持つ `GITHUB_TOKEN` や Secrets と Variables を渡すか、実行に承認を求めるか（非公開リポジトリだけ）。いまは `plan` で差分を確かめられるが、`apply` では変えられない | 「Actions」の「General」ページの「Fork pull request workflows」の欄 |
+| Fork からの Pull Request のワークフローを実行するか、書き込み権限を持つ `GITHUB_TOKEN` や Secrets と Variables を渡すか、実行に承認を求めるか（非公開リポジトリだけ） | 「Actions」の「General」ページの「Fork pull request workflows」の欄 |
 | ワークフローから読む Repository Variables の名前と値 | 「Secrets and variables」の「Actions」ページの「Variables」タブ |
 | デプロイ先の Environment があるか（なければ作成する） | 「Environments」ページの Environment の一覧 |
 | Environment へデプロイできるブランチとタグを、制限しないか、保護ルールのあるブランチに限るか、選んだパターンに限るか | 「Environments」ページの Environment の「Deployment branches and tags」の欄の「No restriction」、「Protected branches only」、「Selected branches and tags」 |
