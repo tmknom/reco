@@ -343,6 +343,45 @@ func TestApply_SideEffectOnStdoutBeforeApprovalPrompt(t *testing.T) {
 	}
 }
 
+// TestApply_PlannedChangeNoteOnStdoutBeforeApprovalPrompt は、変更予定の注記を伴う変更計画で、Note: を stdout に、
+// 承認プロンプトを stderr に、この順で書き、承認が拒否されたら更新要求を送らないことを確かめる。
+//
+//trace:checks FR-009 INV-003
+func TestApply_PlannedChangeNoteOnStdoutBeforeApprovalPrompt(t *testing.T) {
+	workDir := t.TempDir()
+	writeConfig(t, workDir, "reco.yaml", `repositories:
+  - name: owner/repo
+    actions:
+      fork_pull_requests:
+        private_repositories:
+          run_workflows_from_fork_pull_requests: true
+          send_write_tokens_to_workflows: false
+          send_secrets_and_variables: true
+          require_approval_for_fork_pr_workflows: true
+`)
+	server, opts := newGitHubServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+		"GET /repos/owner/repo": {Status: http.StatusOK, Body: githubtest.RepositoryBody{ID: 1, Private: true}.JSON()},
+		"GET /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos": {Status: http.StatusOK, Body: githubtest.PrivateForkPullRequestWorkflowsBody{}.JSON()},
+	}))
+	var writes []streamWrite
+	env := Environment{
+		WorkDir: workDir, Getenv: fakeGetenv(map[string]string{"GH_TOKEN": ghEnvValue}), Stdin: strings.NewReader("n\n"), StdinIsTerminal: true,
+		Stdout: taggedWriter{stream: "stdout", writes: &writes}, Stderr: taggedWriter{stream: "stderr", writes: &writes},
+	}
+
+	if code := execute(context.Background(), []string{"apply"}, env, dependencies{after: elapsedAtOnce, githubOptions: opts}); code != 1 {
+		t.Errorf("got exit code %d, want 1", code)
+	}
+	note := slices.IndexFunc(writes, func(w streamWrite) bool { return w.stream == "stdout" && strings.Contains(w.text, "Note:") })
+	prompt := slices.IndexFunc(writes, func(w streamWrite) bool { return w.stream == "stderr" && strings.Contains(w.text, approvalPrompt) })
+	if note < 0 || prompt < 0 || note > prompt {
+		t.Errorf("got writes %+v, want Note: on stdout before the approval prompt on stderr", writes)
+	}
+	if got := server.Methods(); slices.Contains(got, http.MethodPut) {
+		t.Errorf("got requests %v, want no PUT", got)
+	}
+}
+
 //trace:checks INV-003
 func TestApply_CanceledWhileWaitingForApproval(t *testing.T) {
 	workDir := t.TempDir()

@@ -79,6 +79,17 @@ func TestClientUpdate(t *testing.T) {
 			wantRequest: "PUT /repos/owner/repo/actions/permissions/fork-pr-contributor-approval", wantBody: map[string]any{"approval_policy": "all_external_contributors"},
 		},
 		{
+			name: "private_repositories sends all four items", key: setting.PrivateForkPullRequestWorkflows,
+			value: setting.PrivateForkPullRequestWorkflowConditionsValue(setting.PrivateForkPullRequestWorkflowConditions{
+				RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true, RequireApprovalForForkPullRequestWorkflows: true,
+			}),
+			wantRequest: "PUT /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos",
+			wantBody: map[string]any{
+				"run_workflows_from_fork_pull_requests": true, "send_write_tokens_to_workflows": false,
+				"send_secrets_and_variables": true, "require_approval_for_fork_pr_workflows": true,
+			},
+		},
+		{
 			name: "secret_scanning true sends only the nested secret_scanning status enabled", key: setting.SecretScanningEnabled,
 			value:       setting.BoolValue(true),
 			wantRequest: "PATCH /repos/owner/repo",
@@ -149,8 +160,7 @@ func TestClientUpdate(t *testing.T) {
 	})
 
 	// マージ方式は UpdateMergeMethods がまとめて送るため、一つだけを送る経路を持たない。
-	// 実行条件は、apply がまだ実行しないため、送る経路を持たない。
-	for _, key := range append(setting.MergeMethods(), setting.PrivateForkPullRequestWorkflows) {
+	for _, key := range setting.MergeMethods() {
 		t.Run(string(key)+" panics before sending a request", func(t *testing.T) {
 			// nil の送り方を呼んだ runtime error ではなく、設定を名指す不変条件の破れで止まることを確かめる
 			defer func() {
@@ -984,6 +994,94 @@ func TestUpdateForkPullRequestApprovalPolicyRejected(t *testing.T) {
 		t.Fatalf("updateForkPullRequestApprovalPolicy() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrUnprocessable)
 	}
 	if !strings.HasPrefix(err.Error(), "update fork pull request approval owner/repo: ") {
+		t.Errorf("error = %q, want it to start with the operation and owner/repo", err)
+	}
+	if n := received.Load(); n != 1 {
+		t.Errorf("server received %d requests, want 1", n)
+	}
+}
+
+// TestUpdatePrivateForkPullRequestWorkflowConditions は、実行条件の4項目をそれぞれのフィールドに入れ、false の項目も省略せずに一つの要求で送ることを確かめる。
+//
+//trace:checks FR-011 INV-001
+func TestUpdatePrivateForkPullRequestWorkflowConditions(t *testing.T) {
+	// 各項目が true と false の両方を取り、どの2項目の組も値の並びが異なるようにし、フィールドの入れ違いと定数化を検出する。
+	// クライアントは項目の組み合わせを検証しないため、入力検証が拒否する組み合わせも入力にする
+	cases := []struct {
+		name       string
+		conditions setting.PrivateForkPullRequestWorkflowConditions
+		want       map[string]any
+	}{
+		{
+			name:       "write tokens are sent without secrets and approval",
+			conditions: setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, SendWriteTokensToWorkflows: true},
+			want: map[string]any{
+				"run_workflows_from_fork_pull_requests": true, "send_write_tokens_to_workflows": true,
+				"send_secrets_and_variables": false, "require_approval_for_fork_pr_workflows": false,
+			},
+		},
+		{
+			name:       "secrets are sent without write tokens and approval",
+			conditions: setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true},
+			want: map[string]any{
+				"run_workflows_from_fork_pull_requests": true, "send_write_tokens_to_workflows": false,
+				"send_secrets_and_variables": true, "require_approval_for_fork_pr_workflows": false,
+			},
+		},
+		{
+			name:       "approval is sent without running workflows",
+			conditions: setting.PrivateForkPullRequestWorkflowConditions{RequireApprovalForForkPullRequestWorkflows: true},
+			want: map[string]any{
+				"run_workflows_from_fork_pull_requests": false, "send_write_tokens_to_workflows": false,
+				"send_secrets_and_variables": false, "require_approval_for_fork_pr_workflows": true,
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests []string
+			var bodies [][]byte
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				requests = append(requests, r.Method+" "+r.URL.Path)
+				data, _ := io.ReadAll(r.Body)
+				bodies = append(bodies, data)
+				w.WriteHeader(http.StatusNoContent)
+			})
+
+			outcome, err := c.updatePrivateForkPullRequestWorkflowConditions(t.Context(), mustReference(t, "owner/repo"), tc.conditions)
+			if err != nil || outcome != UpdateSucceeded {
+				t.Fatalf("updatePrivateForkPullRequestWorkflowConditions() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+			}
+
+			if want := []string{"PUT " + privateForkPullRequestWorkflowsPath}; !slices.Equal(requests, want) {
+				t.Fatalf("requests = %v, want %v", requests, want)
+			}
+			var got map[string]any
+			if err := json.Unmarshal(bodies[0], &got); err != nil {
+				t.Fatalf("request body %q is not JSON: %v", bodies[0], err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("request body = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestUpdatePrivateForkPullRequestWorkflowConditionsRejected は、GitHub が拒否した更新要求を拒否と判定し、操作と対象を error に添えることを確かめる。
+//
+//trace:checks FR-013
+func TestUpdatePrivateForkPullRequestWorkflowConditionsRejected(t *testing.T) {
+	var received atomic.Int32
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		received.Add(1)
+		w.WriteHeader(http.StatusUnprocessableEntity)
+	})
+
+	outcome, err := c.updatePrivateForkPullRequestWorkflowConditions(t.Context(), mustReference(t, "owner/repo"), setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true})
+	if outcome != UpdateRejected || !errors.Is(err, ErrUnprocessable) {
+		t.Fatalf("updatePrivateForkPullRequestWorkflowConditions() = %v, %v, want %v with %v", outcome, err, UpdateRejected, ErrUnprocessable)
+	}
+	if !strings.HasPrefix(err.Error(), "update private fork pull request workflows owner/repo: ") {
 		t.Errorf("error = %q, want it to start with the operation and owner/repo", err)
 	}
 	if n := received.Load(); n != 1 {

@@ -15,8 +15,7 @@ type updateRequestFunc func(c *Client, ctx context.Context, reference repository
 
 // Update は、reference のリポジトリの key の設定を value にする更新要求を、UpdateEndpointOf(key) へ一度だけ送る。再送はしない。
 // error が nil になるのは UpdateSucceeded のときだけで、呼び出し側は error から結果を導かない。
-// マージ方式は一つずつ送る経路を持たず (UpdateMergeMethods)、実行条件は apply がまだ実行しないため送る経路を持たない。
-// どちらも渡されたら不変条件の破れとして要求を送る前に panic する。
+// マージ方式は一つずつ送る経路を持たず (UpdateMergeMethods)、渡されたら不変条件の破れとして要求を送る前に panic する。
 func (c *Client) Update(ctx context.Context, reference repository.Reference, key setting.Key, value setting.Value) (UpdateOutcome, error) {
 	request := updateRequestOf(key)
 	if request.send == nil {
@@ -138,6 +137,20 @@ func (c *Client) updateForkPullRequestApprovalPolicy(ctx context.Context, refere
 	return describeUpdateOutcome("update fork pull request approval", reference, status, err)
 }
 
+// updatePrivateForkPullRequestWorkflowConditions は reference のリポジトリの、非公開リポジトリの Fork Pull Request ワークフローの実行条件を conditions に更新する。
+// 4項目をすべて一つの要求で送り、省略したフィールドの保持に依拠しない（Actions の設計の更新方式）。
+// 正常応答の 204 は本文を持たず、成功の判定に本文を使わない。
+func (c *Client) updatePrivateForkPullRequestWorkflowConditions(ctx context.Context, reference repository.Reference, conditions setting.PrivateForkPullRequestWorkflowConditions) (UpdateOutcome, error) {
+	body := mustMarshalJSON(struct {
+		RunWorkflowsFromForkPullRequests           bool `json:"run_workflows_from_fork_pull_requests"`
+		SendWriteTokensToWorkflows                 bool `json:"send_write_tokens_to_workflows"`
+		SendSecretsAndVariables                    bool `json:"send_secrets_and_variables"`
+		RequireApprovalForForkPullRequestWorkflows bool `json:"require_approval_for_fork_pr_workflows"`
+	}{conditions.RunWorkflowsFromForkPullRequests, conditions.SendWriteTokensToWorkflows, conditions.SendSecretsAndVariables, conditions.RequireApprovalForForkPullRequestWorkflows})
+	status, _, err := c.send(ctx, http.MethodPut, c.privateForkPullRequestWorkflowsURL(reference), body, http.StatusNoContent)
+	return describeUpdateOutcome("update private fork pull request workflows", reference, status, err)
+}
+
 // updateSelectedActions は reference のリポジトリの選択方式の Actions 許可条件を criteria に更新する。
 // GitHub は、要求の前提となる設定の状態が成り立たないとき 409 で拒否する（GitHub Actions 権限 API 仕様の Selected actions）。
 func (c *Client) updateSelectedActions(ctx context.Context, reference repository.Reference, criteria setting.SelectedActionsCriteria) (UpdateOutcome, error) {
@@ -177,7 +190,7 @@ func enablementMethod(enabled bool) string {
 
 // updateRequest は、一つの設定を変える更新要求の、送り先の更新エンドポイントと送り方の組。
 // 送る更新要求と比べる設定の範囲を別々の場所で足し忘れないよう、同じ switch から返す。
-// 一つずつ送る経路を持たない設定 (マージ方式と、apply がまだ実行しない実行条件) では send が nil である。
+// 一つずつ送る経路を持たない設定 (マージ方式) では send が nil である。
 type updateRequest struct {
 	endpoint UpdateEndpoint
 	send     updateRequestFunc
@@ -225,7 +238,9 @@ func updateRequestOf(key setting.Key) updateRequest {
 			return c.updateForkPullRequestApprovalPolicy(ctx, reference, value.ForkPullRequestApprovalPolicy())
 		}}
 	case setting.PrivateForkPullRequestWorkflows:
-		return updateRequest{endpoint: PrivateForkPullRequestWorkflowsEndpoint}
+		return updateRequest{PrivateForkPullRequestWorkflowsEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+			return c.updatePrivateForkPullRequestWorkflowConditions(ctx, reference, value.PrivateForkPullRequestWorkflowConditions())
+		}}
 	case setting.DependabotAlerts:
 		return updateRequest{DependabotAlertsEndpoint, boolUpdate((*Client).updateDependabotAlerts)}
 	case setting.DependabotSecurityUpdates:

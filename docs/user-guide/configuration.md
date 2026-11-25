@@ -202,7 +202,6 @@ repositories:
 - 書き込み権限を持つ `GITHUB_TOKEN` か Secrets と Variables が、Fork からの Pull Request で起動したワークフローに渡るようになる変更には、`plan` と `apply` の変更計画に `Note:` の行が付く（[コマンドリファレンス](commands.md#plan)）
 - この設定は非公開リポジトリにだけ適用される。公開リポジトリに書くと `apply` できない。`fork_pull_requests` にほかのキーがなければ、`fork_pull_requests` ごと消す
 - Actions が無効のリポジトリでも書ける
-- いまの reco は、この設定の違いを `plan` で確かめるところまで扱う。`apply` ではまだ変えられない
 
 ### Repository Variables
 

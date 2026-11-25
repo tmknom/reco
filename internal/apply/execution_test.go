@@ -1176,6 +1176,124 @@ func TestExecuteChange_ForkPullRequestApproval(t *testing.T) {
 	}
 }
 
+// TestExecuteChange_PrivateForkPullRequestWorkflows は、実行条件の論理的な設定変更について、4項目を一つの更新要求で送ることと、
+// 更新直前と更新後に4項目の組の全体を比べること、更新の直後の観測が更新前の値を返したときの観測し直し、
+// リポジトリが公開に変わったときの変更結果を確かめる。
+//
+//trace:checks INV-001 INV-004 FR-010 FR-011 FR-012
+func TestExecuteChange_PrivateForkPullRequestWorkflows(t *testing.T) {
+	const (
+		getRepository = "GET /repos/owner/repo"
+		getConditions = "GET /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos"
+		putConditions = "PUT /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos"
+	)
+	private := okPrivateRepository(1)
+	approved := okPrivateForkPullRequestWorkflows(githubtest.PrivateForkPullRequestWorkflowsBody{})
+	declared := okPrivateForkPullRequestWorkflows(githubtest.PrivateForkPullRequestWorkflowsBody{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true})
+	// 宣言が変えない send_write_tokens_to_workflows だけが期待値と異なる
+	writeTokensToo := okPrivateForkPullRequestWorkflows(githubtest.PrivateForkPullRequestWorkflowsBody{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true, SendWriteTokensToWorkflows: true})
+	allDelays := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second}
+	cases := []struct {
+		name         string
+		responses    []response
+		wantRequests []string
+		wantBodies   []map[string]any
+		wantDelays   []time.Duration
+		wantPrecond  preconditionCheck
+		wantChanged  setting.Key
+		wantDesired  desiredStateConfirmation
+		wantResult   changeResult
+	}{
+		{
+			// GitHub は更新の直後の取得で更新前の値を返すことがある (GitHub Actions 権限 API 仕様の実行条件の更新)
+			name: "first read after the update still returns the previous conditions and the next read completes",
+			responses: []response{
+				private, approved, noContent(),
+				private, approved, private, declared,
+			},
+			wantRequests: []string{
+				getRepository, getConditions, putConditions,
+				getRepository, getConditions, getRepository, getConditions,
+			},
+			wantBodies: []map[string]any{nil, nil, {
+				"run_workflows_from_fork_pull_requests": true, "send_write_tokens_to_workflows": false,
+				"send_secrets_and_variables": true, "require_approval_for_fork_pr_workflows": false,
+			}, nil, nil, nil, nil},
+			wantDelays:  []time.Duration{time.Second},
+			wantPrecond: preconditionHolds,
+			wantDesired: desiredStateMatches,
+			wantResult:  completed,
+		},
+		{
+			// 4項目の組が一つの設定の値のため、宣言が変えない項目の変化も関係する現在値の変化に当たる
+			name: "item outside the declared change changed since approval sends no update request",
+			responses: []response{
+				private, okPrivateForkPullRequestWorkflows(githubtest.PrivateForkPullRequestWorkflowsBody{RequireApprovalForForkPullRequestWorkflows: true}),
+			},
+			wantRequests: []string{getRepository, getConditions},
+			wantPrecond:  preconditionCurrentValueChanged,
+			wantChanged:  setting.PrivateForkPullRequestWorkflows,
+			wantResult:   notAttempted,
+		},
+		{
+			// 観測値だった実行条件が観測不能になったことは、関係する現在値の変化に当たる。承認ポリシーの取得は送らない
+			name:         "repository made public since approval sends no update request",
+			responses:    []response{okRepository(1, false, false)},
+			wantRequests: []string{getRepository},
+			wantPrecond:  preconditionCurrentValueChanged,
+			wantChanged:  setting.PrivateForkPullRequestWorkflows,
+			wantResult:   notAttempted,
+		},
+		{
+			name: "item outside the declared change differing after the update is a failed confirmation",
+			responses: []response{
+				private, approved, noContent(),
+				private, writeTokensToo, private, writeTokensToo, private, writeTokensToo,
+				private, writeTokensToo, private, writeTokensToo, private, writeTokensToo,
+			},
+			wantRequests: []string{
+				getRepository, getConditions, putConditions,
+				getRepository, getConditions, getRepository, getConditions, getRepository, getConditions,
+				getRepository, getConditions, getRepository, getConditions, getRepository, getConditions,
+			},
+			wantDelays:  allDelays,
+			wantPrecond: preconditionHolds,
+			wantDesired: desiredStateMismatch,
+			wantResult:  failed,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, server := newSequenceServer(t, tc.responses...)
+			delays := &delayRecorder{}
+
+			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), privateForkPullRequestWorkflowsChange(), delays.after, &updateInterval{})
+
+			if !slices.Equal(server.RequestLines(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", server.RequestLines(), tc.wantRequests)
+			}
+			if tc.wantBodies != nil && !reflect.DeepEqual(server.Bodies(), tc.wantBodies) {
+				t.Errorf("request bodies = %v, want %v", server.Bodies(), tc.wantBodies)
+			}
+			if !slices.Equal(delays.delays, tc.wantDelays) {
+				t.Errorf("delays = %v, want %v", delays.delays, tc.wantDelays)
+			}
+			if got.operation(0).precondition != tc.wantPrecond {
+				t.Errorf("precondition = %v, want %v", got.operation(0).precondition, tc.wantPrecond)
+			}
+			if got.operation(0).changedSetting != (setting.Unit{Key: tc.wantChanged}) {
+				t.Errorf("changedSetting = %q, want %q", got.operation(0).changedSetting.Key, tc.wantChanged)
+			}
+			if got.confirmation != tc.wantDesired {
+				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
+			}
+			if got.result() != tc.wantResult {
+				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)
+			}
+		})
+	}
+}
+
 // TestExecuteChange_TwoUpdates は、二つの更新操作からなる論理的な設定変更について、
 // 更新操作ごとの直前の観測と変更前提、先行する更新操作が成功したときだけ後続へ進むこと、更新後の確認のつなぎ目を確かめる。
 //

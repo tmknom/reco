@@ -84,6 +84,11 @@ func okForkPullRequestApproval(policy string) response {
 	return response{status: http.StatusOK, body: githubtest.ForkPullRequestApprovalBody{ApprovalPolicy: policy}.JSON()}
 }
 
+// okPrivateForkPullRequestWorkflows は、非公開リポジトリの Fork Pull Request ワークフローの実行条件の取得の正常応答。
+func okPrivateForkPullRequestWorkflows(body githubtest.PrivateForkPullRequestWorkflowsBody) response {
+	return response{status: http.StatusOK, body: body.JSON()}
+}
+
 func okWorkflowPermissions(defaultWorkflowPermissions string, canApprovePullRequestReviews bool) response {
 	return response{status: http.StatusOK, body: githubtest.WorkflowPermissionsBody{
 		DefaultWorkflowPermissions: defaultWorkflowPermissions, CanApprovePullRequestReviews: canApprovePullRequestReviews}.JSON()}

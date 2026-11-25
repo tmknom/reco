@@ -355,6 +355,7 @@ REST API のドキュメントは、`send_write_tokens_to_workflows` を、Fork 
 > - 省略したフィールドの保持：`run_workflows_from_fork_pull_requests: true` だけを送ると、ほかの3項目は変わらない。3項目を `true` にしてから確かめた。`run_workflows_from_fork_pull_requests: true` と3項目のうち1項目を送ると、その1項目だけが変わる
 > - 必須のフィールド：`run_workflows_from_fork_pull_requests` のない本文は、ほかの項目を含んでいても `422` だった。文字列の `"true"` も `422` だった。定義にないフィールドを加えた本文は `204` で、加えたフィールドは無視された
 > - 実行を許可しないときのほかの3項目：`run_workflows_from_fork_pull_requests` を `false` にすると、送ったかどうかによらず、ほかの3項目は `false` になる。`false` と一緒に3項目のどれかを `true` で送っても `204` を返すが、直後と約 3.5 秒後の 8.1 の取得は3項目とも `false` を返した。1項目ずつ `true` で送っても同じだった
+> - 4項目を明示した本文：4項目がすべて `false` の状態で、`run_workflows_from_fork_pull_requests`、`send_secrets_and_variables`、`require_approval_for_fork_pr_workflows` を `true`、`send_write_tokens_to_workflows` を `false` と4項目すべてを送ると `204` を返し、続く 8.1 の取得は送った4項目の値を返した
 > - 実行の無効化と再有効化：3項目を `true` にした状態で `run_workflows_from_fork_pull_requests: false` だけを送り、続けて `true` だけを送ると、3項目は `false` のままで、無効にする前の値は返らなかった（2回確認）
 > - 更新直後の取得：4項目のどれかの値を変える更新15回のうち5回で、`204` を受け取ってから約 0.7 秒後の 8.1 の取得が更新前の値を返した。どの回も、約 1.9 秒後と約 3.5 秒後の取得は更新後の値を返し、一度更新後の値を返したあとに更新前の値へ戻ることはなかった。`run_workflows_from_fork_pull_requests` を `false` にする更新（3項目が `false` になる更新を含む）では、どの回も約 0.7 秒後の取得から更新後の値を返した
 

@@ -75,106 +75,6 @@ func TestExecutableChanges(t *testing.T) {
 	})
 }
 
-// TestUnsupportedChangesError は、apply がまだ実行しない、非公開リポジトリの Fork Pull Request ワークフローの実行条件の論理的な設定変更を、
-// 変更計画の並びですべて挙げることを確かめる。
-//
-//trace:checks FR-008
-func TestUnsupportedChangesError(t *testing.T) {
-	zeta, alpha := mustReference(t, "owner/zeta"), mustReference(t, "owner/alpha")
-	repositoryOf := func(target repository.Reference, changes ...changeplan.LogicalChange) repositoryChanges {
-		return repositoryChanges{plan: changeplan.RepositoryPlan{Target: target, RepositoryID: 1}, changes: changes}
-	}
-	t.Run("execution conditions changes across repositories are all listed in the order of the change plan", func(t *testing.T) {
-		// 対象リポジトリの宣言の並びを名前順と逆にし、名前順に並べ替える実装と、最初の一件で打ち切る実装を失敗させる
-		repositories := []repositoryChanges{
-			repositoryOf(zeta, privateForkPullRequestWorkflowsChange()),
-			repositoryOf(alpha),
-			repositoryOf(alpha, allowAutoMergeChange(), privateForkPullRequestWorkflowsChange()),
-		}
-		want := "plan cannot be applied: owner/zeta: actions.fork_pull_requests.private_repositories is a change that apply does not support yet; " +
-			"owner/alpha: actions.fork_pull_requests.private_repositories is a change that apply does not support yet"
-		if err := unsupportedChangesError(repositories); err == nil || err.Error() != want {
-			t.Errorf("unsupportedChangesError() = %v, want %q", err, want)
-		}
-	})
-
-	t.Run("changes without the execution conditions are not rejected", func(t *testing.T) {
-		repositories := []repositoryChanges{
-			repositoryOf(zeta, allowAutoMergeChange(), forkPullRequestApprovalChange(), creationChange(t, "production"), rulesetCreationChange(t, "protect")),
-			repositoryOf(alpha),
-		}
-		if err := unsupportedChangesError(repositories); err != nil {
-			t.Errorf("unsupportedChangesError() = %v, want nil", err)
-		}
-	})
-}
-
-// TestApplyPlan_UnsupportedChangeRejectedBeforeApproval は、apply がまだ実行しない実行条件の変更予定を含む変更計画を、
-// 変更予定の注記を含む変更計画を表示したうえで、承認を求めず、どの対象リポジトリも更新せずに拒否することを確かめる。
-//
-//trace:checks INV-002 INV-003 FR-008
-func TestApplyPlan_UnsupportedChangeRejectedBeforeApproval(t *testing.T) {
-	approve := func(calls *int) func(context.Context) error {
-		return func(context.Context) error {
-			*calls++
-			return nil
-		}
-	}
-
-	// 先頭の対象リポジトリを適用可能なほかの変更予定だけにし、先頭の対象リポジトリから更新を始める実装を失敗させる
-	t.Run("execution conditions change is rejected with the change plan without approval or requests", func(t *testing.T) {
-		baseURL, server := newSequenceServer(t)
-		var out bytes.Buffer
-		calls := 0
-		cfg := Config{Configuration: configuration.File{Path: "./reco.yaml"}, Out: &out, Approve: approve(&calls), After: elapsedAtOnce}
-		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{
-			newRepositoryPlanOf(t, "owner/first", 1, allowAutoMergeMismatch()),
-			newRepositoryPlanOf(t, "owner/second", 2, privateForkPullRequestWorkflowsMismatch()),
-		}}
-
-		err := applyPlan(context.Background(), cfg, newClient(baseURL), p)
-
-		want := "plan cannot be applied: owner/second: actions.fork_pull_requests.private_repositories is a change that apply does not support yet; no changes made"
-		if err == nil || err.Error() != want {
-			t.Errorf("applyPlan() error = %v, want %q", err, want)
-		}
-		// 変更予定と注記の文言は changeplandisplay が持つため、plan と同じ変更計画を書いたことだけを確かめる
-		if wantOut := changeplandisplay.Text("./reco.yaml", p); out.String() != wantOut {
-			t.Errorf("got Out %q, want %q", out.String(), wantOut)
-		}
-		if calls != 0 || len(server.Methods()) != 0 {
-			t.Errorf("approve calls = %d, requests = %v, want none", calls, server.Methods())
-		}
-	})
-
-	t.Run("not-applicable change is reported before the unsupported change", func(t *testing.T) {
-		baseURL, server := newSequenceServer(t)
-		calls := 0
-		p := newPlan(t, privateForkPullRequestWorkflowsMismatch(), shaPinningRequiredNotApplicable())
-
-		err := applyPlan(context.Background(), Config{Out: &bytes.Buffer{}, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), p)
-
-		if wantErr := p.NotApplicableError().Error() + "; no changes made"; err == nil || err.Error() != wantErr {
-			t.Errorf("applyPlan() error = %v, want %q", err, wantErr)
-		}
-		if calls != 0 || len(server.Methods()) != 0 {
-			t.Errorf("approve calls = %d, requests = %v, want none", calls, server.Methods())
-		}
-	})
-
-	t.Run("change plan write failure is returned without approval", func(t *testing.T) {
-		calls := 0
-		err := applyPlan(context.Background(), Config{Out: failingWriter{}, Approve: approve(&calls)}, nil, newPlan(t, privateForkPullRequestWorkflowsMismatch()))
-
-		if !errors.Is(err, errWrite) {
-			t.Errorf("applyPlan() error = %v, want %v", err, errWrite)
-		}
-		if calls != 0 {
-			t.Errorf("approve calls = %d, want 0", calls)
-		}
-	})
-}
-
 // failAfterWriter は、n 回の書き込みに成功したあとの書き込みを失敗させる。
 type failAfterWriter struct {
 	n   int
@@ -775,6 +675,32 @@ func TestRun(t *testing.T) {
 		}
 		if calls != 1 || !strings.Contains(out.String(), "actions.fork_pull_requests.approval_policy: first_time_contributors -> all_external_contributors") || !strings.Contains(out.String(), "owner/repo: updated") {
 			t.Errorf("approve calls = %d, Out = %q, want one approval, the approval policy change, and the repository updated", calls, out.String())
+		}
+	})
+
+	// 変更予定の注記を添える実行条件の変更も、承認を一度求めて実行し、観測が承認ポリシーの領域を読まないことを確かめる
+	t.Run("private_repositories of a private repository is applied after a single approval", func(t *testing.T) {
+		declared := githubtest.PrivateForkPullRequestWorkflowsBody{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true, RequireApprovalForForkPullRequestWorkflows: true}
+		baseURL, server := newSequenceServer(t,
+			okPrivateRepository(1), okPrivateForkPullRequestWorkflows(githubtest.PrivateForkPullRequestWorkflowsBody{}),
+			okPrivateRepository(1), okPrivateForkPullRequestWorkflows(githubtest.PrivateForkPullRequestWorkflowsBody{}), noContent(),
+			okPrivateRepository(1), okPrivateForkPullRequestWorkflows(declared))
+		var out bytes.Buffer
+		calls := 0
+		files := fstest.MapFS{"reco.yaml": {Data: []byte("repositories:\n  - name: owner/repo\n    actions:\n      fork_pull_requests:\n        private_repositories:\n" +
+			"          run_workflows_from_fork_pull_requests: true\n          send_write_tokens_to_workflows: false\n" +
+			"          send_secrets_and_variables: true\n          require_approval_for_fork_pr_workflows: true\n")}}
+
+		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		reads := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos"}
+		want := slices.Concat(reads, reads, []string{"PUT /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos"}, reads)
+		if !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		if calls != 1 || !strings.Contains(out.String(), "actions.fork_pull_requests.private_repositories:") || !strings.Contains(out.String(), "owner/repo: updated") {
+			t.Errorf("approve calls = %d, Out = %q, want one approval, the execution conditions change, and the repository updated", calls, out.String())
 		}
 	})
 
@@ -1404,15 +1330,6 @@ func toSelectedChange() changeplan.LogicalChange {
 				RelevantSettings: relevantTo(setting.AllowedActions, selected),
 			},
 		},
-	}
-}
-
-// privateForkPullRequestWorkflowsMismatch は、privateForkPullRequestWorkflowsChange を導く、変更予定の注記を伴う適用可能な変更予定。
-func privateForkPullRequestWorkflowsMismatch() changeplan.SettingPlan {
-	operation := privateForkPullRequestWorkflowsChange().Operations[0]
-	return changeplan.SettingPlan{
-		Unit: operation.Unit, Observed: github.Observed(setting.PrivateForkPullRequestWorkflowConditionsValue(setting.PrivateForkPullRequestWorkflowConditions{})),
-		Desired: operation.Value, Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 	}
 }
 

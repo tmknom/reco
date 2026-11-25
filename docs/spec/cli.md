@@ -537,12 +537,6 @@ Plan cannot be applied.
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-b: actions.permissions.sha_pinning_required is not applicable; example/project-c: actions.permissions.sha_pinning_required is not applicable; no changes made"}
 ```
 
-非公開リポジトリの Fork Pull Request ワークフローの実行条件の変更予定は、`apply` がまだ実行しません。適用不能な変更予定がなく、実行条件の変更予定が一つでもあれば、変更計画を4章の `plan` と同じ形（変更予定の注記を含む）で stdout へ最後まで表示し、承認を求めず、どのリポジトリも更新せずにエラー終了します。同じ変更計画のほかの変更予定も実行しません。stderr のエラーは、実行条件の変更予定のすべてを変更計画の並びで対象と設定を挙げ、`no changes made` を添えます。`plan` は同じ変更計画を表示して終了コード `0` で終えます。
-
-```text
-{"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/private-project: actions.fork_pull_requests.private_repositories is a change that apply does not support yet; no changes made"}
-```
-
 すべて変更不要の場合の表示例は次のとおりです。
 
 ```text
@@ -594,7 +588,28 @@ Apply complete.
 Repositories updated: 2
 ```
 
-承認の前には、変更計画を4章の `plan` と同じ形で提示します。承認は、提示した変更計画の全体に一度だけ求めます。
+承認の前には、変更計画を4章の `plan` と同じ形で提示します。承認は、提示した変更計画の全体に一度だけ求めます。次は、変更予定の注記を添えた、非公開リポジトリの Fork Pull Request ワークフローの実行条件を変える例です。
+
+```text
+$ reco apply
+Configuration: ./reco.yaml
+
+Repository: example/private-project
+  actions.fork_pull_requests.private_repositories:
+    run_workflows_from_fork_pull_requests: false, send_write_tokens_to_workflows: false, send_secrets_and_variables: false, require_approval_for_fork_pr_workflows: false
+    -> run_workflows_from_fork_pull_requests: true, send_write_tokens_to_workflows: false, send_secrets_and_variables: true, require_approval_for_fork_pr_workflows: true
+    Note: Workflows triggered by pull requests from forks can use secrets and variables
+
+Plan: 1 repository to update, 1 change
+Repositories checked: 1
+
+Apply these changes? [y/N]: y
+Applying changes...
+  example/private-project: updated
+
+Apply complete.
+Repositories updated: 1
+```
 
 承認が得られなければ更新を開始せず、理由を表示して終了コード `1` とします。拒否した場合は `apply cancelled: approval declined; no changes made` のように、更新が開始されていないことを伝えます。一部の更新後に停止した場合は `no changes made` を示しません。
 
@@ -627,7 +642,7 @@ Repositories updated: 2
 
 いずれかの論理的な設定変更で更新操作を開始しており、完了しなかった論理的な設定変更があるときは、変更結果の末尾に **変更結果の注記**（`Note:`）を添えます。開始した更新操作に成否不明があれば自動で再送していないことを、なければ自動ロールバックを行っていないことを示します。どちらの変更結果の注記にも、`reco plan` で残りの変更を確かめられることを添えます（`Run reco plan to see the remaining changes.`）。一つの変更の途中で止まった場合も、`plan` は先行する更新操作のあとの現在値を変更計画に示すため、利用者は残った中間状態と残りの変更を同じ表示で確かめられます。複数の更新操作からなる論理的な設定変更では、すべての更新操作を判定に含めます。この判定は、選択したすべてのリポジトリの論理的な設定変更について行います。先に完了したリポジトリのあとで別のリポジトリが完了しなかった場合も、適用済みの変更が残るため変更結果の注記を添えます。
 
-論理的な設定変更ごとに結果を表示するときは、論理的な設定変更を、それが変える管理設定の名前で示します。二つ以上の管理設定を変える論理的な設定変更は、変更計画に示す順に ` + ` でつないで示します（`actions.permissions.allowed_actions + actions.permissions.selected_actions`、`general.allow_squash_merge + general.allow_merge_commit + general.allow_rebase_merge`、`environments.<名前> + environments.<名前>.deployment_branch_policy`）。名前は設定宣言の綴りです。同じ管理設定を変える更新操作が複数あっても、その管理設定の名前は一度だけ示します。変更結果を一つにまとめても、承認の前に提示する変更予定は管理設定ごとの行のままです。選択方式の Actions 許可条件の3項目は、個別の変更として示しません。
+論理的な設定変更ごとに結果を表示するときは、論理的な設定変更を、それが変える管理設定の名前で示します。二つ以上の管理設定を変える論理的な設定変更は、変更計画に示す順に ` + ` でつないで示します（`actions.permissions.allowed_actions + actions.permissions.selected_actions`、`general.allow_squash_merge + general.allow_merge_commit + general.allow_rebase_merge`、`environments.<名前> + environments.<名前>.deployment_branch_policy`）。名前は設定宣言の綴りです。同じ管理設定を変える更新操作が複数あっても、その管理設定の名前は一度だけ示します。変更結果を一つにまとめても、承認の前に提示する変更予定は管理設定ごとの行のままです。選択方式の Actions 許可条件の3項目と、非公開リポジトリの Fork Pull Request ワークフローの実行条件の4項目は、個別の変更として示しません。
 
 関連リソースの作成と削除も、完了すれば `updated` と示します。何を作成し、何を削除したかは、承認の前に提示した変更予定が示します。Repository Variable と Environment Variable の変更結果と stderr のエラーは、変数の名前だけを示し、変数の値と更新要求の本文は示しません。削除でも、失われた値を示しません。
 
@@ -1203,7 +1218,7 @@ GitHub は、Ruleset への書き込みのアクセスを持たない利用者�
 | `apply`：変更完了、または変更不要 | `0` |
 | `show`：観測成功（観測不能な値を含み得る） | `0` |
 | `plan`：適用不能な変更・観測操作の失敗 | `1` |
-| `apply`：適用不能な変更・まだ実行しない変更（非公開リポジトリの Fork Pull Request ワークフローの実行条件の変更予定）・承認拒否・承認不能・変更失敗・更新操作の成否不明・変更前提の不成立 | `1` |
+| `apply`：適用不能な変更・承認拒否・承認不能・変更失敗・更新操作の成否不明・変更前提の不成立 | `1` |
 | 入力不正、認証・権限・API 通信の失敗、対象の不一致や確認不能 | `1` |
 | GitHub API の HTTP リダイレクト応答（読み取り・更新） | `1` |
 | 更新成功応答後の再観測失敗・期待状態との不一致・変更対象外の設定の予期しない変化 | `1` |
