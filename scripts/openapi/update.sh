@@ -11,6 +11,7 @@ SOURCE_URL="https://raw.githubusercontent.com/github/rest-api-description/${REF}
 # 抽出する操作。docs/research/ の文書が扱うエンドポイントと一致させる
 OPERATIONS='{
   "/repos/{owner}/{repo}": ["get", "patch"],
+  "/repos/{owner}/{repo}/actions/oidc/customization/sub": ["get", "put"],
   "/repos/{owner}/{repo}/actions/permissions": ["get", "put"],
   "/repos/{owner}/{repo}/actions/permissions/access": ["get", "put"],
   "/repos/{owner}/{repo}/actions/permissions/artifact-and-log-retention": ["get", "put"],
