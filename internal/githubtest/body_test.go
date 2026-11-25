@@ -73,6 +73,16 @@ func TestBodies(t *testing.T) {
 			want: map[string]any{"days": float64(30), "maximum_allowed_days": float64(400)},
 		},
 		{
+			name: "oidc subject body keeps claim keys in the written order",
+			body: OIDCSubjectBody{IncludeClaimKeys: []string{"repo", "context"}, UseImmutableSubject: true}.JSON(),
+			want: map[string]any{"use_default": false, "include_claim_keys": []any{"repo", "context"}, "use_immutable_subject": true, "sub_claim_prefix": "repo:owner/repo"},
+		},
+		{
+			name: "oidc subject body without claim keys omits include_claim_keys",
+			body: OIDCSubjectBody{UseDefault: true}.JSON(),
+			want: map[string]any{"use_default": true, "use_immutable_subject": false, "sub_claim_prefix": "repo:owner/repo"},
+		},
+		{
 			name: "actions permissions body is enabled with the policy and SHA pinning",
 			body: ActionsPermissionsBody{AllowedActions: "selected", SHAPinningRequired: true}.JSON(),
 			want: map[string]any{"enabled": true, "allowed_actions": "selected", "sha_pinning_required": true},

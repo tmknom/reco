@@ -36,6 +36,7 @@ func TestWriteObservationResult(t *testing.T) {
 	noForkWorkflows := &github.PrivateForkPullRequestWorkflows{Conditions: github.Observed(setting.PrivateForkPullRequestWorkflowConditions{})}
 	// 保持期間と上限を違う値にし、取り違えと、上限を値の位置に書く誤りを検出する
 	retention := &github.Retention{Days: 30, MaximumAllowedDays: 400}
+	defaultOIDCSubject := &github.OIDCSubject{Customization: setting.OIDCSubjectCustomization{UseDefault: true}}
 	noVariables := &github.Variables{}
 	noEnvironments := &github.Environments{}
 	enabledDependabot := &github.Dependabot{Alerts: true, SecurityUpdates: setting.DependabotSecurityUpdatesEnabled}
@@ -54,6 +55,8 @@ func TestWriteObservationResult(t *testing.T) {
 			"          run_workflows_from_fork_pull_requests: false\n          send_write_tokens_to_workflows: false\n" +
 			"          send_secrets_and_variables: false\n          require_approval_for_fork_pr_workflows: false\n" +
 			"      retention:\n        days: 30 # maximum allowed: 400\n"
+		defaultOIDCSubjectLines = "      # reco does not accept the OIDC subject customization in the configuration file yet\n" +
+			"      # oidc_subject:\n      #   use_default: true\n      #   use_immutable_subject: false\n"
 		noVariable      = "      # variables: none\n"
 		noEnvironment   = "    # environments: none\n"
 		enabledSecurity = "    security:\n      dependabot_alerts: true\n      dependabot_security_updates: true\n" +
@@ -75,6 +78,7 @@ func TestWriteObservationResult(t *testing.T) {
 				ForkPullRequestApproval:         privateApproval,
 				PrivateForkPullRequestWorkflows: noForkWorkflows,
 				Retention:                       retention,
+				OIDCSubject:                     defaultOIDCSubject,
 				RepositoryVariables:             noVariables,
 				Environments:                    noEnvironments,
 				Dependabot:                      enabledDependabot,
@@ -85,7 +89,7 @@ func TestWriteObservationResult(t *testing.T) {
 			want: header +
 				"    general:\n      delete_branch_on_merge: true\n      allow_auto_merge: false\n" +
 				"      allow_squash_merge: true\n      allow_merge_commit: false\n      allow_rebase_merge: true\n      allow_update_branch: false\n" +
-				allPermissions + readOnlyWorkflow + notSharedAccess + privateForkPullRequestsAndRetention + noVariable + noEnvironment + enabledSecurity + noRulesets,
+				allPermissions + readOnlyWorkflow + notSharedAccess + privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "opposite values are shown as observed",
@@ -98,6 +102,7 @@ func TestWriteObservationResult(t *testing.T) {
 				ForkPullRequestApproval:         privateApproval,
 				PrivateForkPullRequestWorkflows: noForkWorkflows,
 				Retention:                       retention,
+				OIDCSubject:                     defaultOIDCSubject,
 				RepositoryVariables:             noVariables,
 				Environments:                    noEnvironments,
 				Dependabot:                      enabledDependabot,
@@ -111,7 +116,7 @@ func TestWriteObservationResult(t *testing.T) {
 				allPermissions +
 				"      workflow:\n        default_workflow_permissions: write\n        can_approve_pull_request_reviews: true\n" +
 				"      access:\n        access_level: user\n" +
-				privateForkPullRequestsAndRetention + noVariable + noEnvironment + enabledSecurity + noRulesets,
+				privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "selected policy shows the three criteria with one quoted pattern per line",
@@ -132,6 +137,7 @@ func TestWriteObservationResult(t *testing.T) {
 				ForkPullRequestApproval:         privateApproval,
 				PrivateForkPullRequestWorkflows: noForkWorkflows,
 				Retention:                       retention,
+				OIDCSubject:                     defaultOIDCSubject,
 				RepositoryVariables:             noVariables,
 				Environments:                    noEnvironments,
 				Dependabot:                      enabledDependabot,
@@ -143,7 +149,7 @@ func TestWriteObservationResult(t *testing.T) {
 				"    actions:\n      permissions:\n        enabled: true\n        allowed_actions: selected\n        selected_actions:\n" +
 				"          github_owned_allowed: true\n          verified_allowed: false\n          patterns_allowed:\n" +
 				"            - \"actions/checkout@v4\"\n            - \"example/*\"\n        sha_pinning_required: false\n" +
-				readOnlyWorkflow + notSharedAccess + privateForkPullRequestsAndRetention + noVariable + noEnvironment + enabledSecurity + noRulesets,
+				readOnlyWorkflow + notSharedAccess + privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "selected policy without patterns shows the empty sequence",
@@ -160,6 +166,7 @@ func TestWriteObservationResult(t *testing.T) {
 				ForkPullRequestApproval:         privateApproval,
 				PrivateForkPullRequestWorkflows: noForkWorkflows,
 				Retention:                       retention,
+				OIDCSubject:                     defaultOIDCSubject,
 				RepositoryVariables:             noVariables,
 				Environments:                    noEnvironments,
 				Dependabot:                      enabledDependabot,
@@ -170,7 +177,7 @@ func TestWriteObservationResult(t *testing.T) {
 			want: header + defaultGeneral +
 				"    actions:\n      permissions:\n        enabled: true\n        allowed_actions: selected\n        selected_actions:\n" +
 				"          github_owned_allowed: true\n          verified_allowed: true\n          patterns_allowed: []\n        sha_pinning_required: false\n" +
-				readOnlyWorkflow + notSharedAccess + privateForkPullRequestsAndRetention + noVariable + noEnvironment + enabledSecurity + noRulesets,
+				readOnlyWorkflow + notSharedAccess + privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "disabled actions shows only enabled without the policy, the criteria, and sha_pinning_required",
@@ -186,6 +193,7 @@ func TestWriteObservationResult(t *testing.T) {
 				ForkPullRequestApproval:         privateApproval,
 				PrivateForkPullRequestWorkflows: noForkWorkflows,
 				Retention:                       retention,
+				OIDCSubject:                     defaultOIDCSubject,
 				RepositoryVariables:             noVariables,
 				Environments:                    noEnvironments,
 				Dependabot:                      enabledDependabot,
@@ -195,7 +203,7 @@ func TestWriteObservationResult(t *testing.T) {
 			},
 			want: header + defaultGeneral +
 				"    actions:\n      permissions:\n        enabled: false\n" +
-				readOnlyWorkflow + notSharedAccess + privateForkPullRequestsAndRetention + noVariable + noEnvironment + enabledSecurity + noRulesets,
+				readOnlyWorkflow + notSharedAccess + privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "public repository shows access and the unavailable access level as comments",
@@ -209,6 +217,7 @@ func TestWriteObservationResult(t *testing.T) {
 					Conditions: github.Unavailable[setting.PrivateForkPullRequestWorkflowConditions](github.UnavailablePublicRepository),
 				},
 				Retention:                     retention,
+				OIDCSubject:                   defaultOIDCSubject,
 				RepositoryVariables:           noVariables,
 				Environments:                  noEnvironments,
 				Dependabot:                    enabledDependabot,
@@ -221,7 +230,7 @@ func TestWriteObservationResult(t *testing.T) {
 				"      fork_pull_requests:\n        approval_policy: first_time_contributors\n" +
 				"        # private_repositories: unavailable (the repository is public)\n" +
 				"      retention:\n        days: 30 # maximum allowed: 400\n" +
-				noVariable + noEnvironment + enabledSecurity + noRulesets,
+				defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "organization access level is shown as observed",
@@ -233,6 +242,7 @@ func TestWriteObservationResult(t *testing.T) {
 				ForkPullRequestApproval:         privateApproval,
 				PrivateForkPullRequestWorkflows: noForkWorkflows,
 				Retention:                       retention,
+				OIDCSubject:                     defaultOIDCSubject,
 				RepositoryVariables:             noVariables,
 				Environments:                    noEnvironments,
 				Dependabot:                      enabledDependabot,
@@ -242,7 +252,7 @@ func TestWriteObservationResult(t *testing.T) {
 			},
 			want: header + defaultGeneral + allPermissions + readOnlyWorkflow +
 				"      access:\n        access_level: organization\n" +
-				privateForkPullRequestsAndRetention + noVariable + noEnvironment + enabledSecurity + noRulesets,
+				privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
 			name: "rulesets are shown after security",
@@ -254,6 +264,7 @@ func TestWriteObservationResult(t *testing.T) {
 				ForkPullRequestApproval:         privateApproval,
 				PrivateForkPullRequestWorkflows: noForkWorkflows,
 				Retention:                       retention,
+				OIDCSubject:                     defaultOIDCSubject,
 				RepositoryVariables:             noVariables,
 				Environments:                    noEnvironments,
 				Dependabot:                      enabledDependabot,
@@ -262,7 +273,7 @@ func TestWriteObservationResult(t *testing.T) {
 				Rulesets:                        &github.Rulesets{Existing: github.Unavailable[[]github.Ruleset](github.UnavailablePrivateRepository)},
 			},
 			want: header + defaultGeneral + allPermissions + readOnlyWorkflow + notSharedAccess +
-				privateForkPullRequestsAndRetention + noVariable + noEnvironment + enabledSecurity + "    # rulesets: unavailable (the repository is private)\n",
+				privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + "    # rulesets: unavailable (the repository is private)\n",
 		},
 	}
 	for _, tc := range cases {
@@ -285,6 +296,7 @@ func TestWriteObservationResult(t *testing.T) {
 			ForkPullRequestApproval:         privateApproval,
 			PrivateForkPullRequestWorkflows: noForkWorkflows,
 			Retention:                       retention,
+			OIDCSubject:                     defaultOIDCSubject,
 			RepositoryVariables:             noVariables,
 			Environments:                    noEnvironments,
 			Dependabot:                      enabledDependabot,
@@ -320,6 +332,7 @@ const (
 	actionsAccessPath                   = "/repos/owner/repo/actions/permissions/access"
 	privateForkPullRequestWorkflowsPath = "/repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos"
 	retentionPath                       = "/repos/owner/repo/actions/permissions/artifact-and-log-retention"
+	oidcSubjectPath                     = "/repos/owner/repo/actions/oidc/customization/sub"
 	variablesPath                       = "/repos/owner/repo/actions/variables"
 	environmentsPath                    = "/repos/owner/repo/environments"
 	vulnerabilityAlertsPath             = "/repos/owner/repo/vulnerability-alerts"
@@ -338,6 +351,7 @@ func TestRun(t *testing.T) {
 			"GET " + actionsAccessPath:                   githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "user"}.JSON()),
 			"GET " + privateForkPullRequestWorkflowsPath: githubtest.OK(githubtest.PrivateForkPullRequestWorkflowsBody{}.JSON()),
 			"GET " + retentionPath:                       githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 400}.JSON()),
+			"GET " + oidcSubjectPath:                     githubtest.OK(githubtest.OIDCSubjectBody{IncludeClaimKeys: []string{"repo"}}.JSON()),
 			"GET " + variablesPath: githubtest.OK(githubtest.VariablesBody{TotalCount: 1, Variables: []githubtest.VariableBody{
 				{Name: "GO_VERSION", Value: "1.27"},
 			}}.JSON()),
@@ -358,7 +372,7 @@ func TestRun(t *testing.T) {
 		}
 		// 非公開リポジトリのため、承認ポリシーの取得は送らない
 		want := []string{"GET " + repositoryPath, "GET " + actionsPermissionsPath, "GET " + workflowPermissionsPath, "GET " + actionsAccessPath,
-			"GET " + privateForkPullRequestWorkflowsPath, "GET " + retentionPath, "GET " + variablesPath, "GET " + environmentsPath,
+			"GET " + privateForkPullRequestWorkflowsPath, "GET " + retentionPath, "GET " + oidcSubjectPath, "GET " + variablesPath, "GET " + environmentsPath,
 			"GET " + environmentsPath + "/staging/variables", "GET " + vulnerabilityAlertsPath, "GET " + securityFixesPath}
 		if got := server.RequestLines(); !slices.Equal(got, want) {
 			t.Errorf("got requests %v, want %v", got, want)
@@ -372,6 +386,7 @@ func TestRun(t *testing.T) {
 			"default_workflow_permissions: write", `        - name: "GO_VERSION"`, `- name: "staging"`, `          - name: "REGION"`, "dependabot_security_updates: true # paused",
 			"        # approval_policy: unavailable (the repository is private)",
 			"        days: 90 # maximum allowed: 400",
+			"      #   include_claim_keys:\n      #     - \"repo\"",
 			"# secret_scanning: unavailable (the repository is private)",
 			"# private_vulnerability_reporting: unavailable (the repository is private)",
 			"    # rulesets: unavailable (the repository is private)",

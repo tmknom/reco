@@ -13,7 +13,7 @@
 | 文書 | トップレベルのキー | 扱う設定の領域 |
 |---|---|---|
 | [General の設計](general.md) | `general` | General |
-| [Actions の設計](actions.md) | `actions` | Actions の実行許可、ワークフロー権限、リポジトリ外のワークフローからのアクセス、Fork Pull Request ワークフローの承認、非公開リポジトリの Fork Pull Request ワークフロー、保持期間、Repository Variables |
+| [Actions の設計](actions.md) | `actions` | Actions の実行許可、ワークフロー権限、リポジトリ外のワークフローからのアクセス、Fork Pull Request ワークフローの承認、非公開リポジトリの Fork Pull Request ワークフロー、保持期間、OIDC subject、Repository Variables |
 | [Environments の設計](environments.md) | `environments` | Environments、Environment Variables |
 | [Security の設計](security.md) | `security` | Dependabot、Secret scanning、Private vulnerability reporting |
 | [Rulesets の設計](rulesets.md) | `rulesets` | Rulesets |

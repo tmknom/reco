@@ -284,6 +284,9 @@ func TestObserveRepositoryAreas(t *testing.T) {
 			if observed.ForkPullRequestApproval != nil || observed.PrivateForkPullRequestWorkflows != nil || observed.Retention != nil {
 				t.Errorf("ObserveRepository() = %+v, want no fork pull request settings and no retention without their areas", observed)
 			}
+			if observed.OIDCSubject != nil {
+				t.Errorf("ObserveRepository().OIDCSubject = %+v, want nil without the oidc subject area", observed.OIDCSubject)
+			}
 
 			if len(got) != len(tc.wantPaths) {
 				t.Fatalf("got %d requests %+v, want paths %v", len(got), got, tc.wantPaths)

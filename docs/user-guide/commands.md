@@ -58,6 +58,10 @@ repositories:
           require_approval_for_fork_pr_workflows: false
       retention:
         days: 90 # maximum allowed: 400
+      # reco does not accept the OIDC subject customization in the configuration file yet
+      # oidc_subject:
+      #   use_default: true
+      #   use_immutable_subject: true
       variables:
         - name: "GO_VERSION"
           value: "1.27"
@@ -93,6 +97,7 @@ repositories:
 | `# access:` と `#   access_level: unavailable (the repository is public)` | 公開リポジトリのため、`access_level` を読み取れない。この設定は非公開リポジトリにだけ書ける |
 | `# approval_policy: unavailable (the repository is private)` / `# private_repositories: unavailable (the repository is public)` | Fork からの Pull Request のワークフローの承認ポリシー（`approval_policy`）は公開リポジトリにだけ、実行条件（`private_repositories`）は非公開リポジトリにだけあるため、非公開リポジトリでは `approval_policy` を、公開リポジトリでは `private_repositories` を読み取れない。読み取れた側は、`fork_pull_requests` とともに設定ファイルに書ける行として表示する |
 | `days: 90 # maximum allowed: 400` | 保持日数は90日で、このリポジトリで設定できる上限は400日 |
+| `# reco does not accept the OIDC subject customization in the configuration file yet` と、続く `# oidc_subject:` の下の行 | ワークフローが外部のクラウドなどへの認証に使う OIDC トークンの、subject の形の設定。`use_default: true` は GitHub の既定の形を使っていることを、`false` は `include_claim_keys` に並ぶ key で subject を組み立てていることを表す。`use_immutable_subject: true` は、所有者とリポジトリの ID を含む immutable subject の形を選んでいることを表す。この設定は設定ファイルに書けないため、コメントで表示する |
 | `dependabot_security_updates: true # paused by GitHub (still enabled)` | Dependabot security updates は有効だが、GitHub が一時停止している。設定ファイルでは `true` と書いたのと同じ |
 | `# secret_scanning: unavailable (the repository is private)` / `# secret_scanning_push_protection: unavailable (the repository is private)` / `# private_vulnerability_reporting: unavailable (the repository is private)` | 非公開リポジトリのため、Secret scanning、リポジトリの push protection、Private vulnerability reporting の値を読み取れない |
 | `# rulesets: none` | Ruleset が一つもない |
