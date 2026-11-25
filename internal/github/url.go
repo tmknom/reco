@@ -138,6 +138,12 @@ func (c *Client) retentionURL(reference repository.Reference) *url.URL {
 	return u
 }
 
+func (c *Client) oidcSubjectURL(reference repository.Reference) *url.URL {
+	u := c.repositoryURL(reference)
+	u.Path += "/actions/oidc/customization/sub"
+	return u
+}
+
 func (c *Client) vulnerabilityAlertsURL(reference repository.Reference) *url.URL {
 	u := c.repositoryURL(reference)
 	u.Path += "/vulnerability-alerts"

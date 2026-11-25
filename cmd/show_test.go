@@ -29,6 +29,7 @@ func TestShow_Success(t *testing.T) {
 				"GET /repos/owner/repo/actions/permissions/access":                          githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos": githubtest.OK(githubtest.PrivateForkPullRequestWorkflowsBody{}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/artifact-and-log-retention":      githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 400}.JSON()),
+				"GET /repos/owner/repo/actions/oidc/customization/sub":                      githubtest.OK(githubtest.OIDCSubjectBody{UseDefault: true}.JSON()),
 				"GET /repos/owner/repo/actions/variables":                                   githubtest.OK(githubtest.VariablesBody{}.JSON()),
 				"GET /repos/owner/repo/environments":                                        githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
 				"GET /repos/owner/repo/vulnerability-alerts":                                {Status: http.StatusNoContent},
@@ -53,6 +54,7 @@ func TestShow_Success(t *testing.T) {
 				"/repos/owner/repo/actions/permissions/access",
 				"/repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos",
 				"/repos/owner/repo/actions/permissions/artifact-and-log-retention",
+				"/repos/owner/repo/actions/oidc/customization/sub",
 				"/repos/owner/repo/actions/variables",
 				"/repos/owner/repo/environments",
 				"/repos/owner/repo/vulnerability-alerts",
@@ -99,6 +101,8 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 				"GET /repos/owner/repo/actions/permissions/access":                          githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "user"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos": githubtest.OK(githubtest.PrivateForkPullRequestWorkflowsBody{}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/artifact-and-log-retention":      githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 400}.JSON()),
+				// 改行に続けてキーを模した key も、エスケープした1行のコメントの中に収まり、設定宣言の構造を変えない
+				"GET /repos/owner/repo/actions/oidc/customization/sub": githubtest.OK(githubtest.OIDCSubjectBody{IncludeClaimKeys: []string{"repo", "a\n    general:\n      delete_branch_on_merge: false"}}.JSON()),
 				// 改行に続けてキーを模した値も、エスケープした1行の値として読み戻せ、設定宣言の構造を変えない
 				"GET /repos/owner/repo/actions/variables": githubtest.OK(githubtest.VariablesBody{TotalCount: 2, Variables: []githubtest.VariableBody{
 					{Name: "GO_VERSION", Value: "1.27"},
@@ -135,6 +139,7 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 				"GET /repos/owner/repo/actions/permissions/workflow":                     githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/fork-pr-contributor-approval": githubtest.OK(githubtest.ForkPullRequestApprovalBody{ApprovalPolicy: "first_time_contributors"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/artifact-and-log-retention":   githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 400}.JSON()),
+				"GET /repos/owner/repo/actions/oidc/customization/sub":                   githubtest.OK(githubtest.OIDCSubjectBody{UseDefault: true}.JSON()),
 				"GET /repos/owner/repo/actions/variables":                                githubtest.OK(githubtest.VariablesBody{}.JSON()),
 				"GET /repos/owner/repo/environments":                                     githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
 				"GET /repos/owner/repo/vulnerability-alerts":                             {Status: http.StatusNotFound},
@@ -152,6 +157,7 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 				"GET /repos/owner/repo/actions/permissions/workflow":                     githubtest.OK(githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "read"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/fork-pr-contributor-approval": githubtest.OK(githubtest.ForkPullRequestApprovalBody{ApprovalPolicy: "first_time_contributors"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/artifact-and-log-retention":   githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 400}.JSON()),
+				"GET /repos/owner/repo/actions/oidc/customization/sub":                   githubtest.OK(githubtest.OIDCSubjectBody{UseDefault: true}.JSON()),
 				"GET /repos/owner/repo/actions/variables":                                githubtest.OK(githubtest.VariablesBody{}.JSON()),
 				"GET /repos/owner/repo/environments":                                     githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
 				"GET /repos/owner/repo/vulnerability-alerts":                             {Status: http.StatusNotFound},
@@ -178,6 +184,7 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 				"GET /repos/owner/repo/actions/permissions/access":                          githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos": githubtest.OK(githubtest.PrivateForkPullRequestWorkflowsBody{}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/artifact-and-log-retention":      githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 400}.JSON()),
+				"GET /repos/owner/repo/actions/oidc/customization/sub":                      githubtest.OK(githubtest.OIDCSubjectBody{UseDefault: true}.JSON()),
 				"GET /repos/owner/repo/actions/variables":                                   githubtest.OK(githubtest.VariablesBody{}.JSON()),
 				"GET /repos/owner/repo/environments": githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 1, Environments: []githubtest.EnvironmentBody{
 					{ID: 2, Name: "production"},
@@ -197,6 +204,7 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 				"GET /repos/owner/repo/actions/permissions/access":                          githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "none"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos": githubtest.OK(githubtest.PrivateForkPullRequestWorkflowsBody{}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/artifact-and-log-retention":      githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 400}.JSON()),
+				"GET /repos/owner/repo/actions/oidc/customization/sub":                      githubtest.OK(githubtest.OIDCSubjectBody{UseDefault: true}.JSON()),
 				"GET /repos/owner/repo/actions/variables":                                   githubtest.OK(githubtest.VariablesBody{}.JSON()),
 				"GET /repos/owner/repo/environments":                                        githubtest.OK(githubtest.EnvironmentsBody{}.JSON()),
 				"GET /repos/owner/repo/vulnerability-alerts":                                {Status: http.StatusNotFound},

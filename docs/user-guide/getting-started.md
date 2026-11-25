@@ -50,6 +50,10 @@ repositories:
           require_approval_for_fork_pr_workflows: false
       retention:
         days: 90 # maximum allowed: 400
+      # reco does not accept the OIDC subject customization in the configuration file yet
+      # oidc_subject:
+      #   use_default: true
+      #   use_immutable_subject: true
       # variables: none
     # environments: none
     security:

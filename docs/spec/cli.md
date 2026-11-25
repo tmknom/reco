@@ -966,7 +966,7 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 
 `show` は設定宣言を使用せず、指定リポジトリについて GitHub から確認できた管理設定の値と関連リソースを表示します。認証・権限・通信による観測操作の失敗は、正常な観測結果ではなくエラーとします。GitHub の設定は変更しません。
 
-表示は、YAML 設定仕様の設定宣言と同じ構造の YAML です。ルートの `repositories` に、`name` を指定したリポジトリとする要素を一つ置き、その下に `general`、`actions`（`permissions`、`workflow`、`access`、`fork_pull_requests`、`retention`、`variables`）、`environments`、`security`、`rulesets` の順で、確認できた値を設定宣言のキーで示します。`name` には、GitHub が返す名前ではなく、`--repo` に指定したリポジトリ指定を示します。観測操作の失敗の文言と同じ名前で対象を示すためです。設定宣言と同じ構造にするのは、表示から設定宣言のどこに何を書けばよいかを読み取れるようにし、表示をそのまま設定宣言の出発点にできるようにするためです。観測した値が設定宣言の入力検証を通る場合（この章の末尾）、表示を変えずに設定宣言として読むと、管理範囲は表示したすべての管理設定と Environment と Repository Variable と Environment Variable と Ruleset になり、期待値は観測時点の値と一致します。
+表示は、YAML 設定仕様の設定宣言と同じ構造の YAML です。ルートの `repositories` に、`name` を指定したリポジトリとする要素を一つ置き、その下に `general`、`actions`（`permissions`、`workflow`、`access`、`fork_pull_requests`、`retention`、`oidc_subject`、`variables`）、`environments`、`security`、`rulesets` の順で、確認できた値を設定宣言のキーで示します。`name` には、GitHub が返す名前ではなく、`--repo` に指定したリポジトリ指定を示します。観測操作の失敗の文言と同じ名前で対象を示すためです。設定宣言と同じ構造にするのは、表示から設定宣言のどこに何を書けばよいかを読み取れるようにし、表示をそのまま設定宣言の出発点にできるようにするためです。観測した値が設定宣言の入力検証を通る場合（この章の末尾）、表示を変えずに設定宣言として読むと、管理範囲は表示したすべての管理設定と Environment と Repository Variable と Environment Variable と Ruleset になり、期待値は観測時点の値と一致します。
 
 ```text
 $ reco show --repo example/project-a
@@ -998,6 +998,10 @@ repositories:
           require_approval_for_fork_pr_workflows: false
       retention:
         days: 90 # maximum allowed: 400
+      # reco does not accept the OIDC subject customization in the configuration file yet
+      # oidc_subject:
+      #   use_default: true
+      #   use_immutable_subject: true
       # variables: none
     # environments: none
     security:
@@ -1010,6 +1014,8 @@ repositories:
 ```
 
 表示するのは、設定宣言に書ける管理設定と関連リソースに限ります。Environment の保護設定（`wait_timer`、`required_reviewers`、`can_admins_bypass`）のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
+
+`actions` の `oidc_subject` は、この規定の例外です。設定宣言は OIDC トークンの subject クレームのカスタマイズを受け付けませんが、`retention` と `variables` のあいだに値を示します。外部のクラウドなどの受け取る側が subject を信頼の条件と照らし合わせるため、宣言を受け付けない設定でも、利用者が条件と比べられるよう現在の形を示します。`oidc_subject` とその下の行は YAML のコメントとして示し、その前の行で、設定宣言に書けないことを示します。コメントにするのは、表示を設定宣言として読めるままにし、書けない設定であることを利用者が行を見て分かるようにするためです。
 
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
@@ -1058,6 +1064,35 @@ Artifact と Log などの保持期間は、`retention` の `days` に保持日�
 ```text
       retention:
         days: 90 # maximum allowed: 90
+```
+
+OIDC トークンの subject クレームのカスタマイズは、`oidc_subject` に示します。GitHub の既定の subject の形を使うかを `use_default` に、immutable subject の形を選んでいるかを `use_immutable_subject` に、`true` か `false` で示します。`use_default` が `false` のときに限り、二つのあいだに `include_claim_keys` を示し、クレームの key を `patterns_allowed` のパターンと同じく二重引用符で囲んでエスケープし、1行に一つずつ並べます。GitHub は key を送られた順のまま返し、公式資料の例では subject がその順に組み立てられるため、reco は GitHub が返した順のまま並べます。key が一つもないときは `[]` と示します。`use_default` が `true` のときは、`include_claim_keys` の行を示しません。key を持たない状態であることは `use_default` の行から分かるためです。subject の接頭辞（`sub_claim_prefix`）と、発行される subject の文字列は示しません。subject のカスタマイズは、公開範囲と Actions の有効状態によらず示します。
+
+```text
+      # reco does not accept the OIDC subject customization in the configuration file yet
+      # oidc_subject:
+      #   use_default: false
+      #   include_claim_keys:
+      #     - "repo"
+      #     - "context"
+      #   use_immutable_subject: false
+```
+
+既定の形を使うリポジトリと、既定の形を使わず key が一つもないリポジトリの表示は、それぞれ次のとおりです。
+
+```text
+      # reco does not accept the OIDC subject customization in the configuration file yet
+      # oidc_subject:
+      #   use_default: true
+      #   use_immutable_subject: false
+```
+
+```text
+      # reco does not accept the OIDC subject customization in the configuration file yet
+      # oidc_subject:
+      #   use_default: false
+      #   include_claim_keys: []
+      #   use_immutable_subject: false
 ```
 
 関連リソースは、種類ごとに、存在するものをすべて示します。並びは GitHub が一覧で返した順で、reco は並べ替えません。名前は二重引用符で囲み、制御文字をエスケープして示します。エスケープは YAML の二重引用符のスカラーとして読める表記です。一つもないときは、種類のキーを省かず、YAML のコメントとして `none` と示します。キーを省くと、存在しないと確かめたことと、reco がその種類を表示しないことを区別できないためです。コメントにするのは、空のシーケンスを設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 13.1節）。
@@ -1200,6 +1235,7 @@ GitHub は、Ruleset への書き込みのアクセスを持たない利用者�
 | `alignment` | `QR-002` | Quality Requirement |
 | `grounding` | [GitHub Actions 変数 API 仕様](../research/actions-variables.md) | Repository File |
 | `grounding` | [GitHub Rules API 仕様](../research/rules.md) | Repository File |
+| `grounding` | [GitHub Actions OIDC API 仕様](../research/actions-oidc.md) | Repository File |
 
 ## 7. 出力と終了コード
 

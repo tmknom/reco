@@ -52,6 +52,7 @@ const (
 	forkPullRequestApprovalPath         = "/repos/owner/repo/actions/permissions/fork-pr-contributor-approval"
 	privateForkPullRequestWorkflowsPath = "/repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos"
 	retentionPath                       = "/repos/owner/repo/actions/permissions/artifact-and-log-retention"
+	oidcSubjectPath                     = "/repos/owner/repo/actions/oidc/customization/sub"
 )
 
 func newTestClient(t *testing.T, handler http.HandlerFunc) *Client {

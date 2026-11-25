@@ -26,6 +26,8 @@ type ObservationResult struct {
 	ForkPullRequestApproval         *ForkPullRequestApproval
 	PrivateForkPullRequestWorkflows *PrivateForkPullRequestWorkflows
 	Retention                       *Retention
+	// OIDCSubject は、その設定の領域を選ばなかった観測では nil になる。読み取っていない値を、既定の形を使う状態として読ませないため、値型にしない。
+	OIDCSubject *OIDCSubject
 	// RepositoryVariables は、その設定の領域を選ばなかった観測では nil になる。Variable が一つもないことと取り違えさせないため、値型にしない。
 	RepositoryVariables *Variables
 	// Environments は、Environments と Environment Variables のどちらの設定の領域も選ばなかった観測では nil になる。Environment が一つもないことと取り違えさせないため、値型にしない。
@@ -194,6 +196,13 @@ func (c *Client) observe(ctx context.Context, reference repository.Reference, sc
 			return ObservationResult{}, fmt.Errorf("fetch retention %s: %w", reference, err)
 		}
 		o.Retention = &retention
+	}
+	if slices.Contains(areas, setting.AreaOIDCSubject) {
+		oidcSubject, err := c.observeOIDCSubject(ctx, reference)
+		if err != nil {
+			return ObservationResult{}, fmt.Errorf("fetch oidc subject %s: %w", reference, err)
+		}
+		o.OIDCSubject = &oidcSubject
 	}
 	if slices.Contains(areas, setting.AreaRepositoryVariables) {
 		variables, err := c.observeRepositoryVariables(ctx, reference)

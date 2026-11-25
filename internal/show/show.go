@@ -24,7 +24,7 @@ type Config struct {
 func Run(ctx context.Context, cfg Config) error {
 	client := github.New(cfg.Token, cfg.GitHubOptions...)
 	// 失敗の文言は対象名を含むため、ここでは包み直さない
-	observed, err := client.ObserveRepository(ctx, cfg.Target, setting.AreaActionsPermissions, setting.AreaWorkflowPermissions, setting.AreaActionsAccess, setting.AreaForkPullRequestApproval, setting.AreaPrivateForkPullRequestWorkflows, setting.AreaRetention, setting.AreaRepositoryVariables, setting.AreaEnvironments, setting.AreaEnvironmentVariables, setting.AreaDependabot, setting.AreaSecretScanning, setting.AreaPrivateVulnerabilityReporting, setting.AreaRulesets)
+	observed, err := client.ObserveRepository(ctx, cfg.Target, setting.AreaActionsPermissions, setting.AreaWorkflowPermissions, setting.AreaActionsAccess, setting.AreaForkPullRequestApproval, setting.AreaPrivateForkPullRequestWorkflows, setting.AreaRetention, setting.AreaOIDCSubject, setting.AreaRepositoryVariables, setting.AreaEnvironments, setting.AreaEnvironmentVariables, setting.AreaDependabot, setting.AreaSecretScanning, setting.AreaPrivateVulnerabilityReporting, setting.AreaRulesets)
 	if err != nil {
 		return err
 	}
@@ -46,6 +46,7 @@ func writeObservationResult(w io.Writer, target repository.Reference, observed g
 	writeActionsAccess(&b, *observed.ActionsAccess)
 	writeForkPullRequests(&b, *observed.ForkPullRequestApproval, *observed.PrivateForkPullRequestWorkflows)
 	writeRetention(&b, *observed.Retention)
+	writeOIDCSubject(&b, *observed.OIDCSubject)
 	writeRepositoryVariables(&b, *observed.RepositoryVariables)
 	writeEnvironments(&b, *observed.Environments)
 	writeSecurity(&b, *observed.Dependabot, *observed.SecretScanning, *observed.PrivateVulnerabilityReporting)

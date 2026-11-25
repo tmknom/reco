@@ -18,10 +18,19 @@
 | 実行条件 | Private Fork Pull Request Workflow Conditions | 非公開リポジトリの Fork Pull Request ワークフローの領域の設定。実行の許可、書き込みトークンの送信、Secrets と Variables の送信、承認の要求の4項目からなる設定グループ |
 | 保持期間 | Retention | チェック、ワークフローの実行、コミットのステータス、Artifact、Log を保持する期間を定める設定の領域。設定は保持日数（`days`）の一つ。GitHub は同じ取得で、保持日数の上限（`maximum_allowed_days`）を返す。上限は設定できる値の範囲（[ドメインモデル](../domain.md) の観測と GitHub への要求）に当たる |
 | 保持日数 | Retention Days | 保持期間の領域の設定。日数の整数 |
+| OIDC subject | OIDC Subject | ワークフローが外部のクラウドなどへ示す OIDC トークンの subject クレーム（`sub`）の形を定める設定の領域。設定は subject のカスタマイズの一つ。GitHub は同じ取得で subject の接頭辞（`sub_claim_prefix`）を返すが、設定ではなく、reco は読まない |
+| subject のカスタマイズ | OIDC Subject Customization | OIDC subject の領域の設定。既定の形を使うか（`use_default`）、クレームの key の並び（`include_claim_keys`）、immutable subject の形を選ぶか（`use_immutable_subject`）の3項目からなる設定グループ |
+| クレームの key の並び | Claim Keys | subject のカスタマイズの項目。subject を組み立てるクレームの key を、指定した順に並べたもの。既定の形を使わないときに限って持つ |
 | Repository Variables | Repository Variables | リポジトリに属する Repository Variable からなる設定の領域 |
 | Repository Variable | Repository Variable | リポジトリに属し、名前と値を持つ関連リソース。GitHub は ID を付けないため、名前だけで識別する種類として扱う |
 
 承認ポリシーは単独の管理の単位です。実行条件は4項目を一つの値とする設定グループで、照合結果、変更予定、適用可能性を4項目の組に対して一つだけ持ちます。実行を許可しないと GitHub がほかの3項目を `false` にするため、項目ごとの期待状態は互いに独立に成り立たないためです（[GitHub Actions 権限 API 仕様](../../research/actions-permissions.md) 8.2）。保持日数は単独の管理の単位です。上限は設定ではなく、管理の単位に含めません。承認ポリシーと実行条件を一つの領域にしないのは、更新エンドポイントが別であることに加え、公開範囲に合わない側だけを宣言したリポジトリで、宣言していない側の取得を送らないためです。一つの領域にすると、その取得の失敗が、宣言していない設定のために変更計画の確認を止めます。
+
+subject のカスタマイズは、3項目を一つの値とする設定グループです。項目ごとの設定に分けると、一つの項目を変える更新が、ほかの項目の値を送らなければ成り立たなくなります。GitHub が3項目を一つの更新エンドポイントで受け付け、`use_default` を必須とし、省略した `include_claim_keys` を消すためです（[GitHub Actions OIDC API 仕様](../../research/actions-oidc.md) 4章）。reco はこの設定を観測して `show` に示しますが、宣言は受け付けず、管理の単位に含めません。
+
+クレームの key の並びは、要素の順序に意味のある値です（[ドメインモデル](../domain.md) の管理の単位と管理設定）。GitHub は key を送られた順のまま保存して返し、公式資料の例では、subject が key の指定の順に組み立てられるためです（GitHub Actions OIDC API 仕様 2〜4章）。key は文字列の完全一致で比べます。
+
+既定の形を使うとき、subject のカスタマイズの値はクレームの key の並びを含みません。GitHub は既定の形を使うあいだ key を保存せず、既定の形に変えると保存していた key を消すためです（GitHub Actions OIDC API 仕様 3章・4章）。既定の形を使わず key が一つもない状態は、空の並びを持つ値で、並びを含まない値とは別の値です。
 
 `sha_pinning_required` は、Actions 許可ポリシーと同じ更新エンドポイントで更新しますが、単独の管理の単位です。一方を変える更新がもう一方を変えず、期待値を別々に確かめられるためです。
 
@@ -34,6 +43,7 @@ Actions 許可ポリシーの期待値は、Actions が有効であることを�
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `FR-005` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
+| `grounding` | [GitHub Actions OIDC API 仕様](../../research/actions-oidc.md) | Repository File |
 
 ## 観測
 
@@ -43,6 +53,8 @@ Actions の実行許可は、`GET /repos/{owner}/{repo}/actions/permissions` で
 
 Fork Pull Request ワークフローの承認ポリシーは `GET /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval` で読み、`private` が偽のときだけ送ります。非公開リポジトリの Fork Pull Request ワークフローの実行条件は `GET /repos/{owner}/{repo}/actions/permissions/fork-pr-workflows-private-repos` で読み、`private` が真のときだけ送ります。どちらも、送るかどうかを取得の `422` から推測しない理由は `access_level` と同じです。保持日数とその上限は `GET /repos/{owner}/{repo}/actions/permissions/artifact-and-log-retention` で読み、公開範囲によらず送ります。承認ポリシーと保持期間は、YAML 設定仕様の章の並びに従い、リポジトリ外のワークフローからのアクセスのあと、Repository Variables の前に、この順で読みます。実行条件は承認ポリシーと同じ章に属し、表の並びでは承認ポリシーのあとのため、承認ポリシーと保持期間のあいだに読みます。
 
+subject のカスタマイズは `GET /repos/{owner}/{repo}/actions/oidc/customization/sub` で読み、公開範囲によらず送ります。YAML 設定仕様に章がないため、読む順をここで定め、保持期間のあと、Repository Variables の前に読みます。
+
 | 取得条件 | 観測不能になる設定 | 根拠 |
 |---|---|---|
 | Actions が無効（`enabled: false`） | Actions 許可ポリシー、`sha_pinning_required`、選択方式の Actions 許可条件 | 応答に `allowed_actions` が含まれず、`sha_pinning_required` は保存された値によらず `false` で返る（GitHub Actions 権限 API 仕様 3.1） |
@@ -50,11 +62,13 @@ Fork Pull Request ワークフローの承認ポリシーは `GET /repos/{owner}
 | リポジトリが公開（`private: false`） | `access_level`、非公開リポジトリの Fork Pull Request ワークフローの実行条件 | 公式資料が非公開リポジトリにだけ適用されると記載し、公開リポジトリへの取得は `422` を返して値を返さない（GitHub Actions 権限 API 仕様 6章、8章） |
 | リポジトリが非公開（`private: true`） | Fork Pull Request ワークフローの承認ポリシー | 公式資料が公開リポジトリの設定として説明し、非公開リポジトリへの取得は `422` を返して値を返さない（GitHub Actions 権限 API 仕様 7章） |
 
-ワークフロー権限、保持日数、Repository Variables は取得条件を持たず、`access_level`、承認ポリシー、実行条件の取得条件は公開範囲だけです。ワークフロー権限、`access_level`、承認ポリシー、実行条件、保持日数は Actions が無効でも取得でき（GitHub Actions 権限 API 仕様 5.1・6〜9章）、Repository Variables は非公開リポジトリでも一覧を読めます（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 1.1）。`selected` と観測したあとの Selected actions の取得の `409` と、公開範囲が合うと観測したあとの `access_level`、承認ポリシー、実行条件の取得の `422` は、観測不能にせず観測操作の失敗とします（[ドメインモデル](../domain.md) の現在状態・観測結果・観測失敗）。
+ワークフロー権限、保持日数、subject のカスタマイズ、Repository Variables は取得条件を持たず、`access_level`、承認ポリシー、実行条件の取得条件は公開範囲だけです。ワークフロー権限、`access_level`、承認ポリシー、実行条件、保持日数は Actions が無効でも取得でき（GitHub Actions 権限 API 仕様 5.1・6〜9章）、subject のカスタマイズも同じで（[GitHub Actions OIDC API 仕様](../../research/actions-oidc.md) 1章）、Repository Variables は非公開リポジトリでも一覧を読めます（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 1.1）。`selected` と観測したあとの Selected actions の取得の `409` と、公開範囲が合うと観測したあとの `access_level`、承認ポリシー、実行条件の取得の `422` は、観測不能にせず観測操作の失敗とします（[ドメインモデル](../domain.md) の現在状態・観測結果・観測失敗）。
 
 Actions が有効のときに `allowed_actions` か `sha_pinning_required` が欠けた応答、3項目のいずれかが欠けた Selected actions の応答、定義にない値か欠けた `access_level` の応答は、取得契約に適合しない応答です。`sha_pinning_required` と Selected actions の3項目は公式ドキュメント上は任意のフィールドですが、欠落の理由を確認できないため、既定値で補いません。
 
 定義にない値か欠けた `approval_policy` の応答、4項目のいずれかが欠けた実行条件の応答、`days` か `maximum_allowed_days` が欠けたか整数でない保持期間の応答も、取得契約に適合しない応答です。`run_workflows_from_fork_pull_requests` が `false` のとき、GitHub はほかの3項目を `false` で返しますが（GitHub Actions 権限 API 仕様 8.2）、reco はこの関係を取得契約にせず、返った4項目をそのまま観測値とし、宣言した4項目の組とそのまま比べます。保持日数は、上限を超えていても、`1` 未満でも、観測値としてそのまま持ちます（ドメインモデルの現在状態・観測結果・観測失敗）。上限は公開範囲と、管理する Organization か Enterprise で決まります（同 9章）。
+
+`use_default` か `use_immutable_subject` が欠けたか真偽値でない応答と、`include_claim_keys` が配列でないか、文字列でない要素を含む応答は、取得契約に適合しない応答です。`use_immutable_subject` は公式ドキュメント上は任意のフィールドですが、欠落の理由を確認できないため、既定値で補いません。`include_claim_keys` の欠落は取得契約に適合し、`null` も欠落と同じに扱います。GitHub は、既定の形を使うときと、既定の形を使わず key が一つも保存されていないときに、このフィールドを返さないためです（[GitHub Actions OIDC API 仕様](../../research/actions-oidc.md) 3章）。`use_default` が `false` で `include_claim_keys` が欠けているか `null` なら、空の並びとします。`use_default` が `true` のときは、応答が `include_claim_keys` を含んでいても、並びを観測値に含めません。公式資料が、`use_default` が `true` なら `include_claim_keys` は無視されるとしており、その値は設定の状態を示さないためです（ドメインモデルの現在状態・観測結果・観測失敗）。key の形式と重複は確かめず、返った文字列をそのまま持ちます。`sub_claim_prefix` は、`use_immutable_subject` と、リポジトリと所有者の名前と ID から決まる値で（GitHub Actions OIDC API 仕様 3章）、設定ではないため読みません。
 
 Repository Variables は、`GET /repos/{owner}/{repo}/actions/variables` の一覧で読みます。一覧の要素は個別取得と全フィールドが一致するため（GitHub Actions 変数 API 仕様 4.1）、個別取得は送りません。個別取得は名前の末尾に空白をつけても `200` を返すため、存在の確認にも使えません。
 
@@ -74,6 +88,7 @@ Repository Variables は、`GET /repos/{owner}/{repo}/actions/variables` の一�
 | `grounding` | [GitHub Actions 権限 API 仕様](../../research/actions-permissions.md) | Repository File |
 | `grounding` | [GitHub リポジトリ API 仕様](../../research/repositories.md) | Repository File |
 | `grounding` | [GitHub Actions 変数 API 仕様](../../research/actions-variables.md) | Repository File |
+| `grounding` | [GitHub Actions OIDC API 仕様](../../research/actions-oidc.md) | Repository File |
 
 ## 適用可能性と副作用
 
@@ -261,7 +276,9 @@ Repository Variable の変更予定は、変数ごとに一つの更新操作か
 | Actions が無効のリポジトリを観測し、応答の `sha_pinning_required` が `false` だった | 観測不能。無効のあいだの応答は保存された値を示さない | 応答にあるので `false` を観測値とする |
 | Actions 許可ポリシーを `all` から `local_only` へ変えると宣言した | 副作用はない。失われる選択方式の Actions 許可条件が現在状態にない | ポリシーを変えるので、常に許可条件の消失を副作用として示す |
 | Actions 許可ポリシーを `local_only` から `selected` へ変え、`github_owned_allowed: false` を宣言した。二つの更新操作のあいだ、GitHub 所有の Actions が許可される | 副作用ではない。論理的な設定変更が完了すれば残らない中間状態である。後続の更新操作が完了せずに残った場合は、変更結果が完了しなかったことを示す | 変更前も宣言した状態も許可しない Actions を許可するので、副作用として変更予定に添える |
-| Actions が無効のリポジトリで、ワークフロー権限、保持日数か、公開範囲に合う `access_level`、承認ポリシー、実行条件の値が返った | 観測値。取得条件は設定ごとに異なる | Actions が無効なので観測不能とする |
+| Actions が無効のリポジトリで、ワークフロー権限、保持日数、subject のカスタマイズか、公開範囲に合う `access_level`、承認ポリシー、実行条件の値が返った | 観測値。取得条件は設定ごとに異なる | Actions が無効なので観測不能とする |
+| `use_default` が `true` の応答に `include_claim_keys` がなかった | 観測値。既定の形を使い、クレームの key の並びを含まない | key が欠けているので取得契約に適合しない応答。または、空の並びを持つ値 |
+| `use_default` が `false` の応答に `include_claim_keys` がなかった | 観測値。空の並びを持つ値 | 既定の形と同じ値。または、取得契約に適合しない応答 |
 | 非公開リポジトリで `access_level` を `organization` と観測し、`none` を宣言した | 不一致で適用可能 | `organization` は宣言できない値なので比較不能 |
 | 非公開リポジトリで承認ポリシーを宣言した | 比較不能で適用不能。理由はリポジトリが非公開であること。同じ変更計画が Actions を有効にしても解消しない | 非公開リポジトリの Fork Pull Request ワークフローの実行条件の変更として扱う。または、更新を送って `422` を受けてから判断する |
 | 公開リポジトリで承認ポリシーの変更を承認したあと、更新直前の観測でリポジトリが非公開になっていた | 関係する現在値の変化。承認ポリシーが観測不能になり、承認時に予定した値と同じとは確かめられない。変更結果は未実行 | 観測不能は比べられないので、変更前提は成立する |
@@ -298,3 +315,4 @@ Repository Variable の変更予定は、変数ごとに一つの更新操作か
 - [GitHub Actions 権限 API 仕様](../../research/actions-permissions.md)
 - [GitHub リポジトリ API 仕様](../../research/repositories.md)
 - [GitHub Actions 変数 API 仕様](../../research/actions-variables.md)
+- [GitHub Actions OIDC API 仕様](../../research/actions-oidc.md)

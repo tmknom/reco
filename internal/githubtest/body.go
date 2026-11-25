@@ -87,6 +87,14 @@ type RetentionBody struct {
 	MaximumAllowedDays int
 }
 
+// OIDCSubjectBody は、OIDC の subject クレームのカスタマイズの取得の応答本文である。
+// GitHub と同じく、IncludeClaimKeys が空なら include_claim_keys を含めず、reco が読まない sub_claim_prefix は常に含める。
+type OIDCSubjectBody struct {
+	UseDefault          bool
+	IncludeClaimKeys    []string
+	UseImmutableSubject bool
+}
+
 // EnvironmentsBody は、Environment の一覧の1ページの応答本文である。
 // TotalCount は GitHub が返す全件数で、このページの要素数とは限らない。
 type EnvironmentsBody struct {
@@ -257,6 +265,15 @@ func (b PrivateForkPullRequestWorkflowsBody) JSON() string {
 // JSON は応答本文を返す。
 func (b RetentionBody) JSON() string {
 	return fmt.Sprintf(`{"days": %d, "maximum_allowed_days": %d}`, b.Days, b.MaximumAllowedDays)
+}
+
+// JSON は応答本文を返す。
+func (b OIDCSubjectBody) JSON() string {
+	keys := ""
+	if len(b.IncludeClaimKeys) > 0 {
+		keys = `, "include_claim_keys": ` + jsonStrings(b.IncludeClaimKeys)
+	}
+	return fmt.Sprintf(`{"use_default": %t, "use_immutable_subject": %t%s, "sub_claim_prefix": "repo:owner/repo"}`, b.UseDefault, b.UseImmutableSubject, keys)
 }
 
 // JSON は応答本文を返す。
