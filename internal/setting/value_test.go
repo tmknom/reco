@@ -27,6 +27,10 @@ func TestValue_String(t *testing.T) {
 			value: SelectedActionsCriteriaValue(SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: []string{"z/*", "a/*"}}),
 			want:  `github_owned_allowed: true, verified_allowed: false, patterns_allowed: ["z/*", "a/*"]`,
 		},
+		{
+			value: PrivateForkPullRequestWorkflowConditionsValue(PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, SendWriteTokensToWorkflows: false, SendSecretsAndVariables: true, RequireApprovalForForkPullRequestWorkflows: false}),
+			want:  "run_workflows_from_fork_pull_requests: true, send_write_tokens_to_workflows: false, send_secrets_and_variables: true, require_approval_for_fork_pr_workflows: false",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.want, func(t *testing.T) {
@@ -57,6 +61,8 @@ func TestValue_Equal(t *testing.T) {
 		{name: "different access levels differ", a: AccessLevelValue(AccessNone), b: AccessLevelValue(AccessUser), equal: false},
 		{name: "same approval policies are equal", a: ForkPullRequestApprovalPolicyValue(ForkPullRequestApprovalFirstTimeContributors), b: ForkPullRequestApprovalPolicyValue(ForkPullRequestApprovalFirstTimeContributors), equal: true},
 		{name: "different approval policies differ", a: ForkPullRequestApprovalPolicyValue(ForkPullRequestApprovalFirstTimeContributors), b: ForkPullRequestApprovalPolicyValue(ForkPullRequestApprovalAllExternalContributors), equal: false},
+		{name: "same workflow conditions are equal", a: PrivateForkPullRequestWorkflowConditionsValue(PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, RequireApprovalForForkPullRequestWorkflows: true}), b: PrivateForkPullRequestWorkflowConditionsValue(PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, RequireApprovalForForkPullRequestWorkflows: true}), equal: true},
+		{name: "workflow conditions differing only in approval differ", a: PrivateForkPullRequestWorkflowConditionsValue(PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, RequireApprovalForForkPullRequestWorkflows: true}), b: PrivateForkPullRequestWorkflowConditionsValue(PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true}), equal: false},
 		{name: "criteria differing only in pattern order are equal", a: criteria("a/*", "b/*"), b: criteria("b/*", "a/*"), equal: true},
 		{name: "criteria with a different pattern differ", a: criteria("a/*"), b: criteria("b/*"), equal: false},
 		{name: "values of different kinds differ", a: BoolValue(false), b: SelectedActionsCriteriaValue(SelectedActionsCriteria{}), equal: false},
@@ -212,6 +218,22 @@ func TestValue_ForkPullRequestApprovalPolicyOfBoolPanics(t *testing.T) {
 		}
 	}()
 	_ = BoolValue(true).ForkPullRequestApprovalPolicy()
+}
+
+func TestValue_PrivateForkPullRequestWorkflowConditions(t *testing.T) {
+	want := PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, SendWriteTokensToWorkflows: true, SendSecretsAndVariables: false, RequireApprovalForForkPullRequestWorkflows: true}
+	if got := PrivateForkPullRequestWorkflowConditionsValue(want).PrivateForkPullRequestWorkflowConditions(); got != want {
+		t.Errorf("PrivateForkPullRequestWorkflowConditions() = %+v, want %+v", got, want)
+	}
+}
+
+func TestValue_PrivateForkPullRequestWorkflowConditionsOfBoolPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("PrivateForkPullRequestWorkflowConditions() did not panic for a boolean value")
+		}
+	}()
+	_ = BoolValue(true).PrivateForkPullRequestWorkflowConditions()
 }
 
 func TestValue_DependabotSecurityUpdates(t *testing.T) {

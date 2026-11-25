@@ -130,6 +130,12 @@ func TestJudgeApplicability(t *testing.T) {
 			want:     NotApplicable(NotApplicablePrivateRepository),
 		},
 		{
+			name:     "private fork pull request workflows not comparable because the repository is public is not applicable even if the plan enables actions",
+			in:       notComparable(setting.PrivateForkPullRequestWorkflows, github.UnavailablePublicRepository),
+			settings: []SettingPlan{enablesActions, notComparable(setting.PrivateForkPullRequestWorkflows, github.UnavailablePublicRepository)},
+			want:     NotApplicable(NotApplicablePublicRepository),
+		},
+		{
 			name:     "mode of an absent environment created in the same plan is applicable",
 			in:       environmentPolicy(production, github.UnavailableEnvironmentAbsent),
 			settings: []SettingPlan{creation(production), environmentPolicy(production, github.UnavailableEnvironmentAbsent)},
@@ -173,6 +179,7 @@ func TestJudgeApplicability(t *testing.T) {
 		{name: "access_level not comparable for a reason other than a public repository panics", in: notComparable(setting.ActionsAccessLevel, github.UnavailableActionsDisabled)},
 		{name: "setting other than access_level not comparable because the repository is public panics", in: notComparable(setting.AllowAutoMerge, github.UnavailablePublicRepository)},
 		{name: "approval_policy not comparable for a reason other than a private repository panics", in: notComparable(setting.ForkPullRequestApproval, github.UnavailablePublicRepository)},
+		{name: "private fork pull request workflows not comparable for a reason other than a public repository panics", in: notComparable(setting.PrivateForkPullRequestWorkflows, github.UnavailablePrivateRepository)},
 		{
 			name:     "mode of an absent environment without its creation in the plan panics",
 			in:       environmentPolicy(production, github.UnavailableEnvironmentAbsent),

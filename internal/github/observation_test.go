@@ -604,6 +604,34 @@ func TestObservationResult_SettingOfForkPullRequestApproval(t *testing.T) {
 	}
 }
 
+//trace:checks FR-004 QR-002
+func TestObservationResult_SettingOfPrivateForkPullRequestWorkflows(t *testing.T) {
+	conditions := setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true}
+	cases := []struct {
+		name     string
+		observed PrivateForkPullRequestWorkflows
+		want     SettingObservation[setting.Value]
+	}{
+		{
+			name:     "conditions return the observed four items",
+			observed: PrivateForkPullRequestWorkflows{Conditions: Observed(conditions)},
+			want:     Observed(setting.PrivateForkPullRequestWorkflowConditionsValue(conditions)),
+		},
+		{
+			name:     "conditions keep the unavailable reason",
+			observed: PrivateForkPullRequestWorkflows{Conditions: Unavailable[setting.PrivateForkPullRequestWorkflowConditions](UnavailablePublicRepository)},
+			want:     Unavailable[setting.Value](UnavailablePublicRepository),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := (ObservationResult{PrivateForkPullRequestWorkflows: &tc.observed}).Setting(setting.Unit{Key: setting.PrivateForkPullRequestWorkflows}); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Setting(%q) = %+v, want %+v", setting.PrivateForkPullRequestWorkflows, got, tc.want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-004
 func TestObservationResult_SettingOfEnvironmentDeploymentBranchPolicy(t *testing.T) {
 	// 別の Environment の方式を返す誤りと、宣言の名前を綴りのまま比べる誤りを検出するため、

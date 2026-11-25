@@ -1014,3 +1014,89 @@ func TestGenerate_ForkPullRequestApproval(t *testing.T) {
 		}
 	})
 }
+
+const forkPullRequestsSource = `repositories:
+  - name: owner/repo
+    actions:
+      fork_pull_requests:
+        approval_policy: all_external_contributors
+        private_repositories:
+          run_workflows_from_fork_pull_requests: true
+          send_write_tokens_to_workflows: false
+          send_secrets_and_variables: true
+          require_approval_for_fork_pr_workflows: true
+`
+
+// TestGenerate_PrivateForkPullRequestWorkflows は、承認ポリシーと実行条件を両方宣言したとき、
+// 公開範囲に合う側だけを読み、合わない側を適用不能にすることを確かめる。
+//
+//trace:checks FR-005 FR-006
+func TestGenerate_PrivateForkPullRequestWorkflows(t *testing.T) {
+	file := configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(forkPullRequestsSource)}}, Name: "reco.yaml", Path: "./reco.yaml"}
+	approval := setting.ForkPullRequestApprovalPolicyValue(setting.ForkPullRequestApprovalAllExternalContributors)
+	conditions := setting.PrivateForkPullRequestWorkflowConditionsValue(setting.PrivateForkPullRequestWorkflowConditions{
+		RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true, RequireApprovalForForkPullRequestWorkflows: true,
+	})
+
+	t.Run("private repository reads only the conditions and reconciles them as an applicable mismatch", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo": githubtest.OK(githubtest.RepositoryBody{ID: 7, Private: true}.JSON()),
+			"GET /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos": githubtest.OK(githubtest.PrivateForkPullRequestWorkflowsBody{}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+		got, err := Generate(context.Background(), client, file, nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		if want := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		want := []SettingPlan{
+			{
+				Unit: setting.Unit{Key: setting.ForkPullRequestApproval}, Observed: github.Unavailable[setting.Value](github.UnavailablePrivateRepository),
+				Desired: approval, Result: NotComparable, Applicability: NotApplicable(NotApplicablePrivateRepository),
+			},
+			{
+				Unit:     setting.Unit{Key: setting.PrivateForkPullRequestWorkflows},
+				Observed: github.Observed(setting.PrivateForkPullRequestWorkflowConditionsValue(setting.PrivateForkPullRequestWorkflowConditions{})),
+				Desired:  conditions, Result: Mismatch, Applicability: Applicable(),
+			},
+		}
+		if len(got.Repositories) != 1 {
+			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
+		}
+		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
+			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
+		}
+	})
+
+	t.Run("public repository sends no read request for the conditions and makes them not applicable", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo": githubtest.OK(githubtest.RepositoryBody{ID: 7}.JSON()),
+			"GET /repos/owner/repo/actions/permissions/fork-pr-contributor-approval": githubtest.OK(githubtest.ForkPullRequestApprovalBody{ApprovalPolicy: "all_external_contributors"}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+		got, err := Generate(context.Background(), client, file, nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		if want := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/permissions/fork-pr-contributor-approval"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		want := []SettingPlan{
+			{Unit: setting.Unit{Key: setting.ForkPullRequestApproval}, Observed: github.Observed(approval), Desired: approval, Result: Match},
+			{
+				Unit: setting.Unit{Key: setting.PrivateForkPullRequestWorkflows}, Observed: github.Unavailable[setting.Value](github.UnavailablePublicRepository),
+				Desired: conditions, Result: NotComparable, Applicability: NotApplicable(NotApplicablePublicRepository),
+			},
+		}
+		if len(got.Repositories) != 1 {
+			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
+		}
+		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
+			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
+		}
+	})
+}

@@ -92,6 +92,8 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 		return valueObservation(o.ActionsAccess.AccessLevel, setting.AccessLevelValue)
 	case setting.ForkPullRequestApproval:
 		return valueObservation(o.ForkPullRequestApproval.ApprovalPolicy, setting.ForkPullRequestApprovalPolicyValue)
+	case setting.PrivateForkPullRequestWorkflows:
+		return valueObservation(o.PrivateForkPullRequestWorkflows.Conditions, setting.PrivateForkPullRequestWorkflowConditionsValue)
 	case setting.DependabotAlerts:
 		return Observed(setting.BoolValue(o.Dependabot.Alerts))
 	case setting.DependabotSecurityUpdates:

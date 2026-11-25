@@ -150,6 +150,34 @@ func TestPlannedChangeText(t *testing.T) {
 				"    Applicability: not applicable (the repository is private; remove approval_policy, which applies only to public repositories)\n",
 		},
 		{
+			name: "private fork pull request workflows mismatch shows the values on separate lines and notes each enabled transmission in order",
+			s: changeplan.SettingPlan{
+				Unit:     setting.Unit{Key: setting.PrivateForkPullRequestWorkflows},
+				Observed: github.Observed(setting.PrivateForkPullRequestWorkflowConditionsValue(setting.PrivateForkPullRequestWorkflowConditions{})),
+				Desired: setting.PrivateForkPullRequestWorkflowConditionsValue(setting.PrivateForkPullRequestWorkflowConditions{
+					RunWorkflowsFromForkPullRequests: true, SendWriteTokensToWorkflows: true, SendSecretsAndVariables: true, RequireApprovalForForkPullRequestWorkflows: true,
+				}),
+				Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
+			},
+			want: "  actions.fork_pull_requests.private_repositories:\n" +
+				"    run_workflows_from_fork_pull_requests: false, send_write_tokens_to_workflows: false, send_secrets_and_variables: false, require_approval_for_fork_pr_workflows: false\n" +
+				"    -> run_workflows_from_fork_pull_requests: true, send_write_tokens_to_workflows: true, send_secrets_and_variables: true, require_approval_for_fork_pr_workflows: true\n" +
+				"    Note: Workflows triggered by pull requests from forks get a GITHUB_TOKEN with write permissions\n" +
+				"    Note: Workflows triggered by pull requests from forks can use secrets and variables\n",
+		},
+		{
+			name: "private fork pull request workflows of a public repository show the repository state and the reason to remove private_repositories",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.PrivateForkPullRequestWorkflows}, Observed: github.Unavailable[setting.Value](github.UnavailablePublicRepository),
+				Desired: setting.PrivateForkPullRequestWorkflowConditionsValue(setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true}),
+				Result:  changeplan.NotComparable, Applicability: changeplan.NotApplicable(changeplan.NotApplicablePublicRepository),
+			},
+			want: "  actions.fork_pull_requests.private_repositories:\n" +
+				"    (public repository)\n" +
+				"    -> run_workflows_from_fork_pull_requests: true, send_write_tokens_to_workflows: false, send_secrets_and_variables: false, require_approval_for_fork_pr_workflows: false\n" +
+				"    Applicability: not applicable (the repository is public; remove private_repositories, which applies only to private repositories)\n",
+		},
+		{
 			name: "applicable not-comparable sha_pinning_required shows no applicability",
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: disabled, Desired: setting.BoolValue(true),
@@ -286,6 +314,15 @@ func TestNotApplicableReasonText_UndefinedReasonPanics(t *testing.T) {
 		}
 	}()
 	_ = notApplicableReasonText(changeplan.SettingPlan{Unit: setting.Unit{Key: setting.AllowAutoMerge}})
+}
+
+func TestPlannedChangeNoteText_UndefinedNotePanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("plannedChangeNoteText() did not panic for an undefined planned change note")
+		}
+	}()
+	_ = plannedChangeNoteText(changeplan.PlannedChangeNote(0))
 }
 
 // 変更予定のマージ方式は宣言されているため、3つすべてが無効のまま残ることはない。

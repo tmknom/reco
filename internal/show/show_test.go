@@ -50,10 +50,9 @@ func TestWriteObservationResult(t *testing.T) {
 		allPermissions                      = "    actions:\n      permissions:\n        enabled: true\n        allowed_actions: all\n        sha_pinning_required: true\n"
 		readOnlyWorkflow                    = "      workflow:\n        default_workflow_permissions: read\n        can_approve_pull_request_reviews: false\n"
 		notSharedAccess                     = "      access:\n        access_level: none\n"
-		privateForkPullRequestsAndRetention = "      # reco does not accept private_repositories in the configuration file yet\n" +
-			"      # fork_pull_requests:\n      #   approval_policy: unavailable (the repository is private)\n      #   private_repositories:\n" +
-			"      #     run_workflows_from_fork_pull_requests: false\n      #     send_write_tokens_to_workflows: false\n" +
-			"      #     send_secrets_and_variables: false\n      #     require_approval_for_fork_pr_workflows: false\n" +
+		privateForkPullRequestsAndRetention = "      fork_pull_requests:\n        # approval_policy: unavailable (the repository is private)\n        private_repositories:\n" +
+			"          run_workflows_from_fork_pull_requests: false\n          send_write_tokens_to_workflows: false\n" +
+			"          send_secrets_and_variables: false\n          require_approval_for_fork_pr_workflows: false\n" +
 			"      # reco does not accept the retention period in the configuration file yet\n" +
 			"      # retention:\n      #   days: 30 # maximum allowed: 400\n"
 		noVariable      = "      # variables: none\n"
@@ -373,7 +372,7 @@ func TestRun(t *testing.T) {
 		}
 		for _, observed := range []string{
 			"default_workflow_permissions: write", `        - name: "GO_VERSION"`, `- name: "staging"`, `          - name: "REGION"`, "dependabot_security_updates: true # paused",
-			"#   approval_policy: unavailable (the repository is private)",
+			"        # approval_policy: unavailable (the repository is private)",
 			"#   days: 90 # maximum allowed: 400",
 			"# secret_scanning: unavailable (the repository is private)",
 			"# private_vulnerability_reporting: unavailable (the repository is private)",

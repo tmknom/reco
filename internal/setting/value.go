@@ -20,6 +20,7 @@ type Value struct {
 	criteria        SelectedActionsCriteria
 	accessLevel     AccessLevel
 	approvalPolicy  ForkPullRequestApprovalPolicy
+	conditions      PrivateForkPullRequestWorkflowConditions
 	branchPolicy    DeploymentBranchPolicy
 	securityUpdates DependabotSecurityUpdatesState
 	variable        string
@@ -36,6 +37,7 @@ const (
 	kindSelectedActionsCriteria
 	kindAccessLevel
 	kindForkPullRequestApprovalPolicy
+	kindPrivateForkPullRequestWorkflowConditions
 	kindDeploymentBranchPolicy
 	kindDependabotSecurityUpdates
 	kindVariable
@@ -74,6 +76,11 @@ func AccessLevelValue(level AccessLevel) Value {
 // ForkPullRequestApprovalPolicyValue は、Fork Pull Request ワークフローの承認ポリシーの値を作る。
 func ForkPullRequestApprovalPolicyValue(policy ForkPullRequestApprovalPolicy) Value {
 	return Value{kind: kindForkPullRequestApprovalPolicy, approvalPolicy: policy}
+}
+
+// PrivateForkPullRequestWorkflowConditionsValue は、非公開リポジトリの Fork Pull Request ワークフローの実行条件の値を作る。
+func PrivateForkPullRequestWorkflowConditionsValue(conditions PrivateForkPullRequestWorkflowConditions) Value {
+	return Value{kind: kindPrivateForkPullRequestWorkflowConditions, conditions: conditions}
 }
 
 // DeploymentBranchPolicyValue は、Environment のデプロイ元制限の値を作る。
@@ -128,6 +135,7 @@ func (v Value) Equal(other Value) bool {
 		v.criteria.equal(other.criteria) &&
 		v.accessLevel == other.accessLevel &&
 		v.approvalPolicy == other.approvalPolicy &&
+		v.conditions == other.conditions &&
 		v.branchPolicy.equal(other.branchPolicy) &&
 		v.securityUpdates.Enabled() == other.securityUpdates.Enabled() &&
 		v.variable == other.variable &&
@@ -152,6 +160,11 @@ func (v Value) String() string {
 		return string(v.accessLevel)
 	case kindForkPullRequestApprovalPolicy:
 		return string(v.approvalPolicy)
+	case kindPrivateForkPullRequestWorkflowConditions:
+		return "run_workflows_from_fork_pull_requests: " + strconv.FormatBool(v.conditions.RunWorkflowsFromForkPullRequests) +
+			", send_write_tokens_to_workflows: " + strconv.FormatBool(v.conditions.SendWriteTokensToWorkflows) +
+			", send_secrets_and_variables: " + strconv.FormatBool(v.conditions.SendSecretsAndVariables) +
+			", require_approval_for_fork_pr_workflows: " + strconv.FormatBool(v.conditions.RequireApprovalForForkPullRequestWorkflows)
 	case kindDeploymentBranchPolicy:
 		if v.branchPolicy.Mode == DeploymentBranchPolicySelected {
 			return string(v.branchPolicy.Mode) + " " + v.branchPolicy.PatternsString()
@@ -226,6 +239,14 @@ func (v Value) ForkPullRequestApprovalPolicy() ForkPullRequestApprovalPolicy {
 		panic("setting: value is not a fork pull request approval policy")
 	}
 	return v.approvalPolicy
+}
+
+// PrivateForkPullRequestWorkflowConditions は、非公開リポジトリの Fork Pull Request ワークフローの実行条件の値を返す。それ以外の値は不変条件の破れのため panic する。
+func (v Value) PrivateForkPullRequestWorkflowConditions() PrivateForkPullRequestWorkflowConditions {
+	if v.kind != kindPrivateForkPullRequestWorkflowConditions {
+		panic("setting: value is not private fork pull request workflow conditions")
+	}
+	return v.conditions
 }
 
 // DeploymentBranchPolicy は、Environment のデプロイ元制限の値を返す。それ以外の値は不変条件の破れのため panic する。

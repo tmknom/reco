@@ -23,6 +23,16 @@ func forkPullRequestApprovalChange() changeplan.LogicalChange {
 	)
 }
 
+// privateForkPullRequestWorkflowsChange は、非公開リポジトリの Fork Pull Request ワークフローの実行条件を、
+// すべて false から、実行と Secrets と Variables の送信を許可する値にする論理的な設定変更。
+func privateForkPullRequestWorkflowsChange() changeplan.LogicalChange {
+	return singleUpdate(
+		setting.PrivateForkPullRequestWorkflows,
+		setting.PrivateForkPullRequestWorkflowConditionsValue(setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true}),
+		relevantTo(setting.PrivateForkPullRequestWorkflows, setting.PrivateForkPullRequestWorkflowConditionsValue(setting.PrivateForkPullRequestWorkflowConditions{})),
+	)
+}
+
 // allowAutoMergeChange は、allow_auto_merge を false から true にする論理的な設定変更。
 func allowAutoMergeChange() changeplan.LogicalChange {
 	return singleUpdate(setting.AllowAutoMerge, setting.BoolValue(true), relevantTo(setting.AllowAutoMerge, setting.BoolValue(false)))

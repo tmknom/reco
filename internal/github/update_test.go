@@ -148,13 +148,14 @@ func TestClientUpdate(t *testing.T) {
 		_, _ = c.Update(t.Context(), mustReference(t, "owner/repo"), undefined, setting.BoolValue(true))
 	})
 
-	// マージ方式は UpdateMergeMethods がまとめて送るため、一つだけを送る経路を持たない
-	for _, key := range setting.MergeMethods() {
+	// マージ方式は UpdateMergeMethods がまとめて送るため、一つだけを送る経路を持たない。
+	// 実行条件は、apply がまだ実行しないため、送る経路を持たない。
+	for _, key := range append(setting.MergeMethods(), setting.PrivateForkPullRequestWorkflows) {
 		t.Run(string(key)+" panics before sending a request", func(t *testing.T) {
-			// nil の送り方を呼んだ runtime error ではなく、マージ方式を名指す不変条件の破れで止まることを確かめる
+			// nil の送り方を呼んだ runtime error ではなく、設定を名指す不変条件の破れで止まることを確かめる
 			defer func() {
 				if message, ok := recover().(string); !ok || !strings.Contains(message, string(key)) {
-					t.Errorf("Update(%q) did not panic naming the merge method", key)
+					t.Errorf("Update(%q) did not panic naming the setting", key)
 				}
 			}()
 			c := newTestClient(t, func(http.ResponseWriter, *http.Request) {
