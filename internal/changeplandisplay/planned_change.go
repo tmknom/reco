@@ -105,6 +105,9 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 		return noMergeMethodEnabledText(s.Applicability.UnmanagedSettings())
 	case changeplan.NotApplicableUninterpretedParts:
 		return "the ruleset on GitHub contains parts that reco does not interpret; remove this ruleset from the configuration"
+	case changeplan.NotApplicableAboveMaximumAllowed:
+		maximum := s.Applicability.MaximumAllowed()
+		return fmt.Sprintf("%d days exceeds the maximum of %d days that GitHub allows for this repository; declare %s: %d or less", s.Desired.RetentionDays(), maximum, declaredKeyName(key), maximum)
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(s.Applicability.Reason())))
 }

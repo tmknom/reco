@@ -42,7 +42,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 ### 2.3 リポジトリ指定と対象選択
 
-`--repo` の値は、[YAML 設定仕様](configuration.md) の第12.2節で定めるリポジトリ指定です。
+`--repo` の値は、[YAML 設定仕様](configuration.md) の第13.2節で定めるリポジトリ指定です。
 
 `plan` / `apply` の `--repo` には、設定ファイルで宣言したリポジトリだけを指定できます。設定宣言全体は対象選択の有無にかかわらず検証します。
 
@@ -98,7 +98,7 @@ $ GH_TOKEN=$(gh auth token) reco plan
 
 一つのリポジトリに複数の変更予定があるときは、[YAML 設定仕様](configuration.md) の章と表の並びで表示します。設定宣言での記述順には従いません。
 
-関連リソースの変更予定も YAML 設定仕様の章の並びに従い、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。たとえば Repository Variables（8章）の変更予定は、Environments（9章）の変更予定より前に、Environments の変更予定は Security（10章）の変更予定より前に、Ruleset（11章）の変更予定は Security の変更予定のあとに表示します。Environment Variable の変更予定は、属する Environment の存在と `deployment_branch_policy` の変更予定の直後に、`variables` に書いた順で表示し、次の Environment の変更予定はそのあとに表示します（YAML 設定仕様 9章）。
+関連リソースの変更予定も YAML 設定仕様の章の並びに従い、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。たとえば Repository Variables（9章）の変更予定は、Environments（10章）の変更予定より前に、Environments の変更予定は Security（11章）の変更予定より前に、Ruleset（12章）の変更予定は Security の変更予定のあとに表示します。Environment Variable の変更予定は、属する Environment の存在と `deployment_branch_policy` の変更予定の直後に、`variables` に書いた順で表示し、次の Environment の変更予定はそのあとに表示します（YAML 設定仕様 10章）。
 
 関連リソースの作成と削除は、確認済みの差分として示し、集計の変更予定数に数えます。存在しないと確認できたことは、比較できる事実だからです。作成と削除は、設定の値の変更と見分けられる形で示し、削除では失われる値を示します。宣言に名前のない関連リソースは、変更計画に示しません。
 
@@ -372,6 +372,12 @@ Repository: example/project-a
 Repository: example/private-project
   actions.fork_pull_requests.approval_policy: (private repository) -> all_external_contributors
     Applicability: not applicable (the repository is private; remove approval_policy, which applies only to public repositories)
+```
+
+```text
+Repository: example/project-a
+  actions.retention.days: 90 -> 120
+    Applicability: not applicable (120 days exceeds the maximum of 90 days that GitHub allows for this repository; declare days: 90 or less)
 ```
 
 ```text
@@ -990,9 +996,8 @@ repositories:
           send_write_tokens_to_workflows: false
           send_secrets_and_variables: false
           require_approval_for_fork_pr_workflows: false
-      # reco does not accept the retention period in the configuration file yet
-      # retention:
-      #   days: 90 # maximum allowed: 400
+      retention:
+        days: 90 # maximum allowed: 400
       # variables: none
     # environments: none
     security:
@@ -1005,8 +1010,6 @@ repositories:
 ```
 
 表示するのは、設定宣言に書ける管理設定と関連リソースに限ります。Environment の保護設定（`wait_timer`、`required_reviewers`、`can_admins_bypass`）のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
-
-`actions` の `retention` は、この規定の例外です。設定宣言はまだ `retention` を受け付けませんが、受け付けるときに使う予定のキーで値を示します。値を示すときは、キーとその下の行を YAML のコメントとして示し、その前の行で、設定ファイルに書けないことを示します。コメントにするのは、表示を設定宣言として読めるままにし、書けない設定であることを利用者が行を見て分かるようにするためです。
 
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
@@ -1035,7 +1038,7 @@ Actions が無効のリポジトリでは、`enabled` だけを示します。
         enabled: false
 ```
 
-公開リポジトリでは、`access` とその下の行をコメントとして示します。`access` の下に設定のない空のマッピングは、設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 12.1節）。
+公開リポジトリでは、`access` とその下の行をコメントとして示します。`access` の下に設定のない空のマッピングは、設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 13.1節）。
 
 ```text
       # access:
@@ -1053,12 +1056,11 @@ Fork からの Pull Request のワークフローの設定は、`fork_pull_reque
 Artifact と Log などの保持期間は、`retention` の `days` に保持日数で示します。GitHub が返した、保持日数の上限を、行末の YAML のコメントで `# maximum allowed: <日数>` と示します。上限は設定宣言に書けない値であり、値の位置に書くと設定宣言の整数として読めないためです。保持日数は公開範囲によらず示し、上限を超える日数もそのまま示します。
 
 ```text
-      # reco does not accept the retention period in the configuration file yet
-      # retention:
-      #   days: 90 # maximum allowed: 90
+      retention:
+        days: 90 # maximum allowed: 90
 ```
 
-関連リソースは、種類ごとに、存在するものをすべて示します。並びは GitHub が一覧で返した順で、reco は並べ替えません。名前は二重引用符で囲み、制御文字をエスケープして示します。エスケープは YAML の二重引用符のスカラーとして読める表記です。一つもないときは、種類のキーを省かず、YAML のコメントとして `none` と示します。キーを省くと、存在しないと確かめたことと、reco がその種類を表示しないことを区別できないためです。コメントにするのは、空のシーケンスを設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 12.1節）。
+関連リソースは、種類ごとに、存在するものをすべて示します。並びは GitHub が一覧で返した順で、reco は並べ替えません。名前は二重引用符で囲み、制御文字をエスケープして示します。エスケープは YAML の二重引用符のスカラーとして読める表記です。一つもないときは、種類のキーを省かず、YAML のコメントとして `none` と示します。キーを省くと、存在しないと確かめたことと、reco がその種類を表示しないことを区別できないためです。コメントにするのは、空のシーケンスを設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 13.1節）。
 
 Repository Variables は `actions` の `variables` に示します。変数ごとに、`name` と `value` を示します。どちらも Environment の名前と同じく二重引用符で囲んでエスケープし、1行で示します。改行や制御文字を含む値も1行になります。値は省略せず、長い値もそのまま示します。省略した値を設定宣言として読むと、省略した値への変更を宣言することになるためです。値が空文字列の変数は、存在する変数として `value: ""` と示します。
 
@@ -1188,7 +1190,7 @@ Ruleset が一つもないときは `# rulesets: none` と示します。非公�
 
 GitHub は、Ruleset への書き込みのアクセスを持たない利用者には Bypass を返しません（[GitHub Rules API 仕様](../research/rules.md) 3.2）。この場合は、下に述べる権限の不足による欠落として、`bypass_actors` を示してエラーとします。
 
-表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。解釈しない部分を含む Ruleset（`name` だけが値として残り、必須のキーの欠落になる）、`enforcement: evaluate` や `conditions: {}` の Ruleset、`2`・`4`・`5` 以外の `RepositoryRole` の Bypass、GitHub が重複して返した Ruleset のパターンや Bypass の主体、ASCII 以外の文字を含む Ruleset の名前、`organization` の `access_level`、`run_workflows_from_fork_pull_requests` が `false` でほかの3項目のどれかが `true` の Fork Pull Request ワークフローの実行条件、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable や Environment Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 12章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
+表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。解釈しない部分を含む Ruleset（`name` だけが値として残り、必須のキーの欠落になる）、`enforcement: evaluate` や `conditions: {}` の Ruleset、`2`・`4`・`5` 以外の `RepositoryRole` の Bypass、GitHub が重複して返した Ruleset のパターンや Bypass の主体、ASCII 以外の文字を含む Ruleset の名前、`organization` の `access_level`、`run_workflows_from_fork_pull_requests` が `false` でほかの3項目のどれかが `true` の Fork Pull Request ワークフローの実行条件、`1` 未満の保持日数、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable や Environment Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 13章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
 
 権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。行を省かず、欠けた項目を示してエラーとします。
 

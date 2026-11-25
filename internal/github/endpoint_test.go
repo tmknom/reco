@@ -46,6 +46,14 @@ func TestUpdateEndpointObservedSettings(t *testing.T) {
 		}
 	})
 
+	// 上限は設定ではないため、保持日数を変える更新の前後で比べる設定に含めない。
+	t.Run("retention endpoint observes only the retention days", func(t *testing.T) {
+		want := []setting.Key{setting.RetentionDays}
+		if got := RetentionEndpoint.ObservedSettings(); !slices.Equal(got, want) {
+			t.Errorf("ObservedSettings() = %v, want %v", got, want)
+		}
+	})
+
 	t.Run("undefined update endpoint panics", func(t *testing.T) {
 		defer func() {
 			if recover() == nil {

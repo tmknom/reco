@@ -25,6 +25,8 @@ const (
 	ForkPullRequestApproval Key = "actions.fork_pull_requests.approval_policy"
 	// PrivateForkPullRequestWorkflows は、非公開リポジトリの Fork Pull Request ワークフローの実行条件。4項目の設定グループを一つの Key で表す。
 	PrivateForkPullRequestWorkflows Key = "actions.fork_pull_requests.private_repositories"
+	// RetentionDays は、チェック、ワークフローの実行、コミットのステータス、Artifact、Log の保持日数。上限は設定ではなく、Key を持たない。
+	RetentionDays Key = "actions.retention.days"
 	// RepositoryVariable は、Repository Variable そのもの (期待値は存在し、値を伴うこと) の形。
 	RepositoryVariable        Key = "actions.variables"
 	DependabotAlerts          Key = "security.dependabot_alerts"
@@ -47,7 +49,7 @@ const (
 // 設定グループは一つの Key で表す。関連リソースに関わる管理の単位は、宣言の名前ごとに決まるため含めない。
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
 func RepositorySettingUnits() []Key {
-	return []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, ForkPullRequestApproval, PrivateForkPullRequestWorkflows, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
+	return []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, ForkPullRequestApproval, PrivateForkPullRequestWorkflows, RetentionDays, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
 }
 
 // MergeMethods は、GitHub がすべてを無効にすることを受け付けないマージ方式の管理の単位を、YAML 設定仕様の表の並びで返す。
@@ -78,6 +80,8 @@ func (k Key) Area() Area {
 		return AreaForkPullRequestApproval
 	case PrivateForkPullRequestWorkflows:
 		return AreaPrivateForkPullRequestWorkflows
+	case RetentionDays:
+		return AreaRetention
 	case RepositoryVariable:
 		return AreaRepositoryVariables
 	case EnvironmentResource, EnvironmentDeploymentBranchPolicy:

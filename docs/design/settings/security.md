@@ -1,6 +1,6 @@
 # Security の設計
 
-設定宣言の `security`（[YAML 設定仕様](../../spec/configuration.md) 10章）に属する設定の設計を定めます。文書の構成は [設定ごとの設計](README.md) に従います。
+設定宣言の `security`（[YAML 設定仕様](../../spec/configuration.md) 11章）に属する設定の設計を定めます。文書の構成は [設定ごとの設計](README.md) に従います。
 
 ## 設定と管理の単位
 

@@ -83,7 +83,7 @@ repositories:
 
 ## GitHub Actions の設定
 
-`actions` には、`permissions`（Actions の実行許可）、`workflow`（ワークフローの権限）、`access`（ほかのリポジトリのワークフローからのアクセス）、`fork_pull_requests`（Fork からの Pull Request のワークフローの承認と実行条件）、`variables`（Repository Variables）を書きます。使わないものは省けます。
+`actions` には、`permissions`（Actions の実行許可）、`workflow`（ワークフローの権限）、`access`（ほかのリポジトリのワークフローからのアクセス）、`fork_pull_requests`（Fork からの Pull Request のワークフローの承認と実行条件）、`retention`（Artifact や Log などの保持期間）、`variables`（Repository Variables）を書きます。使わないものは省けます。
 
 ### Actions の実行許可
 
@@ -201,6 +201,29 @@ repositories:
 - `run_workflows_from_fork_pull_requests` が `false` なら、ほかの3つも `false` と書く。GitHub は実行を許可しないあいだ、ほかの3つを `false` にするため、`true` を書くとエラーになる
 - 書き込み権限を持つ `GITHUB_TOKEN` か Secrets と Variables が、Fork からの Pull Request で起動したワークフローに渡るようになる変更には、`plan` と `apply` の変更計画に `Note:` の行が付く（[コマンドリファレンス](commands.md#plan)）
 - この設定は非公開リポジトリにだけ適用される。公開リポジトリに書くと `apply` できない。`fork_pull_requests` にほかのキーがなければ、`fork_pull_requests` ごと消す
+- Actions が無効のリポジトリでも書ける
+
+### 保持期間
+
+`actions.retention` には、次のキーを書きます。
+
+```yaml
+repositories:
+  - name: example/project-a
+    actions:
+      retention:
+        days: 30
+```
+
+| キー | 値 | 意味 |
+|---|---|---|
+| `days` | `1` 以上の整数 | チェック、ワークフローの実行、コミットのステータス、Artifact、Log を保持する日数 |
+
+- 設定できる日数には、リポジトリごとに上限がある。個人アカウントが所有するリポジトリでは、公開リポジトリで90日、非公開リポジトリで400日が目安で、実際の上限は `show` の `days` の行末に `# maximum allowed: <日数>` と示される
+- 今の値と違い、かつ上限を超える日数を書くと、`plan` に `Applicability: not applicable` と、書いた日数と上限が出て、`apply` できない。reco は、書いた日数を上限の日数に切り詰めて変えることはしない
+- `apply` の承認のあとに上限が下がり、書いた日数が上限を超えた場合は、その変更は `failed` になる
+- 日数を短くしても、新しい日数が適用されるのは、変更のあとに作られる Artifact や Log などだけである
+- `"30"` のように引用符で囲んだ値や、`30.5` のような小数は書けない
 - Actions が無効のリポジトリでも書ける
 
 ### Repository Variables

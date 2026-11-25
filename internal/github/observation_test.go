@@ -604,6 +604,16 @@ func TestObservationResult_SettingOfForkPullRequestApproval(t *testing.T) {
 	}
 }
 
+// TestObservationResult_SettingOfRetentionDays は、保持日数の観測値を、上限と取り違えずに返すことを確かめる。
+//
+//trace:checks FR-004 QR-002
+func TestObservationResult_SettingOfRetentionDays(t *testing.T) {
+	got := (ObservationResult{Retention: &Retention{Days: 30, MaximumAllowedDays: 400}}).Setting(setting.Unit{Key: setting.RetentionDays})
+	if want := Observed(setting.RetentionDaysValue(30)); !reflect.DeepEqual(got, want) {
+		t.Errorf("Setting(%q) = %+v, want %+v", setting.RetentionDays, got, want)
+	}
+}
+
 //trace:checks FR-004 QR-002
 func TestObservationResult_SettingOfPrivateForkPullRequestWorkflows(t *testing.T) {
 	conditions := setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true}

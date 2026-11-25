@@ -84,6 +84,11 @@ func okForkPullRequestApproval(policy string) response {
 	return response{status: http.StatusOK, body: githubtest.ForkPullRequestApprovalBody{ApprovalPolicy: policy}.JSON()}
 }
 
+// okRetention は、保持期間の取得の正常応答。
+func okRetention(days, maximumAllowedDays int) response {
+	return response{status: http.StatusOK, body: githubtest.RetentionBody{Days: days, MaximumAllowedDays: maximumAllowedDays}.JSON()}
+}
+
 // okPrivateForkPullRequestWorkflows は、非公開リポジトリの Fork Pull Request ワークフローの実行条件の取得の正常応答。
 func okPrivateForkPullRequestWorkflows(body githubtest.PrivateForkPullRequestWorkflowsBody) response {
 	return response{status: http.StatusOK, body: body.JSON()}

@@ -137,6 +137,14 @@ func (c *Client) updateForkPullRequestApprovalPolicy(ctx context.Context, refere
 	return describeUpdateOutcome("update fork pull request approval", reference, status, err)
 }
 
+// updateRetentionDays は reference のリポジトリの保持日数を days に更新する。上限は設定ではないため送らない。
+// 正常応答の 204 は本文を持たず、成功の判定に本文を使わない。
+func (c *Client) updateRetentionDays(ctx context.Context, reference repository.Reference, days int) (UpdateOutcome, error) {
+	body := fmt.Appendf(nil, `{"days":%d}`, days)
+	status, _, err := c.send(ctx, http.MethodPut, c.retentionURL(reference), body, http.StatusNoContent)
+	return describeUpdateOutcome("update retention", reference, status, err)
+}
+
 // updatePrivateForkPullRequestWorkflowConditions は reference のリポジトリの、非公開リポジトリの Fork Pull Request ワークフローの実行条件を conditions に更新する。
 // 4項目をすべて一つの要求で送り、省略したフィールドの保持に依拠しない（Actions の設計の更新方式）。
 // 正常応答の 204 は本文を持たず、成功の判定に本文を使わない。
@@ -240,6 +248,10 @@ func updateRequestOf(key setting.Key) updateRequest {
 	case setting.PrivateForkPullRequestWorkflows:
 		return updateRequest{PrivateForkPullRequestWorkflowsEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
 			return c.updatePrivateForkPullRequestWorkflowConditions(ctx, reference, value.PrivateForkPullRequestWorkflowConditions())
+		}}
+	case setting.RetentionDays:
+		return updateRequest{RetentionEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+			return c.updateRetentionDays(ctx, reference, value.RetentionDays())
 		}}
 	case setting.DependabotAlerts:
 		return updateRequest{DependabotAlertsEndpoint, boolUpdate((*Client).updateDependabotAlerts)}

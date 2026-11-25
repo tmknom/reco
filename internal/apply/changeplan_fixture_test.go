@@ -23,6 +23,11 @@ func forkPullRequestApprovalChange() changeplan.LogicalChange {
 	)
 }
 
+// retentionDaysChange は、保持日数を 90 から 120 にする論理的な設定変更。上限は関係する現在値に含まない。
+func retentionDaysChange() changeplan.LogicalChange {
+	return singleUpdate(setting.RetentionDays, setting.RetentionDaysValue(120), relevantTo(setting.RetentionDays, setting.RetentionDaysValue(90)))
+}
+
 // privateForkPullRequestWorkflowsChange は、非公開リポジトリの Fork Pull Request ワークフローの実行条件を、
 // すべて false から、実行と Secrets と Variables の送信を許可する値にする論理的な設定変更。
 func privateForkPullRequestWorkflowsChange() changeplan.LogicalChange {

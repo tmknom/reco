@@ -1176,6 +1176,58 @@ func TestExecuteChange_ForkPullRequestApproval(t *testing.T) {
 	}
 }
 
+// TestExecuteChange_RetentionDays は、保持日数の論理的な設定変更の完了と、
+// 承認のあとに上限が下がって GitHub が拒否したときに、再送せず失敗とすることを確かめる。
+//
+//trace:checks INV-004 INV-005 FR-010 FR-011 FR-013
+func TestExecuteChange_RetentionDays(t *testing.T) {
+	const (
+		getRepository = "GET /repos/owner/repo"
+		getRetention  = "GET /repos/owner/repo/actions/permissions/artifact-and-log-retention"
+		putRetention  = "PUT /repos/owner/repo/actions/permissions/artifact-and-log-retention"
+	)
+	private := okPrivateRepository(1)
+	cases := []struct {
+		name         string
+		responses    []response
+		wantRequests []string
+		wantUpdate   github.UpdateOutcome
+		wantResult   changeResult
+	}{
+		{
+			name:         "days within the maximum is updated and completes",
+			responses:    []response{private, okRetention(90, 400), {status: http.StatusNoContent}, private, okRetention(120, 400)},
+			wantRequests: []string{getRepository, getRetention, putRetention, getRepository, getRetention},
+			wantUpdate:   github.UpdateSucceeded,
+			wantResult:   completed,
+		},
+		{
+			name:         "maximum lowered below the desired days since approval is rejected by GitHub and fails without resending",
+			responses:    []response{private, okRetention(90, 90), {status: http.StatusUnprocessableEntity}},
+			wantRequests: []string{getRepository, getRetention, putRetention},
+			wantUpdate:   github.UpdateRejected,
+			wantResult:   failed,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, server := newSequenceServer(t, tc.responses...)
+
+			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), retentionDaysChange(), (&delayRecorder{}).after, &updateInterval{})
+
+			if !slices.Equal(server.RequestLines(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", server.RequestLines(), tc.wantRequests)
+			}
+			if got.operation(0).update != tc.wantUpdate {
+				t.Errorf("update = %v, want %v", got.operation(0).update, tc.wantUpdate)
+			}
+			if got.result() != tc.wantResult {
+				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)
+			}
+		})
+	}
+}
+
 // TestExecuteChange_PrivateForkPullRequestWorkflows は、実行条件の論理的な設定変更について、4項目を一つの更新要求で送ることと、
 // 更新直前と更新後に4項目の組の全体を比べること、更新の直後の観測が更新前の値を返したときの観測し直し、
 // リポジトリが公開に変わったときの変更結果を確かめる。
