@@ -5,6 +5,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -118,14 +119,14 @@ func TestMergeMethodsChange(t *testing.T) {
 	plan := func(key setting.Key, observed, desired bool) SettingPlan {
 		return newSettingPlan(setting.Unit{Key: key}, github.Observed(setting.BoolValue(observed)), setting.BoolValue(desired))
 	}
-	desired := func(key setting.Key, value bool) DesiredSetting {
-		return DesiredSetting{Unit: setting.Unit{Key: key}, Value: setting.BoolValue(value)}
+	desired := func(key setting.Key, value bool) configuration.ManagedSetting {
+		return configuration.ManagedSetting{Unit: setting.Unit{Key: key}, Desired: setting.BoolValue(value)}
 	}
 	basis := func(key setting.Key, observed bool) PreconditionBasis {
 		return PreconditionBasis{Unit: setting.Unit{Key: key}, AnticipatedValue: AnticipateValue(setting.BoolValue(observed))}
 	}
 	// change は、期待状態 state を一つの更新操作で送り、その計画時の観測値 anticipated を基準にする論理的な設定変更。
-	change := func(state []DesiredSetting, anticipated ...PreconditionBasis) LogicalChange {
+	change := func(state []configuration.ManagedSetting, anticipated ...PreconditionBasis) LogicalChange {
 		return LogicalChange{
 			DesiredState: state,
 			Operations:   []UpdateOperation{{Kind: MergeMethodsUpdate, Unit: state[0].Unit, Settings: state, PreconditionBases: anticipated}},
@@ -139,24 +140,24 @@ func TestMergeMethodsChange(t *testing.T) {
 		{
 			name:     "swapping the enabled merge method is one update relevant to both observed values",
 			settings: []SettingPlan{plan(setting.AllowSquashMerge, false, true), plan(setting.AllowMergeCommit, true, false)},
-			want: change([]DesiredSetting{desired(setting.AllowSquashMerge, true), desired(setting.AllowMergeCommit, false)},
+			want: change([]configuration.ManagedSetting{desired(setting.AllowSquashMerge, true), desired(setting.AllowMergeCommit, false)},
 				basis(setting.AllowSquashMerge, false), basis(setting.AllowMergeCommit, true)),
 		},
 		{
 			name:     "one merge method change is the same kind of update",
 			settings: []SettingPlan{plan(setting.AllowRebaseMerge, true, false)},
-			want:     change([]DesiredSetting{desired(setting.AllowRebaseMerge, false)}, basis(setting.AllowRebaseMerge, true)),
+			want:     change([]configuration.ManagedSetting{desired(setting.AllowRebaseMerge, false)}, basis(setting.AllowRebaseMerge, true)),
 		},
 		{
 			// 一致したマージ方式を送ると、宣言どおりの値でも承認していない更新要求を送ることになり、変更前提にも計画にない値が入るため
 			name:     "matching merge method is neither sent nor relevant",
 			settings: []SettingPlan{plan(setting.AllowSquashMerge, false, true), plan(setting.AllowMergeCommit, true, true)},
-			want:     change([]DesiredSetting{desired(setting.AllowSquashMerge, true)}, basis(setting.AllowSquashMerge, false)),
+			want:     change([]configuration.ManagedSetting{desired(setting.AllowSquashMerge, true)}, basis(setting.AllowSquashMerge, false)),
 		},
 		{
 			name:     "settings other than merge methods are not bundled",
 			settings: []SettingPlan{plan(setting.AllowAutoMerge, false, true), plan(setting.AllowMergeCommit, false, true), plan(setting.AllowUpdateBranch, false, true)},
-			want:     change([]DesiredSetting{desired(setting.AllowMergeCommit, true)}, basis(setting.AllowMergeCommit, false)),
+			want:     change([]configuration.ManagedSetting{desired(setting.AllowMergeCommit, true)}, basis(setting.AllowMergeCommit, false)),
 		},
 	}
 	for _, tc := range cases {

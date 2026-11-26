@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -40,13 +41,13 @@ func mergeMethodsLeftDisabled(s SettingPlan, settings []SettingPlan, observed gi
 // 基準は、まとめた各マージ方式の計画時の観測値だけで、宣言していないマージ方式と一致したマージ方式は含めない。
 // マージ方式の変更予定がなければ送るものがないため、不変条件の破れとして panic する。
 func mergeMethodsChange(settings []SettingPlan) LogicalChange {
-	var desired []DesiredSetting
+	var desired []configuration.ManagedSetting
 	var bases []PreconditionBasis
 	for _, s := range settings {
 		if !slices.Contains(setting.MergeMethods(), s.Unit.Key) || !s.IsPlannedChange() {
 			continue
 		}
-		desired = append(desired, DesiredSetting{Unit: s.Unit, Value: s.Desired})
+		desired = append(desired, configuration.ManagedSetting{Unit: s.Unit, Desired: s.Desired})
 		bases = append(bases, PreconditionBasis{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)})
 	}
 	if len(desired) == 0 {

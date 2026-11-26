@@ -132,11 +132,12 @@ func (s SettingPlan) EnablesActionsByPolicy() bool {
 	return s.Unit.Key == setting.AllowedActions && s.Result == NotComparable && s.Observed.UnavailableReason() == github.UnavailableActionsDisabled
 }
 
-// IsCreation は、この変更予定が作成 (存在しないと確かめた関連リソースの不一致) かを返す。
+// IsConfirmedCreation は、この変更予定が確認済みの差分の作成 (存在しないと確かめた関連リソースの不一致) かを返す。
+// 属する先が存在しないために比較不能で、先に属する先を作成する作成は含まない。
 // 作成かどうかを読む処理ごとに条件を組み立てると、存在しないことの宣言を受け付ける種類で削除を作成と取り違えるため、ここだけで判定する。
 // 存在しないことは関連リソースの観測値にだけ現れるため、Key で関連リソースに限らない。
 // 不一致は観測値があるときにだけ生じるため、観測値のない不一致は Equal が不変条件の破れとして panic する。
-func (s SettingPlan) IsCreation() bool {
+func (s SettingPlan) IsConfirmedCreation() bool {
 	if s.Result != Mismatch {
 		return false
 	}
@@ -145,8 +146,9 @@ func (s SettingPlan) IsCreation() bool {
 }
 
 // IsEnvironmentCreation は、この変更予定が Environment の作成かを返す。
+// Environment はリポジトリに属するため、その作成は常に確認済みの差分である。
 func (s SettingPlan) IsEnvironmentCreation() bool {
-	return s.Unit.Key == setting.EnvironmentResource && s.IsCreation()
+	return s.Unit.Key == setting.EnvironmentResource && s.IsConfirmedCreation()
 }
 
 // IsPlannedChange は、この管理設定が変更予定 (不一致か比較不能の管理設定) かを返す。
@@ -161,12 +163,12 @@ func (s SettingPlan) IsPlannedChange() bool {
 
 // generateRepositoryPlan は、一つの対象リポジトリを計画時に観測し、リポジトリの計画を生成する。
 func generateRepositoryPlan(ctx context.Context, client *github.Client, target configuration.RepositoryDeclaration) (RepositoryPlan, error) {
-	named := github.NamedResources{Environments: managedEnvironments(target.Desired), Rulesets: managedRulesets(target.Desired)}
-	observed, err := client.ObserveRepositoryForNamedResources(ctx, target.Reference, named, managedAreas(target.Desired)...)
+	named := github.NamedResources{Environments: managedEnvironments(target.DesiredState), Rulesets: managedRulesets(target.DesiredState)}
+	observed, err := client.ObserveRepositoryForNamedResources(ctx, target.Reference, named, managedAreas(target.DesiredState)...)
 	if err != nil {
 		return RepositoryPlan{}, err
 	}
-	settings := reconcile(target.Desired, observed)
+	settings := reconcile(target.DesiredState, observed)
 	for i := range settings {
 		settings[i].Applicability = judgeApplicability(settings[i], settings, observed)
 		settings[i].SideEffects, settings[i].SettingsExpectedUnaffected = sideEffects(settings[i], observed, settings)

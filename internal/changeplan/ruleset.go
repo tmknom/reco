@@ -3,6 +3,7 @@ package changeplan
 import (
 	"fmt"
 
+	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 )
 
@@ -15,11 +16,11 @@ func rulesetChangeOf(s SettingPlan) LogicalChange {
 		panic(fmt.Sprintf("changeplan: %s is not a mismatch to change", s.Unit.String()))
 	}
 	kind := RulesetValueUpdate
-	if s.IsCreation() {
+	if s.IsConfirmedCreation() {
 		kind = RulesetCreation
 	}
 	return LogicalChange{
-		DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}},
+		DesiredState: []configuration.ManagedSetting{{Unit: s.Unit, Desired: s.Desired}},
 		Operations: []UpdateOperation{{
 			Kind: kind, Unit: s.Unit, Value: s.Desired,
 			PreconditionBases: []PreconditionBasis{{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed), AnticipatedRulesetIdentity: s.RulesetIdentity}},

@@ -93,7 +93,7 @@ func oidcSubjectOmittedItemChanges(operation changeplan.UpdateOperation, before,
 	}}
 }
 
-// environmentProtectionChanges は、宣言の名前 name の Environment の保護設定について、更新直前と更新後の観測の差を CLI 仕様の変更結果の並びで返す。
+// environmentProtectionChanges は、宣言の名前 name の Environment の保護設定について、更新直前と更新後の観測の差を、項目の名前に Environment の名前を前置して返す。
 // 比べる範囲はアーキテクチャ設計の未管理設定を保全する更新方式と、設定ごとの設計の更新方式に従う。
 // どちらかの観測で存在しない Environment は、比べる値がないため返さない。
 func environmentProtectionChanges(name setting.EnvironmentName, before, after github.ObservationResult) []unexpectedOutsideChange {
@@ -104,18 +104,8 @@ func environmentProtectionChanges(name setting.EnvironmentName, before, after gi
 	}
 	prefix := setting.Unit{Key: setting.EnvironmentResource, Environment: name}.String()
 	var changes []unexpectedOutsideChange
-	if !b.Protection.SameWaitTimer(a.Protection) {
-		changes = append(changes, unexpectedOutsideChange{Setting: prefix + ".wait_timer", Before: b.Protection.WaitTimerString(), After: a.Protection.WaitTimerString()})
-	}
-	if !b.Protection.SameRequiredReviewers(a.Protection) {
-		changes = append(changes, unexpectedOutsideChange{
-			Setting: prefix + ".required_reviewers", Before: b.Protection.RequiredReviewersString(), After: a.Protection.RequiredReviewersString(),
-		})
-	}
-	if b.Protection.CanAdminsBypass != a.Protection.CanAdminsBypass {
-		changes = append(changes, unexpectedOutsideChange{
-			Setting: prefix + ".can_admins_bypass", Before: strconv.FormatBool(b.Protection.CanAdminsBypass), After: strconv.FormatBool(a.Protection.CanAdminsBypass),
-		})
+	for _, d := range b.Protection.DifferencesTo(a.Protection) {
+		changes = append(changes, unexpectedOutsideChange{Setting: prefix + "." + d.Item, Before: d.Before, After: d.After})
 	}
 	return changes
 }

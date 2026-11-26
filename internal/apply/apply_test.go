@@ -1319,7 +1319,7 @@ func toSelectedChange() changeplan.LogicalChange {
 	policy, criteria := setting.Unit{Key: setting.AllowedActions}, setting.Unit{Key: setting.SelectedActions}
 	selected, declared := setting.AllowedActionsPolicyValue(setting.AllowedActionsSelected), setting.SelectedActionsCriteriaValue(declaredCriteria)
 	return changeplan.LogicalChange{
-		DesiredState: []changeplan.DesiredSetting{{Unit: policy, Value: selected}, {Unit: criteria, Value: declared}},
+		DesiredState: []configuration.ManagedSetting{{Unit: policy, Desired: selected}, {Unit: criteria, Desired: declared}},
 		Operations: []changeplan.UpdateOperation{
 			{
 				Kind: changeplan.SettingUpdate, Unit: policy, Value: selected,

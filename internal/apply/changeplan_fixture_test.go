@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/tmknom/reco/internal/changeplan"
+	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
 	"github.com/tmknom/reco/internal/setting"
@@ -130,7 +131,7 @@ func creationChange(t *testing.T, name string) changeplan.LogicalChange {
 	environment := mustEnvironmentName(t, name)
 	unit := setting.Unit{Key: setting.EnvironmentResource, Environment: environment}
 	return changeplan.LogicalChange{
-		DesiredState: []changeplan.DesiredSetting{{Unit: unit, Value: setting.Present()}},
+		DesiredState: []configuration.ManagedSetting{{Unit: unit, Desired: setting.Present()}},
 		Operations: []changeplan.UpdateOperation{{
 			Kind: changeplan.EnvironmentCreation, Unit: unit,
 			PreconditionBases: []changeplan.PreconditionBasis{{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Absent())}},
@@ -144,7 +145,7 @@ func creationWithModeChange(t *testing.T, name string, mode setting.DeploymentBr
 	environment := mustEnvironmentName(t, name)
 	unit := setting.Unit{Key: setting.EnvironmentResource, Environment: environment}
 	return changeplan.LogicalChange{
-		DesiredState: []changeplan.DesiredSetting{{Unit: unit, Value: setting.Present()}, {Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}, Value: modeValue(mode)}},
+		DesiredState: []configuration.ManagedSetting{{Unit: unit, Desired: setting.Present()}, {Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}, Desired: modeValue(mode)}},
 		Operations: []changeplan.UpdateOperation{{
 			Kind: changeplan.EnvironmentCreationWithMode, Unit: unit, Mode: mode,
 			PreconditionBases: []changeplan.PreconditionBasis{{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Absent())}},
@@ -157,7 +158,7 @@ func modeChange(t *testing.T, name string, approved github.Environment, desired 
 	t.Helper()
 	environment := mustEnvironmentName(t, name)
 	policy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}
-	return changeplan.LogicalChange{DesiredState: []changeplan.DesiredSetting{{Unit: policy, Value: modeValue(desired)}}, Operations: []changeplan.UpdateOperation{{
+	return changeplan.LogicalChange{DesiredState: []configuration.ManagedSetting{{Unit: policy, Desired: modeValue(desired)}}, Operations: []changeplan.UpdateOperation{{
 		Kind: changeplan.DeploymentBranchPolicyModeUpdate, Unit: policy, Mode: desired,
 		PreconditionBases: []changeplan.PreconditionBasis{
 			{
@@ -189,7 +190,7 @@ func basesOf(key setting.Key, observed setting.Value) []changeplan.PreconditionB
 func singleUpdate(key setting.Key, desired setting.Value, bases []changeplan.PreconditionBasis) changeplan.LogicalChange {
 	unit := setting.Unit{Key: key}
 	return changeplan.LogicalChange{
-		DesiredState: []changeplan.DesiredSetting{{Unit: unit, Value: desired}},
+		DesiredState: []configuration.ManagedSetting{{Unit: unit, Desired: desired}},
 		Operations:   []changeplan.UpdateOperation{{Kind: changeplan.SettingUpdate, Unit: unit, Value: desired, PreconditionBases: bases}},
 	}
 }

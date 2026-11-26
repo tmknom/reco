@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/tmknom/reco/internal/changeplan"
+	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/githubtest"
 	"github.com/tmknom/reco/internal/repository"
@@ -275,7 +276,7 @@ func TestObservationAreas(t *testing.T) {
 			name: "desired setting in another area is also read",
 			change: func() changeplan.LogicalChange {
 				change := allowAutoMergeChange()
-				change.DesiredState = append(change.DesiredState, changeplan.DesiredSetting{Unit: setting.Unit{Key: setting.DefaultWorkflowPermissions}, Value: setting.PermissionLevelValue(setting.PermissionRead)})
+				change.DesiredState = append(change.DesiredState, configuration.ManagedSetting{Unit: setting.Unit{Key: setting.DefaultWorkflowPermissions}, Desired: setting.PermissionLevelValue(setting.PermissionRead)})
 				return change
 			}(),
 			want: []setting.Area{setting.AllowAutoMerge.Area(), setting.DefaultWorkflowPermissions.Area()},
@@ -333,8 +334,8 @@ func TestObservationResources(t *testing.T) {
 			name: "ruleset of a desired setting is also named",
 			change: func() changeplan.LogicalChange {
 				change := rulesetValueUpdateChange(t, "protect")
-				change.DesiredState = append(change.DesiredState, changeplan.DesiredSetting{
-					Unit: setting.Unit{Key: setting.RulesetResource, Ruleset: strict}, Value: setting.RulesetValue(protectRuleset(setting.RulesetEnforcementActive)),
+				change.DesiredState = append(change.DesiredState, configuration.ManagedSetting{
+					Unit: setting.Unit{Key: setting.RulesetResource, Ruleset: strict}, Desired: setting.RulesetValue(protectRuleset(setting.RulesetEnforcementActive)),
 				})
 				return change
 			}(),
@@ -362,7 +363,7 @@ func TestObservationResources(t *testing.T) {
 			name: "environment of a desired setting is also named",
 			change: func() changeplan.LogicalChange {
 				change := allowAutoMergeChange()
-				change.DesiredState = append(change.DesiredState, changeplan.DesiredSetting{Unit: stagingPolicy, Value: modeValue(setting.DeploymentBranchPolicyAll)})
+				change.DesiredState = append(change.DesiredState, configuration.ManagedSetting{Unit: stagingPolicy, Desired: modeValue(setting.DeploymentBranchPolicyAll)})
 				return change
 			}(),
 			want: github.NamedResources{Environments: []setting.EnvironmentName{staging}},

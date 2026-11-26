@@ -83,7 +83,7 @@ func (d document) repositoryDeclaration(n *yaml.Node, path string) (RepositoryDe
 			return RepositoryDeclaration{}, err
 		}
 	}
-	return RepositoryDeclaration{Reference: reference, Desired: desired}, nil
+	return RepositoryDeclaration{Reference: reference, DesiredState: desired}, nil
 }
 
 // environments は、Environment の宣言の並びを宣言の順のまま読む。

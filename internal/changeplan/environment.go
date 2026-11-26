@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -23,7 +24,7 @@ func (r RepositoryPlan) environmentChangeOf(s SettingPlan) (LogicalChange, bool)
 		return LogicalChange{}, false
 	case s.Result == Mismatch && ok && existence.Result == Match:
 		environment := existence.existenceBasis()
-		return LogicalChange{DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}}, Operations: deploymentBranchPolicyOperations(s, environment)}, true
+		return LogicalChange{DesiredState: []configuration.ManagedSetting{{Unit: s.Unit, Desired: s.Desired}}, Operations: deploymentBranchPolicyOperations(s, environment)}, true
 	}
 	panic(fmt.Sprintf("changeplan: %s has no environment plan to pair with", s.Unit.String()))
 }
@@ -37,7 +38,7 @@ func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
 	if !s.IsEnvironmentCreation() {
 		panic(fmt.Sprintf("changeplan: %s is a planned change other than a creation", s.Unit.String()))
 	}
-	change := LogicalChange{DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}}}
+	change := LogicalChange{DesiredState: []configuration.ManagedSetting{{Unit: s.Unit, Desired: s.Desired}}}
 	existence := []PreconditionBasis{s.existenceBasis()}
 	// 方式の単位は作成の綴りで作り、期待状態と更新操作が作成と同じ綴りの名前を示すようにする
 	policyUnit := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: s.Unit.Environment}
@@ -46,11 +47,11 @@ func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
 		panic(fmt.Sprintf("changeplan: creation of %s is paired with %s that is not of an absent environment", s.Unit.String(), policy.Unit.String()))
 	}
 	if ok {
-		change.DesiredState = append(change.DesiredState, DesiredSetting{Unit: policyUnit, Value: policy.Desired})
+		change.DesiredState = append(change.DesiredState, configuration.ManagedSetting{Unit: policyUnit, Desired: policy.Desired})
 	}
 	for _, variable := range r.Settings {
 		if isDeclaredAbsentInAbsentEnvironment(variable) && variable.Unit.Environment.EqualFold(s.Unit.Environment) {
-			change.DesiredState = append(change.DesiredState, DesiredSetting{Unit: variable.Unit, Value: variable.Desired})
+			change.DesiredState = append(change.DesiredState, configuration.ManagedSetting{Unit: variable.Unit, Desired: variable.Desired})
 		}
 	}
 	if !ok {

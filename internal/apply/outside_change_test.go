@@ -515,12 +515,6 @@ func TestEnvironmentProtectionChanges(t *testing.T) {
 			want:   nil,
 		},
 		{
-			name:   "same protection with reviewers only reordered has no change",
-			before: observed(base),
-			after:  observed(setting.EnvironmentProtection{WaitTimer: wait(30), RequiredReviewers: reviewers(true, 2, 1), CanAdminsBypass: true}),
-			want:   nil,
-		},
-		{
 			name:   "changed protection of another environment is not compared",
 			before: observed(base, observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll)),
 			after: observed(base, func() github.Environment {
@@ -531,35 +525,10 @@ func TestEnvironmentProtectionChanges(t *testing.T) {
 			want: nil,
 		},
 		{
-			name:   "changed wait_timer is one change",
+			name:   "a changed item is named under the declared environment name",
 			before: observed(base),
 			after:  observed(setting.EnvironmentProtection{RequiredReviewers: reviewers(true, 1, 2), CanAdminsBypass: true}),
 			want:   []unexpectedOutsideChange{{Setting: "environments.staging.wait_timer", Before: "30", After: "none"}},
-		},
-		{
-			name:   "changed required_reviewers is one change",
-			before: observed(base),
-			after:  observed(setting.EnvironmentProtection{WaitTimer: wait(30), RequiredReviewers: reviewers(false, 1, 2), CanAdminsBypass: true}),
-			want: []unexpectedOutsideChange{{
-				Setting: "environments.staging.required_reviewers",
-				Before:  "reviewers: [User 1, User 2], prevent_self_review: true", After: "reviewers: [User 1, User 2], prevent_self_review: false",
-			}},
-		},
-		{
-			name:   "changed can_admins_bypass is one change",
-			before: observed(base),
-			after:  observed(setting.EnvironmentProtection{WaitTimer: wait(30), RequiredReviewers: reviewers(true, 1, 2)}),
-			want:   []unexpectedOutsideChange{{Setting: "environments.staging.can_admins_bypass", Before: "true", After: "false"}},
-		},
-		{
-			name:   "all three changed are three changes in the order wait_timer, required_reviewers, can_admins_bypass",
-			before: observed(base),
-			after:  observed(setting.EnvironmentProtection{WaitTimer: wait(5)}),
-			want: []unexpectedOutsideChange{
-				{Setting: "environments.staging.wait_timer", Before: "30", After: "5"},
-				{Setting: "environments.staging.required_reviewers", Before: "reviewers: [User 1, User 2], prevent_self_review: true", After: "none"},
-				{Setting: "environments.staging.can_admins_bypass", Before: "true", After: "false"},
-			},
 		},
 	}
 	for _, tc := range cases {
