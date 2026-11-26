@@ -1228,6 +1228,78 @@ func TestExecuteChange_RetentionDays(t *testing.T) {
 	}
 }
 
+// TestExecuteChange_OIDCSubject は、subject のカスタマイズの論理的な設定変更について、
+// 3項目のうち更新要求が送る項目と、省略した項目の承認時との違いを変更前提が見ないこと、key の並びの違いは見ることを確かめる。
+//
+//trace:checks INV-004 FR-010 FR-011 FR-012
+func TestExecuteChange_OIDCSubject(t *testing.T) {
+	const (
+		getRepository = "GET /repos/owner/repo"
+		getSubject    = "GET /repos/owner/repo/actions/oidc/customization/sub"
+		putSubject    = "PUT /repos/owner/repo/actions/oidc/customization/sub"
+	)
+	private := okPrivateRepository(1)
+	approved := okOIDCSubject(githubtest.OIDCSubjectBody{UseDefault: true})
+	declared := okOIDCSubject(githubtest.OIDCSubjectBody{IncludeClaimKeys: []string{"repo", "context"}})
+	created := response{status: http.StatusCreated, body: `{}`}
+	cases := []struct {
+		name         string
+		change       changeplan.LogicalChange
+		responses    []response
+		wantRequests []string
+		wantBodies   []map[string]any
+		wantPrecond  preconditionCheck
+		wantDesired  desiredStateConfirmation
+		wantResult   changeResult
+	}{
+		{
+			name:         "update sends use_default and the keys only and completes",
+			change:       oidcSubjectChange(),
+			responses:    []response{private, approved, created, private, declared},
+			wantRequests: []string{getRepository, getSubject, putSubject, getRepository, getSubject},
+			wantBodies:   []map[string]any{nil, nil, {"use_default": false, "include_claim_keys": []any{"repo", "context"}}, nil, nil},
+			wantPrecond:  preconditionHolds,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
+		{
+			name:   "omitted item differing from the approved read still updates and completes",
+			change: oidcSubjectChange(),
+			responses: []response{
+				private, okOIDCSubject(githubtest.OIDCSubjectBody{UseDefault: true, UseImmutableSubject: true}), created,
+				private, okOIDCSubject(githubtest.OIDCSubjectBody{IncludeClaimKeys: []string{"repo", "context"}, UseImmutableSubject: true}),
+			},
+			wantRequests: []string{getRepository, getSubject, putSubject, getRepository, getSubject},
+			wantPrecond:  preconditionHolds,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, server := newSequenceServer(t, tc.responses...)
+
+			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), tc.change, (&delayRecorder{}).after, &updateInterval{})
+
+			if !slices.Equal(server.RequestLines(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", server.RequestLines(), tc.wantRequests)
+			}
+			if tc.wantBodies != nil && !reflect.DeepEqual(server.Bodies(), tc.wantBodies) {
+				t.Errorf("request bodies = %v, want %v", server.Bodies(), tc.wantBodies)
+			}
+			if got.operation(0).precondition != tc.wantPrecond {
+				t.Errorf("precondition = %v, want %v", got.operation(0).precondition, tc.wantPrecond)
+			}
+			if got.confirmation != tc.wantDesired {
+				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
+			}
+			if got.result() != tc.wantResult {
+				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)
+			}
+		})
+	}
+}
+
 // TestExecuteChange_PrivateForkPullRequestWorkflows は、実行条件の論理的な設定変更について、4項目を一つの更新要求で送ることと、
 // 更新直前と更新後に4項目の組の全体を比べること、更新の直後の観測が更新前の値を返したときの観測し直し、
 // リポジトリが公開に変わったときの変更結果を確かめる。

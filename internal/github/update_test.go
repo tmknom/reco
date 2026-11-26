@@ -95,6 +95,11 @@ func TestClientUpdate(t *testing.T) {
 			wantRequest: "PUT /repos/owner/repo/actions/permissions/artifact-and-log-retention", wantBody: map[string]any{"days": float64(30)},
 		},
 		{
+			name: "oidc subject sends use_default only", key: setting.OIDCSubject,
+			value:       setting.OIDCSubjectCustomizationValue(setting.OIDCSubjectCustomization{UseDefault: true}),
+			wantRequest: "PUT /repos/owner/repo/actions/oidc/customization/sub", wantBody: map[string]any{"use_default": true},
+		},
+		{
 			name: "secret_scanning true sends only the nested secret_scanning status enabled", key: setting.SecretScanningEnabled,
 			value:       setting.BoolValue(true),
 			wantRequest: "PATCH /repos/owner/repo",
@@ -133,6 +138,11 @@ func TestClientUpdate(t *testing.T) {
 				bodies = append(bodies, body)
 				if r.Method == http.MethodPatch {
 					_, _ = w.Write([]byte(repositoryBody))
+					return
+				}
+				if strings.HasSuffix(r.URL.Path, "/actions/oidc/customization/sub") {
+					w.WriteHeader(http.StatusCreated)
+					_, _ = w.Write([]byte("{}"))
 					return
 				}
 				w.WriteHeader(http.StatusNoContent)
@@ -1238,4 +1248,117 @@ func closeConnection(t *testing.T, w http.ResponseWriter) {
 		return
 	}
 	_ = conn.Close()
+}
+
+// TestEncodeOIDCSubjectCustomization は、更新要求の本文が、宣言した項目だけを GitHub の仕様どおりに持つことを確かめる。
+//
+//trace:checks FR-011 INV-001
+func TestEncodeOIDCSubjectCustomization(t *testing.T) {
+	cases := []struct {
+		name          string
+		customization setting.OIDCSubjectCustomization
+		want          map[string]any
+	}{
+		{
+			name:          "default form without immutable sends use_default only",
+			customization: setting.OIDCSubjectCustomization{UseDefault: true},
+			want:          map[string]any{"use_default": true},
+		},
+		{
+			name:          "default form with immutable true sends it",
+			customization: setting.OIDCSubjectCustomization{UseDefault: true, UseImmutableSubject: new(true)},
+			want:          map[string]any{"use_default": true, "use_immutable_subject": true},
+		},
+		{
+			name:          "default form with immutable false still sends it",
+			customization: setting.OIDCSubjectCustomization{UseDefault: true, UseImmutableSubject: new(false)},
+			want:          map[string]any{"use_default": true, "use_immutable_subject": false},
+		},
+		{
+			name:          "claim keys are sent in the written order",
+			customization: setting.OIDCSubjectCustomization{IncludeClaimKeys: []string{"repo", "context", "actor"}},
+			want:          map[string]any{"use_default": false, "include_claim_keys": []any{"repo", "context", "actor"}},
+		},
+		{
+			name:          "claim keys with immutable send all three items",
+			customization: setting.OIDCSubjectCustomization{IncludeClaimKeys: []string{"repo"}, UseImmutableSubject: new(true)},
+			want:          map[string]any{"use_default": false, "include_claim_keys": []any{"repo"}, "use_immutable_subject": true},
+		},
+		{
+			name:          "nil claim keys outside the default form send an empty array",
+			customization: setting.OIDCSubjectCustomization{},
+			want:          map[string]any{"use_default": false, "include_claim_keys": []any{}},
+		},
+		{
+			name:          "claim keys inside the default form are not sent",
+			customization: setting.OIDCSubjectCustomization{UseDefault: true, IncludeClaimKeys: []string{"repo"}},
+			want:          map[string]any{"use_default": true},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got map[string]any
+			if err := json.Unmarshal(encodeOIDCSubjectCustomization(tc.customization), &got); err != nil {
+				t.Fatalf("encodeOIDCSubjectCustomization() is not a JSON object: %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("encodeOIDCSubjectCustomization() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestUpdateOIDCSubjectCustomization は、応答の判定が正常応答 201 だけを成功とし、そのほかの 2xx を成否不明とすることを確かめる。
+//
+//trace:checks FR-013 INV-005
+func TestUpdateOIDCSubjectCustomization(t *testing.T) {
+	cases := []struct {
+		name    string
+		status  int
+		body    string
+		want    UpdateOutcome
+		wantErr error
+	}{
+		{name: "201 with an empty object is success", status: http.StatusCreated, body: "{}", want: UpdateSucceeded},
+		{name: "201 with another body is success", status: http.StatusCreated, body: "not json", want: UpdateSucceeded},
+		{name: "204 is outcome unknown", status: http.StatusNoContent, want: UpdateUnknown, wantErr: ErrUnexpectedResponse},
+		{name: "200 is outcome unknown", status: http.StatusOK, body: "{}", want: UpdateUnknown, wantErr: ErrUnexpectedResponse},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests []string
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				requests = append(requests, r.Method+" "+r.URL.Path)
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			})
+			outcome, err := c.updateOIDCSubjectCustomization(t.Context(), mustReference(t, "owner/repo"), setting.OIDCSubjectCustomization{UseDefault: true})
+			if outcome != tc.want || !errors.Is(err, tc.wantErr) {
+				t.Fatalf("updateOIDCSubjectCustomization() = %v, %v, want %v with %v", outcome, err, tc.want, tc.wantErr)
+			}
+			if want := []string{"PUT /repos/owner/repo/actions/oidc/customization/sub"}; !slices.Equal(requests, want) {
+				t.Errorf("requests = %v, want %v", requests, want)
+			}
+		})
+	}
+}
+
+// TestUpdateOIDCSubjectCustomizationRejected は、GitHub が拒否した更新要求を拒否と判定し、操作と対象を error に添えることを確かめる。
+//
+//trace:checks FR-013 INV-005
+func TestUpdateOIDCSubjectCustomizationRejected(t *testing.T) {
+	for _, status := range []int{http.StatusBadRequest, http.StatusUnprocessableEntity} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(status)
+			})
+			outcome, err := c.updateOIDCSubjectCustomization(t.Context(), mustReference(t, "owner/repo"), setting.OIDCSubjectCustomization{UseDefault: true})
+			if outcome != UpdateRejected || err == nil {
+				t.Fatalf("updateOIDCSubjectCustomization() = %v, %v, want %v with an error", outcome, err, UpdateRejected)
+			}
+			if !strings.HasPrefix(err.Error(), "update oidc subject owner/repo: ") {
+				t.Errorf("error = %q, want it to start with the operation and owner/repo", err)
+			}
+		})
+	}
 }

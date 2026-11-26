@@ -36,6 +36,7 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.O
 			if !slices.Contains(compared, endpoint) {
 				compared = append(compared, endpoint)
 				changes = append(changes, outsideChangesAt(endpoint, change.ExcludedFromOutsideSettings(), b, after)...)
+				changes = append(changes, oidcSubjectOmittedItemChanges(operation, b, after)...)
 			}
 			continue
 		case changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate:
@@ -73,6 +74,23 @@ func outsideChangesAt(endpoint github.UpdateEndpoint, excluded []setting.Unit, b
 		}
 	}
 	return changes
+}
+
+// oidcSubjectOmittedItemChanges は、更新操作の値が省略した subject のカスタマイズの項目 (use_immutable_subject) について、更新直前と更新後の観測値の差を、CLI 仕様の変更対象外の設定の名前と値の表記で返す。
+// 省略した項目は更新要求で送らず GitHub が保持する値に任せるため、期待状態の確認は比べない。そのため、更新操作の影響を受けていない保証をここで与える。
+// 値が項目を宣言しているときは、期待状態の確認が比べるため返さない。
+func oidcSubjectOmittedItemChanges(operation changeplan.UpdateOperation, before, after github.ObservationResult) []unexpectedOutsideChange {
+	if operation.Unit.Key != setting.OIDCSubject || operation.Value.OIDCSubjectCustomization().UseImmutableSubject != nil {
+		return nil
+	}
+	b := *before.OIDCSubject.Customization.UseImmutableSubject
+	a := *after.OIDCSubject.Customization.UseImmutableSubject
+	if b == a {
+		return nil
+	}
+	return []unexpectedOutsideChange{{
+		Setting: string(setting.OIDCSubject) + ".use_immutable_subject", Before: strconv.FormatBool(b), After: strconv.FormatBool(a),
+	}}
 }
 
 // environmentProtectionChanges は、宣言の名前 name の Environment の保護設定について、更新直前と更新後の観測の差を CLI 仕様の変更結果の並びで返す。

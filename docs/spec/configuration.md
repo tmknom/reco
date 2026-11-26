@@ -26,6 +26,11 @@ repositories:
         approval_policy: first_time_contributors
       retention:
         days: 30
+      oidc_subject:
+        use_default: false
+        include_claim_keys:
+          - repo
+          - context
       variables:
         - name: GO_VERSION
           value: "1.27"
@@ -76,11 +81,11 @@ repositories:
 | `repositories` | シーケンス | 1件以上のリポジトリごとの宣言を含む |
 | `repositories[]` | マッピング | `name` と、少なくとも一つの管理設定を含む `general`、`actions`、`environments`、`security`、`rulesets` のいずれかを持つ |
 | `repositories[].name` | 文字列 | 必須。空でない `OWNER/REPO` 形式 |
-| `general`、`actions`、`permissions`、`selected_actions`、`workflow`、`access`、`fork_pull_requests`、`private_repositories`、`retention`、`security` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions`、`workflow`、`access`、`fork_pull_requests`、`retention`、`variables` のうち一つ以上を含めばよい |
-| `variables`（`actions` 配下） | シーケンス | 使用する場合は、1件以上の変数の宣言を含む（9章） |
-| `environments` | シーケンス | 使用する場合は、1件以上の Environment の宣言を含む（10章） |
-| `variables`（`environments[]` 配下） | シーケンス | 使用する場合は、1件以上の変数の宣言を含む（10.3節） |
-| `rulesets` | シーケンス | 使用する場合は、1件以上の Ruleset の宣言を含む（12章） |
+| `general`、`actions`、`permissions`、`selected_actions`、`workflow`、`access`、`fork_pull_requests`、`private_repositories`、`retention`、`oidc_subject`、`security` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions`、`workflow`、`access`、`fork_pull_requests`、`retention`、`oidc_subject`、`variables` のうち一つ以上を含めばよい |
+| `variables`（`actions` 配下） | シーケンス | 使用する場合は、1件以上の変数の宣言を含む（10章） |
+| `environments` | シーケンス | 使用する場合は、1件以上の Environment の宣言を含む（11章） |
+| `variables`（`environments[]` 配下） | シーケンス | 使用する場合は、1件以上の変数の宣言を含む（11.3節） |
+| `rulesets` | シーケンス | 使用する場合は、1件以上の Ruleset の宣言を含む（13章） |
 
 定義していないフィールドは、どの階層でも受け付けません。どの位置でも、`null` を指定して省略を表現することはできません。
 
@@ -101,7 +106,7 @@ repositories:
 
 この例で管理するのは `general.allow_auto_merge` だけです。`false` も明示された期待値です。宣言していない `general.delete_branch_on_merge` は管理範囲外です。宣言した設定の現在値が期待値と一致していても管理範囲には含まれますが、更新は不要です。
 
-設定の一部は、意味を確定するために複数の値を一体として宣言します。この場合、個々の値を独立した管理の単位にはせず、一つの設定グループとして扱います。具体的な組み合わせは第4章で定めます。
+設定の一部は、意味を確定するために複数の値を一体として宣言します。この場合、個々の値を独立した管理の単位にはせず、一つの設定グループとして扱います。どの値を組み合わせるかは、設定ごとの章で定めます。設定グループの項目のうち、省略できると章が定めた項目を省略した場合、その項目は管理範囲外です。
 
 入力検証は、宣言だけから決まる誤りを拒否します。入力として有効な宣言でも、リポジトリの状態（公開範囲や、ほかの設定の現在値など）によっては適用できないことがあります。これは観測のあとに適用可能性として判断し、どの宣言がどの状態で適用不能になるかは [設定ごとの設計](../design/settings/README.md) の各文書の「適用可能性と副作用」が定めます。
 
@@ -310,18 +315,62 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
 
-## 9. Repository Variables
+## 9. OIDC subject
+
+| YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
+|---|---|---|---|---|
+| `actions.oidc_subject.use_default` | 真偽値 | `true` / `false`。必須 | OIDC トークンの subject クレームに既定の形を使うか | subject のカスタマイズ（設定グループ） |
+| `actions.oidc_subject.include_claim_keys` | シーケンス | 9.1節の claim key を1件以上。`use_default` が `false` のときだけ必須で、`true` では指定できない | subject クレームを組み立てるクレームの key の並び | subject のカスタマイズ（設定グループ） |
+| `actions.oidc_subject.use_immutable_subject` | 真偽値 | `true` / `false`。省略できる | subject クレームのリポジトリの部分に、所有者とリポジトリの ID を含める形を使うか | subject のカスタマイズ（設定グループ） |
+
+3項目は subject のカスタマイズを表し、 **一つの設定グループ** として扱います。`use_immutable_subject` は省略できる項目で、省略した場合は管理範囲外です。省略しても、GitHub に保存された値を reco は変えません（[GitHub Actions OIDC API 仕様](../research/actions-oidc.md) 4章）。`use_immutable_subject` は、`use_default` の値によらず書けます。
+
+| `use_default` | `include_claim_keys` | 判定 |
+|---|---|---|
+| `true` | 省略 | 有効。既定の形を使う |
+| `false` | 1件以上を指定 | 有効 |
+| `false` | 省略、または `[]` | エラー |
+| `true` | 指定（`[]` を含む） | エラー |
+
+`use_default: true` と `include_claim_keys` を同時に宣言できないのは、GitHub がこの組み合わせの更新を受け付けたうえで、key を保存しないためです（同 4章）。`use_default: false` で key のない宣言を受け付けないのは、GitHub はこの状態を保存するものの、発行される subject クレームの形が資料にも確認にもなく、宣言の意味を予想できないためです（同 4章）。この組み合わせの誤りは、`use_default` の値の誤りより後に、`include_claim_keys` の要素の誤りより先に示します。組み合わせは `use_default` の真偽値と `include_claim_keys` を書いたかどうかで決まり、要素の値によらないためです。
+
+`actions.permissions` の宣言によらず宣言でき、`actions.permissions.enabled: false` と同時にも宣言できます。
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `alignment` | `FR-001` | Functional Requirement |
+| `alignment` | `FR-006` | Functional Requirement |
+| `alignment` | `INV-001` | Invariant |
+| `grounding` | [GitHub Actions OIDC API 仕様](../research/actions-oidc.md) | Repository File |
+
+### 9.1 claim key
+
+`include_claim_keys` の要素は、ASCII の英数字と `_` だけからなる、空でない文字列です。同じ文字列の要素を二つ以上書くことはできません。重複は YAML のエスケープ表現を解釈した後の文字列で判定し、大文字小文字だけが異なる文字列は別の要素として扱います。`null` と文字列以外の要素は受け付けません。
+
+```yaml
+oidc_subject:
+  use_default: false
+  include_claim_keys:
+    - repo
+    - context
+```
+
+`include_claim_keys` の値は **並び** です。要素の順序に意味があり、宣言の順のまま期待値になります。順序だけが違う宣言は、異なる期待値です。GitHub は key を送った順のまま保存し、資料の例はどれも subject クレームを key の並びの順に組み立てているためです（同 2章・4章）。
+
+reco は、GitHub が受け付ける key の一覧を持たず、形式だけを確かめます。受け付ける key は、リポジトリを所有するのが個人アカウントか Organization か Enterprise かで変わり得るためです（同 2章）。形式に合っても GitHub が受け付けない key（大文字を含む `Repo` や、定義にない key）は、入力検証を通り、`apply` の更新操作の失敗として分かります。GitHub はこの更新を拒否し、値を変えません（同 4章）。
+
+## 10. Repository Variables
 
 `actions.variables` は、リポジトリの Repository Variable を名前ごとに宣言するシーケンスです。Repository Variable は関連リソースであり、2.1節の規則に従います。
 
 | YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
 |---|---|---|---|---|
 | `actions.variables` | シーケンス | 変数の宣言を1件以上 | 管理する Repository Variable の一覧 | なし（要素ごとに定まる） |
-| `actions.variables[].name` | 文字列 | 9.1節の名前 | 管理する Repository Variable の名前 | Repository Variable（関連リソースそのもの） |
-| `actions.variables[].value` | 文字列 | 9.2節の値。`state` を書かない要素では必須 | その名前の Repository Variable が存在し、その値であること | Repository Variable（関連リソースそのもの） |
+| `actions.variables[].name` | 文字列 | 10.1節の名前 | 管理する Repository Variable の名前 | Repository Variable（関連リソースそのもの） |
+| `actions.variables[].value` | 文字列 | 10.2節の値。`state` を書かない要素では必須 | その名前の Repository Variable が存在し、その値であること | Repository Variable（関連リソースそのもの） |
 | `actions.variables[].state` | 文字列 | `absent` | その名前の Repository Variable が存在しないこと | Repository Variable（関連リソースそのもの） |
 
-- **`name` は必須で、`value` か `state` のどちらか一方を書く**：要素が持てるキーはこの3つだけである。組み合わせは 9.3節が定める
+- **`name` は必須で、`value` か `state` のどちらか一方を書く**：要素が持てるキーはこの3つだけである。組み合わせは 10.3節が定める
 - **`value` を書いた要素は、存在と値の宣言を兼ねる**：書いた名前の Repository Variable が存在しなければ作成を計画し、存在して値が違えば値の変更を計画する
 - **`state: absent` を書いた要素は、存在しないことの宣言である**：その名前の Repository Variable が存在すれば削除を計画し、存在しなければ変更不要である
 - **行を消しても削除しない**：`actions.variables` から要素を消すことは省略であり（2.1節）、その変数は管理範囲外になる
@@ -334,7 +383,7 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub Actions 変数 API 仕様](../research/actions-variables.md) | Repository File |
 
-### 9.1 変数の名前
+### 10.1 変数の名前
 
 `name` は、ASCII の英大文字、数字、`_` だけからなる、空でない文字列です。数字で始まらず、大文字小文字を問わず `GITHUB_` で始まりません。GitHub が受け付ける名前の規則（[GitHub Actions 変数 API 仕様](../research/actions-variables.md) 2章）に、英小文字を含まないという制限を加えたものです。
 
@@ -344,24 +393,24 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 
 二つの名前が同じかどうかは、ASCII の英字の大文字小文字を区別せずに比べます。GitHub が名前を大文字小文字を区別せずに扱うためです（同 2章）。同じリポジトリの `actions.variables` に同じ名前が複数あれば、入力不正として拒否します。
 
-### 9.2 変数の値
+### 10.2 変数の値
 
 `value` は、空でない文字列です。値は YAML のエスケープ表現を解釈した後の文字列として扱い、トリミング、改行の正規化、Unicode の正規化をしません。GitHub 上の値とは文字列の完全一致で比べ、前後の空白や末尾の改行だけが違う値も異なる値とします。GitHub は空文字列のほかの値を送ったとおりに保存するためです（[GitHub Actions 変数 API 仕様](../research/actions-variables.md) 3章）。
 
-- **引用符のない数値、真偽値、日付は拒否する**：`value: 1.27`、`value: 1`、`value: true`、`value: 2026-11-22` などは、YAML が文字列でない値と解釈するため、文字列へ暗黙に変換しない（13.1節）。拒否の理由に、引用符で囲んだ表記（`"1.27"`）を直し方として添える
+- **引用符のない数値、真偽値、日付は拒否する**：`value: 1.27`、`value: 1`、`value: true`、`value: 2026-11-22` などは、YAML が文字列でない値と解釈するため、文字列へ暗黙に変換しない（14.1節）。拒否の理由に、引用符で囲んだ表記（`"1.27"`）を直し方として添える
 - **空文字列は拒否する**：`value: ""`、`value: ''`、中身のないブロックスカラーを受け付けない。GitHub が空文字列の値の作成も更新も拒否するため（同 3章）
-- **`null` と値なしは、空文字列とは別の誤りとして拒否する**：`value: ~`、`value: null`、値を書かない `value:` は、13.1節の `null` と値なしの誤りである
+- **`null` と値なしは、空文字列とは別の誤りとして拒否する**：`value: ~`、`value: null`、値を書かない `value:` は、14.1節の `null` と値なしの誤りである
 - **ブロックスカラーの末尾の改行は値に含まれる**：`value: |` で書いた値は末尾に改行を持つ。GitHub 上の値が末尾に改行を持たなければ、異なる値になる
 
 値の長さは入力検証で確かめません。名前の長さと同じく、GitHub の上限が変わり得るためです。
 
-### 9.3 存在しないことの宣言
+### 10.3 存在しないことの宣言
 
 `state` に書ける値は `absent` だけです。`value` と `state` の組み合わせは次のとおりです。
 
 | `value` | `state` | 判定 |
 |---|---|---|
-| 9.2節の値 | 省略 | 有効。存在し、値を伴うことの宣言 |
+| 10.2節の値 | 省略 | 有効。存在し、値を伴うことの宣言 |
 | 省略 | `absent` | 有効。存在しないことの宣言 |
 | 省略 | 省略 | エラー |
 | 指定（中身を問わない） | `absent` | エラー |
@@ -369,7 +418,7 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 
 `state` は大文字小文字を区別し、`Absent`、`present`、空文字列、文字列でない値、`null` と値なしを受け付けません。`state` の誤りは、`value` との組み合わせの誤りより先に示します。組み合わせの誤りは、`value` の中身の誤りより先に示します。
 
-`value: ~`、`value: ""`、`value` の省略は、どれも存在しないことの宣言になりません（9.2節）。値の書き忘れが削除にならないようにするためです。`value` も `state` もない要素は、`value` がないことを示して拒否し、`state: absent` を案内しません。値を書き忘れた利用者を削除へ誘導しないためです。
+`value: ~`、`value: ""`、`value` の省略は、どれも存在しないことの宣言になりません（10.2節）。値の書き忘れが削除にならないようにするためです。`value` も `state` もない要素は、`value` がないことを示して拒否し、`state: absent` を案内しません。値を書き忘れた利用者を削除へ誘導しないためです。
 
 ```yaml
 actions:
@@ -378,22 +427,22 @@ actions:
       state: absent
 ```
 
-同じ名前の要素を、値の宣言と存在しないことの宣言に分けて書くことはできません。9.1節の名前の重複として拒否します。
+同じ名前の要素を、値の宣言と存在しないことの宣言に分けて書くことはできません。10.1節の名前の重複として拒否します。
 
-## 10. Environments
+## 11. Environments
 
 `environments` は、リポジトリの Environment を名前ごとに宣言するシーケンスです。Environment は関連リソースであり、2.1節の規則に従います。
 
 | YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
 |---|---|---|---|---|
-| `environments[].name` | 文字列 | 10.1節の名前 | その名前の Environment が存在すること | Environment（関連リソースそのもの） |
+| `environments[].name` | 文字列 | 11.1節の名前 | その名前の Environment が存在すること | Environment（関連リソースそのもの） |
 | `environments[].deployment_branch_policy.mode` | 文字列 | `all` / `protected_branches` / `selected` | Environment へデプロイできるブランチとタグの制限の方式 | デプロイ元制限（設定グループ） |
-| `environments[].deployment_branch_policy.patterns` | シーケンス | 個別パターンの要素を0件以上（`[]` 可）。`mode` が `selected` のときだけ必須で、ほかの方式では指定できない（10.2節） | デプロイを許可するブランチとタグのパターンの一覧の全体 | デプロイ元制限（設定グループ） |
+| `environments[].deployment_branch_policy.patterns` | シーケンス | 個別パターンの要素を0件以上（`[]` 可）。`mode` が `selected` のときだけ必須で、ほかの方式では指定できない（11.2節） | デプロイを許可するブランチとタグのパターンの一覧の全体 | デプロイ元制限（設定グループ） |
 | `environments[].deployment_branch_policy.patterns[].type` | 文字列 | `branch` / `tag` | パターンがブランチとタグのどちらに一致するか | デプロイ元制限（設定グループ） |
-| `environments[].deployment_branch_policy.patterns[].name` | 文字列 | 10.2節の名前 | ブランチ名またはタグ名のパターン | デプロイ元制限（設定グループ） |
-| `environments[].variables` | シーケンス | 変数の宣言を1件以上（10.3節） | その Environment で管理する Environment Variable の一覧 | なし（要素ごとに定まる） |
-| `environments[].variables[].name` | 文字列 | 9.1節の名前 | その Environment で管理する Environment Variable の名前 | Environment Variable（関連リソースそのもの） |
-| `environments[].variables[].value` | 文字列 | 9.2節の値。`state` を書かない要素では必須 | その Environment に、その名前の Environment Variable が存在し、その値であること | Environment Variable（関連リソースそのもの） |
+| `environments[].deployment_branch_policy.patterns[].name` | 文字列 | 11.2節の名前 | ブランチ名またはタグ名のパターン | デプロイ元制限（設定グループ） |
+| `environments[].variables` | シーケンス | 変数の宣言を1件以上（11.3節） | その Environment で管理する Environment Variable の一覧 | なし（要素ごとに定まる） |
+| `environments[].variables[].name` | 文字列 | 10.1節の名前 | その Environment で管理する Environment Variable の名前 | Environment Variable（関連リソースそのもの） |
+| `environments[].variables[].value` | 文字列 | 10.2節の値。`state` を書かない要素では必須 | その Environment に、その名前の Environment Variable が存在し、その値であること | Environment Variable（関連リソースそのもの） |
 | `environments[].variables[].state` | 文字列 | `absent` | その Environment に、その名前の Environment Variable が存在しないこと | Environment Variable（関連リソースそのもの） |
 
 - **`name` は必須である**：`name` のない要素は、`deployment_branch_policy` や `variables` を書いていても入力不正として拒否する。どの Environment の宣言かを補わない
@@ -408,7 +457,7 @@ actions:
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
 
-### 10.1 Environment の名前
+### 11.1 Environment の名前
 
 `name` は、空でなく、255 文字以下で、印字可能な ASCII 文字（U+0020 から U+007E）だけからなる文字列です。前後に空白を持たず、`.` と `..` ではありません。`/` は位置を問わず含められ、空白は前後でなければ含められます。
 
@@ -422,7 +471,7 @@ ASCII 以外の文字と制御文字を受け付けないのは、GitHub が大�
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
 
-### 10.2 デプロイ元制限の入力の組み合わせと `patterns`
+### 11.2 デプロイ元制限の入力の組み合わせと `patterns`
 
 `deployment_branch_policy` は、方式と個別パターンの一覧をまとめた一つの設定グループです。`mode` と `patterns` の組み合わせは次のとおりです。
 
@@ -461,7 +510,7 @@ environments:
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Repository File |
 
-### 10.3 Environment Variables
+### 11.3 Environment Variables
 
 `environments[].variables` は、その Environment に属する Environment Variable を名前ごとに宣言するシーケンスです。Environment Variable は関連リソースであり、2.1節の規則に従います。2.1節の2つ目の規則（書いた関連リソースが存在しなければ作成する）は、変数にも、属する先の Environment にも当てはまります。変数を書くことは、属する先の Environment が存在することの宣言を兼ねるためです。
 
@@ -473,10 +522,10 @@ environments:
         value: ap-northeast-1
 ```
 
-- **要素の形は `actions.variables` と同じである**：`name` は必須で、`value` か `state: absent` のどちらか一方を書く。名前は 9.1節、値は 9.2節、存在しないことの宣言は 9.3節の規則に従う
+- **要素の形は `actions.variables` と同じである**：`name` は必須で、`value` か `state: absent` のどちらか一方を書く。名前は 10.1節、値は 10.2節、存在しないことの宣言は 10.3節の規則に従う
 - **`value` を書いた要素は存在と値の宣言を兼ねる**：書いた名前の Environment Variable が存在しなければ作成を計画し、存在して値が違えば値の変更を計画する
 - **`state: absent` を書いた要素は、存在しないことの宣言である**：その名前の Environment Variable が存在すれば削除を計画する。`state: absent` の変数だけを書いた Environment も、Environment の存在の宣言を兼ね、存在しなければ作成を計画する
-- **重複は一つの Environment の中で判定する**：同じ Environment の `variables` に同じ名前（9.1節の判定）が複数あれば、入力不正として拒否する。別の Environment の同じ名前と、`actions.variables` の同じ名前は、重複ではない
+- **重複は一つの Environment の中で判定する**：同じ Environment の `variables` に同じ名前（10.1節の判定）が複数あれば、入力不正として拒否する。別の Environment の同じ名前と、`actions.variables` の同じ名前は、重複ではない
 - **同じ名前の Repository Variable とは別の管理設定である**：`actions.variables` と `environments[].variables` に同じ名前を書いても、値を同期しない
 
 | Relationship | Target | Target Type |
@@ -486,7 +535,7 @@ environments:
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub Actions 変数 API 仕様](../research/actions-variables.md) | Repository File |
 
-## 11. Security
+## 12. Security
 
 | YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
 |---|---|---|---|---|
@@ -496,11 +545,11 @@ environments:
 | `security.secret_scanning_push_protection` | 真偽値 | `true` / `false` | シークレットを含む push を、リポジトリの push protection で拒否するか。利用者が自分のアカウントに設定する push protection とは別の設定 | 独立 |
 | `security.private_vulnerability_reporting` | 真偽値 | `true` / `false` | 見つけた脆弱性を、公開せずにメンテナーへ報告できる Private vulnerability reporting を有効にするか | 独立 |
 
-5つの設定は独立した管理の単位で、どれか一つだけを宣言できます。5つとも省略した `security` は、空のマッピングとして拒否します（13.1節）。Dependabot の2設定のどちらの期待値も、もう一方の設定の状態を含みません。Secret scanning の2設定についても同じです。
+5つの設定は独立した管理の単位で、どれか一つだけを宣言できます。5つとも省略した `security` は、空のマッピングとして拒否します（14.1節）。Dependabot の2設定のどちらの期待値も、もう一方の設定の状態を含みません。Secret scanning の2設定についても同じです。
 
 5つの設定のいずれかの値が真偽値でない誤りは、次に挙げる組み合わせの誤りより先に示します。Dependabot の2設定の組み合わせの誤りと、Secret scanning の2設定の組み合わせの誤りが両方あるときは、Dependabot の誤りを示します。
 
-### 11.1 Dependabot
+### 12.1 Dependabot
 
 GitHub が Dependabot security updates を一時停止していても、設定としては有効のままです（[GitHub リポジトリ API 仕様](../research/repositories.md) 7章）。そのため、一時停止中の Dependabot security updates は `dependabot_security_updates: true` と一致します。一時停止は宣言できず、reco は一時停止を解除しません。
 
@@ -515,7 +564,7 @@ GitHub が Dependabot security updates を一時停止していても、設定�
 
 `dependabot_alerts: false` と `dependabot_security_updates: true` を同時に宣言できないのは、GitHub が、Dependabot alerts が無効のリポジトリで Dependabot security updates の有効化を拒否し（GitHub リポジトリ API 仕様 7章）、この状態を実現できないためです。値の誤りを先に示すのは、組み合わせが2つの値で決まるためです。Dependency graph は宣言を受け付けない設定です。
 
-### 11.2 Secret scanning
+### 12.2 Secret scanning
 
 2つの設定の組み合わせは次のとおりです。
 
@@ -530,7 +579,7 @@ GitHub が Dependabot security updates を一時停止していても、設定�
 
 2つの設定は、reco が公開リポジトリでだけ管理する設定です。
 
-### 11.3 Private vulnerability reporting
+### 12.3 Private vulnerability reporting
 
 `private_vulnerability_reporting` は、ほかの設定との組み合わせの規則を持ちません。reco が公開リポジトリでだけ管理する設定です。
 
@@ -542,20 +591,20 @@ GitHub が Dependabot security updates を一時停止していても、設定�
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
 
-## 12. Rulesets
+## 13. Rulesets
 
 `rulesets` は、リポジトリの Ruleset を名前ごとに宣言するシーケンスです。Ruleset は関連リソースであり、2.1節の規則に従います。
 
 | YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
 |---|---|---|---|---|
 | `rulesets` | シーケンス | Ruleset の宣言を1件以上 | 管理する Ruleset の一覧 | なし（要素ごとに定まる） |
-| `rulesets[].name` | 文字列 | 12.1節の名前 | 管理する Ruleset の名前 | Ruleset（関連リソースそのもの） |
+| `rulesets[].name` | 文字列 | 13.1節の名前 | 管理する Ruleset の名前 | Ruleset（関連リソースそのもの） |
 | `rulesets[].target` | 文字列 | `branch` | Ruleset が対象にする ref の種類 | Ruleset（関連リソースそのもの） |
 | `rulesets[].enforcement` | 文字列 | `active` / `disabled` | ルールを強制するか | Ruleset（関連リソースそのもの） |
-| `rulesets[].conditions.ref_name.include` | シーケンス | 12.3節のパターンを0件以上（`[]` 可） | 対象にするブランチのパターン | Ruleset（関連リソースそのもの） |
-| `rulesets[].conditions.ref_name.exclude` | シーケンス | 12.3節のパターンを0件以上（`[]` 可） | 対象から外すブランチのパターン | Ruleset（関連リソースそのもの） |
-| `rulesets[].bypass_actors` | シーケンス | 12.4節の要素を0件以上（`[]` 可） | ルールを Bypass できる主体の全体 | Ruleset（関連リソースそのもの） |
-| `rulesets[].rules` | シーケンス | 12.5節の要素を0件以上（`[]` 可） | Ruleset が強制するルールの全体 | Ruleset（関連リソースそのもの） |
+| `rulesets[].conditions.ref_name.include` | シーケンス | 13.3節のパターンを0件以上（`[]` 可） | 対象にするブランチのパターン | Ruleset（関連リソースそのもの） |
+| `rulesets[].conditions.ref_name.exclude` | シーケンス | 13.3節のパターンを0件以上（`[]` 可） | 対象から外すブランチのパターン | Ruleset（関連リソースそのもの） |
+| `rulesets[].bypass_actors` | シーケンス | 13.4節の要素を0件以上（`[]` 可） | ルールを Bypass できる主体の全体 | Ruleset（関連リソースそのもの） |
+| `rulesets[].rules` | シーケンス | 13.5節の要素を0件以上（`[]` 可） | Ruleset が強制するルールの全体 | Ruleset（関連リソースそのもの） |
 
 - **`name`、`target`、`enforcement`、`conditions`、`bypass_actors`、`rules` はどれも必須である**：省略を空のシーケンスや GitHub の既定値に補わない。要素が持てるキーはこの6つだけで、`id` と `state` も受け付けない
 - **要素は、存在と値の宣言を兼ねる**：書いた名前の Ruleset が存在しなければ作成を計画し、存在して値が違えば値の変更を計画する
@@ -572,7 +621,7 @@ GitHub が Dependabot security updates を一時停止していても、設定�
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub Rules API 仕様](../research/rules.md) | Repository File |
 
-### 12.1 Ruleset の名前
+### 13.1 Ruleset の名前
 
 `name` は、空でなく、印字可能な ASCII 文字（U+0020 から U+007E）だけからなり、前後に空白を持たない文字列です。空白は前後でなければ含められ、`/` や `.` も含められます。
 
@@ -580,13 +629,13 @@ GitHub が Dependabot security updates を一時停止していても、設定�
 
 ASCII 以外の文字と制御文字を受け付けないのは、GitHub が大文字小文字のほかにアクセントの有無も同じ名前とみなし、ほかの文字の規則が分かっていないためです（[GitHub Rules API 仕様](../research/rules.md) 2章）。前後の空白を受け付けないのは、GitHub が黙って除いて保存し、宣言と保存される名前が食い違うためです（同 2章）。名前の長さは入力検証で確かめません。公式資料が上限を記載していないためです。
 
-### 12.2 `target` と `enforcement`
+### 13.2 `target` と `enforcement`
 
 `target` に書ける値は `branch` だけです。タグと Push の Ruleset は扱いません。
 
 `enforcement` に書ける値は `active` と `disabled` です。GitHub の値には `evaluate` もありますが、reco は宣言として受け付けません。reco がサポートする個人アカウント所有のリポジトリでは、GitHub が `evaluate` を拒否するためです（[GitHub Rules API 仕様](../research/rules.md) 4.2）。
 
-### 12.3 対象の条件
+### 13.3 対象の条件
 
 `conditions` は `ref_name` だけを持ち、`ref_name` は `include` と `exclude` の両方を持ちます。どちらも省略できず、`[]` は空集合を明示します。
 
@@ -601,7 +650,7 @@ conditions:
     exclude: []
 ```
 
-### 12.4 Bypass
+### 13.4 Bypass
 
 `bypass_actors` の要素は、`actor_type`、`actor_id`、`bypass_mode` を持つマッピングです。受け付ける組は次のとおりです。
 
@@ -619,7 +668,7 @@ conditions:
 
 誤りは、`actor_type`、`actor_id` の有無、`actor_id` の値、`bypass_mode`、同じ主体の重複の順に示します。
 
-### 12.5 ルール
+### 13.5 ルール
 
 `rules` の要素は、`type` と、型が持つなら `parameters` を持つマッピングです。受け付ける `type` は `pull_request` と `deletion` だけです。同じ `type` の要素を二つ書けません。誤りは、`type`、`parameters` の有無、`parameters` の中身、同じ `type` の重複の順に示します。
 
@@ -649,7 +698,7 @@ rules:
 
 `rules: []` は、ルールを一つも持たない Ruleset の宣言です。
 
-## 13. 入力検証と対象名
+## 14. 入力検証と対象名
 
 入力検証では、YAML の構造・値の形式と、宣言されたリポジトリ名・重複の条件を確認します。不正な入力は、問題の箇所と理由を示して拒否します。
 
@@ -658,7 +707,7 @@ rules:
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `FR-002` | Functional Requirement |
 
-### 13.1 YAML の形式と値
+### 14.1 YAML の形式と値
 
 | 条件 | 判定 |
 |---|---|
@@ -700,8 +749,12 @@ rules:
 | `value: 1.27`（変数の値） | エラー（文字列ではない。`"1.27"` を直し方として示す） |
 | `value: ""`（変数の値） | エラー（空文字列） |
 | `value: ~`（変数の値） | エラー（`null`） |
+| `use_default: false` だけ（`oidc_subject`） | エラー（key が必要） |
+| `use_default: true` と `include_claim_keys: [repo]`（`oidc_subject`） | エラー（既定の形を使うときは key を指定できない） |
+| `include_claim_keys: [repo, job-workflow]` | エラー（`-` は claim key の形式に合わない） |
+| `include_claim_keys: [Repo]` | 値の形式は有効。GitHub が受け付けないため、`apply` の更新操作が失敗する |
 
-### 13.2 リポジトリ名と重複
+### 14.2 リポジトリ名と重複
 
 `name` は、`OWNER` と `REPO` を一つの `/` で区切った `OWNER/REPO` 形式の文字列です。`OWNER` と `REPO` はともに空ではなく、ASCII の英数字と `-`、`_`、`.` だけからなり、`.` と `..` ではありません。このため、空白、制御文字、ASCII 以外の文字を含む名前は受け付けません。URL や、末尾に `.git` を付けたクローン用の表記（`.GIT` のように大文字小文字が異なるものを含む）は受け付けません。この値は名前による **リポジトリ指定** であり、GitHub のリポジトリ ID や、実体の存在確認を表すものではありません。
 
@@ -715,13 +768,14 @@ GitHub は所有者名・リポジトリ名を大文字小文字非依存で扱�
 | `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Repository File |
 | `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
 
-## 14. References
+## 15. References
 
 - [要求定義](requirements.md)
 - [設定ごとの設計](../design/settings/README.md)
 - [GitHub REST API 共通仕様](../research/rest-api.md)
 - [GitHub リポジトリ API 仕様](../research/repositories.md)
 - [GitHub Actions 権限 API 仕様](../research/actions-permissions.md)
+- [GitHub Actions OIDC API 仕様](../research/actions-oidc.md)
 - [GitHub Actions 変数 API 仕様](../research/actions-variables.md)
 - [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md)
 - [GitHub Rules API 仕様](../research/rules.md)

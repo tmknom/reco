@@ -46,6 +46,13 @@ func TestUpdateEndpointObservedSettings(t *testing.T) {
 		}
 	})
 
+	t.Run("oidc subject endpoint observes only the oidc subject", func(t *testing.T) {
+		want := []setting.Key{setting.OIDCSubject}
+		if got := OIDCSubjectEndpoint.ObservedSettings(); !slices.Equal(got, want) {
+			t.Errorf("ObservedSettings() = %v, want %v", got, want)
+		}
+	})
+
 	// 上限は設定ではないため、保持日数を変える更新の前後で比べる設定に含めない。
 	t.Run("retention endpoint observes only the retention days", func(t *testing.T) {
 		want := []setting.Key{setting.RetentionDays}

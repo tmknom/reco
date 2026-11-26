@@ -38,6 +38,7 @@ type SettingPlan struct {
 	Unit setting.Unit
 	// Observed は計画時の設定の観測結果。関連リソースそのものの計画では、存在の観測結果である。
 	// 観測不能のときだけ比較不能になり、その理由が比較できない理由になる。
+	// 省略できる項目を省略した管理設定では、その項目を除いた値である。
 	Observed github.SettingObservation[setting.Value]
 	// EnvironmentIdentity は、Environment そのものの計画で、計画時に存在を観測した Environment の ID。承認されると変更前提の同一性の基準になる。
 	// ほかの計画と、存在しない Environment の計画ではゼロ値。

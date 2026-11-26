@@ -42,7 +42,7 @@ reco [--log-level LEVEL] show  --repo OWNER/REPO
 
 ### 2.3 リポジトリ指定と対象選択
 
-`--repo` の値は、[YAML 設定仕様](configuration.md) の第13.2節で定めるリポジトリ指定です。
+`--repo` の値は、[YAML 設定仕様](configuration.md) の第14.2節で定めるリポジトリ指定です。
 
 `plan` / `apply` の `--repo` には、設定ファイルで宣言したリポジトリだけを指定できます。設定宣言全体は対象選択の有無にかかわらず検証します。
 
@@ -98,7 +98,7 @@ $ GH_TOKEN=$(gh auth token) reco plan
 
 一つのリポジトリに複数の変更予定があるときは、[YAML 設定仕様](configuration.md) の章と表の並びで表示します。設定宣言での記述順には従いません。
 
-関連リソースの変更予定も YAML 設定仕様の章の並びに従い、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。たとえば Repository Variables（9章）の変更予定は、Environments（10章）の変更予定より前に、Environments の変更予定は Security（11章）の変更予定より前に、Ruleset（12章）の変更予定は Security の変更予定のあとに表示します。Environment Variable の変更予定は、属する Environment の存在と `deployment_branch_policy` の変更予定の直後に、`variables` に書いた順で表示し、次の Environment の変更予定はそのあとに表示します（YAML 設定仕様 10章）。
+関連リソースの変更予定も YAML 設定仕様の章の並びに従い、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。たとえば Repository Variables（10章）の変更予定は、Environments（11章）の変更予定より前に、Environments の変更予定は Security（12章）の変更予定より前に、Ruleset（13章）の変更予定は Security の変更予定のあとに表示します。Environment Variable の変更予定は、属する Environment の存在と `deployment_branch_policy` の変更予定の直後に、`variables` に書いた順で表示し、次の Environment の変更予定はそのあとに表示します（YAML 設定仕様 11章）。
 
 関連リソースの作成と削除は、確認済みの差分として示し、集計の変更予定数に数えます。存在しないと確認できたことは、比較できる事実だからです。作成と削除は、設定の値の変更と見分けられる形で示し、削除では失われる値を示します。宣言に名前のない関連リソースは、変更計画に示しません。
 
@@ -250,6 +250,19 @@ Repository: example/private-project
     -> run_workflows_from_fork_pull_requests: true, send_write_tokens_to_workflows: true, send_secrets_and_variables: true, require_approval_for_fork_pr_workflows: true
     Note: Workflows triggered by pull requests from forks get a GITHUB_TOKEN with write permissions
     Note: Workflows triggered by pull requests from forks can use secrets and variables
+
+Plan: 1 repository to update, 1 change
+Repositories checked: 1
+```
+
+OIDC トークンの subject のカスタマイズの変更予定も、3項目を並べた値が長いため、同じく現在値と期待値を1行ずつ示します。値は `use_default`、`include_claim_keys`、`use_immutable_subject` の順に並べ、key は二重引用符で囲んでエスケープし、並びの順のまま示します。`use_default` が `true` の値は `include_claim_keys` を示しません。`use_immutable_subject` を宣言していないときは、現在値と期待値のどちらにも `use_immutable_subject` を示しません。宣言していない項目は管理範囲外で、reco はその値を変えないためです。
+
+```text
+Repository: example/project-a
+  actions.oidc_subject:
+    use_default: true
+    -> use_default: false, include_claim_keys: ["repo", "context"]
+    Note: This changes how the subject claim of OIDC tokens is composed; trust conditions in external cloud providers that match the current subject claim may stop matching
 
 Plan: 1 repository to update, 1 change
 Repositories checked: 1
@@ -674,6 +687,8 @@ Ruleset の作成か値の変更のあとに Ruleset が存在しなかった場
 
 変更対象外の設定は、管理設定と同じ形の名前で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` がデプロイを待たせる分数、`required_reviewers` が `reviewers: [User 583231, Team 42], prevent_self_review: true` の1行（レビュアーは GitHub が返した順）、`can_admins_bypass` が `true` か `false` です。`wait_timer` と `required_reviewers` は、その保護ルールがなければ `none` と示します。複数が変わっていれば、`wait_timer`、`required_reviewers`、`can_admins_bypass` の順に1行ずつ示します。保護設定は reco が宣言を受け付けず、`show` も表示しないため、名前と値の表記はここで定めます。
 
+設定グループの省略できる項目を省略した宣言で、その項目が更新の前後で変わった場合は、`<管理設定の名前>.<項目のキー>` の名前で示します。OIDC トークンの subject のカスタマイズの `use_immutable_subject` は、`actions.oidc_subject.use_immutable_subject` と示し、値は `true` か `false` です。
+
 更新操作が成功したのに期待状態と一致しない場合、reco は原因を断定しません。設定ごとの設計が原因の候補を挙げている場合は、`Possible cause:` として可能性の形で添えます。更新操作の成否が不明な場合は添えません。
 
 ### 5.3 異常時の表示例
@@ -998,10 +1013,9 @@ repositories:
           require_approval_for_fork_pr_workflows: false
       retention:
         days: 90 # maximum allowed: 400
-      # reco does not accept the OIDC subject customization in the configuration file yet
-      # oidc_subject:
-      #   use_default: true
-      #   use_immutable_subject: true
+      oidc_subject:
+        use_default: true
+        use_immutable_subject: true
       # variables: none
     # environments: none
     security:
@@ -1014,8 +1028,6 @@ repositories:
 ```
 
 表示するのは、設定宣言に書ける管理設定と関連リソースに限ります。Environment の保護設定（`wait_timer`、`required_reviewers`、`can_admins_bypass`）のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
-
-`actions` の `oidc_subject` は、この規定の例外です。設定宣言は OIDC トークンの subject クレームのカスタマイズを受け付けませんが、`retention` と `variables` のあいだに値を示します。外部のクラウドなどの受け取る側が subject を信頼の条件と照らし合わせるため、宣言を受け付けない設定でも、利用者が条件と比べられるよう現在の形を示します。`oidc_subject` とその下の行は YAML のコメントとして示し、その前の行で、設定宣言に書けないことを示します。コメントにするのは、表示を設定宣言として読めるままにし、書けない設定であることを利用者が行を見て分かるようにするためです。
 
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
@@ -1044,7 +1056,7 @@ Actions が無効のリポジトリでは、`enabled` だけを示します。
         enabled: false
 ```
 
-公開リポジトリでは、`access` とその下の行をコメントとして示します。`access` の下に設定のない空のマッピングは、設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 13.1節）。
+公開リポジトリでは、`access` とその下の行をコメントとして示します。`access` の下に設定のない空のマッピングは、設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 14.1節）。
 
 ```text
       # access:
@@ -1069,33 +1081,30 @@ Artifact と Log などの保持期間は、`retention` の `days` に保持日�
 OIDC トークンの subject クレームのカスタマイズは、`oidc_subject` に示します。GitHub の既定の subject の形を使うかを `use_default` に、immutable subject の形を選んでいるかを `use_immutable_subject` に、`true` か `false` で示します。`use_default` が `false` のときに限り、二つのあいだに `include_claim_keys` を示し、クレームの key を `patterns_allowed` のパターンと同じく二重引用符で囲んでエスケープし、1行に一つずつ並べます。GitHub は key を送られた順のまま返し、公式資料の例では subject がその順に組み立てられるため、reco は GitHub が返した順のまま並べます。key が一つもないときは `[]` と示します。`use_default` が `true` のときは、`include_claim_keys` の行を示しません。key を持たない状態であることは `use_default` の行から分かるためです。subject の接頭辞（`sub_claim_prefix`）と、発行される subject の文字列は示しません。subject のカスタマイズは、公開範囲と Actions の有効状態によらず示します。
 
 ```text
-      # reco does not accept the OIDC subject customization in the configuration file yet
-      # oidc_subject:
-      #   use_default: false
-      #   include_claim_keys:
-      #     - "repo"
-      #     - "context"
-      #   use_immutable_subject: false
+      oidc_subject:
+        use_default: false
+        include_claim_keys:
+          - "repo"
+          - "context"
+        use_immutable_subject: false
 ```
 
 既定の形を使うリポジトリと、既定の形を使わず key が一つもないリポジトリの表示は、それぞれ次のとおりです。
 
 ```text
-      # reco does not accept the OIDC subject customization in the configuration file yet
-      # oidc_subject:
-      #   use_default: true
-      #   use_immutable_subject: false
+      oidc_subject:
+        use_default: true
+        use_immutable_subject: false
 ```
 
 ```text
-      # reco does not accept the OIDC subject customization in the configuration file yet
-      # oidc_subject:
-      #   use_default: false
-      #   include_claim_keys: []
-      #   use_immutable_subject: false
+      oidc_subject:
+        use_default: false
+        include_claim_keys: []
+        use_immutable_subject: false
 ```
 
-関連リソースは、種類ごとに、存在するものをすべて示します。並びは GitHub が一覧で返した順で、reco は並べ替えません。名前は二重引用符で囲み、制御文字をエスケープして示します。エスケープは YAML の二重引用符のスカラーとして読める表記です。一つもないときは、種類のキーを省かず、YAML のコメントとして `none` と示します。キーを省くと、存在しないと確かめたことと、reco がその種類を表示しないことを区別できないためです。コメントにするのは、空のシーケンスを設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 13.1節）。
+関連リソースは、種類ごとに、存在するものをすべて示します。並びは GitHub が一覧で返した順で、reco は並べ替えません。名前は二重引用符で囲み、制御文字をエスケープして示します。エスケープは YAML の二重引用符のスカラーとして読める表記です。一つもないときは、種類のキーを省かず、YAML のコメントとして `none` と示します。キーを省くと、存在しないと確かめたことと、reco がその種類を表示しないことを区別できないためです。コメントにするのは、空のシーケンスを設定宣言として読めないためです（[YAML 設定仕様](configuration.md) 14.1節）。
 
 Repository Variables は `actions` の `variables` に示します。変数ごとに、`name` と `value` を示します。どちらも Environment の名前と同じく二重引用符で囲んでエスケープし、1行で示します。改行や制御文字を含む値も1行になります。値は省略せず、長い値もそのまま示します。省略した値を設定宣言として読むと、省略した値への変更を宣言することになるためです。値が空文字列の変数は、存在する変数として `value: ""` と示します。
 
@@ -1225,7 +1234,7 @@ Ruleset が一つもないときは `# rulesets: none` と示します。非公�
 
 GitHub は、Ruleset への書き込みのアクセスを持たない利用者には Bypass を返しません（[GitHub Rules API 仕様](../research/rules.md) 3.2）。この場合は、下に述べる権限の不足による欠落として、`bypass_actors` を示してエラーとします。
 
-表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。解釈しない部分を含む Ruleset（`name` だけが値として残り、必須のキーの欠落になる）、`enforcement: evaluate` や `conditions: {}` の Ruleset、`2`・`4`・`5` 以外の `RepositoryRole` の Bypass、GitHub が重複して返した Ruleset のパターンや Bypass の主体、ASCII 以外の文字を含む Ruleset の名前、`organization` の `access_level`、`run_workflows_from_fork_pull_requests` が `false` でほかの3項目のどれかが `true` の Fork Pull Request ワークフローの実行条件、`1` 未満の保持日数、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable や Environment Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 13章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
+表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。解釈しない部分を含む Ruleset（`name` だけが値として残り、必須のキーの欠落になる）、`enforcement: evaluate` や `conditions: {}` の Ruleset、`2`・`4`・`5` 以外の `RepositoryRole` の Bypass、GitHub が重複して返した Ruleset のパターンや Bypass の主体、ASCII 以外の文字を含む Ruleset の名前、`organization` の `access_level`、`run_workflows_from_fork_pull_requests` が `false` でほかの3項目のどれかが `true` の Fork Pull Request ワークフローの実行条件、`1` 未満の保持日数、`use_default` が `false` で key が一つもない（`include_claim_keys: []` と示す）OIDC トークンの subject のカスタマイズ、claim key の形式に合わない key や重複した key、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable や Environment Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 14章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
 
 権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。行を省かず、欠けた項目を示してエラーとします。
 

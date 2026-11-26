@@ -58,10 +58,9 @@ repositories:
           require_approval_for_fork_pr_workflows: false
       retention:
         days: 90 # maximum allowed: 400
-      # reco does not accept the OIDC subject customization in the configuration file yet
-      # oidc_subject:
-      #   use_default: true
-      #   use_immutable_subject: true
+      oidc_subject:
+        use_default: true
+        use_immutable_subject: true
       variables:
         - name: "GO_VERSION"
           value: "1.27"
@@ -97,7 +96,6 @@ repositories:
 | `# access:` と `#   access_level: unavailable (the repository is public)` | 公開リポジトリのため、`access_level` を読み取れない。この設定は非公開リポジトリにだけ書ける |
 | `# approval_policy: unavailable (the repository is private)` / `# private_repositories: unavailable (the repository is public)` | Fork からの Pull Request のワークフローの承認ポリシー（`approval_policy`）は公開リポジトリにだけ、実行条件（`private_repositories`）は非公開リポジトリにだけあるため、非公開リポジトリでは `approval_policy` を、公開リポジトリでは `private_repositories` を読み取れない。読み取れた側は、`fork_pull_requests` とともに設定ファイルに書ける行として表示する |
 | `days: 90 # maximum allowed: 400` | 保持日数は90日で、このリポジトリで設定できる上限は400日 |
-| `# reco does not accept the OIDC subject customization in the configuration file yet` と、続く `# oidc_subject:` の下の行 | ワークフローが外部のクラウドなどへの認証に使う OIDC トークンの、subject の形の設定。`use_default: true` は GitHub の既定の形を使っていることを、`false` は `include_claim_keys` に並ぶ key で subject を組み立てていることを表す。`use_immutable_subject: true` は、所有者とリポジトリの ID を含む immutable subject の形を選んでいることを表す。この設定は設定ファイルに書けないため、コメントで表示する |
 | `dependabot_security_updates: true # paused by GitHub (still enabled)` | Dependabot security updates は有効だが、GitHub が一時停止している。設定ファイルでは `true` と書いたのと同じ |
 | `# secret_scanning: unavailable (the repository is private)` / `# secret_scanning_push_protection: unavailable (the repository is private)` / `# private_vulnerability_reporting: unavailable (the repository is private)` | 非公開リポジトリのため、Secret scanning、リポジトリの push protection、Private vulnerability reporting の値を読み取れない |
 | `# rulesets: none` | Ruleset が一つもない |
@@ -143,7 +141,8 @@ Repositories checked: 1
 | `rulesets.<名前>: absent -> present` と、その下の `target:` から `rules:` までの行 | 設定ファイルに書いた Ruleset が GitHub 上にない。下の行は、作成する Ruleset の内容 |
 | `rulesets.<名前>:` と、その下の変わる部分の行 | Ruleset の内容が設定ファイルと違う。`... to remove:` の行は、設定ファイルにないためなくなるパターン、迂回できる主体、ルール。`... to add:` の行は加わるもの。`enforcement: disabled -> active` や `Rule pull_request: ...` の行は、値が変わる項目。`conditions: {} -> ref_name` の行は、GitHub 上の Ruleset が対象のブランチの条件を持たないことを示す |
 | `actions.fork_pull_requests.private_repositories:` の下に、今の値の行と `-> <書いた値>` の行 | 非公開リポジトリの Fork からの Pull Request のワークフローの実行条件。4項目をまとめて一つの変更として示す |
-| `Note:` | すぐ上の変更が GitHub 上で何を意味するか。Fork からの Pull Request で起動したワークフローに、書き込み権限を持つ `GITHUB_TOKEN` が渡るようになること、Secrets と Variables が使えるようになることを示す。変更を止めるものではなく、承認の前に読むための行である |
+| `actions.oidc_subject:` の下に、今の値の行と `-> <書いた値>` の行 | OIDC トークンの subject の形の設定。`use_default`、`include_claim_keys`、`use_immutable_subject` をまとめて一つの変更として示す。設定ファイルに `use_immutable_subject` を書いていなければ、どちらの行にも出ない |
+| `Note:` | すぐ上の変更が GitHub 上で何を意味するか。Fork からの Pull Request で起動したワークフローに、書き込み権限を持つ `GITHUB_TOKEN` が渡るようになること、Secrets と Variables が使えるようになることや、OIDC トークンの subject の形が変わり、外部のクラウドなどの信頼の条件と一致しなくなり得ることを示す。変更を止めるものではなく、承認の前に読むための行である |
 | `Side effect:` | この変更に伴って GitHub が消すか変える値 |
 | `Previous settings:` | Actions を有効に戻すと、設定ファイルに書いていない設定は、無効にする前の値で再開すること |
 | `Plan:` | 変える予定のリポジトリの数と、変える設定の数 |

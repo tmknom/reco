@@ -70,6 +70,20 @@ func TestSettingPlan_Notes(t *testing.T) {
 			},
 		},
 		{
+			name: "oidc subject mismatch in use_default notes the subject change",
+			plan: oidcPlan(oidcDefault(nil), oidcKeys(nil, "repo"), Mismatch),
+			want: []PlannedChangeNote{NoteOIDCSubjectChanges},
+		},
+		{
+			name: "oidc subject mismatch only in the declared immutable subject notes the subject change",
+			plan: oidcPlan(oidcDefault(new(false)), oidcDefault(new(true)), Mismatch),
+			want: []PlannedChangeNote{NoteOIDCSubjectChanges},
+		},
+		{
+			name: "oidc subject match notes nothing",
+			plan: oidcPlan(oidcDefault(nil), oidcDefault(nil), Match),
+		},
+		{
 			name: "setting other than the conditions notes nothing",
 			plan: SettingPlan{Unit: setting.Unit{Key: setting.CanApprovePullRequestReviews}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch},
 		},
@@ -80,5 +94,22 @@ func TestSettingPlan_Notes(t *testing.T) {
 				t.Errorf("Notes() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func oidcDefault(immutable *bool) setting.OIDCSubjectCustomization {
+	return setting.OIDCSubjectCustomization{UseDefault: true, UseImmutableSubject: immutable}
+}
+
+func oidcKeys(immutable *bool, keys ...string) setting.OIDCSubjectCustomization {
+	return setting.OIDCSubjectCustomization{IncludeClaimKeys: keys, UseImmutableSubject: immutable}
+}
+
+func oidcPlan(observed, desired setting.OIDCSubjectCustomization, result ReconciliationResult) SettingPlan {
+	return SettingPlan{
+		Unit:     setting.Unit{Key: setting.OIDCSubject},
+		Observed: github.Observed(setting.OIDCSubjectCustomizationValue(observed)),
+		Desired:  setting.OIDCSubjectCustomizationValue(desired),
+		Result:   result,
 	}
 }

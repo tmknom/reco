@@ -28,6 +28,23 @@ func retentionDaysChange() changeplan.LogicalChange {
 	return singleUpdate(setting.RetentionDays, setting.RetentionDaysValue(120), basesOf(setting.RetentionDays, setting.RetentionDaysValue(90)))
 }
 
+// oidcSubjectChange は、subject のカスタマイズを、既定の形から key の並び repo と context に、use_immutable_subject を宣言せずに変える論理的な設定変更。
+// 承認時に予定した値は、省略した項目を除いた形である。
+func oidcSubjectChange() changeplan.LogicalChange {
+	return singleUpdate(
+		setting.OIDCSubject,
+		setting.OIDCSubjectCustomizationValue(setting.OIDCSubjectCustomization{IncludeClaimKeys: []string{"repo", "context"}}),
+		basesOf(setting.OIDCSubject, setting.OIDCSubjectCustomizationValue(setting.OIDCSubjectCustomization{UseDefault: true})),
+	)
+}
+
+// oidcSubjectObservation は、既定の形で use_immutable_subject が immutable の subject のカスタマイズだけを読んだ観測。
+func oidcSubjectObservation(immutable bool) github.ObservationResult {
+	return github.ObservationResult{OIDCSubject: &github.OIDCSubject{Customization: setting.OIDCSubjectCustomization{
+		UseDefault: true, UseImmutableSubject: &immutable,
+	}}}
+}
+
 // privateForkPullRequestWorkflowsChange は、非公開リポジトリの Fork Pull Request ワークフローの実行条件を、
 // すべて false から、実行と Secrets と Variables の送信を許可する値にする論理的な設定変更。
 func privateForkPullRequestWorkflowsChange() changeplan.LogicalChange {

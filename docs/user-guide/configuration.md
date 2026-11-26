@@ -83,7 +83,7 @@ repositories:
 
 ## GitHub Actions の設定
 
-`actions` には、`permissions`（Actions の実行許可）、`workflow`（ワークフローの権限）、`access`（ほかのリポジトリのワークフローからのアクセス）、`fork_pull_requests`（Fork からの Pull Request のワークフローの承認と実行条件）、`retention`（Artifact や Log などの保持期間）、`variables`（Repository Variables）を書きます。使わないものは省けます。
+`actions` には、`permissions`（Actions の実行許可）、`workflow`（ワークフローの権限）、`access`（ほかのリポジトリのワークフローからのアクセス）、`fork_pull_requests`（Fork からの Pull Request のワークフローの承認と実行条件）、`retention`（Artifact や Log などの保持期間）、`oidc_subject`（OIDC トークンの subject の形）、`variables`（Repository Variables）を書きます。使わないものは省けます。
 
 ### Actions の実行許可
 
@@ -224,6 +224,37 @@ repositories:
 - `apply` の承認のあとに上限が下がり、書いた日数が上限を超えた場合は、その変更は `failed` になる
 - 日数を短くしても、新しい日数が適用されるのは、変更のあとに作られる Artifact や Log などだけである
 - `"30"` のように引用符で囲んだ値や、`30.5` のような小数は書けない
+- Actions が無効のリポジトリでも書ける
+
+### OIDC トークンの subject
+
+ワークフローが外部のクラウドなどへ認証するときに示す OIDC トークンは、subject（`sub`）にリポジトリやブランチなどを並べた文字列を持ちます。受け取る側は、この文字列を信頼の条件と照らし合わせます。`actions.oidc_subject` には、subject の形を決める次のキーを書きます。
+
+```yaml
+repositories:
+  - name: example/project-a
+    actions:
+      oidc_subject:
+        use_default: false
+        include_claim_keys:
+          - repo
+          - context
+        use_immutable_subject: true
+```
+
+| キー | 値 | 意味 |
+|---|---|---|
+| `use_default` | `true` / `false` | GitHub の既定の形の subject を使うか。必ず書く |
+| `include_claim_keys` | key の並び | subject を組み立てるクレームの key。`use_default: false` のときだけ、1つ以上書く |
+| `use_immutable_subject` | `true` / `false` | subject のリポジトリの部分に、所有者とリポジトリの ID を含める形を使うか。書かなければ、reco はこの値を変えない |
+
+- `use_default: true` のときは `include_claim_keys` を書けない。GitHub は、既定の形を使うあいだ key を保存しないため
+- `use_default: false` のときは、key を1つ以上書く。key のない状態は、発行される subject の形が分からないため書けない
+- key は書いた順が意味を持つ。`repo` と `context` を入れ替えると別の設定になる
+- key は英数字と `_` だけからなる文字列で、同じ key は二度書けない。reco は使える key の一覧を持たないため、GitHub が受け付けない key（大文字を含む `Repo` など）は `plan` では分からず、`apply` で `failed` になる（[トラブルシューティング](troubleshooting.md)）。そのとき GitHub 上の値は変わらない
+- key を持つ状態から `use_default: true` に変えると、GitHub は保存していた key を消す。あとで `use_default: false` に戻しても、key は戻らない
+- subject の形を変える変更には、`plan` と `apply` の変更計画に `Note:` の行が付く（[コマンドリファレンス](commands.md#plan)）
+- subject の形を変えると、今の subject に合わせて設定した外部のクラウドなどの信頼の条件と一致しなくなり、ワークフローが認証できなくなることがある。新しい形でも認証できるよう、先に外部の信頼の条件を直してから `apply` する（[Safety](safety.md)）
 - Actions が無効のリポジトリでも書ける
 
 ### Repository Variables

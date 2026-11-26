@@ -1,6 +1,6 @@
 # Actions の設計
 
-設定宣言の `actions`（[YAML 設定仕様](../../spec/configuration.md) 4〜9章）に属する設定の設計を定めます。文書の構成は [設定ごとの設計](README.md) に従います。
+設定宣言の `actions`（[YAML 設定仕様](../../spec/configuration.md) 4〜10章）に属する設定の設計を定めます。文書の構成は [設定ごとの設計](README.md) に従います。
 
 ## 設定と管理の単位
 
@@ -19,14 +19,16 @@
 | 保持期間 | Retention | チェック、ワークフローの実行、コミットのステータス、Artifact、Log を保持する期間を定める設定の領域。設定は保持日数（`days`）の一つ。GitHub は同じ取得で、保持日数の上限（`maximum_allowed_days`）を返す。上限は設定できる値の範囲（[ドメインモデル](../domain.md) の観測と GitHub への要求）に当たる |
 | 保持日数 | Retention Days | 保持期間の領域の設定。日数の整数 |
 | OIDC subject | OIDC Subject | ワークフローが外部のクラウドなどへ示す OIDC トークンの subject クレーム（`sub`）の形を定める設定の領域。設定は subject のカスタマイズの一つ。GitHub は同じ取得で subject の接頭辞（`sub_claim_prefix`）を返すが、設定ではなく、reco は読まない |
-| subject のカスタマイズ | OIDC Subject Customization | OIDC subject の領域の設定。既定の形を使うか（`use_default`）、クレームの key の並び（`include_claim_keys`）、immutable subject の形を選ぶか（`use_immutable_subject`）の3項目からなる設定グループ |
+| subject のカスタマイズ | OIDC Subject Customization | OIDC subject の領域の設定。既定の形を使うか（`use_default`）、クレームの key の並び（`include_claim_keys`）、immutable subject の形を選ぶか（`use_immutable_subject`）の3項目からなる設定グループ。`use_immutable_subject` は省略できる項目（[ドメインモデル](../domain.md) の宣言）である |
 | クレームの key の並び | Claim Keys | subject のカスタマイズの項目。subject を組み立てるクレームの key を、指定した順に並べたもの。既定の形を使わないときに限って持つ |
 | Repository Variables | Repository Variables | リポジトリに属する Repository Variable からなる設定の領域 |
 | Repository Variable | Repository Variable | リポジトリに属し、名前と値を持つ関連リソース。GitHub は ID を付けないため、名前だけで識別する種類として扱う |
 
 承認ポリシーは単独の管理の単位です。実行条件は4項目を一つの値とする設定グループで、照合結果、変更予定、適用可能性を4項目の組に対して一つだけ持ちます。実行を許可しないと GitHub がほかの3項目を `false` にするため、項目ごとの期待状態は互いに独立に成り立たないためです（[GitHub Actions 権限 API 仕様](../../research/actions-permissions.md) 8.2）。保持日数は単独の管理の単位です。上限は設定ではなく、管理の単位に含めません。承認ポリシーと実行条件を一つの領域にしないのは、更新エンドポイントが別であることに加え、公開範囲に合わない側だけを宣言したリポジトリで、宣言していない側の取得を送らないためです。一つの領域にすると、その取得の失敗が、宣言していない設定のために変更計画の確認を止めます。
 
-subject のカスタマイズは、3項目を一つの値とする設定グループです。項目ごとの設定に分けると、一つの項目を変える更新が、ほかの項目の値を送らなければ成り立たなくなります。GitHub が3項目を一つの更新エンドポイントで受け付け、`use_default` を必須とし、省略した `include_claim_keys` を消すためです（[GitHub Actions OIDC API 仕様](../../research/actions-oidc.md) 4章）。reco はこの設定を観測して `show` に示しますが、宣言は受け付けず、管理の単位に含めません。
+subject のカスタマイズは、3項目を一つの値とする設定グループです。項目ごとの設定に分けると、一つの項目を変える更新が、ほかの項目の値を送らなければ成り立たなくなります。GitHub が3項目を一つの更新エンドポイントで受け付け、`use_default` を必須とし、省略した `include_claim_keys` を消すためです（[GitHub Actions OIDC API 仕様](../../research/actions-oidc.md) 4章）。
+
+`use_immutable_subject` は省略できる項目です。省略した `use_immutable_subject` を GitHub が保持することを、`use_default` の両方の値で確かめているためです（GitHub Actions OIDC API 仕様 4章）。`use_default` と `include_claim_keys` は省略できる項目にしません。`use_default` は GitHub が必須とし、`include_claim_keys` は省略すると GitHub が保存されていた key を消すためです。
 
 クレームの key の並びは、要素の順序に意味のある値です（[ドメインモデル](../domain.md) の管理の単位と管理設定）。GitHub は key を送られた順のまま保存して返し、公式資料の例では、subject が key の指定の順に組み立てられるためです（GitHub Actions OIDC API 仕様 2〜4章）。key は文字列の完全一致で比べます。
 
@@ -53,7 +55,7 @@ Actions の実行許可は、`GET /repos/{owner}/{repo}/actions/permissions` で
 
 Fork Pull Request ワークフローの承認ポリシーは `GET /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval` で読み、`private` が偽のときだけ送ります。非公開リポジトリの Fork Pull Request ワークフローの実行条件は `GET /repos/{owner}/{repo}/actions/permissions/fork-pr-workflows-private-repos` で読み、`private` が真のときだけ送ります。どちらも、送るかどうかを取得の `422` から推測しない理由は `access_level` と同じです。保持日数とその上限は `GET /repos/{owner}/{repo}/actions/permissions/artifact-and-log-retention` で読み、公開範囲によらず送ります。承認ポリシーと保持期間は、YAML 設定仕様の章の並びに従い、リポジトリ外のワークフローからのアクセスのあと、Repository Variables の前に、この順で読みます。実行条件は承認ポリシーと同じ章に属し、表の並びでは承認ポリシーのあとのため、承認ポリシーと保持期間のあいだに読みます。
 
-subject のカスタマイズは `GET /repos/{owner}/{repo}/actions/oidc/customization/sub` で読み、公開範囲によらず送ります。YAML 設定仕様に章がないため、読む順をここで定め、保持期間のあと、Repository Variables の前に読みます。
+subject のカスタマイズは `GET /repos/{owner}/{repo}/actions/oidc/customization/sub` で読み、公開範囲によらず送ります。YAML 設定仕様の章の並びに従い、保持期間のあと、Repository Variables の前に読みます。
 
 | 取得条件 | 観測不能になる設定 | 根拠 |
 |---|---|---|
@@ -122,6 +124,12 @@ Actions 許可ポリシーを `selected` から `all` / `local_only` へ変え�
 
 Actions を無効から有効にする変更予定には、再開する設定を添えます。GitHub は無効にする前の Actions 許可ポリシー、選択方式の Actions 許可条件、`sha_pinning_required` を残しており、有効に戻すとそれらの値で Actions を実行できるようになるためです（GitHub Actions 権限 API 仕様 3.2・4章）。どの遷移にどの副作用と再開する設定を示すかは、[論理的な設定変更と更新操作](#論理的な設定変更と更新操作) の表が定めます。
 
+subject のカスタマイズの不一致は、Actions の有効状態と公開範囲によらず適用可能です。取得条件を持たないため、比較不能は生じません。外部のクラウドなどの信頼の条件と一致するかは、reco が確かめられず、適用可能性の条件にしません。
+
+subject のカスタマイズの変更予定は、副作用も再開する設定も持ちません。既定の形に変える変更で GitHub が保存されていた key を消し、あとで既定の形を使わない値に戻しても key が戻らないことは（[GitHub Actions OIDC API 仕様](../../research/actions-oidc.md) 4章）、宣言の中の値の変化で、変更予定の期待値に表れるためです。
+
+subject のカスタマイズの変更予定には、どの項目が違う場合でも、変更予定の注記を一つ添えます。3項目のどれを変えても subject クレームの組み立て方が変わり（`use_immutable_subject` は `repo` の部分の形を変える。同 3章）、外部のクラウドなどが現在の subject クレームに合わせて設定した信頼の条件と一致しなくなり得るためです（同 2章）。注記の文言は、組み立て方が変わることと、信頼の条件と一致しなくなり得ることの事実だけを述べます。宣言した key の並びが既定の形と同じ subject クレームを作る場合もあるため、subject クレームが変わるとは断定しません。reco は発行される subject クレームの文字列を解釈しないためです。一致した subject のカスタマイズ（省略した `use_immutable_subject` の観測値だけが違う場合を含む）には添えません。
+
 Repository Variable の変更予定は、どれも適用可能で、副作用も再開する設定も持ちません。変数の数の上限（500件）と値の長さの上限は、計画の時点で確かめません（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 3章）。
 
 | Relationship | Target | Target Type |
@@ -131,6 +139,7 @@ Repository Variable の変更予定は、どれも適用可能で、副作用も
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub Actions 権限 API 仕様](../../research/actions-permissions.md) | Repository File |
 | `grounding` | [GitHub Actions 変数 API 仕様](../../research/actions-variables.md) | Repository File |
+| `grounding` | [GitHub Actions OIDC API 仕様](../../research/actions-oidc.md) | Repository File |
 
 ## 論理的な設定変更と更新操作
 
@@ -179,13 +188,15 @@ Actions が有効であることを含めるのは、更新要求が必須の `e
 
 計画時に無効だったリポジトリでは、Actions を有効にする変更の完了から `sha_pinning_required` の更新までのあいだ、Actions は無効にする前の `sha_pinning_required` で動きます。この状態は、更新要求の間隔のあいだ少なくとも1秒残り、`sha_pinning_required` の変更が完了しなければ残ります。宣言した値に変わるまでの状態で、完了しなかったことは変更結果が示すため、変更計画には示しません。
 
-### `access_level`、承認ポリシー、実行条件、保持日数、Repository Variable
+### `access_level`、承認ポリシー、実行条件、保持日数、subject のカスタマイズ、Repository Variable
 
 `access_level` の変更予定は、一つの更新操作からなる一つの論理的な設定変更で、関係する現在値は `access_level` だけです。承認ポリシーの変更予定も、一つの更新操作からなる一つの論理的な設定変更で、関係する現在値は承認ポリシーだけです。実行条件の変更予定は、`PUT /repos/{owner}/{repo}/actions/permissions/fork-pr-workflows-private-repos` の一つの更新操作からなる一つの論理的な設定変更で、関係する現在値は実行条件（4項目の組）だけです。Actions の有効状態は関係する現在値に含めません。Actions が無効でも取得と更新ができ、有効に戻しても値が残るためです（[GitHub Actions 権限 API 仕様](../../research/actions-permissions.md) 8章・9章）。
 
 保持日数の変更予定も、一つの更新操作からなる一つの論理的な設定変更で、関係する現在値は保持日数だけです。上限は関係する現在値に含めません。個人アカウントが所有する公開・非公開リポジトリで、GitHub は上限を超える値の更新を拒否し、値を変えなかったため（同 9.2）、承認のあとに上限が下がって期待値を下回れば、更新操作の結果は失敗になり、GitHub 上の保持日数は変わりません。更新直前の上限と期待値を比べ直して開始を決めることもしません。変更前提は関係する現在値が承認時に予定した値と同じかで確かめ、値の範囲で開始を許す条件を持たないためです。比べ直しても、観測から更新要求までのあいだに上限が変わり得ることは残ります。
 
 Organization や Enterprise が課す上限で GitHub が拒否するかは確かめていません。拒否せずに成功を応答し、期待値と異なる値を保存した場合も、更新後に保持日数を期待値と比べるため（[変更の実行の設計](../execution.md)）、変更結果は失敗になります。
+
+subject のカスタマイズの変更予定も、`PUT /repos/{owner}/{repo}/actions/oidc/customization/sub` の一つの更新操作からなる一つの論理的な設定変更です。関係する現在値は subject のカスタマイズで、`use_immutable_subject` を省略した宣言では、その項目を除いた値です（[ドメインモデル](../domain.md) の承認と変更前提）。Actions の有効状態は関係する現在値に含めません。Actions が無効でも取得と更新ができるためです（[GitHub Actions OIDC API 仕様](../../research/actions-oidc.md) 1章）。
 
 Repository Variable の変更予定は、変数ごとに一つの更新操作からなる一つの論理的な設定変更で、作成は `POST /repos/{owner}/{repo}/actions/variables`、値の変更は `PATCH /repos/{owner}/{repo}/actions/variables/{name}`、削除は `DELETE /repos/{owner}/{repo}/actions/variables/{name}` です。作成、値の変更、削除が混ざっても、設定宣言で変数を書いた順に実行します。
 
@@ -199,6 +210,7 @@ Repository Variable の変更予定は、変数ごとに一つの更新操作か
 | `alignment` | `INV-005` | Invariant |
 | `grounding` | [GitHub Actions 権限 API 仕様](../../research/actions-permissions.md) | Repository File |
 | `grounding` | [GitHub Actions 変数 API 仕様](../../research/actions-variables.md) | Repository File |
+| `grounding` | [GitHub Actions OIDC API 仕様](../../research/actions-oidc.md) | Repository File |
 
 ## 更新方式
 
@@ -241,6 +253,14 @@ Repository Variable の変更予定は、変数ごとに一つの更新操作か
 
 `PUT /repos/{owner}/{repo}/actions/permissions/artifact-and-log-retention` に必須の `days` だけを送り、`204` を正常応答とします。上限（`maximum_allowed_days`）は送りません。この更新エンドポイントで観測する設定は保持日数だけで、上限は設定ではないため、更新後に比べる変更対象外の設定はありません。送った値が直後の取得に反映され、上限が変わらないことと、Actions が無効のときも更新できることを確かめています（GitHub Actions 権限 API 仕様 9章、9.2）。個人アカウントが所有するリポジトリでは、上限を超える値は、公開リポジトリで `409`、非公開リポジトリで `422` で拒否され、値は変わりません（同 9.2）。どちらも更新操作の失敗です。
 
+### subject のカスタマイズ
+
+`PUT /repos/{owner}/{repo}/actions/oidc/customization/sub` に、`use_default` を常に送り、`use_default` が `false` なら `include_claim_keys` も送ります。`include_claim_keys` は期待値の並びのまま、空でも省略せず配列で送ります。省略すると GitHub が保存されていた key を消し、`null` の扱いは公開ドキュメントにないためです（[GitHub Actions OIDC API 仕様](../../research/actions-oidc.md) 4章）。`use_default` が `true` なら `include_claim_keys` を送りません。GitHub は送っても保存しないためです（同 4章）。`use_immutable_subject` は、宣言したときだけ、`false` も省略せずに送ります。宣言していない `use_immutable_subject` の観測値は送りません。省略した値を GitHub が保持することを、`use_default` の両方の値で確かめているためです（同 4章）。
+
+正常応答は `201` で、本文（`{}`）は解釈しません（[GitHub API 通信の設計](../github-access.md) 3.1節・3.2節の、本文がリソースの表現を返さない正常応答）。受け付けない key と重複した key は `400`、型の違う値は `422` で拒否され、値は変わりません（同 4章）。どちらも更新操作の失敗です。形式に合っても受け付けない key（大文字を含む key など）の宣言は、この失敗で分かります。
+
+この更新エンドポイントで観測する設定は subject のカスタマイズだけです。`use_immutable_subject` を省略した宣言では、更新直前と更新後の `use_immutable_subject` の観測値を、変更対象外の設定と同じく比べます（ドメインモデルの管理の単位と管理設定）。更新の約 0.6〜0.8 秒後の取得から更新後の値が返ることを確かめています（同 4章）。reco が確かめるのは GitHub 上の設定値までで、外部のクラウドなどでの認証が成功するかは確かめません。
+
 ### Repository Variable
 
 | 更新操作 | 送るもの | 正常応答 | GitHub の拒否（更新操作の失敗） |
@@ -260,6 +280,7 @@ Repository Variable の変更予定は、変数ごとに一つの更新操作か
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub Actions 権限 API 仕様](../../research/actions-permissions.md) | Repository File |
 | `grounding` | [GitHub Actions 変数 API 仕様](../../research/actions-variables.md) | Repository File |
+| `grounding` | [GitHub Actions OIDC API 仕様](../../research/actions-oidc.md) | Repository File |
 
 ## シナリオと反例
 
@@ -279,6 +300,9 @@ Repository Variable の変更予定は、変数ごとに一つの更新操作か
 | Actions が無効のリポジトリで、ワークフロー権限、保持日数、subject のカスタマイズか、公開範囲に合う `access_level`、承認ポリシー、実行条件の値が返った | 観測値。取得条件は設定ごとに異なる | Actions が無効なので観測不能とする |
 | `use_default` が `true` の応答に `include_claim_keys` がなかった | 観測値。既定の形を使い、クレームの key の並びを含まない | key が欠けているので取得契約に適合しない応答。または、空の並びを持つ値 |
 | `use_default` が `false` の応答に `include_claim_keys` がなかった | 観測値。空の並びを持つ値 | 既定の形と同じ値。または、取得契約に適合しない応答 |
+| `include_claim_keys` を `repo`、`context` と宣言し、観測値が `context`、`repo` だった | 不一致で適用可能。変更予定の注記を添え、宣言の順で送る | 並びを揃えて比べ、一致 |
+| `use_default: true` と `use_immutable_subject: true` を宣言し、観測値の `use_immutable_subject` だけが `false` だった | 不一致で適用可能。`use_immutable_subject` の変更も subject クレームの形を変えるため、変更予定の注記を添える | `use_default` も key も変わらないので注記を添えない |
+| key を持つ状態から `use_default: true` に変える | 宣言の中の値の変化で、副作用ではない。key は変更予定の現在値に示される | 保存されていた key が失われるので、副作用として示す |
 | 非公開リポジトリで `access_level` を `organization` と観測し、`none` を宣言した | 不一致で適用可能 | `organization` は宣言できない値なので比較不能 |
 | 非公開リポジトリで承認ポリシーを宣言した | 比較不能で適用不能。理由はリポジトリが非公開であること。同じ変更計画が Actions を有効にしても解消しない | 非公開リポジトリの Fork Pull Request ワークフローの実行条件の変更として扱う。または、更新を送って `422` を受けてから判断する |
 | 公開リポジトリで承認ポリシーの変更を承認したあと、更新直前の観測でリポジトリが非公開になっていた | 関係する現在値の変化。承認ポリシーが観測不能になり、承認時に予定した値と同じとは確かめられない。変更結果は未実行 | 観測不能は比べられないので、変更前提は成立する |

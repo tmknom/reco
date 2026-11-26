@@ -181,6 +181,7 @@ GitHub Free のアカウントが所有する非公開リポジトリでは、�
 | `request not processable (HTTP 422)`（`update ruleset` のエラー） | GitHub が Ruleset の内容の置き換えを受け付けなかった。書いた値（`Integration` の `actor_id` など）を GitHub が受け付けなかった可能性がある。値を直してから `apply` し直す |
 | `not found or not accessible (HTTP 404)`（`update ruleset` のエラー） | 内容を置き換える予定の Ruleset が、更新の直前の確認のあとに消された可能性がある。`plan` で今の状態を確かめる。Ruleset がなければ、その Ruleset は作成（`absent -> present`）として出る |
 | `Update request: unknown`（`rulesets.<名前>` の変更） | GitHub が Ruleset の作成か内容の置き換えを受け付けたか分からない。reco は要求を送り直さない。`plan` を実行し、`Applicability: not applicable` の行が出たら、[`Plan cannot be applied.` と表示された](#plan-cannot-be-applied-と表示された) に従う。出なければ、その Ruleset の行が変更計画にあるかを見る。なければ変更は済んでいる。あれば差分を確かめてから `apply` し直す |
+| `unexpected response (HTTP 400)`（`update oidc subject` のエラー） | GitHub が `include_claim_keys` の key を受け付けなかった可能性が高い。reco は key の形式（英数字と `_`）だけを確かめ、GitHub が受け付ける key は確かめない。大文字を含む key（`Repo` など）や、定義にない key がないかを確かめ、直してから `apply` し直す。GitHub 上の値は変わっていない |
 | `Other settings: ... (cause not determined)` | 変えようとしていない設定が、更新の前後で変わっていた。誰かが変えたものかを確かめ、`plan` で今の値を確かめる |
 
 ## References
