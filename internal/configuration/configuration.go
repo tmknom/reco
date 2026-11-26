@@ -57,6 +57,8 @@ type EnvironmentDeclaration struct {
 	Name setting.EnvironmentName
 	// DeploymentBranchPolicy は nil なら期待値の省略で、デプロイ元制限は管理範囲に含まれない。宣言したときは、方式が selected のときだけ、宣言の順の Patterns を持つ。
 	DeploymentBranchPolicy *setting.DeploymentBranchPolicy
+	// RequiredReviewers は nil なら期待値の省略で、担当者の集合は管理範囲に含まれない。required_reviewers: [] は空の集合を指す非 nil。
+	RequiredReviewers *setting.ReviewerSet
 	// Variables は宣言の並びのまま持ち、variables を省略した Environment では nil。
 	Variables []VariableDeclaration
 }
@@ -148,7 +150,7 @@ type ManagedSetting struct {
 }
 
 // ManagedSettings は、管理範囲の管理設定を期待値とともに返す。何も宣言していなければ nil を返す。
-// 並びは、リポジトリ設定 (setting.RepositorySettingUnits の並び)、Repository Variable (宣言の並び)、Environment ごと (宣言の並び) に存在、デプロイ元制限、変数 (宣言の並び)、Ruleset (宣言の並び) である。
+// 並びは、リポジトリ設定 (setting.RepositorySettingUnits の並び)、Repository Variable (宣言の並び)、Environment ごと (宣言の並び) に存在、デプロイ元制限、担当者の集合、変数 (宣言の並び)、Ruleset (宣言の並び) である。
 // Environment の宣言は存在することの期待値を兼ねるため、名前だけの宣言も存在の管理設定になる。
 // Ruleset の宣言は、存在し値が宣言と同じことの期待値を一つの管理設定にする。
 // 管理範囲を読む処理ごとに宣言を走査すると管理設定が食い違うため、ここでだけ列挙する。
@@ -167,6 +169,10 @@ func (d DesiredState) ManagedSettings() []ManagedSetting {
 		if e.DeploymentBranchPolicy != nil {
 			unit := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: e.Name}
 			managed = append(managed, ManagedSetting{Unit: unit, Desired: setting.DeploymentBranchPolicyValue(*e.DeploymentBranchPolicy)})
+		}
+		if e.RequiredReviewers != nil {
+			unit := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: e.Name}
+			managed = append(managed, ManagedSetting{Unit: unit, Desired: setting.ReviewerSetValue(*e.RequiredReviewers)})
 		}
 		for _, v := range e.Variables {
 			managed = append(managed, ManagedSetting{Unit: setting.Unit{Key: setting.EnvironmentVariable, Environment: e.Name, Variable: v.Name}, Desired: v.Desired})
@@ -254,7 +260,7 @@ func (d DesiredState) value(key setting.Key) (value setting.Value, ok bool) {
 		return optionalBoolValue(d.SecretScanning.PushProtection)
 	case setting.PrivateVulnerabilityReportingEnabled:
 		return optionalBoolValue(d.PrivateVulnerabilityReporting.Enabled)
-	case setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentVariable, setting.RulesetResource:
+	case setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentRequiredReviewers, setting.EnvironmentVariable, setting.RulesetResource:
 		// 関連リソースに関わる管理の単位は名前との組で識別するため、この関数では引けない。
 	}
 	panic(fmt.Sprintf("unknown setting %q", key))

@@ -680,6 +680,41 @@ func TestObservationResult_SettingOfEnvironmentDeploymentBranchPolicy(t *testing
 	}
 }
 
+// 別の Environment の担当者を返す誤りと、宣言の名前を綴りのまま比べる誤りを検出するため、
+// 担当者の異なる二つを並べ、ASCII の大小が違う宣言の名前で引く。
+//
+//trace:checks FR-004
+func TestObservationResult_SettingOfEnvironmentRequiredReviewers(t *testing.T) {
+	reviewers := []setting.Reviewer{{Type: setting.ReviewerUser, ID: 2}}
+	observed := ObservationResult{Environments: &Environments{Existing: []Environment{
+		{ID: 1, Name: "staging", Protection: setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{Reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}}}}},
+		{ID: 2, Name: "Production", Protection: setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{Reviewers: reviewers}}},
+	}}}
+	cases := []struct {
+		name string
+		unit setting.Unit
+		want SettingObservation[setting.Value]
+	}{
+		{
+			name: "declared name differing in ASCII case returns that environment's reviewers",
+			unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: mustEnvironmentName(t, "production")},
+			want: Observed(setting.ReviewerSetValue(setting.ReviewerSetOf(reviewers))),
+		},
+		{
+			name: "absent environment returns UnavailableEnvironmentAbsent",
+			unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: mustEnvironmentName(t, "qa")},
+			want: Unavailable[setting.Value](UnavailableEnvironmentAbsent),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := observed.Setting(tc.unit); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Setting(%v) = %+v, want %+v", tc.unit.String(), got, tc.want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-004
 func TestObservationResult_SettingOfRepositoryVariable(t *testing.T) {
 	observed := ObservationResult{RepositoryVariables: &Variables{Existing: []Variable{{Name: "GO_VERSION", Value: "1.27"}}}}

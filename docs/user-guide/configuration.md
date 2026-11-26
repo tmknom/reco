@@ -325,7 +325,7 @@ repositories:
 | `patterns[].type` | `branch` / `tag`（必須） | パターンがブランチとタグのどちらに一致するか |
 | `patterns[].name` | 文字列（必須） | ブランチ名またはタグ名のパターン（`release/*` など） |
 
-- 書いた名前の Environment がなければ、reco は作成する。`deployment_branch_policy` も `variables` も省いた Environment は、あるかどうかだけを管理する
+- 書いた名前の Environment がなければ、reco は作成する。`deployment_branch_policy`、`required_reviewers`、`variables` のどれも省いた Environment は、あるかどうかだけを管理する
 - 書かなかった Environment は、変更も削除もしない。設定ファイルから名前を消しても、GitHub 上の Environment は残る
 - 名前は、半角の英数字、空白、記号だけで書く。大文字と小文字だけが違う名前は同じ Environment とみなすため、同じリポジトリに並べられない
 - 保護ルールのあるブランチが一つもなければ、`protected_branches` でもすべてのブランチからデプロイできる（GitHub の仕様）。ブランチの保護ルールは reco では作れない
@@ -334,6 +334,37 @@ repositories:
 - `type` が違えば、名前が同じでも別のパターンになる。大文字と小文字だけが違う名前（`main` と `MAIN`）も別のパターンになる
 - `*` で始まる名前は、引用符で囲まないと設定ファイルを読めない。パターンの名前は引用符で囲んで書くとよい
 - `selected` の Environment を `all` などに変えると、GitHub は並んでいたパターンを残さない
+
+### デプロイを承認できる担当者
+
+`environments` の各 Environment の `required_reviewers` には、その Environment を使うデプロイジョブの実行を承認できる担当者（GitHub の画面の「Required reviewers」）を並べます。
+
+```yaml
+repositories:
+  - name: example/project-a
+    environments:
+      - name: production
+        required_reviewers:
+          - type: User
+            id: 583231
+          - type: User
+            id: 1234567
+```
+
+| キー | 値 | 意味 |
+|---|---|---|
+| `required_reviewers` | 下の2つのキーを持つ要素の一覧（6件まで） | デプロイを承認できる担当者の一覧の全体 |
+| `required_reviewers[].type` | `User`（必須） | 担当者の種類 |
+| `required_reviewers[].id` | 正の整数（必須） | 担当者の数値の ID |
+
+- いまは `plan` で差分を確かめられるが、`apply` では変えられない。変更計画に担当者の変更（GitHub 上にない Environment に書いた `required_reviewers` を含む）があると、`apply` は変更計画を示したあと、承認を求めず、ほかの設定も含めて何も変えずにエラーで止まる
+- 担当者のうち1人が承認すれば、デプロイジョブは進む
+- `id` は利用者の login ではなく、数値の ID を書く。`reco show` が、いまの担当者を `id` と、行末のコメントの login で示すので、そこから書き写せる。まだ担当者でない利用者の ID は、GitHub CLI の `gh api users/<login> --jq .id` で調べられる
+- 担当者をすべて、順不同で書く。GitHub 上にいて書かなかった担当者は、外す差分として `plan` に出る
+- 担当者がいないことは `required_reviewers: []` と書く。`required_reviewers` の行を消すと、担当者を管理しなくなる
+- `type: Team` は書けない。個人アカウントが所有するリポジトリでは GitHub が Team を担当者として受け付けず、Organization が所有するリポジトリでの動作を reco は確かめていない
+- この設定が止めるのは、その Environment を使うデプロイジョブであり、Ruleset の `pull_request` のような Pull Request のレビューとは別の設定である
+- 担当者が1人だけのとき、GitHub の画面の「Prevent self-review」（自分が起動したデプロイを自分で承認できなくする設定）を有効にすると、その人が起動したデプロイを承認できる担当者がいなくなる
 
 ### Environment Variables
 

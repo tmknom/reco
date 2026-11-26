@@ -24,6 +24,7 @@ type Value struct {
 	days            int
 	customization   OIDCSubjectCustomization
 	branchPolicy    DeploymentBranchPolicy
+	reviewerSet     ReviewerSet
 	securityUpdates DependabotSecurityUpdatesState
 	variable        string
 	ruleset         Ruleset
@@ -43,6 +44,7 @@ const (
 	kindRetentionDays
 	kindOIDCSubjectCustomization
 	kindDeploymentBranchPolicy
+	kindReviewerSet
 	kindDependabotSecurityUpdates
 	kindVariable
 	kindRuleset
@@ -105,6 +107,11 @@ func DeploymentBranchPolicyValue(policy DeploymentBranchPolicy) Value {
 	return Value{kind: kindDeploymentBranchPolicy, branchPolicy: policy}
 }
 
+// ReviewerSetValue は、Environment の担当者の集合の値を作る。
+func ReviewerSetValue(s ReviewerSet) Value {
+	return Value{kind: kindReviewerSet, reviewerSet: s}
+}
+
 // DependabotSecurityUpdatesValue は、Dependabot security updates の値を作る。
 // 未定義の値は Enabled が偽を返して無効と同じ値に見えるため、確かめていない値を無効として通さないよう、不変条件の破れとして panic する。
 func DependabotSecurityUpdatesValue(state DependabotSecurityUpdatesState) Value {
@@ -156,6 +163,7 @@ func (v Value) Equal(other Value) bool {
 		v.days == other.days &&
 		v.customization.equal(other.customization) &&
 		v.branchPolicy.equal(other.branchPolicy) &&
+		v.reviewerSet.equal(other.reviewerSet) &&
 		v.securityUpdates.Enabled() == other.securityUpdates.Enabled() &&
 		v.variable == other.variable &&
 		v.ruleset.equal(other.ruleset)
@@ -193,6 +201,8 @@ func (v Value) String() string {
 			return string(v.branchPolicy.Mode) + " " + v.branchPolicy.PatternsString()
 		}
 		return string(v.branchPolicy.Mode)
+	case kindReviewerSet:
+		return v.reviewerSet.String()
 	case kindDependabotSecurityUpdates:
 		if v.securityUpdates == DependabotSecurityUpdatesPaused {
 			return "true (paused by GitHub)"
@@ -307,6 +317,14 @@ func (v Value) DeploymentBranchPolicy() DeploymentBranchPolicy {
 	policy := v.branchPolicy
 	policy.Patterns = slices.Clone(policy.Patterns)
 	return policy
+}
+
+// ReviewerSet は、Environment の担当者の集合の値を返す。それ以外の値は不変条件の破れのため panic する。
+func (v Value) ReviewerSet() ReviewerSet {
+	if v.kind != kindReviewerSet {
+		panic("setting: value is not a reviewer set")
+	}
+	return v.reviewerSet
 }
 
 // DependabotSecurityUpdates は、Dependabot security updates の値を返す。それ以外の値は不変条件の破れのため panic する。

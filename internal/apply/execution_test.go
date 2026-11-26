@@ -2257,6 +2257,15 @@ func TestSendUpdate(t *testing.T) {
 			observed:  github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", []setting.DeploymentPattern{mainBranch}, 20))},
 		},
 		{
+			// apply は担当者の集合の更新要求をまだ持たず、承認の前に止めるため、届いたら要求を送らずに止める
+			name: "required reviewers update panics without a request",
+			operation: changeplan.UpdateOperation{
+				Kind: changeplan.RequiredReviewersUpdate, Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: mustEnvironmentName(t, "staging")},
+				Value: setting.ReviewerSetValue(setting.ReviewerSetOf(nil)),
+			},
+			observed: github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", nil))},
+		},
+		{
 			name: "undefined kind of an update operation panics",
 			operation: func() changeplan.UpdateOperation {
 				o := toSelectedPatterns.Operations[1]

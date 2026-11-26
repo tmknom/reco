@@ -126,7 +126,7 @@ type RequiredReviewersBody struct {
 	Reviewers         []ReviewerBody
 }
 
-// ReviewerBody は、required_reviewers の保護ルールのレビュアーである。Type は User か Team。
+// ReviewerBody は、required_reviewers の保護ルールの担当者である。Type は User か Team。
 type ReviewerBody struct {
 	Type string
 	ID   int64

@@ -44,6 +44,8 @@ const (
 	EnvironmentResource Key = "environments"
 	// EnvironmentDeploymentBranchPolicy は、Environment の中のデプロイ元制限の形。
 	EnvironmentDeploymentBranchPolicy Key = "environments.deployment_branch_policy"
+	// EnvironmentRequiredReviewers は、Environment の中の担当者の集合の形。
+	EnvironmentRequiredReviewers Key = "environments.required_reviewers"
 	// EnvironmentVariable は、Environment に属する Environment Variable そのもの (期待値は存在し、値を伴うこと) の形。
 	EnvironmentVariable Key = "environments.variables"
 	// RulesetResource は、Ruleset そのもの (期待値は存在し、値を伴うこと) の形。
@@ -98,7 +100,7 @@ func (k Key) Area() Area {
 		return AreaOIDCSubject
 	case RepositoryVariable:
 		return AreaRepositoryVariables
-	case EnvironmentResource, EnvironmentDeploymentBranchPolicy:
+	case EnvironmentResource, EnvironmentDeploymentBranchPolicy, EnvironmentRequiredReviewers:
 		return AreaEnvironments
 	case EnvironmentVariable:
 		return AreaEnvironmentVariables

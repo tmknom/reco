@@ -75,6 +75,109 @@ func TestExecutableChanges(t *testing.T) {
 	})
 }
 
+// TestUnsupportedChangesError は、apply がまだ実行しない担当者の集合の変更予定を、変更計画の並びですべて挙げることを確かめる。
+//
+//trace:checks FR-008
+func TestUnsupportedChangesError(t *testing.T) {
+	t.Run("reviewers changes across repositories are all listed in the order of the change plan", func(t *testing.T) {
+		// 対象リポジトリの宣言の並びを名前順と逆にし、名前順に並べ替える実装と、最初の一件で打ち切る実装を失敗させる
+		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{
+			newRepositoryPlanOf(t, "owner/zeta", 1, requiredReviewersMismatch(t, "production")...),
+			newRepositoryPlanOf(t, "owner/beta", 2, allowAutoMergeMismatch()),
+			newRepositoryPlanOf(t, "owner/alpha", 3, append([]changeplan.SettingPlan{allowAutoMergeMismatch()}, requiredReviewersMismatch(t, "staging")...)...),
+		}}
+		want := "plan cannot be applied: owner/zeta: environments.production.required_reviewers is a change that apply does not support yet; " +
+			"owner/alpha: environments.staging.required_reviewers is a change that apply does not support yet"
+		if err := unsupportedChangesError(p); err == nil || err.Error() != want {
+			t.Errorf("unsupportedChangesError() = %v, want %q", err, want)
+		}
+	})
+
+	// 更新操作を持たずに作成の期待状態に加わる変更予定も、apply がまだ担当者の集合を確かめないため拒否する
+	t.Run("no reviewers declared for an environment to create are listed", func(t *testing.T) {
+		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{newRepositoryPlanOf(t, "owner/repo", 1, noReviewersOfCreation(t, "preview")...)}}
+		want := "plan cannot be applied: owner/repo: environments.preview.required_reviewers is a change that apply does not support yet"
+		if err := unsupportedChangesError(p); err == nil || err.Error() != want {
+			t.Errorf("unsupportedChangesError() = %v, want %q", err, want)
+		}
+	})
+
+	t.Run("plan with matched reviewers and other changes is not rejected", func(t *testing.T) {
+		matched := requiredReviewersMismatch(t, "production")
+		matched[1].Desired, matched[1].Result, matched[1].Applicability = setting.ReviewerSetValue(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}})), changeplan.Match, changeplan.Applicability{}
+		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{newRepositoryPlanOf(t, "owner/repo", 1, append(matched, allowAutoMergeMismatch())...)}}
+		if err := unsupportedChangesError(p); err != nil {
+			t.Errorf("unsupportedChangesError() = %v, want nil", err)
+		}
+	})
+}
+
+// TestApplyPlan_UnsupportedChangeRejectedBeforeApproval は、apply がまだ実行しない担当者の集合の変更予定を含む変更計画を、
+// 変更計画を表示したうえで、承認を求めず、どの対象リポジトリも更新せずに拒否することを確かめる。
+//
+//trace:checks INV-002 INV-003 FR-008
+func TestApplyPlan_UnsupportedChangeRejectedBeforeApproval(t *testing.T) {
+	approve := func(calls *int) func(context.Context) error {
+		return func(context.Context) error {
+			*calls++
+			return nil
+		}
+	}
+
+	// 先頭の対象リポジトリを適用可能なほかの変更予定だけにし、先頭の対象リポジトリから更新を始める実装を失敗させる
+	t.Run("reviewers change is rejected with the change plan without approval or requests", func(t *testing.T) {
+		baseURL, server := newSequenceServer(t)
+		var out bytes.Buffer
+		calls := 0
+		cfg := Config{Configuration: configuration.File{Path: "./reco.yaml"}, Out: &out, Approve: approve(&calls), After: elapsedAtOnce}
+		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{
+			newRepositoryPlanOf(t, "owner/first", 1, allowAutoMergeMismatch()),
+			newRepositoryPlanOf(t, "owner/second", 2, requiredReviewersMismatch(t, "production")...),
+		}}
+
+		err := applyPlan(context.Background(), cfg, newClient(baseURL), p)
+
+		want := "plan cannot be applied: owner/second: environments.production.required_reviewers is a change that apply does not support yet; no changes made"
+		if err == nil || err.Error() != want {
+			t.Errorf("applyPlan() error = %v, want %q", err, want)
+		}
+		// 変更予定の文言は changeplandisplay が持つため、plan と同じ変更計画を書いたことだけを確かめる
+		if wantOut := changeplandisplay.Text("./reco.yaml", p); out.String() != wantOut {
+			t.Errorf("got Out %q, want %q", out.String(), wantOut)
+		}
+		if calls != 0 || len(server.Methods()) != 0 {
+			t.Errorf("approve calls = %d, requests = %v, want none", calls, server.Methods())
+		}
+	})
+
+	t.Run("not-applicable change is reported before the unsupported change", func(t *testing.T) {
+		baseURL, server := newSequenceServer(t)
+		calls := 0
+		p := newPlan(t, append(requiredReviewersMismatch(t, "production"), shaPinningRequiredNotApplicable())...)
+
+		err := applyPlan(context.Background(), Config{Out: &bytes.Buffer{}, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), p)
+
+		if wantErr := p.NotApplicableError().Error() + "; no changes made"; err == nil || err.Error() != wantErr {
+			t.Errorf("applyPlan() error = %v, want %q", err, wantErr)
+		}
+		if calls != 0 || len(server.Methods()) != 0 {
+			t.Errorf("approve calls = %d, requests = %v, want none", calls, server.Methods())
+		}
+	})
+
+	t.Run("change plan write failure is returned without approval", func(t *testing.T) {
+		calls := 0
+		err := applyPlan(context.Background(), Config{Out: failingWriter{}, Approve: approve(&calls)}, nil, newPlan(t, requiredReviewersMismatch(t, "production")...))
+
+		if !errors.Is(err, errWrite) {
+			t.Errorf("applyPlan() error = %v, want %v", err, errWrite)
+		}
+		if calls != 0 {
+			t.Errorf("approve calls = %d, want 0", calls)
+		}
+	})
+}
+
 // failAfterWriter は、n 回の書き込みに成功したあとの書き込みを失敗させる。
 type failAfterWriter struct {
 	n   int
@@ -1329,6 +1432,39 @@ func toSelectedChange() changeplan.LogicalChange {
 				Kind: changeplan.SettingUpdate, Unit: criteria, Value: declared,
 				PreconditionBases: basesOf(setting.AllowedActions, selected),
 			},
+		},
+	}
+}
+
+// requiredReviewersMismatch は、存在する Environment name の一致した存在の計画と、その担当者の集合を User 1 から User 2 に変える適用可能な変更予定。
+func requiredReviewersMismatch(t *testing.T, name string) []changeplan.SettingPlan {
+	t.Helper()
+	environment := mustEnvironmentName(t, name)
+	return []changeplan.SettingPlan{
+		{
+			Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, Observed: github.Observed(setting.Present()), Desired: setting.Present(),
+			EnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(7), Result: changeplan.Match,
+		},
+		{
+			Unit:     setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: environment},
+			Observed: github.Observed(setting.ReviewerSetValue(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}}))),
+			Desired:  setting.ReviewerSetValue(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 2}})), Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
+		},
+	}
+}
+
+// noReviewersOfCreation は、存在しない Environment name の作成の計画と、担当者がいないことを宣言した比較不能で適用可能な変更予定。
+func noReviewersOfCreation(t *testing.T, name string) []changeplan.SettingPlan {
+	t.Helper()
+	environment := mustEnvironmentName(t, name)
+	return []changeplan.SettingPlan{
+		{
+			Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, Observed: github.Observed(setting.Absent()), Desired: setting.Present(),
+			Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
+		},
+		{
+			Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: environment}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
+			Desired: setting.ReviewerSetValue(setting.ReviewerSetOf(nil)), Result: changeplan.NotComparable, Applicability: changeplan.Applicable(),
 		},
 	}
 }

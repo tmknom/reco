@@ -12,6 +12,7 @@ func TestUnit_String(t *testing.T) {
 		{name: "repository setting is its key", unit: Unit{Key: AllowAutoMerge}, want: "general.allow_auto_merge"},
 		{name: "environment existence is the environment path", unit: Unit{Key: EnvironmentResource, Environment: production}, want: "environments.production"},
 		{name: "setting in an environment follows the environment path", unit: Unit{Key: EnvironmentDeploymentBranchPolicy, Environment: production}, want: "environments.production.deployment_branch_policy"},
+		{name: "required reviewers follow the environment path", unit: Unit{Key: EnvironmentRequiredReviewers, Environment: production}, want: "environments.production.required_reviewers"},
 		{name: "repository variable follows the variables path", unit: Unit{Key: RepositoryVariable, Variable: mustVariableName(t, "GO_VERSION")}, want: "actions.variables.GO_VERSION"},
 		{name: "environment variable follows the environment path", unit: Unit{Key: EnvironmentVariable, Environment: production, Variable: mustVariableName(t, "REGION")}, want: "environments.production.variables.REGION"},
 		{name: "ruleset follows the rulesets path with the declared spelling", unit: Unit{Key: RulesetResource, Ruleset: mustRulesetName(t, "Protect main")}, want: "rulesets.Protect main"},

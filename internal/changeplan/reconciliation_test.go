@@ -613,6 +613,15 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 	undeterminedExistence := SettingPlan{
 		Unit: existence, Observed: github.Unavailable[setting.Value](github.UnavailableNameUndetermined), Desired: setting.Present(), Result: NotComparable,
 	}
+	reviewersUnit := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}
+	user1, user2 := setting.Reviewer{Type: setting.ReviewerUser, ID: 1}, setting.Reviewer{Type: setting.ReviewerUser, ID: 2}
+	declaredReviewers := setting.ReviewerSetOf([]setting.Reviewer{user1, user2})
+	noReviewers := setting.ReviewerSetOf(nil)
+	observedRule := setting.RequiredReviewers{Reviewers: []setting.Reviewer{user2, user1}, Logins: map[setting.Reviewer]string{user1: "octocat"}}
+	withProtection := func(e github.Environment, rule setting.RequiredReviewers) github.Environment {
+		e.Protection.RequiredReviewers = &rule
+		return e
+	}
 	cases := []struct {
 		name     string
 		declared configuration.EnvironmentDeclaration
@@ -695,6 +704,38 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 				matchedExistence,
 				{Unit: environmentVariableUnit(production, region), Observed: github.Observed(setting.VariableValue("us")), Desired: setting.Absent(), Result: Mismatch},
 				{Unit: environmentVariableUnit(production, debug), Observed: github.Observed(setting.Absent()), Desired: setting.Absent(), Result: Match},
+			},
+		},
+		{
+			name: "reviewers of an existing environment follow the mode and precede the variables and match regardless of order and logins",
+			declared: configuration.EnvironmentDeclaration{
+				Name: production, DeploymentBranchPolicy: &protected, RequiredReviewers: &declaredReviewers,
+				Variables: []configuration.VariableDeclaration{{Name: region, Desired: setting.VariableValue("eu")}},
+			},
+			observed: []github.Environment{withVariables(withProtection(existing("production", protected.Mode), observedRule), github.Variable{Name: "REGION", Value: "eu"})},
+			want: []SettingPlan{
+				matchedExistence,
+				{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}, Observed: github.Observed(setting.DeploymentBranchPolicyValue(protected)), Desired: setting.DeploymentBranchPolicyValue(protected), Result: Match},
+				{Unit: reviewersUnit, Observed: github.Observed(setting.ReviewerSetValue(setting.ReviewerSetOfRule(&observedRule))), Desired: setting.ReviewerSetValue(declaredReviewers), Result: Match},
+				{Unit: environmentVariableUnit(production, region), Observed: github.Observed(setting.VariableValue("eu")), Desired: setting.VariableValue("eu"), Result: Match},
+			},
+		},
+		{
+			name:     "no reviewers declared for an environment with a protection rule without reviewers mismatch",
+			declared: configuration.EnvironmentDeclaration{Name: production, RequiredReviewers: &noReviewers},
+			observed: []github.Environment{withProtection(existing("production", all.Mode), setting.RequiredReviewers{})},
+			want: []SettingPlan{
+				matchedExistence,
+				{Unit: reviewersUnit, Observed: github.Observed(setting.ReviewerSetValue(setting.ReviewerSetOfRule(&setting.RequiredReviewers{}))), Desired: setting.ReviewerSetValue(noReviewers), Result: Mismatch},
+			},
+		},
+		{
+			name:     "reviewers of an absent environment are not comparable because the environment is absent",
+			declared: configuration.EnvironmentDeclaration{Name: production, RequiredReviewers: &declaredReviewers},
+			observed: nil,
+			want: []SettingPlan{
+				creation,
+				{Unit: reviewersUnit, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.ReviewerSetValue(declaredReviewers), Result: NotComparable},
 			},
 		},
 		{

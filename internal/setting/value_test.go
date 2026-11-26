@@ -24,6 +24,7 @@ func TestValue_String(t *testing.T) {
 		{value: VariableValue("absent"), want: `"absent"`},
 		{value: Absent(), want: "absent"},
 		{value: Present(), want: "present"},
+		{value: ReviewerSetValue(ReviewerSetOf([]Reviewer{{Type: ReviewerUser, ID: 1}})), want: "[User 1]"},
 		{
 			value: SelectedActionsCriteriaValue(SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: []string{"z/*", "a/*"}}),
 			want:  `github_owned_allowed: true, verified_allowed: false, patterns_allowed: ["z/*", "a/*"]`,
@@ -80,6 +81,8 @@ func TestValue_Equal(t *testing.T) {
 		{name: "presence differs from an absence", a: Present(), b: Absent(), equal: false},
 		{name: "variable value differs from a boolean of the same spelling", a: VariableValue("true"), b: BoolValue(true), equal: false},
 		{name: "rulesets of different enforcement differ", a: RulesetValue(newTestRuleset()), b: RulesetValue(newTestRuleset(withEnforcement(RulesetEnforcementDisabled))), equal: false},
+		{name: "reviewer sets differing only in order are equal", a: ReviewerSetValue(ReviewerSetOf([]Reviewer{{Type: ReviewerUser, ID: 1}, {Type: ReviewerUser, ID: 2}})), b: ReviewerSetValue(ReviewerSetOf([]Reviewer{{Type: ReviewerUser, ID: 2}, {Type: ReviewerUser, ID: 1}})), equal: true},
+		{name: "reviewer sets with a different reviewer differ", a: ReviewerSetValue(ReviewerSetOf([]Reviewer{{Type: ReviewerUser, ID: 1}})), b: ReviewerSetValue(ReviewerSetOf([]Reviewer{{Type: ReviewerUser, ID: 2}})), equal: false},
 		{name: "ruleset differs from an absence", a: RulesetValue(newTestRuleset()), b: Absent(), equal: false},
 	}
 	for _, tc := range cases {
@@ -563,4 +566,20 @@ func TestValue_WithItemsDeclaredIn(t *testing.T) {
 			t.Errorf("WithItemsDeclaredIn() = %s, want true", got.String())
 		}
 	})
+}
+
+func TestValue_ReviewerSet(t *testing.T) {
+	set := ReviewerSetOf([]Reviewer{{Type: ReviewerUser, ID: 1}})
+	if got := ReviewerSetValue(set).ReviewerSet(); !got.equal(set) {
+		t.Errorf("ReviewerSet() = %s, want %s", got.String(), set.String())
+	}
+}
+
+func TestValue_ReviewerSetOfBoolPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("ReviewerSet() did not panic for a boolean value")
+		}
+	}()
+	_ = BoolValue(true).ReviewerSet()
 }

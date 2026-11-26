@@ -64,6 +64,20 @@ func (o EnvironmentObservation) DeploymentBranchPolicy() SettingObservation[sett
 	}
 }
 
+// RequiredReviewers は、その Environment の中の担当者の集合の設定の観測結果を返す。
+// 存在しない Environment の中の設定は値として読めないため、存在しないことを理由にした観測不能にする。
+func (o EnvironmentObservation) RequiredReviewers() SettingObservation[setting.Value] {
+	switch o.state {
+	case resourceExisting:
+		return Observed(setting.ReviewerSetValue(setting.ReviewerSetOfRule(o.environment.Protection.RequiredReviewers)))
+	case resourceAbsent:
+		return Unavailable[setting.Value](UnavailableEnvironmentAbsent)
+	default:
+		// 観測不能のときは同じ理由にし、ゼロ値は UnavailableReason の panic で検出する
+		return Unavailable[setting.Value](o.UnavailableReason())
+	}
+}
+
 // Variable は、その Environment に属する、名前 name の Environment Variable の観測結果を返す。
 // 存在しない Environment の変数は値として読めないため、存在しないことを理由にした観測不能にする。
 // 存在する Environment の Variables が nil なのは、変数の領域を読まなかった観測か、その Environment を読む範囲に含めなかった観測である。

@@ -179,6 +179,7 @@ Applying changes...
 
 | 見えたもの | 次にすること |
 |---|---|
+| `is a change that apply does not support yet` | Environment のデプロイを承認できる担当者（`required_reviewers`）の変更は、まだ `apply` で実行できない。ほかの設定の変更も含め、何も変えていない。ほかの設定だけを変えるには、その Environment の `required_reviewers` を設定ファイルから外して `apply` する |
 | `rate limit exceeded` | GitHub の API の利用回数の上限を超えた。少なくとも1分待ってから実行し直す（上限の種類によっては、GitHub が上限をリセットする時刻まで解除されない）。同じエラーが続くなら、さらに間隔を空ける |
 | `communication failed`、`unexpected response (HTTP 5xx)` | 通信の失敗か、GitHub 側の障害。時間をおいて実行し直す |
 | `redirect not followed`（下の `HTTP 303` の行を除く） | リポジトリの名前が変わったか、移転した可能性がある。設定ファイルの `name` と `--repo` に、今の名前を書く |

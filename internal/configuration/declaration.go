@@ -11,6 +11,9 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
+// maxRequiredReviewers は、GitHub が受け付ける担当者の件数の上限。
+const maxRequiredReviewers = 6
+
 func (d document) declaration() (Declaration, error) {
 	entries, err := d.mappingEntries(d.root, "root", []string{"repositories"}, nil)
 	if err != nil {
@@ -109,7 +112,7 @@ func (d document) environments(n *yaml.Node, path string) ([]EnvironmentDeclarat
 }
 
 func (d document) environment(n *yaml.Node, path string) (EnvironmentDeclaration, error) {
-	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"deployment_branch_policy", "variables"})
+	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"deployment_branch_policy", "required_reviewers", "variables"})
 	if err != nil {
 		return EnvironmentDeclaration{}, err
 	}
@@ -130,12 +133,74 @@ func (d document) environment(n *yaml.Node, path string) (EnvironmentDeclaration
 		}
 		declaration.DeploymentBranchPolicy = &policy
 	}
+	if value, ok := entries["required_reviewers"]; ok {
+		reviewers, err := d.requiredReviewers(value, path+".required_reviewers")
+		if err != nil {
+			return EnvironmentDeclaration{}, err
+		}
+		declaration.RequiredReviewers = &reviewers
+	}
 	if value, ok := entries["variables"]; ok {
 		if declaration.Variables, err = d.variables(value, path+".variables"); err != nil {
 			return EnvironmentDeclaration{}, err
 		}
 	}
 	return declaration, nil
+}
+
+// requiredReviewers は、担当者の宣言の並びを宣言の順のまま、集合として読む。
+// 空のシーケンスは「担当者がいない」期待値で、省略と区別するため、空でも読み取りに成功する。
+func (d document) requiredReviewers(n *yaml.Node, path string) (setting.ReviewerSet, error) {
+	items, err := d.sequenceContent(n, path)
+	if err != nil {
+		return setting.ReviewerSet{}, err
+	}
+	if len(items) > maxRequiredReviewers {
+		return setting.ReviewerSet{}, invalid(n, path, "must have at most %d reviewers; got %d", maxRequiredReviewers, len(items))
+	}
+	var reviewers []setting.Reviewer
+	for i, item := range items {
+		itemPath := fmt.Sprintf("%s[%d]", path, i)
+		reviewer, err := d.reviewer(item, itemPath)
+		if err != nil {
+			return setting.ReviewerSet{}, err
+		}
+		if j := slices.Index(reviewers, reviewer); j >= 0 {
+			return setting.ReviewerSet{}, invalid(item, itemPath, "duplicate reviewer %s %d; same as %s[%d]", reviewer.Type, reviewer.ID, path, j)
+		}
+		reviewers = append(reviewers, reviewer)
+	}
+	return setting.ReviewerSetOf(reviewers), nil
+}
+
+// reviewer は、種類と ID の組である担当者 1 件を読む。
+func (d document) reviewer(n *yaml.Node, path string) (setting.Reviewer, error) {
+	entries, err := d.mappingEntries(n, path, []string{"type", "id"}, nil)
+	if err != nil {
+		return setting.Reviewer{}, err
+	}
+	typePath := path + ".type"
+	typeString, err := d.stringValue(entries["type"], typePath)
+	if err != nil {
+		return setting.Reviewer{}, err
+	}
+	switch typeString {
+	case string(setting.ReviewerUser):
+	case string(setting.ReviewerTeam):
+		return setting.Reviewer{}, invalid(entries["type"], typePath, "must be User; got %q; team reviewers are for organization-owned repositories, which reco does not support", typeString)
+	default:
+		return setting.Reviewer{}, invalid(entries["type"], typePath, "must be User; got %q", typeString)
+	}
+	idNode := entries["id"]
+	idPath := path + ".id"
+	id, err := d.intValue(idNode, idPath)
+	if err != nil {
+		return setting.Reviewer{}, err
+	}
+	if id < 1 {
+		return setting.Reviewer{}, invalid(idNode, idPath, "must be a positive integer; got %d", id)
+	}
+	return setting.Reviewer{Type: setting.ReviewerUser, ID: int64(id)}, nil
 }
 
 // deploymentBranchPolicy は、デプロイ元制限の方式と、方式が selected のときの個別パターンの一覧を読む。

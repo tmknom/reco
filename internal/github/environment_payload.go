@@ -110,7 +110,8 @@ type protectionRulePayload struct {
 type reviewerPayload struct {
 	Type     *string `json:"type"`
 	Reviewer *struct {
-		ID *int64 `json:"id"`
+		ID    *int64  `json:"id"`
+		Login *string `json:"login"`
 	} `json:"reviewer"`
 }
 
@@ -164,6 +165,7 @@ func decodeRequiredReviewers(rule protectionRulePayload) (setting.RequiredReview
 		return setting.RequiredReviewers{}, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missing, ", "))
 	}
 	reviewers := make([]setting.Reviewer, len(*rule.Reviewers))
+	var logins map[setting.Reviewer]string
 	for i, r := range *rule.Reviewers {
 		if r == nil {
 			return setting.RequiredReviewers{}, fmt.Errorf("%w: unsupported value: protection_rules.reviewers", ErrUnexpectedResponse)
@@ -183,8 +185,30 @@ func decodeRequiredReviewers(rule protectionRulePayload) (setting.RequiredReview
 			return setting.RequiredReviewers{}, fmt.Errorf("%w: unsupported value: protection_rules.reviewers.type", ErrUnexpectedResponse)
 		}
 		reviewers[i] = setting.Reviewer{Type: reviewerType, ID: *r.Reviewer.ID}
+		// login は表示にだけ使うため、欠落や形の不一致は失敗にせず持たない
+		if reviewerType == setting.ReviewerUser && r.Reviewer.Login != nil && isLogin(*r.Reviewer.Login) {
+			if logins == nil {
+				logins = map[setting.Reviewer]string{}
+			}
+			logins[reviewers[i]] = *r.Reviewer.Login
+		}
 	}
-	return setting.RequiredReviewers{PreventSelfReview: *rule.PreventSelfReview, Reviewers: reviewers}, nil
+	return setting.RequiredReviewers{PreventSelfReview: *rule.PreventSelfReview, Reviewers: reviewers, Logins: logins}, nil
+}
+
+// isLogin は s が、表示の行にそのまま書ける login の形かを返す。
+// API が返した文字列を表示に書くため、改行などで行を偽装できる文字を含むものは受け付けない。
+func isLogin(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		isAlphanumeric := r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z'
+		if !isAlphanumeric && r != '-' && r != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 // deploymentPatternPayload は欠落と null を検出するため、各フィールドをポインタで受ける。

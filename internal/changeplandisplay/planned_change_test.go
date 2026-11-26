@@ -459,6 +459,79 @@ func TestPlannedChangeText_EnvironmentVariables(t *testing.T) {
 // 期待値は CLI 仕様 4章の Environment の表示例から導く。
 //
 //trace:checks FR-005 FR-006 FR-007
+func TestPlannedChangeText_EnvironmentRequiredReviewers(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	octocat := setting.Reviewer{Type: setting.ReviewerUser, ID: 583231}
+	hubot := setting.Reviewer{Type: setting.ReviewerUser, ID: 1234567}
+	newcomer := setting.Reviewer{Type: setting.ReviewerUser, ID: 7654321}
+	observedOf := func(logins map[setting.Reviewer]string, reviewers ...setting.Reviewer) github.SettingObservation[setting.Value] {
+		return github.Observed(setting.ReviewerSetValue(setting.ReviewerSetOfRule(&setting.RequiredReviewers{Reviewers: reviewers, Logins: logins})))
+	}
+	desiredOf := func(reviewers ...setting.Reviewer) setting.Value {
+		return setting.ReviewerSetValue(setting.ReviewerSetOf(reviewers))
+	}
+	logins := map[setting.Reviewer]string{octocat: "octocat", hubot: "hubot"}
+	plan := func(observed github.SettingObservation[setting.Value], desired setting.Value, result changeplan.ReconciliationResult) changeplan.SettingPlan {
+		return changeplan.SettingPlan{
+			Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}, Observed: observed,
+			Desired: desired, Result: result, Applicability: changeplan.Applicable(),
+		}
+	}
+	const head = "  environments.production.required_reviewers:\n"
+	cases := []struct {
+		name string
+		s    changeplan.SettingPlan
+		want string
+	}{
+		{
+			name: "matched reviewers are not shown",
+			s:    plan(observedOf(logins, octocat), desiredOf(octocat), changeplan.Match),
+			want: "",
+		},
+		{
+			name: "removed and added reviewers show remove then add with logins copied to the desired value",
+			s:    plan(observedOf(logins, octocat, hubot), desiredOf(octocat, newcomer), changeplan.Mismatch),
+			want: head + "    [User 583231 (octocat), User 1234567 (hubot)]\n    -> [User 583231 (octocat), User 7654321]\n" +
+				"    Reviewers to remove: [User 1234567 (hubot)]\n    Reviewers to add: [User 7654321]\n",
+		},
+		{
+			name: "only added reviewers shows only Reviewers to add",
+			s:    plan(observedOf(logins, octocat), desiredOf(octocat, newcomer), changeplan.Mismatch),
+			want: head + "    [User 583231 (octocat)]\n    -> [User 583231 (octocat), User 7654321]\n    Reviewers to add: [User 7654321]\n",
+		},
+		{
+			name: "reordering only shows no remove or add line",
+			s:    plan(observedOf(logins, octocat, hubot), desiredOf(hubot, octocat), changeplan.Mismatch),
+			want: head + "    [User 583231 (octocat), User 1234567 (hubot)]\n    -> [User 1234567 (hubot), User 583231 (octocat)]\n",
+		},
+		{
+			name: "removing every reviewer shows an empty desired value and all current reviewers to remove",
+			s:    plan(observedOf(logins, octocat), desiredOf(), changeplan.Mismatch),
+			want: head + "    [User 583231 (octocat)]\n    -> []\n    Reviewers to remove: [User 583231 (octocat)]\n",
+		},
+		{
+			name: "protection rule without reviewers shows the remark and no remove or add line",
+			s:    plan(observedOf(nil), desiredOf(), changeplan.Mismatch),
+			want: head + "    [] (protection rule without reviewers)\n    -> []\n",
+		},
+		{
+			name: "environment absent shows the state and the desired value without logins",
+			s:    plan(github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), desiredOf(octocat), changeplan.NotComparable),
+			want: head + "    (environment absent)\n    -> [User 583231]\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := PlannedChangeText(tc.s); got != tc.want {
+				t.Errorf("PlannedChangeText() =\n%q\nwant\n%q", got, tc.want)
+			}
+		})
+	}
+}
+
+// 期待値は CLI 仕様 4章の Environment の表示例から導く。
+//
+//trace:checks FR-005 FR-006 FR-007
 func TestPlannedChangeText_Environments(t *testing.T) {
 	production := mustEnvironmentName(t, "production")
 	protected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches})

@@ -40,6 +40,36 @@ func TestDesiredState_ManagedSettings(t *testing.T) {
 		}
 	})
 
+	t.Run("reviewers sit between the deployment branch policy and the variables, and an empty set is still managed", func(t *testing.T) {
+		reviewers := setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}})
+		none := setting.ReviewerSetOf(nil)
+		desired := DesiredState{
+			Environments: []EnvironmentDeclaration{
+				{Name: staging, DeploymentBranchPolicy: &protected, RequiredReviewers: &reviewers, Variables: []VariableDeclaration{{Name: region, Desired: setting.VariableValue("us")}}},
+				{Name: production, RequiredReviewers: &none},
+			},
+		}
+		want := []ManagedSetting{
+			{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, Desired: setting.Present()},
+			{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}, Desired: setting.DeploymentBranchPolicyValue(protected)},
+			{Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: staging}, Desired: setting.ReviewerSetValue(reviewers)},
+			{Unit: setting.Unit{Key: setting.EnvironmentVariable, Environment: staging, Variable: region}, Desired: setting.VariableValue("us")},
+			{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Desired: setting.Present()},
+			{Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}, Desired: setting.ReviewerSetValue(none)},
+		}
+		if got := desired.ManagedSettings(); !reflect.DeepEqual(got, want) {
+			t.Errorf("ManagedSettings() =\n%+v\nwant\n%+v", got, want)
+		}
+	})
+
+	t.Run("omitted reviewers create no managed setting", func(t *testing.T) {
+		for _, m := range (DesiredState{Environments: []EnvironmentDeclaration{{Name: production}}}).ManagedSettings() {
+			if m.Unit.Key == setting.EnvironmentRequiredReviewers {
+				t.Errorf("ManagedSettings() contains %+v, want no reviewers setting", m)
+			}
+		}
+	})
+
 	t.Run("rulesets follow the environments in the declared order with their desired values", func(t *testing.T) {
 		zeta, alpha := mustRulesetName(t, "zeta"), mustRulesetName(t, "alpha")
 		desired := DesiredState{
@@ -149,7 +179,7 @@ func TestDesiredState_valueCoversEveryDesiredValue(t *testing.T) {
 
 // 関連リソースに関わる管理の単位は名前との組で識別するため、value では引けない。
 func TestDesiredState_valueOfRelatedResourceSettingPanics(t *testing.T) {
-	for _, key := range []setting.Key{setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentVariable, setting.RulesetResource} {
+	for _, key := range []setting.Key{setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentRequiredReviewers, setting.EnvironmentVariable, setting.RulesetResource} {
 		t.Run(string(key), func(t *testing.T) {
 			defer func() {
 				if recover() == nil {

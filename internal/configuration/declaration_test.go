@@ -2,6 +2,7 @@ package configuration
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -1390,7 +1391,18 @@ func TestDocumentEnvironment(t *testing.T) {
 		{name: "missing name is rejected", src: "deployment_branch_policy:\n  mode: all\n", wantPath: "E", wantReason: `missing key "name"`},
 		{name: "non-string name is rejected", src: strings.Replace(base, "staging", "42", 1), wantPath: "E.name", wantReason: "must be a string"},
 		{name: "non-ASCII name is rejected at the name", src: strings.Replace(base, "staging", "café", 1), wantPath: "E.name", wantReason: `must consist of printable ASCII characters; got "café"`},
-		{name: "unknown key is rejected", src: base + "labels: {}\n", wantPath: "E", wantReason: `unknown key "labels"; expected name, deployment_branch_policy, variables`},
+		{name: "unknown key is rejected", src: base + "labels: {}\n", wantPath: "E", wantReason: `unknown key "labels"; expected name, deployment_branch_policy, required_reviewers, variables`},
+		{
+			name: "required_reviewers is read into a non-nil set in the declared order",
+			src:  "name: staging\nrequired_reviewers:\n  - type: User\n    id: 2\n  - type: User\n    id: 1\n",
+			want: EnvironmentDeclaration{Name: mustEnvironmentName(t, "staging"), RequiredReviewers: new(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 2}, {Type: setting.ReviewerUser, ID: 1}}))},
+		},
+		{
+			name: "empty required_reviewers is read as a non-nil empty set",
+			src:  "name: staging\nrequired_reviewers: []\n",
+			want: EnvironmentDeclaration{Name: mustEnvironmentName(t, "staging"), RequiredReviewers: new(setting.ReviewerSetOf(nil))},
+		},
+		{name: "invalid required_reviewers is rejected at required_reviewers", src: "name: staging\nrequired_reviewers:\n  - type: User\n    id: 0\n", wantPath: "E.required_reviewers[0].id", wantReason: "must be a positive integer; got 0"},
 		{
 			name: "variables are read in the declared order into Variables",
 			src:  "name: staging\nvariables:\n  - name: GO_VERSION\n    value: \"1.27\"\n  - name: GO_ARCH\n    value: amd64\n",
@@ -1567,6 +1579,92 @@ func TestDocumentDeploymentPattern(t *testing.T) {
 			}
 			if got != tc.want {
 				t.Errorf("deploymentPattern() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDocumentRequiredReviewers は、担当者の集合の宣言の件数、並び、重複、誤りを示す順を確かめる。
+//
+//trace:checks FR-001
+func TestDocumentRequiredReviewers(t *testing.T) {
+	user := func(id int64) setting.Reviewer { return setting.Reviewer{Type: setting.ReviewerUser, ID: id} }
+	const sixUsers = "- {type: User, id: 1}\n- {type: User, id: 2}\n- {type: User, id: 3}\n- {type: User, id: 4}\n- {type: User, id: 5}\n- {type: User, id: 6}\n"
+	cases := []struct {
+		name       string
+		src        string
+		want       []setting.Reviewer
+		wantReason string
+	}{
+		{name: "empty sequence is read as an empty set", src: "[]\n", want: []setting.Reviewer{}},
+		{name: "six reviewers are accepted", src: sixUsers, want: []setting.Reviewer{user(1), user(2), user(3), user(4), user(5), user(6)}},
+		{name: "reviewers are read in declaration order", src: "- {type: User, id: 9}\n- {type: User, id: 3}\n", want: []setting.Reviewer{user(9), user(3)}},
+		{name: "seven reviewers are rejected at the sequence", src: sixUsers + "- {type: User, id: 7}\n", wantReason: "S (line 1, column 1): must have at most 6 reviewers; got 7"},
+		{name: "seven reviewers with an invalid first element report the count first", src: "- {type: Team, id: 0}\n" + sixUsers, wantReason: "S (line 1, column 1): must have at most 6 reviewers; got 7"},
+		{name: "duplicate pair is rejected at the later element", src: "- {type: User, id: 1}\n- {type: User, id: 2}\n- {type: User, id: 1}\n", wantReason: "S[2] (line 3, column 3): duplicate reviewer User 1; same as S[0]"},
+		{name: "invalid element after a valid one is reported at its path", src: "- {type: User, id: 1}\n- {type: User, id: 0}\n", wantReason: "S[1].id (line 2, column 20): must be a positive integer; got 0"},
+		{name: "mapping is rejected as a non-sequence", src: "type: User\nid: 1\n", wantReason: "S (line 1, column 1): must be a sequence"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.requiredReviewers(doc.root, "S")
+			if tc.wantReason != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("requiredReviewers() error = %v, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("requiredReviewers() error = %v", err)
+			}
+			if !slices.Equal(got.Reviewers(), tc.want) {
+				t.Errorf("requiredReviewers().Reviewers() = %v, want %v", got.Reviewers(), tc.want)
+			}
+			if got.String() != setting.ReviewerSetOf(tc.want).String() {
+				t.Errorf("requiredReviewers().String() = %s, want %s", got, setting.ReviewerSetOf(tc.want))
+			}
+		})
+	}
+}
+
+// TestDocumentReviewer は、担当者 1 件の type と id の規則を確かめる。
+//
+//trace:checks FR-001
+func TestDocumentReviewer(t *testing.T) {
+	const base = "type: User\nid: 1234567\n"
+	cases := []struct {
+		name       string
+		src        string
+		want       setting.Reviewer
+		wantReason string
+	}{
+		{name: "User with a positive id is read", src: base, want: setting.Reviewer{Type: setting.ReviewerUser, ID: 1234567}},
+		{name: "Team is rejected with the reason", src: "type: Team\nid: 42\n", wantReason: `P.type (line 1, column 7): must be User; got "Team"; team reviewers are for organization-owned repositories, which reco does not support`},
+		{name: "type with different letter case is rejected", src: "type: user\nid: 1\n", wantReason: `P.type (line 1, column 7): must be User; got "user"`},
+		{name: "non-string type is rejected", src: "type: 1\nid: 1\n", wantReason: "P.type (line 1, column 7): must be a string"},
+		{name: "missing type is rejected without defaulting to User", src: "id: 1\n", wantReason: `missing key "type"`},
+		{name: "missing id is rejected", src: "type: User\n", wantReason: `missing key "id"`},
+		{name: "zero id is rejected", src: "type: User\nid: 0\n", wantReason: "P.id (line 2, column 5): must be a positive integer; got 0"},
+		{name: "quoted id is rejected", src: "type: User\nid: \"1\"\n", wantReason: `P.id (line 2, column 5): must be an integer; got "1"`},
+		{name: "unknown key login is rejected", src: base + "login: octocat\n", wantReason: `unknown key "login"; expected type, id`},
+		{name: "non-mapping element is rejected", src: "User\n", wantReason: "P (line 1, column 1): must be a mapping"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.reviewer(doc.root, "P")
+			if tc.wantReason != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("reviewer() error = %v, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("reviewer() error = %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("reviewer() = %+v, want %+v", got, tc.want)
 			}
 		})
 	}

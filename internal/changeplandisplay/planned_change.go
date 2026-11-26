@@ -30,6 +30,9 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 		current = repositoryStateText(s.Observed.UnavailableReason())
 	}
 	desired := s.Desired.String()
+	if s.Unit.Key == setting.EnvironmentRequiredReviewers {
+		desired = desiredReviewersWithLogins(s).String()
+	}
 	if s.EnablesActionsByPolicy() {
 		desired += " (enables GitHub Actions)"
 	}
@@ -39,6 +42,7 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 		fmt.Fprintf(&b, "  %s: %s -> %s\n", s.Unit.String(), current, desired)
 	}
 	b.WriteString(deploymentPatternChangesText(s))
+	b.WriteString(reviewerChangesText(s))
 	if s.Applicability.IsNotApplicable() {
 		fmt.Fprintf(&b, "    Applicability: not applicable (%s)\n", notApplicableReasonText(s))
 	}
@@ -190,9 +194,9 @@ func plannedChangeNoteText(note changeplan.PlannedChangeNote) string {
 }
 
 // showsValuesOnSeparateLines は、現在と期待値を別の行に書くかを返す。
-// 選択方式の Actions 許可条件、非公開リポジトリの Fork Pull Request ワークフローの実行条件、OIDC subject のカスタマイズ、個別パターンを並べる selected のデプロイ元制限は値が長く、1 行では -> を見つけにくい。
+// 選択方式の Actions 許可条件、非公開リポジトリの Fork Pull Request ワークフローの実行条件、OIDC subject のカスタマイズ、個別パターンを並べる selected のデプロイ元制限、Environment の担当者の集合は値が長く、1 行では -> を見つけにくい。
 func showsValuesOnSeparateLines(s changeplan.SettingPlan) bool {
-	if s.Unit.Key == setting.SelectedActions || s.Unit.Key == setting.PrivateForkPullRequestWorkflows || s.Unit.Key == setting.OIDCSubject {
+	if s.Unit.Key == setting.SelectedActions || s.Unit.Key == setting.PrivateForkPullRequestWorkflows || s.Unit.Key == setting.OIDCSubject || s.Unit.Key == setting.EnvironmentRequiredReviewers {
 		return true
 	}
 	if s.Unit.Key != setting.EnvironmentDeploymentBranchPolicy {
@@ -224,6 +228,37 @@ func deploymentPatternChangesText(s changeplan.SettingPlan) string {
 	}
 	if added := desired.PatternsNotIn(observed); len(added) > 0 {
 		fmt.Fprintf(&b, "    Patterns to add: %s\n", patternListText(added))
+	}
+	return b.String()
+}
+
+// desiredReviewersWithLogins は、担当者の集合の期待値を、観測値にいる担当者へ観測した login を添えて返す。
+// 観測値がなければ、login を持たない期待値のままにする。reco は ID から login を解決しないため。
+func desiredReviewersWithLogins(s changeplan.SettingPlan) setting.ReviewerSet {
+	desired := s.Desired.ReviewerSet()
+	if observed, ok := s.Observed.Value(); ok {
+		return desired.WithLoginsFrom(observed.ReviewerSet())
+	}
+	return desired
+}
+
+// reviewerChangesText は、なくなる担当者と加わる担当者の行を返す。
+// 比較不能な設定予定には添えない。現在の担当者を確かめておらず、差を示せないため。
+func reviewerChangesText(s changeplan.SettingPlan) string {
+	if s.Unit.Key != setting.EnvironmentRequiredReviewers {
+		return ""
+	}
+	observedValue, ok := s.Observed.Value()
+	if !ok {
+		return ""
+	}
+	observed, desired := observedValue.ReviewerSet(), desiredReviewersWithLogins(s)
+	var b strings.Builder
+	if removed := observed.NotIn(desired); len(removed.Reviewers()) > 0 {
+		fmt.Fprintf(&b, "    Reviewers to remove: %s\n", removed.String())
+	}
+	if added := desired.NotIn(observed); len(added.Reviewers()) > 0 {
+		fmt.Fprintf(&b, "    Reviewers to add: %s\n", added.String())
 	}
 	return b.String()
 }

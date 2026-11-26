@@ -114,7 +114,14 @@ func TestEnvironmentProtection_sameRequiredReviewers(t *testing.T) {
 		{name: "same ID of a different type differs", a: reviewers(false, user1), b: reviewers(false, team1), want: false},
 		{name: "different ID differs", a: reviewers(false, user1), b: reviewers(false, user2), want: false},
 		{name: "extra reviewer differs", a: reviewers(false, user1), b: reviewers(false, user1, user2), want: false},
-		{name: "duplicated reviewer differs from a single one", a: reviewers(false, user1, user1), b: reviewers(false, user1), want: false},
+		// 管理設定の担当者の集合の判定と同じく、重複と login を値の違いにしない
+		{name: "duplicated reviewer is the same as a single one", a: reviewers(false, user1, user1), b: reviewers(false, user1), want: true},
+		{
+			name: "reviewers differing only in logins are the same",
+			a:    &RequiredReviewers{Reviewers: []Reviewer{user1}, Logins: map[Reviewer]string{user1: "octocat"}},
+			b:    &RequiredReviewers{Reviewers: []Reviewer{user1}, Logins: map[Reviewer]string{user1: "hubot"}},
+			want: true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -170,30 +177,16 @@ func TestEnvironmentProtection_requiredReviewersString(t *testing.T) {
 			r:    reviewers(true, Reviewer{Type: ReviewerUser, ID: 583231}, Reviewer{Type: ReviewerTeam, ID: 42}),
 			want: "reviewers: [User 583231, Team 42], prevent_self_review: true",
 		},
+		{
+			name: "logins are not shown",
+			r:    &RequiredReviewers{Reviewers: []Reviewer{{Type: ReviewerUser, ID: 583231}}, Logins: map[Reviewer]string{{Type: ReviewerUser, ID: 583231}: "octocat"}},
+			want: "reviewers: [User 583231], prevent_self_review: false",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := (EnvironmentProtection{RequiredReviewers: tc.r}).requiredReviewersString(); got != tc.want {
 				t.Errorf("requiredReviewersString() = %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestRequiredReviewers_ReviewersString(t *testing.T) {
-	cases := []struct {
-		name string
-		r    RequiredReviewers
-		want string
-	}{
-		{name: "empty", r: RequiredReviewers{}, want: "[]"},
-		{name: "one reviewer", r: RequiredReviewers{Reviewers: []Reviewer{{Type: ReviewerTeam, ID: 42}}}, want: "[Team 42]"},
-		{name: "observed order", r: RequiredReviewers{Reviewers: []Reviewer{{Type: ReviewerUser, ID: 583231}, {Type: ReviewerTeam, ID: 42}}}, want: "[User 583231, Team 42]"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.r.ReviewersString(); got != tc.want {
-				t.Errorf("ReviewersString() = %q, want %q", got, tc.want)
 			}
 		})
 	}

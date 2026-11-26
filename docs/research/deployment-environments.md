@@ -128,7 +128,7 @@ Environment の名前は、パスパラメータ `environment_name` に URL エ�
 > - 保護ルールの `type`：待機時間の形は `wait_timer`、レビュアーの形は `required_reviewers`、デプロイ元の制限は `branch_policy`（ほかのフィールドを持たない形）だった。`branch_policy` の要素は、`deployment_branch_policy` が `null` でないときに限り含まれた
 > - `deployment_branch_policy` の値：すべてのブランチを許可するときは `null`、保護ブランチに限るときは `protected_branches: true`、`custom_branch_policies: false`、指定したパターンに限るときは `protected_branches: false`、`custom_branch_policies: true` だった
 > - `id`：同じ名前の Environment を削除して作り直すと、作り直すたびに別の `id` になった（2回の作り直しで確認）。デプロイ元の制限を別の値に変えると、`branch_policy` の保護ルールの `id` が変わった
-> - レビュアーの形：`reviewers` に `type: User` とユーザーの `id` を送ると、`reviewers` の要素は `type: User` と、そのユーザーを `reviewer` に持つ形で返った。`reviewer.id` は送った `id` と同じだった。`prevent_self_review` を `false` で送った場合も、`required_reviewers` の要素は `prevent_self_review: false` を含んだ
+> - レビュアーの形：`reviewers` に `type: User` とユーザーの `id` を送ると、`reviewers` の要素は `type: User` と、そのユーザーを `reviewer` に持つ形で返った。`reviewer.id` は送った `id` と同じだった。`reviewer` は利用者の `login` も含んだ。`prevent_self_review` を `false` で送った場合も、`required_reviewers` の要素は `prevent_self_review: false` を含んだ
 > - 保護ルールを外す更新：`wait_timer: 0` と `reviewers: []` を送ると、`wait_timer` と `required_reviewers` の要素はどちらも `protection_rules` からなくなった。値が `0` の待機時間の要素や、`reviewers` が空のレビュアーの要素は返らなかった。待機時間を一度も設定していない Environment にも、`wait_timer` の要素は含まれなかった
 > - 担当者のいないレビュアーの要素：リポジトリの権限を持たない利用者だけを `reviewers` に送ると（4.1 の注釈）、`reviewers` が空の配列で `prevent_self_review: false` の `required_reviewers` の要素が返った。この要素は `reviewers: []` か `reviewers: null` を送るとなくなった
 > - 保護ルールの `id`：担当者を入れ替える更新、`prevent_self_review` だけの更新、待機時間の値だけを変える更新では、それぞれの要素の `id` は変わらなかった。要素をなくしてから設定し直すと、別の `id` になった
@@ -152,13 +152,13 @@ Environment の名前は、パスパラメータ `environment_name` に URL エ�
 
 本文はすべて任意で、省略したフィールドの既存値が保持されるかは記載がありません。本文のない `PUT` の扱いも記載がありません。`protected_branches` は保護ルールを持つブランチだけをデプロイ元とするか、`custom_branch_policies` は指定した名前のパターンに一致するブランチだけをデプロイ元とするかを表します。パターンそのものは、このエンドポイントでは送れず、[GitHub デプロイ元パターン API 仕様](deployment-branch-policies.md) のエンドポイントで作成と削除をします。
 
-デプロイの資料は、設定画面の「Deployment branches」の選択肢として、制限のない「No restriction」、保護ルールを持つブランチだけの「Protected branches only」、指定した名前のパターンに一致するブランチとタグだけの「Selected branches and tags」を挙げています。それぞれ `deployment_branch_policy` の `null`、`protected_branches: true`、`custom_branch_policies: true` に当たります。また、設定画面の「Allow administrators to bypass configured protection rules」で、管理者が保護ルールを迂回してデプロイできるかを選べ、既定では迂回できると記載しています。この選択に当たる本文フィールドは、REST API のドキュメントに記載がありません。
+デプロイの資料は、設定画面の「Deployment branches」の選択肢として、制限のない「No restriction」、保護ルールを持つブランチだけの「Protected branches only」、指定した名前のパターンに一致するブランチとタグだけの「Selected branches and tags」を挙げています。それぞれ `deployment_branch_policy` の `null`、`protected_branches: true`、`custom_branch_policies: true` に当たります。また、設定画面の「Allow administrators to bypass configured protection rules」で、管理者が保護ルールを迂回してデプロイできるかを選べ、既定では迂回できると記載しています。この選択に当たる本文フィールドは、REST API のドキュメントに記載がありません。必須レビュアーについては、担当者のうち1人が承認すればジョブが進み、自己承認の禁止（Prevent self-review）を有効にすると、デプロイを開始した利用者は担当者であってもそのジョブを承認できないと記載しています。
 
 > [!NOTE]
 > 次は、reco の開発者が実際の動作で確認した事項です（公開リポジトリで確認）。
 >
 > - 本文のない作成：存在しない名前への本文のない `PUT` は `200` を返して Environment を作った。作られた Environment は、`protection_rules` が空の配列、`deployment_branch_policy` が `null`、`can_admins_bypass` が `true` だった
-> - 本文つきの作成：存在しない名前に `wait_timer: 3` だけを送ると `200` を返し、作られた Environment は `wait_timer` の保護ルールを持った。存在しない名前に `deployment_branch_policy` の `protected_branches: true`、`custom_branch_policies: false` だけを送ると `200` を返し、作られた Environment はその方式を持った。公開と非公開のリポジトリで確かめた
+> - 本文つきの作成：存在しない名前に `wait_timer: 3` だけを送ると `200` を返し、作られた Environment は `wait_timer` の保護ルールを持った。存在しない名前に `deployment_branch_policy` の `protected_branches: true`、`custom_branch_policies: false` だけを送ると `200` を返し、作られた Environment はその方式を持った。公開と非公開のリポジトリで確かめた。`deployment_branch_policy` だけを送って作った Environment の `protection_rules` は、方式が `protected_branches` でも `custom_branch_policies` でも `type: branch_policy` の要素だけで、`null` では空の配列で、どれも `required_reviewers` と `wait_timer` の要素を持たなかった（公開リポジトリで確認）
 > - 既存の Environment への本文のない `PUT` と `{}` の `PUT`：`200` を返し、値は何も変わらなかった。`wait_timer`、`reviewers`、`prevent_self_review: true`、`can_admins_bypass: false`、`protected_branches: true` を持つ Environment で確かめた
 > - `can_admins_bypass`：本文に `can_admins_bypass: false` を送ると受け付けられ、取得が `false` を返した
 > - 省略したフィールドの保持：`wait_timer: 7`、`reviewers`（ユーザー1人）、`prevent_self_review: true`、`can_admins_bypass: false` を持つ Environment に `deployment_branch_policy` だけを送ると、4つの値と、待機時間とレビュアーの保護ルールの `id` は変わらなかった。`custom_branch_policies: true` で4件のパターンを持つ Environment に `wait_timer` だけを送ると、`deployment_branch_policy` と、4件のパターン（同じ `id`）は変わらなかった
