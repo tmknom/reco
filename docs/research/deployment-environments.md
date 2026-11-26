@@ -41,6 +41,10 @@ REST API のドキュメントは、Environment、Environment のシークレッ
 >
 > - Environment の一覧と取得は `200` を返し、作成の `PUT` も `200` で Environment が作られた。`deployment_branch_policy` を `custom_branch_policies: true` にする更新も `200` で反映され、デプロイ元パターンの作成もできた。上の記載と異なり、利用できないことを示す応答は返らなかった
 > - `wait_timer` だけ、または `reviewers` だけを送る `PUT` は `422` を返した。本文の `message` は、それぞれ `Failed to create the environment protection rule. Please ensure the billing plan supports the wait timer protection rule.` と、同じ文の `wait timer` を `required reviewers` にしたものだった。直後の取得で、既存の `deployment_branch_policy` は変わっていなかった
+> - 保護ルールを外す値も同じだった：担当者を外す `reviewers: []` と `reviewers: null`、待機時間を外す `wait_timer: 0` も、保護ルールのない Environment で、上と同じ `422` を返した。`prevent_self_review` と `reviewers` を一緒に送った `PUT` は `reviewers` の `422`、`deployment_branch_policy` と `wait_timer` を一緒に送った `PUT` は `wait_timer` の `422` を返し、方式は変わらなかった
+> - `prevent_self_review` だけを送る `PUT` は、`true` も `false` も、公開リポジトリで担当者がいないときと同じ `422`（4.1 の注釈）を返した
+> - `can_admins_bypass: false` は `200` を返して取得に反映され、`can_admins_bypass: true` で戻せた
+> - 取得は、保護ルールのない Environment で `protection_rules: []` と `can_admins_bypass` を返した
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -125,7 +129,9 @@ Environment の名前は、パスパラメータ `environment_name` に URL エ�
 > - `deployment_branch_policy` の値：すべてのブランチを許可するときは `null`、保護ブランチに限るときは `protected_branches: true`、`custom_branch_policies: false`、指定したパターンに限るときは `protected_branches: false`、`custom_branch_policies: true` だった
 > - `id`：同じ名前の Environment を削除して作り直すと、作り直すたびに別の `id` になった（2回の作り直しで確認）。デプロイ元の制限を別の値に変えると、`branch_policy` の保護ルールの `id` が変わった
 > - レビュアーの形：`reviewers` に `type: User` とユーザーの `id` を送ると、`reviewers` の要素は `type: User` と、そのユーザーを `reviewer` に持つ形で返った。`reviewer.id` は送った `id` と同じだった。`prevent_self_review` を `false` で送った場合も、`required_reviewers` の要素は `prevent_self_review: false` を含んだ
-> - 保護ルールを外す更新：`wait_timer: 0` と `reviewers: []` を送ると、`wait_timer` と `required_reviewers` の要素はどちらも `protection_rules` からなくなった。値が `0` の待機時間の要素や、`reviewers` が空のレビュアーの要素は返らなかった
+> - 保護ルールを外す更新：`wait_timer: 0` と `reviewers: []` を送ると、`wait_timer` と `required_reviewers` の要素はどちらも `protection_rules` からなくなった。値が `0` の待機時間の要素や、`reviewers` が空のレビュアーの要素は返らなかった。待機時間を一度も設定していない Environment にも、`wait_timer` の要素は含まれなかった
+> - 担当者のいないレビュアーの要素：リポジトリの権限を持たない利用者だけを `reviewers` に送ると（4.1 の注釈）、`reviewers` が空の配列で `prevent_self_review: false` の `required_reviewers` の要素が返った。この要素は `reviewers: []` か `reviewers: null` を送るとなくなった
+> - 保護ルールの `id`：担当者を入れ替える更新、`prevent_self_review` だけの更新、待機時間の値だけを変える更新では、それぞれの要素の `id` は変わらなかった。要素をなくしてから設定し直すと、別の `id` になった
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -157,8 +163,18 @@ Environment の名前は、パスパラメータ `environment_name` に URL エ�
 > - `can_admins_bypass`：本文に `can_admins_bypass: false` を送ると受け付けられ、取得が `false` を返した
 > - 省略したフィールドの保持：`wait_timer: 7`、`reviewers`（ユーザー1人）、`prevent_self_review: true`、`can_admins_bypass: false` を持つ Environment に `deployment_branch_policy` だけを送ると、4つの値と、待機時間とレビュアーの保護ルールの `id` は変わらなかった。`custom_branch_policies: true` で4件のパターンを持つ Environment に `wait_timer` だけを送ると、`deployment_branch_policy` と、4件のパターン（同じ `id`）は変わらなかった
 > - デプロイ元の制限を変える更新：`custom_branch_policies: true` から `protected_branches: true` または `null` に変えると、パターンはすべて失われ、`custom_branch_policies: true` に戻してもパターンの一覧は空だった。`custom_branch_policies: true` のまま同じ値を送り直したときは、パターンは同じ `id` で残った。一度も `custom_branch_policies: true` にしたことのない Environment を `custom_branch_policies: true` に変えた直後と、`custom_branch_policies: true` を本文に含めて作った直後も、パターンの一覧は空だった（非公開リポジトリで確認）。`null` から `protected_branches: true`、`protected_branches: true` から `null`、`custom_branch_policies: true` から `null` に変えた更新では、Environment の `updated_at` は変わらなかった。パターンのエンドポイントの応答は [GitHub デプロイ元パターン API 仕様](deployment-branch-policies.md) の注釈にある
-> - 同じ値の `protected_branches` と `custom_branch_policies`：両方 `true`、両方 `false` のどちらも `422` を返し、本文の `message` は `"custom_branch_policies" and "protected_branches" cannot have the same value` だった。値は変わらなかった
-> - 更新直後の取得：作成と更新（約30回）の約1秒以内の取得は、どれも更新後の値を返した
+> - 同じ値の `protected_branches` と `custom_branch_policies`：両方 `true`、両方 `false` のどちらも `422` を返し、本文の `message` は `"custom_branch_policies" and "protected_branches" cannot have the same value` だった。`deployment_branch_policy` だけを送った場合は、値は変わらなかった。ほかのフィールドと一緒に送った場合は、下の「`422` のときの部分的な反映」のとおり
+> - 担当者を外す表現：担当者のいる Environment に `reviewers: []` を送っても `reviewers: null` を送っても、`required_reviewers` の要素はなくなった。`reviewers` を省略した `PUT` では、担当者は変わらなかった。担当者のいない Environment への `reviewers: []` と `reviewers: null` は、`200` を返して何も変えなかった
+> - 担当者の形の検証：`type` を `User` と `Team` 以外の値（`user`）にした要素と、`id` を文字列にした要素は、`422` を返した。本文の `message` は、`Invalid request.` に続けて、値が列挙にないこと、または型が integer でないことを示した。`type` を省略した要素は、`User` として扱われた
+> - 担当者の件数と重複：同じ利用者を重ねた `reviewers` は、6件までは `200` を返し、担当者は1人にまとめられた。7件は `422` で、`message` は `Failed to create the environment protection rule. Required reviewers can have at most 6 reviewers.` だった。件数は、まとめる前の要素の数で数えられた
+> - 担当者にできない ID：存在しない利用者の ID、`0`、負の値、`id` のない要素と、個人アカウント所有のリポジトリでの `type: Team`（`id` が `1` と大きな値）は、それだけを送ると `422` を返し、`message` は `Failed to create the environment protection rule. Required reviewers must have at least one reviewer.` だった。担当者は変わらなかった。リポジトリの権限を持たない利用者（`octocat`）だけを送ると、`200` を返し、担当者のいないレビュアーの要素（3.2 の注釈）になった。担当者にできる利用者と一緒に送ると、どの場合も `200` を返し、担当者にできない要素だけが黙って除かれた。送った順は結果を変えなかった
+> - 利用者の ID を `type: Team` で送った要素：レビュアーの要素がないときは `500` を返し（2回）、要素は作られなかった。担当者のいる要素があるときは `200` を返し、担当者は変わらなかった（2回）
+> - `prevent_self_review` と担当者：レビュアーの要素がないとき、または担当者のいない要素のときは、`prevent_self_review` を `true` で送っても `false` で送っても `422` を返した。`message` は `Failed to create or update the environment protection rule. Required reviewers must have at least one reviewer to set prevent_self_review.` だった。担当者と一緒に送ると、要素のない Environment でも `prevent_self_review: true` で要素が作られた。`reviewers: []` と一緒に送った `prevent_self_review: true` は `200` を返し、要素はなくなった。`prevent_self_review: true` の要素の担当者を外すと値も失われ、あとで担当者だけを送って要素を作り直すと `prevent_self_review: false` になった（`reviewers: []` と `reviewers: null` の両方で確認）。`null` と文字列の `prevent_self_review` は `422` を返した
+> - 保護設定どうしの保持：`prevent_self_review` だけの `PUT` で担当者が、担当者だけの `PUT` で `prevent_self_review: true` が、`wait_timer` だけの `PUT` で担当者と `prevent_self_review` が、`can_admins_bypass` だけの `PUT` で担当者、`prevent_self_review`、`wait_timer` が、`wait_timer` だけの `PUT` で `can_admins_bypass: false` が、それぞれ変わらなかった。保護ルールの `id` も変わらなかった
+> - 待機時間の値：`0` と負の値（`-1`、`-5`）は、どちらも `wait_timer` の要素をなくした。待機時間のない Environment への `0` と負の値は、`200` を返して何も変えなかった。`1` から `43199` までの値（確かめたのは `1`、`2`、`3`、`5`、`7`、`30`、`59`、`60`、`120`、`500`、`1000`、`1440`、`10000`、`43199`）は反映された。`43200` は `200` を返したが値は変わらず、待機時間のない Environment でも要素は作られなかった（4回）。`43201` は `422` で、`message` は `Failed to create the environment protection rule. The wait timer cannot be greater than 43200 minutes.` だった。`null`、`1.5`、`2.0`、文字列は `422` を返した
+> - `can_admins_bypass` の値：`null` と文字列は `422` を返した
+> - `422` のときの部分的な反映：一つの `PUT` で複数のフィールドを送り、`422` が返ったとき、一部のフィールドの変更が反映されたまま残ることがあった。`reviewers: []` と `wait_timer: 43201` は `wait_timer` の `422` を返したが、担当者はなくなった（2回）。担当者と `prevent_self_review: false` と `wait_timer: 43201` は、`prevent_self_review` が `false` になった。`can_admins_bypass: false` と `wait_timer: 9` と両方 `true` の `deployment_branch_policy` は方式の `422` を返したが、`can_admins_bypass` と `wait_timer` は反映された。一方、存在しない利用者の `reviewers` と、`wait_timer`、`prevent_self_review`、`can_admins_bypass`、`deployment_branch_policy` のどれかを一緒に送った `PUT` は、担当者の `422` を返し、何も変えなかった。`wait_timer: 43201` と `can_admins_bypass: false`、または `deployment_branch_policy` を一緒に送った `PUT` も、何も変えなかった。確かめた範囲では、担当者、待機時間、管理者による迂回、デプロイ元の制限の順に処理され、拒否されたフィールドより前に処理されたフィールドの変更が残ったように見える
+> - 更新直後の取得：作成と更新（約30回）の約1秒以内の取得は、どれも更新後の値を返した。保護設定の更新を含む `PUT`（133回、うち `200` が84回）でも、応答を受け取った直後の取得は、どれも `200` の応答本文と同じだった
 > - 別の名前の Environment：確認の前から存在した Environment は、別の名前の Environment を作成、更新、削除した確認の前後で、`updated_at` を含む全フィールドと、デプロイ元パターン（同じ `id`）が一致した
 
 | Relationship | Target | Target Type |
