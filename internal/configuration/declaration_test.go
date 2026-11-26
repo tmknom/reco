@@ -406,8 +406,8 @@ func TestIsClaimKey(t *testing.T) {
 func TestDocumentDeclaration(t *testing.T) {
 	repositoryDeclaration := func(name string, general General) RepositoryDeclaration {
 		return RepositoryDeclaration{
-			Reference: mustReference(t, name),
-			Desired:   DesiredState{General: general},
+			Reference:    mustReference(t, name),
+			DesiredState: DesiredState{General: general},
 		}
 	}
 	first := repositoryDeclaration("owner/repo", General{AllowAutoMerge: new(true)})
@@ -479,7 +479,7 @@ func TestDocumentDeclaration(t *testing.T) {
 				first,
 				{
 					Reference: mustReference(t, "owner/second"),
-					Desired: DesiredState{
+					DesiredState: DesiredState{
 						General:             General{AllowAutoMerge: new(false)},
 						WorkflowPermissions: WorkflowPermissions{DefaultWorkflowPermissions: new(setting.PermissionRead)},
 					},
@@ -493,7 +493,7 @@ func TestDocumentDeclaration(t *testing.T) {
 				first,
 				{
 					Reference: mustReference(t, "owner/second"),
-					Desired: DesiredState{
+					DesiredState: DesiredState{
 						General:             General{AllowAutoMerge: new(false)},
 						WorkflowPermissions: WorkflowPermissions{CanApprovePullRequestReviews: new(false)},
 					},
@@ -507,7 +507,7 @@ func TestDocumentDeclaration(t *testing.T) {
 				first,
 				{
 					Reference: mustReference(t, "owner/second"),
-					Desired: DesiredState{WorkflowPermissions: WorkflowPermissions{
+					DesiredState: DesiredState{WorkflowPermissions: WorkflowPermissions{
 						DefaultWorkflowPermissions:   new(setting.PermissionWrite),
 						CanApprovePullRequestReviews: new(true),
 					}},
@@ -521,7 +521,7 @@ func TestDocumentDeclaration(t *testing.T) {
 				first,
 				{
 					Reference: mustReference(t, "owner/second"),
-					Desired: DesiredState{RepositoryVariables: []VariableDeclaration{
+					DesiredState: DesiredState{RepositoryVariables: []VariableDeclaration{
 						{Name: mustVariableName(t, "GO_VERSION"), Desired: setting.VariableValue("1.27")},
 					}},
 				},
@@ -591,7 +591,7 @@ func TestDocumentDeclaration(t *testing.T) {
 				first,
 				{
 					Reference: mustReference(t, "owner/second"),
-					Desired: DesiredState{
+					DesiredState: DesiredState{
 						General:            General{AllowAutoMerge: new(false)},
 						ActionsPermissions: ActionsPermissions{AllowedActions: new(setting.AllowedActionsLocalOnly)},
 					},
@@ -605,7 +605,7 @@ func TestDocumentDeclaration(t *testing.T) {
 				first,
 				{
 					Reference: mustReference(t, "owner/second"),
-					Desired: DesiredState{
+					DesiredState: DesiredState{
 						General:             General{AllowAutoMerge: new(false)},
 						ActionsPermissions:  ActionsPermissions{AllowedActions: new(setting.AllowedActionsAll)},
 						WorkflowPermissions: WorkflowPermissions{CanApprovePullRequestReviews: new(true)},
@@ -620,7 +620,7 @@ func TestDocumentDeclaration(t *testing.T) {
 				first,
 				{
 					Reference: mustReference(t, "owner/second"),
-					Desired: DesiredState{
+					DesiredState: DesiredState{
 						General:             General{AllowAutoMerge: new(false)},
 						ActionsPermissions:  ActionsPermissions{Enabled: new(false)},
 						WorkflowPermissions: WorkflowPermissions{CanApprovePullRequestReviews: new(true)},
@@ -635,7 +635,7 @@ func TestDocumentDeclaration(t *testing.T) {
 				first,
 				{
 					Reference: mustReference(t, "owner/second"),
-					Desired: DesiredState{
+					DesiredState: DesiredState{
 						General:       General{AllowAutoMerge: new(false)},
 						ActionsAccess: ActionsAccess{AccessLevel: new(setting.AccessUser)},
 					},
@@ -649,7 +649,7 @@ func TestDocumentDeclaration(t *testing.T) {
 				first,
 				{
 					Reference: mustReference(t, "owner/second"),
-					Desired: DesiredState{
+					DesiredState: DesiredState{
 						General:                 General{AllowAutoMerge: new(false)},
 						ForkPullRequestApproval: ForkPullRequestApproval{ApprovalPolicy: new(setting.ForkPullRequestApprovalAllExternalContributors)},
 					},
@@ -663,7 +663,7 @@ func TestDocumentDeclaration(t *testing.T) {
 				first,
 				{
 					Reference: mustReference(t, "owner/second"),
-					Desired: DesiredState{
+					DesiredState: DesiredState{
 						General:   General{AllowAutoMerge: new(false)},
 						Retention: Retention{Days: new(30)},
 					},
@@ -677,7 +677,7 @@ func TestDocumentDeclaration(t *testing.T) {
 				first,
 				{
 					Reference: mustReference(t, "owner/second"),
-					Desired: DesiredState{
+					DesiredState: DesiredState{
 						General:     General{AllowAutoMerge: new(false)},
 						OIDCSubject: OIDCSubject{Customization: &setting.OIDCSubjectCustomization{IncludeClaimKeys: []string{"repo", "context"}}},
 					},
@@ -691,7 +691,7 @@ func TestDocumentDeclaration(t *testing.T) {
 				first,
 				{
 					Reference: mustReference(t, "owner/second"),
-					Desired: DesiredState{
+					DesiredState: DesiredState{
 						General:                         General{AllowAutoMerge: new(false)},
 						PrivateForkPullRequestWorkflows: PrivateForkPullRequestWorkflows{Conditions: &setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, RequireApprovalForForkPullRequestWorkflows: true}},
 					},
@@ -705,7 +705,7 @@ func TestDocumentDeclaration(t *testing.T) {
 				first,
 				{
 					Reference: mustReference(t, "owner/second"),
-					Desired: DesiredState{
+					DesiredState: DesiredState{
 						General:                         General{AllowAutoMerge: new(false)},
 						ActionsAccess:                   ActionsAccess{AccessLevel: new(setting.AccessNone)},
 						ForkPullRequestApproval:         ForkPullRequestApproval{ApprovalPolicy: new(setting.ForkPullRequestApprovalFirstTimeContributors)},
@@ -728,7 +728,7 @@ func TestDocumentDeclaration(t *testing.T) {
 				first,
 				{
 					Reference: mustReference(t, "owner/second"),
-					Desired: DesiredState{Environments: []EnvironmentDeclaration{{
+					DesiredState: DesiredState{Environments: []EnvironmentDeclaration{{
 						Name:                   mustEnvironmentName(t, "staging"),
 						DeploymentBranchPolicy: &setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches},
 					}}},
@@ -743,7 +743,7 @@ func TestDocumentDeclaration(t *testing.T) {
 				first,
 				{
 					Reference: mustReference(t, "owner/second"),
-					Desired: DesiredState{
+					DesiredState: DesiredState{
 						RepositoryVariables: []VariableDeclaration{{Name: mustVariableName(t, "GO_VERSION"), Desired: setting.VariableValue("1.27")}},
 						Environments: []EnvironmentDeclaration{
 							{Name: mustEnvironmentName(t, "staging"), Variables: []VariableDeclaration{{Name: mustVariableName(t, "GO_VERSION"), Desired: setting.VariableValue("1.26")}}},
@@ -772,8 +772,8 @@ func TestDocumentDeclaration(t *testing.T) {
 			want: Declaration{Repositories: []RepositoryDeclaration{
 				first,
 				{
-					Reference: mustReference(t, "owner/second"),
-					Desired:   DesiredState{Dependabot: Dependabot{Alerts: new(true)}},
+					Reference:    mustReference(t, "owner/second"),
+					DesiredState: DesiredState{Dependabot: Dependabot{Alerts: new(true)}},
 				},
 			}},
 		},
@@ -783,8 +783,8 @@ func TestDocumentDeclaration(t *testing.T) {
 			want: Declaration{Repositories: []RepositoryDeclaration{
 				first,
 				{
-					Reference: mustReference(t, "owner/second"),
-					Desired:   DesiredState{SecretScanning: SecretScanning{PushProtection: new(false)}},
+					Reference:    mustReference(t, "owner/second"),
+					DesiredState: DesiredState{SecretScanning: SecretScanning{PushProtection: new(false)}},
 				},
 			}},
 		},
@@ -802,7 +802,7 @@ func TestDocumentDeclaration(t *testing.T) {
 				first,
 				{
 					Reference: mustReference(t, "owner/second"),
-					Desired: DesiredState{Rulesets: []RulesetDeclaration{
+					DesiredState: DesiredState{Rulesets: []RulesetDeclaration{
 						{Name: mustRulesetName(t, "protect"), Desired: setting.RulesetValue(baseRuleset())},
 						{Name: mustRulesetName(t, "release"), Desired: setting.RulesetValue(baseRuleset())},
 					}},

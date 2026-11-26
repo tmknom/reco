@@ -114,7 +114,7 @@ func executeChange(ctx context.Context, client *github.Client, r changeplan.Repo
 		record.cause = errors.Join(record.cause, err)
 		return record
 	}
-	record.mismatchedSettings = mismatchedDesiredSettings(change, observed)
+	record.mismatchedSettings = mismatchedManagedSettings(change, observed)
 	// ID が変わった観測は別のリポジトリの値のため、更新直前の値と比べない。
 	if record.confirmation != desiredStateIdentityMismatch {
 		record.unexpectedOutsideChanges = unexpectedOutsideChanges(change, before, observed)
@@ -159,7 +159,7 @@ func sendUpdate(ctx context.Context, client *github.Client, target repository.Re
 	case changeplan.MergeMethodsUpdate:
 		allowed := make(map[setting.Key]bool, len(operation.Settings))
 		for _, s := range operation.Settings {
-			allowed[s.Unit.Key] = s.Value.Bool()
+			allowed[s.Unit.Key] = s.Desired.Bool()
 		}
 		return client.UpdateMergeMethods(ctx, target, allowed)
 	case changeplan.EnvironmentCreation:
@@ -275,18 +275,18 @@ func appendArea(areas []setting.Area, area setting.Area) []setting.Area {
 // observeAfterUpdate は、更新後の観測を行い、期待状態の確認結果と観測不能だった管理設定、それを与えた観測を返す。
 // GitHub は正常応答のあとすぐには更新を反映しないことがあるため、期待状態と一致しないあいだと、期待値と比べる設定が観測不能のあいだは、
 // retryDelays の時間ずつ待って、retryDelays を使い切るまで観測し直す。
-func observeAfterUpdate(ctx context.Context, client *github.Client, r changeplan.RepositoryPlan, change changeplan.LogicalChange, areas []setting.Area, retryDelays []time.Duration, after func(time.Duration) <-chan time.Time) (github.ObservationResult, desiredStateConfirmation, unavailableDesiredSetting, error) {
+func observeAfterUpdate(ctx context.Context, client *github.Client, r changeplan.RepositoryPlan, change changeplan.LogicalChange, areas []setting.Area, retryDelays []time.Duration, after func(time.Duration) <-chan time.Time) (github.ObservationResult, desiredStateConfirmation, unavailableManagedSetting, error) {
 	for i := 0; ; i++ {
 		observed, err := client.ObserveRepositoryForNamedResources(ctx, r.Target, observationResources(change), areas...)
 		if err != nil {
-			return github.ObservationResult{}, desiredStateObservationFailed, unavailableDesiredSetting{}, err
+			return github.ObservationResult{}, desiredStateObservationFailed, unavailableManagedSetting{}, err
 		}
 		confirmation, unavailable := confirmDesiredState(r.RepositoryID, change, observed)
 		if (confirmation != desiredStateMismatch && confirmation != desiredStateUnavailable) || i == len(retryDelays) {
 			return observed, confirmation, unavailable, nil
 		}
 		if err := waitFor(ctx, after, retryDelays[i]); err != nil {
-			return github.ObservationResult{}, desiredStateObservationFailed, unavailableDesiredSetting{}, fmt.Errorf("wait before reading %s again after the update: %w", r.Target, err)
+			return github.ObservationResult{}, desiredStateObservationFailed, unavailableManagedSetting{}, fmt.Errorf("wait before reading %s again after the update: %w", r.Target, err)
 		}
 	}
 }

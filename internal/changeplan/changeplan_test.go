@@ -79,10 +79,10 @@ func TestPlan_NotApplicableError(t *testing.T) {
 	}
 }
 
-// TestSettingPlan_IsCreation は、作成を、存在しないと確かめた関連リソースの不一致とする定義を確かめる。
+// TestSettingPlan_IsConfirmedCreation は、確認済みの差分の作成を、存在しないと確かめた関連リソースの不一致とする定義を確かめる。
 //
 //trace:checks FR-007
-func TestSettingPlan_IsCreation(t *testing.T) {
+func TestSettingPlan_IsConfirmedCreation(t *testing.T) {
 	environment := setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "production")}
 	ruleset := rulesetUnit(t, "protect")
 	absent := github.Observed(setting.Absent())
@@ -106,8 +106,8 @@ func TestSettingPlan_IsCreation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.plan.IsCreation(); got != tc.want {
-				t.Errorf("IsCreation() = %t, want %t", got, tc.want)
+			if got := tc.plan.IsConfirmedCreation(); got != tc.want {
+				t.Errorf("IsConfirmedCreation() = %t, want %t", got, tc.want)
 			}
 		})
 	}
@@ -1191,7 +1191,7 @@ func TestGenerate_OIDCSubject(t *testing.T) {
 		t.Fatalf("LogicalChanges() error = %v", err)
 	}
 	wantChanges := []LogicalChange{{
-		DesiredState: []DesiredSetting{{Unit: unit, Value: desired}},
+		DesiredState: []configuration.ManagedSetting{{Unit: unit, Desired: desired}},
 		Operations: []UpdateOperation{{
 			Kind: SettingUpdate, Unit: unit, Value: desired,
 			PreconditionBases: []PreconditionBasis{{Unit: unit, AnticipatedValue: AnticipateUnchanged(observed)}},

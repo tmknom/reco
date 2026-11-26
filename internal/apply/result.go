@@ -35,7 +35,7 @@ type changeRecord struct {
 	operations   []operationRecord
 	confirmation desiredStateConfirmation
 	// desiredUnavailable は confirmation が desiredStateUnavailable のときだけ意味を持つ。
-	desiredUnavailable unavailableDesiredSetting
+	desiredUnavailable unavailableManagedSetting
 	// mismatchedSettings は、更新後の観測で期待値と異なる値を観測した管理設定。期待状態の並びである。confirmation が desiredStateMismatch のときだけ表示に使う。
 	mismatchedSettings       []setting.Unit
 	unexpectedOutsideChanges []unexpectedOutsideChange

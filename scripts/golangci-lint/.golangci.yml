@@ -97,7 +97,7 @@ linters:
             - "!${base-path}/internal/plan/**"
           deny:
             - pkg: github.com/tmknom/reco/internal/plan
-              desc: only cmd calls an operation package
+              desc: only cmd calls a user operation package
         apply-from-internal:
           list-mode: lax
           files:
@@ -105,7 +105,7 @@ linters:
             - "!${base-path}/internal/apply/**"
           deny:
             - pkg: github.com/tmknom/reco/internal/apply
-              desc: only cmd calls an operation package
+              desc: only cmd calls a user operation package
         show-from-internal:
           list-mode: lax
           files:
@@ -113,7 +113,7 @@ linters:
             - "!${base-path}/internal/show/**"
           deny:
             - pkg: github.com/tmknom/reco/internal/show
-              desc: only cmd calls an operation package
+              desc: only cmd calls a user operation package
         show-without-declaration:
           list-mode: lax
           files:

@@ -34,7 +34,7 @@ func TestUnavailableConfirmationText(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := unavailableConfirmationText(unavailableDesiredSetting{unit: tc.unit, reason: tc.reason}); got != tc.want {
+			if got := unavailableConfirmationText(unavailableManagedSetting{unit: tc.unit, reason: tc.reason}); got != tc.want {
 				t.Errorf("unavailableConfirmationText() = %q, want %q", got, tc.want)
 			}
 		})
@@ -43,11 +43,11 @@ func TestUnavailableConfirmationText(t *testing.T) {
 	// 観測が作らない組を、ほかの種類の文言で黙って埋めない
 	panicCases := []struct {
 		name string
-		u    unavailableDesiredSetting
+		u    unavailableManagedSetting
 	}{
-		{name: "undefined reason panics", u: unavailableDesiredSetting{unit: ruleset}},
-		{name: "undetermined name of a setting without a name panics", u: unavailableDesiredSetting{unit: setting.Unit{Key: setting.AllowAutoMerge}, reason: github.UnavailableNameUndetermined}},
-		{name: "uninterpreted parts of a setting other than a ruleset panic", u: unavailableDesiredSetting{unit: variable, reason: github.UnavailableUninterpretedParts}},
+		{name: "undefined reason panics", u: unavailableManagedSetting{unit: ruleset}},
+		{name: "undetermined name of a setting without a name panics", u: unavailableManagedSetting{unit: setting.Unit{Key: setting.AllowAutoMerge}, reason: github.UnavailableNameUndetermined}},
+		{name: "uninterpreted parts of a setting other than a ruleset panic", u: unavailableManagedSetting{unit: variable, reason: github.UnavailableUninterpretedParts}},
 	}
 	for _, tc := range panicCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -246,7 +246,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 			name: "success with an unavailable desired value shows that the declaration is not in effect with the reason",
 			record: changeRecord{
 				change: allowedActionsChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}},
-				confirmation: desiredStateUnavailable, desiredUnavailable: unavailableDesiredSetting{unit: setting.Unit{Key: setting.AllowedActions}, reason: github.UnavailableActionsDisabled},
+				confirmation: desiredStateUnavailable, desiredUnavailable: unavailableManagedSetting{unit: setting.Unit{Key: setting.AllowedActions}, reason: github.UnavailableActionsDisabled},
 			},
 			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not in effect (GitHub Actions is disabled)\n\n" +
 				rollbackNote,
@@ -703,12 +703,12 @@ func TestWriteChangeReport_Environments(t *testing.T) {
 		},
 		{
 			name:    "mode change of an environment absent after the update is not in effect",
-			records: []changeRecord{{change: staging, operations: succeeded, confirmation: desiredStateUnavailable, desiredUnavailable: unavailableDesiredSetting{unit: staging.DesiredState[0].Unit, reason: github.UnavailableEnvironmentAbsent}}},
+			records: []changeRecord{{change: staging, operations: succeeded, confirmation: desiredStateUnavailable, desiredUnavailable: unavailableManagedSetting{unit: staging.DesiredState[0].Unit, reason: github.UnavailableEnvironmentAbsent}}},
 			want:    "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not in effect (the environment does not exist)\n\n" + rollbackNote,
 		},
 		{
 			name:    "creation whose existence cannot be determined after the update is not confirmed",
-			records: []changeRecord{{change: creation, operations: succeeded, confirmation: desiredStateUnavailable, desiredUnavailable: unavailableDesiredSetting{unit: creation.DesiredState[0].Unit, reason: github.UnavailableNameUndetermined}}},
+			records: []changeRecord{{change: creation, operations: succeeded, confirmation: desiredStateUnavailable, desiredUnavailable: unavailableManagedSetting{unit: creation.DesiredState[0].Unit, reason: github.UnavailableNameUndetermined}}},
 			want:    "  owner/repo: failed\n    Update request: succeeded\n    Desired state: not confirmed (environment existence unknown)\n\n" + rollbackNote,
 		},
 		{

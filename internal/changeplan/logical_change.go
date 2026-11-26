@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -12,18 +13,12 @@ import (
 // 実行は承認した変更内容だけを使い、設定宣言を読み直さずに変更前提と期待状態を確かめる。
 type LogicalChange struct {
 	// DesiredState は期待状態。まとめた管理設定の期待値を、管理設定ごとに一つずつ、計画の並びで持つ。一つ以上を持つ。
-	DesiredState []DesiredSetting
+	DesiredState []configuration.ManagedSetting
 	// Operations は構成する更新操作を実行順に並べたもの。一つ以上を持つ。
 	Operations []UpdateOperation
 	// SideEffectSettings は、変更に伴う副作用として提示した設定のうち reco が観測するもの。
 	// 承認した変化のため、同じ更新エンドポイントの設定でも変更対象外の設定に数えない。
 	SideEffectSettings []setting.Unit
-}
-
-// DesiredSetting は、期待状態を構成する一つの管理設定の期待値。
-type DesiredSetting struct {
-	Unit  setting.Unit
-	Value setting.Value
 }
 
 // UpdateOperation は、論理的な設定変更を構成する更新操作について、承認の対象になる内容。
@@ -39,7 +34,7 @@ type UpdateOperation struct {
 	// Pattern は、DeploymentPatternAddition と DeploymentPatternRemoval が加えるか取り除く個別パターン。
 	Pattern setting.DeploymentPattern
 	// Settings は、MergeMethodsUpdate が一つの更新要求で送る管理設定とその値を、計画の並びで持つ。
-	Settings []DesiredSetting
+	Settings []configuration.ManagedSetting
 	// PreconditionBases は、この更新操作の変更前提の基準。変わっていたことを報告するときに優先する順に並べる。
 	PreconditionBases []PreconditionBasis
 }
@@ -203,7 +198,7 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 		case s.Unit.Key == setting.EnvironmentVariable:
 			// Environment の作成とまとめず、変数ごとに一つの論理的な設定変更にする (Environments の設計の論理的な設定変更と更新操作)
 			if operation, ok := r.environmentVariableOperationOf(s); ok {
-				changes = append(changes, LogicalChange{DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}}, Operations: []UpdateOperation{operation}})
+				changes = append(changes, LogicalChange{DesiredState: []configuration.ManagedSetting{{Unit: s.Unit, Desired: s.Desired}}, Operations: []UpdateOperation{operation}})
 			}
 			continue
 		case s.Unit.Key == setting.RulesetResource:
@@ -224,13 +219,13 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 			})
 		}
 		change := LogicalChange{
-			DesiredState: []DesiredSetting{{Unit: s.Unit, Value: s.Desired}}, Operations: []UpdateOperation{operation}, SideEffectSettings: sideEffectSettingsOf(s),
+			DesiredState: []configuration.ManagedSetting{{Unit: s.Unit, Desired: s.Desired}}, Operations: []UpdateOperation{operation}, SideEffectSettings: sideEffectSettingsOf(s),
 		}
 		if targetsSelectedPolicy(s) {
 			if !paired {
 				panic(fmt.Sprintf("changeplan: %s to selected has no not-comparable %s to follow", s.Unit.Key, setting.SelectedActions))
 			}
-			change.DesiredState = append(change.DesiredState, DesiredSetting{Unit: criteria.Unit, Value: criteria.Desired})
+			change.DesiredState = append(change.DesiredState, configuration.ManagedSetting{Unit: criteria.Unit, Desired: criteria.Desired})
 			// 2つ目の承認時に予定した値は、1つ目による予定どおりの変化を反映したポリシーである
 			change.Operations = append(change.Operations, UpdateOperation{
 				Kind: SettingUpdate, Unit: criteria.Unit, Value: criteria.Desired,
@@ -248,7 +243,7 @@ func (r RepositoryPlan) LogicalChanges() ([]LogicalChange, error) {
 }
 
 // executionOrder は、管理設定の計画を論理的な設定変更の実行順に並べて返す。基本は計画の並び (変更予定の表示順) である。
-// 設定の依存関係ごとに、前提の設定の期待値が無効のときだけ、依存する設定の計画をその直前に移す。
+// 設定の依存関係ごとに、前提の設定の期待値が無効のときだけ、前提の設定より後ろにある依存する設定の計画をその直前に移す。
 // 先に前提の設定を無効にすると、GitHub が依存する設定も無効にし、その変更前提が成り立たなくなるため。
 // 前提の設定がすでに無効で一致しているなら、依存する設定の変更予定は、有効にする向きが適用不能でこの並びまで届かず、
 // 無効にする向きはすでに無効のため変更予定にならない。
@@ -257,7 +252,7 @@ func (r RepositoryPlan) executionOrder() []SettingPlan {
 	for _, d := range setting.Dependencies() {
 		prerequisite := slices.IndexFunc(ordered, func(s SettingPlan) bool { return s.Unit.Key == d.Prerequisite })
 		dependent := slices.IndexFunc(ordered, func(s SettingPlan) bool { return s.Unit.Key == d.Dependent })
-		if prerequisite < 0 || dependent < 0 || ordered[prerequisite].Desired.Bool() {
+		if prerequisite < 0 || dependent < prerequisite || ordered[prerequisite].Desired.Bool() {
 			continue
 		}
 		moved := ordered[dependent]
@@ -337,7 +332,7 @@ func checkUpdateEndpoint(operation UpdateOperation) {
 	switch {
 	case operation.Kind == SettingUpdate && slices.Contains(setting.MergeMethods(), operation.Unit.Key):
 		panic("changeplan: " + operation.Unit.String() + " is a merge method updated on its own")
-	case operation.Kind == MergeMethodsUpdate && (len(operation.Settings) == 0 || slices.ContainsFunc(operation.Settings, func(s DesiredSetting) bool {
+	case operation.Kind == MergeMethodsUpdate && (len(operation.Settings) == 0 || slices.ContainsFunc(operation.Settings, func(s configuration.ManagedSetting) bool {
 		return !slices.Contains(setting.MergeMethods(), s.Unit.Key)
 	})):
 		panic("changeplan: merge methods update of " + operation.Unit.String() + " does not send only merge methods")

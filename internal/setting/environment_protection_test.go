@@ -1,6 +1,9 @@
 package setting
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 //trace:checks FR-004
 func TestParseReviewerType(t *testing.T) {
@@ -30,7 +33,47 @@ func reviewers(preventSelfReview bool, rs ...Reviewer) *RequiredReviewers {
 	return &RequiredReviewers{PreventSelfReview: preventSelfReview, Reviewers: rs}
 }
 
-func TestEnvironmentProtection_SameWaitTimer(t *testing.T) {
+//trace:checks FR-012
+func TestEnvironmentProtection_DifferencesTo(t *testing.T) {
+	user1 := Reviewer{Type: ReviewerUser, ID: 1}
+	user2 := Reviewer{Type: ReviewerUser, ID: 2}
+	base := EnvironmentProtection{WaitTimer: new(30), RequiredReviewers: reviewers(true, user1, user2), CanAdminsBypass: true}
+	cases := []struct {
+		name  string
+		other EnvironmentProtection
+		want  []EnvironmentProtectionDifference
+	}{
+		{
+			name:  "same protection with reviewers only reordered has no difference",
+			other: EnvironmentProtection{WaitTimer: new(30), RequiredReviewers: reviewers(true, user2, user1), CanAdminsBypass: true},
+		},
+		{
+			name:  "changed required_reviewers is one difference",
+			other: EnvironmentProtection{WaitTimer: new(30), RequiredReviewers: reviewers(false, user1, user2), CanAdminsBypass: true},
+			want: []EnvironmentProtectionDifference{{
+				Item: "required_reviewers", Before: "reviewers: [User 1, User 2], prevent_self_review: true", After: "reviewers: [User 1, User 2], prevent_self_review: false",
+			}},
+		},
+		{
+			name:  "all three changed are three differences in the order wait_timer, required_reviewers, can_admins_bypass",
+			other: EnvironmentProtection{WaitTimer: new(5)},
+			want: []EnvironmentProtectionDifference{
+				{Item: "wait_timer", Before: "30", After: "5"},
+				{Item: "required_reviewers", Before: "reviewers: [User 1, User 2], prevent_self_review: true", After: "none"},
+				{Item: "can_admins_bypass", Before: "true", After: "false"},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := base.DifferencesTo(tc.other); !slices.Equal(got, tc.want) {
+				t.Errorf("DifferencesTo() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEnvironmentProtection_sameWaitTimer(t *testing.T) {
 	cases := []struct {
 		name string
 		a, b *int
@@ -45,14 +88,14 @@ func TestEnvironmentProtection_SameWaitTimer(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			a, b := EnvironmentProtection{WaitTimer: tc.a}, EnvironmentProtection{WaitTimer: tc.b}
-			if got := a.SameWaitTimer(b); got != tc.want {
-				t.Errorf("SameWaitTimer() = %t, want %t", got, tc.want)
+			if got := a.sameWaitTimer(b); got != tc.want {
+				t.Errorf("sameWaitTimer() = %t, want %t", got, tc.want)
 			}
 		})
 	}
 }
 
-func TestEnvironmentProtection_SameRequiredReviewers(t *testing.T) {
+func TestEnvironmentProtection_sameRequiredReviewers(t *testing.T) {
 	user1 := Reviewer{Type: ReviewerUser, ID: 1}
 	user2 := Reviewer{Type: ReviewerUser, ID: 2}
 	team1 := Reviewer{Type: ReviewerTeam, ID: 1}
@@ -76,17 +119,17 @@ func TestEnvironmentProtection_SameRequiredReviewers(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			a, b := EnvironmentProtection{RequiredReviewers: tc.a}, EnvironmentProtection{RequiredReviewers: tc.b}
-			if got := a.SameRequiredReviewers(b); got != tc.want {
-				t.Errorf("SameRequiredReviewers() = %t, want %t", got, tc.want)
+			if got := a.sameRequiredReviewers(b); got != tc.want {
+				t.Errorf("sameRequiredReviewers() = %t, want %t", got, tc.want)
 			}
 		})
 	}
 }
 
-func TestEnvironmentProtection_SameRequiredReviewersKeepsOrder(t *testing.T) {
+func TestEnvironmentProtection_sameRequiredReviewersKeepsOrder(t *testing.T) {
 	a := EnvironmentProtection{RequiredReviewers: reviewers(false, Reviewer{Type: ReviewerUser, ID: 2}, Reviewer{Type: ReviewerUser, ID: 1})}
 	b := EnvironmentProtection{RequiredReviewers: reviewers(false, Reviewer{Type: ReviewerUser, ID: 1}, Reviewer{Type: ReviewerUser, ID: 2})}
-	_ = a.SameRequiredReviewers(b)
+	_ = a.sameRequiredReviewers(b)
 	if got := a.RequiredReviewers.Reviewers[0].ID; got != 2 {
 		t.Errorf("Reviewers[0].ID = %d, want 2 (the receiver must not be reordered)", got)
 	}
@@ -95,7 +138,7 @@ func TestEnvironmentProtection_SameRequiredReviewersKeepsOrder(t *testing.T) {
 	}
 }
 
-func TestEnvironmentProtection_WaitTimerString(t *testing.T) {
+func TestEnvironmentProtection_waitTimerString(t *testing.T) {
 	cases := []struct {
 		name string
 		p    *int
@@ -107,14 +150,14 @@ func TestEnvironmentProtection_WaitTimerString(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := (EnvironmentProtection{WaitTimer: tc.p}).WaitTimerString(); got != tc.want {
-				t.Errorf("WaitTimerString() = %q, want %q", got, tc.want)
+			if got := (EnvironmentProtection{WaitTimer: tc.p}).waitTimerString(); got != tc.want {
+				t.Errorf("waitTimerString() = %q, want %q", got, tc.want)
 			}
 		})
 	}
 }
 
-func TestEnvironmentProtection_RequiredReviewersString(t *testing.T) {
+func TestEnvironmentProtection_requiredReviewersString(t *testing.T) {
 	cases := []struct {
 		name string
 		r    *RequiredReviewers
@@ -130,8 +173,8 @@ func TestEnvironmentProtection_RequiredReviewersString(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := (EnvironmentProtection{RequiredReviewers: tc.r}).RequiredReviewersString(); got != tc.want {
-				t.Errorf("RequiredReviewersString() = %q, want %q", got, tc.want)
+			if got := (EnvironmentProtection{RequiredReviewers: tc.r}).requiredReviewersString(); got != tc.want {
+				t.Errorf("requiredReviewersString() = %q, want %q", got, tc.want)
 			}
 		})
 	}

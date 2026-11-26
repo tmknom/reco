@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -30,7 +31,7 @@ func TestRulesetChangeOf(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s := SettingPlan{Unit: unit, Observed: github.Observed(tc.observed), Desired: desired, RulesetIdentity: tc.identity, Result: Mismatch, Applicability: Applicable()}
 			want := LogicalChange{
-				DesiredState: []DesiredSetting{{Unit: unit, Value: desired}},
+				DesiredState: []configuration.ManagedSetting{{Unit: unit, Desired: desired}},
 				Operations: []UpdateOperation{{
 					Kind: tc.wantKind, Unit: unit, Value: desired,
 					PreconditionBases: []PreconditionBasis{{Unit: unit, AnticipatedValue: AnticipateValue(tc.observed), AnticipatedRulesetIdentity: tc.identity}},

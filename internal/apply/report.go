@@ -307,7 +307,7 @@ func mismatchedSettingsText(units []setting.Unit) string {
 // not in effect と not confirmed の分け方は、ドメインモデルの期待状態の確認結果に従う。
 // 理由だけでは文言が決まらないため、観測不能だった管理設定の種類からも選び、観測が作らない組は既定の文言で埋めずに不変条件の破れとして panic する。
 // 定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
-func unavailableConfirmationText(u unavailableDesiredSetting) string {
+func unavailableConfirmationText(u unavailableManagedSetting) string {
 	switch u.reason {
 	case github.UnavailableActionsDisabled:
 		return "not in effect (GitHub Actions is disabled)"

@@ -64,8 +64,8 @@ func TestSelectTargets(t *testing.T) {
 func repositoryDeclaration(t *testing.T, name string, desired bool) configuration.RepositoryDeclaration {
 	t.Helper()
 	return configuration.RepositoryDeclaration{
-		Reference: mustReference(t, name),
-		Desired:   configuration.DesiredState{General: configuration.General{AllowAutoMerge: &desired}},
+		Reference:    mustReference(t, name),
+		DesiredState: configuration.DesiredState{General: configuration.General{AllowAutoMerge: &desired}},
 	}
 }
 

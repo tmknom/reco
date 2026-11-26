@@ -23,7 +23,7 @@ func rulesetChangeText(s changeplan.SettingPlan) string {
 	case changeplan.Match:
 		return ""
 	case changeplan.Mismatch:
-		if s.IsCreation() {
+		if s.IsConfirmedCreation() {
 			fmt.Fprintf(&b, "  %s: absent -> present\n%s", s.Unit.String(), rulesetValueLines(s.Desired.Ruleset()))
 		} else {
 			observed, _ := s.Observed.Value()

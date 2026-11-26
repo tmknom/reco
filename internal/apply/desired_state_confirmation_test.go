@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/tmknom/reco/internal/changeplan"
+	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -35,7 +36,7 @@ func TestConfirmDesiredState(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got, unavailable := confirmDesiredState(1, change, tc.observed); got != tc.want || unavailable != (unavailableDesiredSetting{}) {
+			if got, unavailable := confirmDesiredState(1, change, tc.observed); got != tc.want || unavailable != (unavailableManagedSetting{}) {
 				t.Errorf("confirmDesiredState() = %v, %v, want %v without an unavailable setting", got, unavailable, tc.want)
 			}
 		})
@@ -83,7 +84,7 @@ func TestConfirmDesiredState(t *testing.T) {
 		{
 			// 計画が作らない並び。観測不能の設定が先に並んでも、観測できた値の不一致が優先されることを確かめる
 			name: "mismatch after an unavailable desired value in the order of the desired state is still a mismatch",
-			change: changeplan.LogicalChange{DesiredState: []changeplan.DesiredSetting{
+			change: changeplan.LogicalChange{DesiredState: []configuration.ManagedSetting{
 				toSelectedChange().DesiredState[1], toSelectedChange().DesiredState[0],
 			}},
 			observed: actionsEnabled(setting.AllowedActionsAll, false),
@@ -110,7 +111,7 @@ func TestConfirmDesiredState(t *testing.T) {
 	t.Run("unavailable desired values return the first unavailable setting in the order of the desired state", func(t *testing.T) {
 		change := toSelectedChange()
 		observed := github.ObservationResult{RepositoryID: 1, ActionsPermissions: actionsDisabled()}
-		want := unavailableDesiredSetting{unit: change.DesiredState[0].Unit, reason: github.UnavailableActionsDisabled}
+		want := unavailableManagedSetting{unit: change.DesiredState[0].Unit, reason: github.UnavailableActionsDisabled}
 		if _, got := confirmDesiredState(1, change, observed); got != want {
 			t.Errorf("confirmDesiredState() unavailable setting = %v, want %v", got, want)
 		}
@@ -262,7 +263,7 @@ func TestConfirmDesiredState_RepositoryVariables(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			observed := github.ObservationResult{RepositoryID: 1, RepositoryVariables: tc.variables}
-			if got, unavailable := confirmDesiredState(1, tc.change, observed); got != tc.want || unavailable != (unavailableDesiredSetting{}) {
+			if got, unavailable := confirmDesiredState(1, tc.change, observed); got != tc.want || unavailable != (unavailableManagedSetting{}) {
 				t.Errorf("confirmDesiredState() = %v, %v, want %v without an unavailable setting", got, unavailable, tc.want)
 			}
 		})
@@ -323,17 +324,17 @@ func TestConfirmDesiredState_EnvironmentCreationWithAbsentVariable(t *testing.T)
 			if got, _ := confirmDesiredState(1, change, observed); got != tc.want {
 				t.Errorf("confirmDesiredState() = %v, want %v", got, tc.want)
 			}
-			if got := mismatchedDesiredSettings(change, observed); !slices.Equal(got, tc.wantMismatched) {
-				t.Errorf("mismatchedDesiredSettings() = %v, want %v", got, tc.wantMismatched)
+			if got := mismatchedManagedSettings(change, observed); !slices.Equal(got, tc.wantMismatched) {
+				t.Errorf("mismatchedManagedSettings() = %v, want %v", got, tc.wantMismatched)
 			}
 		})
 	}
 }
 
-// TestMismatchedDesiredSettings は、期待状態のうち、期待値と異なる値を観測した管理設定を、期待状態の並びで返すことを確かめる。
+// TestMismatchedManagedSettings は、期待状態のうち、期待値と異なる値を観測した管理設定を、期待状態の並びで返すことを確かめる。
 //
 //trace:checks FR-012 FR-013
-func TestMismatchedDesiredSettings(t *testing.T) {
+func TestMismatchedManagedSettings(t *testing.T) {
 	general := func(squash, mergeCommit bool) github.ObservationResult {
 		return github.ObservationResult{RepositoryID: 1, General: github.General{AllowSquashMerge: squash, AllowMergeCommit: mergeCommit}}
 	}
@@ -361,8 +362,8 @@ func TestMismatchedDesiredSettings(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := mismatchedDesiredSettings(tc.change, tc.observed); !slices.Equal(got, tc.want) {
-				t.Errorf("mismatchedDesiredSettings() = %v, want %v", got, tc.want)
+			if got := mismatchedManagedSettings(tc.change, tc.observed); !slices.Equal(got, tc.want) {
+				t.Errorf("mismatchedManagedSettings() = %v, want %v", got, tc.want)
 			}
 		})
 	}

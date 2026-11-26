@@ -18,8 +18,8 @@ type Declaration struct {
 
 // RepositoryDeclaration はリポジトリごとの宣言。
 type RepositoryDeclaration struct {
-	Reference repository.Reference
-	Desired   DesiredState
+	Reference    repository.Reference
+	DesiredState DesiredState
 }
 
 // DesiredState は、一つのリポジトリについて管理設定に求める状態。
