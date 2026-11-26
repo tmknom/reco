@@ -253,6 +253,7 @@ repositories:
 - key は書いた順が意味を持つ。`repo` と `context` を入れ替えると別の設定になる
 - key は英数字と `_` だけからなる文字列で、同じ key は二度書けない。reco は使える key の一覧を持たないため、GitHub が受け付けない key（大文字を含む `Repo` など）は `plan` では分からず、`apply` で `failed` になる（[トラブルシューティング](troubleshooting.md)）。そのとき GitHub 上の値は変わらない
 - key を持つ状態から `use_default: true` に変えると、GitHub は保存していた key を消す。あとで `use_default: false` に戻しても、key は戻らない
+- 2026年7月15日より後に名前を変えたか移転したリポジトリなどで、`use_immutable_subject` が `true` のとき、`false` を書いても GitHub が値を変えないことがある。そのとき `apply` は `failed` になる（[トラブルシューティング](troubleshooting.md#oidc-トークンの-subject-の-use_immutable_subject-が-false-にならない)）
 - subject の形を変える変更には、`plan` と `apply` の変更計画に `Note:` の行が付く（[コマンドリファレンス](commands.md#plan)）
 - subject の形を変えると、今の subject に合わせて設定した外部のクラウドなどの信頼の条件と一致しなくなり、ワークフローが認証できなくなることがある。新しい形でも認証できるよう、先に外部の信頼の条件を直してから `apply` する（[Safety](safety.md)）
 - Actions が無効のリポジトリでも書ける

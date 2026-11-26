@@ -257,7 +257,7 @@ Repository Variable の変更予定は、変数ごとに一つの更新操作か
 
 `PUT /repos/{owner}/{repo}/actions/oidc/customization/sub` に、`use_default` を常に送り、`use_default` が `false` なら `include_claim_keys` も送ります。`include_claim_keys` は期待値の並びのまま、空でも省略せず配列で送ります。省略すると GitHub が保存されていた key を消し、`null` の扱いは公開ドキュメントにないためです（[GitHub Actions OIDC API 仕様](../../research/actions-oidc.md) 4章）。`use_default` が `true` なら `include_claim_keys` を送りません。GitHub は送っても保存しないためです（同 4章）。`use_immutable_subject` は、宣言したときだけ、`false` も省略せずに送ります。宣言していない `use_immutable_subject` の観測値は送りません。省略した値を GitHub が保持することを、`use_default` の両方の値で確かめているためです（同 4章）。
 
-正常応答は `201` で、本文（`{}`）は解釈しません（[GitHub API 通信の設計](../github-access.md) 3.1節・3.2節の、本文がリソースの表現を返さない正常応答）。受け付けない key と重複した key は `400`、型の違う値は `422` で拒否され、値は変わりません（同 4章）。どちらも更新操作の失敗です。形式に合っても受け付けない key（大文字を含む key など）の宣言は、この失敗で分かります。
+正常応答は `201` で、本文（`{}`）は解釈しません（[GitHub API 通信の設計](../github-access.md) 3.1節・3.2節の、本文がリソースの表現を返さない正常応答）。受け付けない key と重複した key は `400`、型の違う値は `422` で拒否され、値は変わりません（同 4章）。どちらも更新操作の失敗です。形式に合っても受け付けない key（大文字を含む key など）の宣言は、この失敗で分かります。`use_immutable_subject: false` の宣言は、`201` を返しても `true` のまま保つリポジトリがあります。2026年7月15日より後に名前を変えたリポジトリで起き、GitHub が名前の変更に immutable subject を強制することと合います（同 2章・4章）。この場合は更新後の観測が期待値と一致せず、観測し直しのあとに変更結果が失敗になります（[変更の実行の設計](../execution.md)）。名前の変更と移転の履歴は観測できないため、宣言を受け付けない理由にも適用できない理由にもしません。
 
 この更新エンドポイントで観測する設定は subject のカスタマイズだけです。`use_immutable_subject` を省略した宣言では、更新直前と更新後の `use_immutable_subject` の観測値を、変更対象外の設定と同じく比べます（ドメインモデルの管理の単位と管理設定）。更新の約 0.6〜0.8 秒後の取得から更新後の値が返ることを確かめています（同 4章）。reco が確かめるのは GitHub 上の設定値までで、外部のクラウドなどでの認証が成功するかは確かめません。
 
