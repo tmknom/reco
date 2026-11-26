@@ -186,7 +186,7 @@ func updateRequestLines(record changeRecord) []string {
 func updateRequestLabel(operation changeplan.UpdateOperation, patterns []setting.DeploymentPattern) string {
 	switch operation.Kind {
 	case changeplan.SettingUpdate, changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate,
-		changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate, changeplan.RepositoryVariableDeletion,
+		changeplan.RequiredReviewersUpdate, changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate, changeplan.RepositoryVariableDeletion,
 		changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate, changeplan.EnvironmentVariableDeletion,
 		changeplan.RulesetCreation, changeplan.RulesetValueUpdate:
 		return operation.Unit.String()

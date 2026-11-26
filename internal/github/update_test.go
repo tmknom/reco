@@ -174,6 +174,19 @@ func TestClientUpdate(t *testing.T) {
 		_, _ = c.Update(t.Context(), mustReference(t, "owner/repo"), undefined, setting.BoolValue(true))
 	})
 
+	// 担当者の更新要求は名前との組で引くため、設定の識別だけでは引けず、要求を送る前に止まる。
+	t.Run(string(setting.EnvironmentRequiredReviewers)+" panics before sending a request", func(t *testing.T) {
+		defer func() {
+			if message, ok := recover().(string); !ok || !strings.Contains(message, string(setting.EnvironmentRequiredReviewers)) {
+				t.Errorf("Update(%q) did not panic naming the setting", setting.EnvironmentRequiredReviewers)
+			}
+		}()
+		c := newTestClient(t, func(http.ResponseWriter, *http.Request) {
+			t.Errorf("Update() sent a request for %q", setting.EnvironmentRequiredReviewers)
+		})
+		_, _ = c.Update(t.Context(), mustReference(t, "owner/repo"), setting.EnvironmentRequiredReviewers, setting.BoolValue(true))
+	})
+
 	// マージ方式は UpdateMergeMethods がまとめて送るため、一つだけを送る経路を持たない。
 	for _, key := range setting.MergeMethods() {
 		t.Run(string(key)+" panics before sending a request", func(t *testing.T) {

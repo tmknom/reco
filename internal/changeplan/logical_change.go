@@ -27,7 +27,8 @@ type UpdateOperation struct {
 	Kind UpdateOperationKind
 	// Unit は、この更新操作が更新要求を送る先の管理の単位。MergeMethodsUpdate では、送る管理設定の先頭である。
 	Unit setting.Unit
-	// Value は、SettingUpdate が送る設定の値と、Repository Variable と Environment Variable の作成と値の変更が送る変数の値と、Ruleset の作成と値の変更が送る Ruleset の値。
+	// Value は、SettingUpdate が送る設定の値と、Repository Variable と Environment Variable の作成と値の変更が送る変数の値と、Ruleset の作成と値の変更が送る Ruleset の値と、
+	// RequiredReviewersUpdate が送る担当者の集合。
 	Value setting.Value
 	// Mode は、EnvironmentCreationWithMode と DeploymentBranchPolicyModeUpdate が送るデプロイ元制限の方式。
 	Mode setting.DeploymentBranchPolicyMode
@@ -59,6 +60,8 @@ const (
 	DeploymentPatternAddition
 	// DeploymentPatternRemoval は、個別パターンを一つ取り除く。
 	DeploymentPatternRemoval
+	// RequiredReviewersUpdate は、Environment の担当者の集合を送る。
+	RequiredReviewersUpdate
 	// RepositoryVariableCreation は、Repository Variable を名前と値で作る。
 	RepositoryVariableCreation
 	// RepositoryVariableValueUpdate は、存在する Repository Variable の値だけを変える。
@@ -127,7 +130,7 @@ func (o UpdateOperation) Endpoint() (github.UpdateEndpoint, bool) {
 	case SettingUpdate, MergeMethodsUpdate:
 		return github.UpdateEndpointOf(o.Unit.Key), true
 	case EnvironmentCreation, EnvironmentCreationWithMode, DeploymentBranchPolicyModeUpdate,
-		DeploymentPatternAddition, DeploymentPatternRemoval,
+		DeploymentPatternAddition, DeploymentPatternRemoval, RequiredReviewersUpdate,
 		RepositoryVariableCreation, RepositoryVariableValueUpdate, RepositoryVariableDeletion,
 		EnvironmentVariableCreation, EnvironmentVariableValueUpdate, EnvironmentVariableDeletion,
 		RulesetCreation, RulesetValueUpdate:

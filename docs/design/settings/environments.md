@@ -7,10 +7,13 @@
 | 日本語 | 英語 | 意味 |
 |---|---|---|
 | Environments | Environments | Environment と、その中の設定からなる設定の領域 |
-| Environment | Environment | デプロイ先を表す、リポジトリに属する関連リソース。値を持たない種類で、GitHub が ID を付ける。中の設定として、デプロイ元制限と Environment の保護設定を持つ |
+| Environment | Environment | デプロイ先を表す、リポジトリに属する関連リソース。値を持たない種類で、GitHub が ID を付ける。中の設定として、デプロイ元制限、担当者の集合、Environment の保護設定を持つ |
 | デプロイ元制限 | Deployment Branch Policy | Environment にデプロイできるブランチとタグを限る設定グループ。方式（`all`、`protected_branches`、`selected`）と、方式が `selected` のときに限って持つ個別パターンの集合からなる |
 | 個別パターン | Deployment Pattern | デプロイ元制限の値の要素。種類（ブランチかタグか）と名前の組で、名前は大文字と小文字を区別する |
-| Environment の保護設定 | Environment Protection | デプロイを待たせる分数（`wait_timer`）、承認を求めるレビュアーと自己承認の禁止（`required_reviewers`）、管理者による迂回の可否（`can_admins_bypass`）。reco は観測するが、宣言を受け付けない |
+| 担当者 | Reviewer | Environment を使うデプロイジョブの実行を承認できる利用者かチーム。種類と ID の組で一つに定まる。種類が利用者の担当者は、観測では login を伴うが、login は識別に含めない |
+| 担当者の集合 | Reviewer Set | Environment の中の設定で、YAML のキーは `required_reviewers`。`required_reviewers` の保護ルールが持つ担当者の集合を値とする。保護ルールがないことを空集合で表す |
+| 担当者のいない保護ルール | Protection Rule without Reviewers | 担当者が1人もいない `required_reviewers` の保護ルール。担当者の集合の値の一つで、空集合とは別の値である。宣言では書けない |
+| Environment の保護設定 | Environment Protection | デプロイを待たせる分数（`wait_timer`）、`required_reviewers` の保護ルールの全体（担当者の集合と自己承認の禁止）、管理者による迂回の可否（`can_admins_bypass`）。reco は観測し、宣言を受け付けるのは担当者の集合だけである |
 | Environment Variables | Environment Variables | Environment に属する Environment Variable からなる設定の領域。Environments とは別の設定の領域 |
 | Environment Variable | Environment Variable | Environment に属し、名前と値を持つ関連リソース。GitHub は ID を付けないため、名前だけで識別する種類として扱う |
 
@@ -19,6 +22,8 @@ Environment は、一覧と個別取得の応答が ID を含み、同じ名前�
 Environment Variable の管理の単位は、属する先の Environment の名前と変数の名前の組です。Environment の名前は Environment と同じ規則で、変数の名前と値は Repository Variable と同じ規則で比べます（[Actions の設計](actions.md) の設定と管理の単位）。
 
 デプロイ元制限は、方式の値によって個別パターンの集合を持つかどうかが決まる設定グループです（[ドメインモデル](../domain.md) の一覧の全体を宣言する設定との違い）。GitHub は方式が `selected` のあいだだけ個別パターンを受け付け、方式を `selected` から変えると個別パターンを残しません。そのため、方式が `selected` でないときの値は観測不能ではなく、方式だけの値です。
+
+担当者の集合は、種類と ID の組の集合を値とする設定で、順序、重複、login を比べません（[ドメインモデル](../domain.md) 4.2節）。担当者のいない保護ルールを空集合と別の値にするのは、GitHub がこの保護ルールを返すことがあり、保護ルールが残ったままでは、宣言した「担当者がいない」状態と GitHub 上の状態が同じとは確かめられないためです。この保護ルールは、リポジトリの権限を持たない利用者だけを担当者として送ると作られ、`reviewers: []` を送るとなくなります（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 3.2・4.1）。この保護ルールがデプロイを止めるかは確かめていません。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -32,7 +37,7 @@ Environment Variable の管理の単位は、属する先の Environment の名�
 
 Environments は、`GET /repos/{owner}/{repo}/environments` の全ページで読みます（[GitHub API 通信の設計](../github-access.md) 2.3節）。一覧の成功応答が、作成と削除の直後も含めて存在する Environment をすべて含むことと、GitHub が ASCII の英字の大文字小文字だけが違う名前を同じ Environment とみなすことを、実際の動作で確かめています（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 2章・3.1）。GitHub はほかの違い（アクセントの有無など）も同じとみなすため、宣言の名前は同一性を判定できる名前に限り（YAML 設定仕様 11.1節）、判定できない名前の扱いはドメインモデルの同一性を判定できる名前に従います。一覧に、Unicode の単純な大文字小文字の畳み込みで同じになる名前が二つ以上あれば、取得契約に適合しない応答とします。GitHub は二つを同じ Environment とみなすはずで、どちらを照合し更新するかが決まらないためです。一覧の要素は個別取得の本文と全フィールドが一致するため（同 3.1）、個別取得は送りません。
 
-Environment の取得契約は、`id`、`name`、`deployment_branch_policy`、`protection_rules`、`can_admins_bypass` がそろうことです。`can_admins_bypass` は公式のスキーマにありませんが、常に返ることを確かめています（同 3.2）。方式は `deployment_branch_policy` から、`null` を `all`、`protected_branches` だけが真を `protected_branches`、`custom_branch_policies` だけが真を `selected` と読みます。二つが同じ値の組は GitHub が更新で受け付けないため（同 1章）、取得で受けたら取得契約に適合しない応答とします。保護ルールは `type` で読み分け、`wait_timer` と `required_reviewers` の値だけを読みます。
+Environment の取得契約は、`id`、`name`、`deployment_branch_policy`、`protection_rules`、`can_admins_bypass` がそろうことです。`can_admins_bypass` は公式のスキーマにありませんが、常に返ることを確かめています（同 3.2）。方式は `deployment_branch_policy` から、`null` を `all`、`protected_branches` だけが真を `protected_branches`、`custom_branch_policies` だけが真を `selected` と読みます。二つが同じ値の組は GitHub が更新で受け付けないため（同 1章）、取得で受けたら取得契約に適合しない応答とします。保護ルールは `type` で読み分け、`wait_timer` と `required_reviewers` の値だけを読みます。担当者の集合は `required_reviewers` の保護ルールから読み、保護ルールがなければ空集合、保護ルールの `reviewers` が空なら担当者のいない保護ルールとします。担当者の login は、種類が利用者の担当者についてだけ `reviewer.login` から読み（同 3.2）、表示にだけ使います。login が欠けているときと、ASCII の英数字と `-` と `_` だけからなる空でない文字列でないときは、login のない担当者とし、観測操作の失敗にはしません。login は値に含めないため、欠けても照合に影響しません。形を限るのは、API が返した文字列を表示の行にそのまま書かないためです。
 
 個別パターンは、`GET /repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies` の全ページで読み、方式を `selected` と観測した Environment にだけ送ります。`selected` でないときは GitHub が `404` を返すためです（[GitHub デプロイ元パターン API 仕様](../../research/deployment-branch-policies.md) 1章）。`selected` と観測したあとの `404` は観測操作の失敗です。個別パターンの取得契約は、`id`、`name`、`type` がそろい、`type` が `branch` か `tag` であることです。
 
@@ -53,9 +58,19 @@ Environments と Environment Variables に、取得条件による観測不能�
 
 ## 適用可能性と副作用
 
-Environments と Environment Variables に固有の適用不能の条件はありません。名前の同一性を判定できないことと、属する先が存在しないことによる適用可能性は、ドメインモデルの照合と変更予定に従います。変数を書いた Environment は `environments[]` に書いた Environment で、存在することを宣言しているため（YAML 設定仕様 11.3節）、属する先が宣言されていないことによる適用不能は生じません。非公開リポジトリでも Environment Variables の一覧、作成、更新を利用できたため（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 1.1）、公開範囲による適用不能も設けません。一つの Environment の変数の件数の上限（100件）と値の長さの上限は、計画の時点で確かめません。
+Environments と Environment Variables に固有の適用不能の条件はありません。名前の同一性を判定できないことと、属する先が存在しないことによる適用可能性は、ドメインモデルの照合と変更予定に従います。変数を書いた Environment は `environments[]` に書いた Environment で、存在することを宣言しているため（YAML 設定仕様 11.4節）、属する先が宣言されていないことによる適用不能は生じません。非公開リポジトリでも Environment Variables の一覧、作成、更新を利用できたため（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 1.1）、公開範囲による適用不能も設けません。一つの Environment の変数の件数の上限（100件）と値の長さの上限は、計画の時点で確かめません。
 
-Environment と Environment Variable の変更予定に、変更に伴う副作用と再開する設定はありません。方式を `selected` から変えて個別パターンがなくなることは、デプロイ元制限という管理設定の値の変更です（ドメインモデルの一覧の全体を宣言する設定との違い）。
+担当者の集合にも、固有の適用不能の条件はありません。存在しない利用者の ID と、リポジトリの権限を持たない利用者は、計画の時点で確かめません。GitHub はこれらを次のように扱います（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 4.1）。
+
+- 存在しない利用者の ID だけを送ると `422` を返す。更新操作の失敗として報告される
+- 権限を持たない利用者だけを送ると `200` を返し、担当者のいない保護ルールができる。更新後の期待状態との不一致として報告される
+- 担当者にできる利用者と一緒に送ると `200` を返し、担当者にできない利用者を黙って除く。更新後の期待状態との不一致として報告される
+
+非公開リポジトリでの宣言も適用不能にしません。GitHub Free の非公開リポジトリでは、担当者を送る `PUT` は、担当者をなくす `reviewers: []` も含めて `422` になりますが、reco は料金プランを観測できず、非公開リポジトリで担当者を使えるプランもあるためです。担当者と `prevent_self_review` の組み合わせ（担当者が1人のときにその人のデプロイを誰も承認できなくなるなど）は、reco が設定の望ましさを評価しないため、判定せず注記も添えません。
+
+担当者の集合の変更予定は、`apply` がまだ実行しません。担当者の集合の変更予定を一つでも含む変更計画は、承認を求める前にエラーにします（[CLI 仕様](../../spec/cli.md) 5章）。
+
+担当者の集合を除き、Environment と Environment Variable の変更予定に、変更に伴う副作用と再開する設定はありません。担当者の集合の変更予定の副作用（担当者をすべて外すと `prevent_self_review` が失われること。[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 4.1）は、apply が担当者の集合の変更予定を実行できるようにするときに定めます。方式を `selected` から変えて個別パターンがなくなることは、デプロイ元制限という管理設定の値の変更です（ドメインモデルの一覧の全体を宣言する設定との違い）。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -94,9 +109,22 @@ Environment とそのデプロイ元制限の変更予定は、次の表に従�
 
 Environment Variable の変更予定は、変数ごとに一つの更新操作からなる一つの論理的な設定変更で、作成は `POST .../environments/{environment_name}/variables`、値の変更は `PATCH .../variables/{name}`、削除は `DELETE .../variables/{name}` です。Environment の作成とまとめないのは、デプロイ元制限と違い、変数のない Environment が Environment の存在という期待状態を満たしており、変数の作成は別の更新要求だからです。存在しない Environment の中で存在しないことを宣言した変数は、作成の論理的な設定変更の期待状態に加え、更新操作を持ちません。作られたばかりの Environment の変数の一覧が空で返ることを確かめています（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 4.3）。
 
+担当者の集合の変更予定は、次の表に従います。
+
+| Environment の観測 | 担当者の集合の宣言 | 論理的な設定変更 | 更新操作 |
+|---|---|---|---|
+| 存在する（担当者の集合が宣言と異なる） | 宣言する | 担当者の集合だけ | (1) 担当者の集合を送る Environment の `PUT` |
+| 存在しない | 1人以上を宣言する（比較不能） | 作成とは別 | (1) 担当者の集合を送る Environment の `PUT` |
+| 存在しない | `[]` を宣言する（比較不能） | 作成の論理的な設定変更の期待状態に加える | なし |
+
+- **作成と担当者の設定を分ける理由**：担当者を含めた作成の `PUT` は実際の動作で確かめておらず、担当者を拒否する `422` で作成ごと拒否されるかが分からないためである。作成は、実際の動作で確かめた本文の `PUT` のまま送る。作成から担当者の設定までのあいだ担当者のいない Environment が残ることの扱いは、apply が担当者の集合の変更予定を実行できるようにするときに定める
+- **`[]` を作成にまとめる理由**：どの方式を本文に含めた作成の `PUT` も、本文のない作成の `PUT` も、`required_reviewers` の保護ルールを持たない Environment を作ることを確かめている（GitHub デプロイ環境 API 仕様 4.1）。`reviewers: []` を送らずに期待状態が成り立ち、GitHub Free の非公開リポジトリで不要な `422` を生まない（[ドメインモデル](../domain.md) 4.8節の照合と変更予定）
+
+担当者の集合の更新操作の変更前提で比べる関係する現在値は、Environment そのもの、担当者の集合の順です。計画時に存在した Environment では、Environment の ID と、担当者の集合の計画時の観測値を比べます。同じ変更計画が作成する Environment では、担当者の集合が空集合であることだけを比べ、空集合と観測できたことで Environment の存在もあわせて確かめます。担当者の更新要求の本文と、更新後に比べる変更対象外の設定は、apply が担当者の集合の変更予定を実行できるようにするときに定めます。
+
 変数の更新操作の変更前提で比べる関係する現在値は、Environment そのもの、変数の順です。計画時に存在した Environment では、Environment の ID も比べます。作り直された Environment の変数の一覧は空になるため（同 4.3）、変数だけを比べると、変数の作成を承認したあとに Environment が作り直されたことを検出できないためです。同じ変更計画が作成する Environment では ID が定まらず、変数が存在しないと観測できたことで Environment の存在もあわせて確かめます（[ドメインモデル](../domain.md) の関連リソースの同一性）。
 
-論理的な設定変更は、Environment ごとに、存在（デプロイ元制限をまとめた作成を含む）、デプロイ元制限、変数（宣言の順）の順に並べ、Environment をまたいでは宣言の順に並べます。設定の領域の順（全 Environment のあとに全 Environment Variable）にしないのは、変更計画の行を設定ファイルの行と同じ順に並べ、作成から変数の更新直前の観測までのあいだを短くするためです。
+論理的な設定変更は、Environment ごとに、存在（デプロイ元制限をまとめた作成を含む）、デプロイ元制限、担当者の集合、変数（宣言の順）の順に並べ、Environment をまたいでは宣言の順に並べます。設定の領域の順（全 Environment のあとに全 Environment Variable）にしないのは、変更計画の行を設定ファイルの行と同じ順に並べ、作成から変数の更新直前の観測までのあいだを短くするためです。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -175,6 +203,10 @@ Environment Variable の変更予定は、変数ごとに一つの更新操作�
 | Environment の方式の変更のあと、方式は期待値と同じで、その Environment の `wait_timer` が変わっていた | 変更対象外の設定の予期しない変化で、変更結果は失敗 | 期待状態が一致したので完了 |
 | 個別パターンだけを変える変更のあと、その Environment の `wait_timer` が変わっていた | 比べない。個別パターンの更新エンドポイントで reco が観測するのは個別パターンの集合だけである | Environment の保護設定なので、変更対象外の設定の予期しない変化 |
 | 存在しない Environment `staging` に、`variables` だけを書いた | Environment は不一致で作成、変数は属する先が存在しないことを理由とする比較不能で作成。論理的な設定変更は Environment の作成と変数ごとに一つずつ | `variables` だけでは Environment の存在を宣言しないので適用不能。または、作成と変数の作成を一つにまとめる |
+| GitHub 上に担当者のいない保護ルールがある Environment に、`required_reviewers: []` を宣言した | 不一致。保護ルールをなくす変更予定になる | 担当者が1人もいないので、空集合と同じで一致 |
+| 担当者の集合の観測が `[User 1, User 2]` で、宣言が `[User 2, User 1]` だった | 一致。順序は値に含めない | 並びが違うので不一致 |
+| GitHub 上の担当者に `type: Team` の要素があり、宣言は利用者だけだった | 不一致。Team の担当者を外す変更予定になる | 宣言で受け付けない種類なので比べない |
+| 存在しない Environment `preview` に、`required_reviewers: []` を書いた | Environment は不一致で作成、担当者の集合は属する先が存在しないことを理由とする比較不能。担当者の集合は作成の期待状態に加わり、更新操作を持たない | `reviewers: []` を送る更新操作を作成のあとに並べる |
 | 存在する Environment の変数 `REGION` の削除を承認したあと、Environment が同じ名前で作り直され、同じ名前と値の変数が作られていた | Environment の ID が違い、関係する現在値の変化。未実行で、作り直された Environment の変数を消さない | 変数の名前と値が承認時と同じなので削除する |
 
 ## References

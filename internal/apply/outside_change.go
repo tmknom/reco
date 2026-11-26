@@ -47,6 +47,8 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.O
 			changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate, changeplan.EnvironmentVariableDeletion,
 			changeplan.RulesetCreation, changeplan.RulesetValueUpdate:
 			continue
+		case changeplan.RequiredReviewersUpdate:
+			// 比べる範囲は担当者の集合の更新方式とともに定める。applyPlan が承認の前に止めるため、ここに届かない
 		}
 		panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))
 	}

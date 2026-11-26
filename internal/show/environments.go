@@ -22,7 +22,30 @@ func writeEnvironments(b *strings.Builder, e github.Environments) {
 		if policy.Mode == setting.DeploymentBranchPolicySelected {
 			writeDeploymentPatterns(b, policy.Patterns)
 		}
+		writeRequiredReviewers(b, setting.ReviewerSetOfRule(environment.Protection.RequiredReviewers))
 		writeEnvironmentVariables(b, *environment.Variables)
+	}
+}
+
+// writeRequiredReviewers は担当者の集合を書く。担当者がいなければ [] で書く。
+// 担当者のいない保護ルールは、設定宣言として読むと [] と一致しないため、コメントで示す。
+func writeRequiredReviewers(b *strings.Builder, reviewers setting.ReviewerSet) {
+	if reviewers.IsRuleWithoutReviewers() {
+		b.WriteString("        # required_reviewers: no reviewers (a protection rule without reviewers remains)\n")
+		return
+	}
+	list := reviewers.Reviewers()
+	if len(list) == 0 {
+		b.WriteString("        required_reviewers: []\n")
+		return
+	}
+	b.WriteString("        required_reviewers:\n")
+	for _, reviewer := range list {
+		fmt.Fprintf(b, "          - type: %s\n            id: %d", reviewer.Type, reviewer.ID)
+		if login, ok := reviewers.Login(reviewer); ok {
+			fmt.Fprintf(b, " # %s", login)
+		}
+		b.WriteString("\n")
 	}
 }
 

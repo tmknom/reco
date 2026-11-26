@@ -3,6 +3,7 @@ package github
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"reflect"
 	"strings"
@@ -32,7 +33,7 @@ func environmentJSON(fields map[string]string) string {
 
 //trace:checks FR-004 QR-002
 func TestDecodeEnvironment(t *testing.T) {
-	// actualShape は、reco が読まない項目 (node_id、url、reviewer.login など) と branch_policy の保護ルールを含む、実際の応答の形。
+	// actualShape は、reco が読まない項目 (node_id、url、reviewer の slug など) と branch_policy の保護ルールを含む、実際の応答の形。
 	const actualShape = `{
 		"id": 161088068,
 		"node_id": "EN_kwDOAAAAAc4JiGZE",
@@ -76,6 +77,7 @@ func TestDecodeEnvironment(t *testing.T) {
 					RequiredReviewers: &setting.RequiredReviewers{
 						PreventSelfReview: true,
 						Reviewers:         []setting.Reviewer{{Type: setting.ReviewerUser, ID: 583231}, {Type: setting.ReviewerTeam, ID: 42}},
+						Logins:            map[setting.Reviewer]string{{Type: setting.ReviewerUser, ID: 583231}: "octocat"},
 					},
 					CanAdminsBypass: true,
 				},
@@ -233,6 +235,31 @@ func TestDecodeEnvironmentProtection(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:  "user login is kept for display",
+			rules: []string{`{"type": "required_reviewers", "prevent_self_review": false, "reviewers": [{"type": "User", "reviewer": {"id": 1, "login": "octo-cat_1"}}]}`},
+			want: setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{
+				Reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}},
+				Logins:    map[setting.Reviewer]string{{Type: setting.ReviewerUser, ID: 1}: "octo-cat_1"},
+			}},
+		},
+		{
+			name:  "team login is not kept",
+			rules: []string{`{"type": "required_reviewers", "prevent_self_review": false, "reviewers": [{"type": "Team", "reviewer": {"id": 2, "login": "core"}}]}`},
+			want:  setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{Reviewers: []setting.Reviewer{{Type: setting.ReviewerTeam, ID: 2}}}},
+		},
+		{
+			name:  "missing and null logins are not failures and not kept",
+			rules: []string{`{"type": "required_reviewers", "prevent_self_review": false, "reviewers": [{"type": "User", "reviewer": {"id": 1}}, {"type": "User", "reviewer": {"id": 2, "login": null}}]}`},
+			want: setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{
+				Reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}, {Type: setting.ReviewerUser, ID: 2}},
+			}},
+		},
+		{
+			name:  "login with a line break is not kept",
+			rules: []string{`{"type": "required_reviewers", "prevent_self_review": false, "reviewers": [{"type": "User", "reviewer": {"id": 1, "login": "octo\ncat"}}]}`},
+			want:  setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{Reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}}}},
+		},
 		{name: "branch_policy rule is skipped", rules: []string{`{"type": "branch_policy"}`}, want: setting.EnvironmentProtection{}},
 		{name: "rule of a type reco does not know is skipped", rules: []string{`{"type": "custom_rule", "id": 9}`, waitTimerRule}, want: setting.EnvironmentProtection{WaitTimer: &wait30}},
 	}
@@ -372,6 +399,28 @@ func TestDecodeDeploymentPattern(t *testing.T) {
 			}
 			if tc.notContains != "" && strings.Contains(err.Error(), tc.notContains) {
 				t.Errorf("decodeDeploymentPattern() error = %q, must not contain %q", err, tc.notContains)
+			}
+		})
+	}
+}
+
+//trace:checks FR-004
+func TestIsLogin(t *testing.T) {
+	cases := []struct {
+		login string
+		want  bool
+	}{
+		{login: "octocat", want: true},
+		{login: "Octo-Cat_9", want: true},
+		{login: "", want: false},
+		{login: "octo\ncat", want: false},
+		{login: "octo\rcat", want: false},
+		{login: "octocät", want: false},
+	}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("%q", tc.login), func(t *testing.T) {
+			if got := isLogin(tc.login); got != tc.want {
+				t.Errorf("isLogin(%q) = %v, want %v", tc.login, got, tc.want)
 			}
 		})
 	}

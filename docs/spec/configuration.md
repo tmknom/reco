@@ -38,6 +38,9 @@ repositories:
       - name: production
         deployment_branch_policy:
           mode: protected_branches
+        required_reviewers:
+          - type: User
+            id: 1234567
         variables:
           - name: REGION
             value: ap-northeast-1
@@ -84,7 +87,8 @@ repositories:
 | `general`、`actions`、`permissions`、`selected_actions`、`workflow`、`access`、`fork_pull_requests`、`private_repositories`、`retention`、`oidc_subject`、`security` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions`、`workflow`、`access`、`fork_pull_requests`、`retention`、`oidc_subject`、`variables` のうち一つ以上を含めばよい |
 | `variables`（`actions` 配下） | シーケンス | 使用する場合は、1件以上の変数の宣言を含む（10章） |
 | `environments` | シーケンス | 使用する場合は、1件以上の Environment の宣言を含む（11章） |
-| `variables`（`environments[]` 配下） | シーケンス | 使用する場合は、1件以上の変数の宣言を含む（11.3節） |
+| `required_reviewers`（`environments[]` 配下） | シーケンス | 0件以上6件以下の担当者の宣言を含む（11.3節） |
+| `variables`（`environments[]` 配下） | シーケンス | 使用する場合は、1件以上の変数の宣言を含む（11.4節） |
 | `rulesets` | シーケンス | 使用する場合は、1件以上の Ruleset の宣言を含む（13章） |
 
 定義していないフィールドは、どの階層でも受け付けません。どの位置でも、`null` を指定して省略を表現することはできません。
@@ -440,13 +444,16 @@ actions:
 | `environments[].deployment_branch_policy.patterns` | シーケンス | 個別パターンの要素を0件以上（`[]` 可）。`mode` が `selected` のときだけ必須で、ほかの方式では指定できない（11.2節） | デプロイを許可するブランチとタグのパターンの一覧の全体 | デプロイ元制限（設定グループ） |
 | `environments[].deployment_branch_policy.patterns[].type` | 文字列 | `branch` / `tag` | パターンがブランチとタグのどちらに一致するか | デプロイ元制限（設定グループ） |
 | `environments[].deployment_branch_policy.patterns[].name` | 文字列 | 11.2節の名前 | ブランチ名またはタグ名のパターン | デプロイ元制限（設定グループ） |
-| `environments[].variables` | シーケンス | 変数の宣言を1件以上（11.3節） | その Environment で管理する Environment Variable の一覧 | なし（要素ごとに定まる） |
+| `environments[].required_reviewers` | シーケンス | 担当者の要素を0件以上6件以下（`[]` 可。11.3節） | その Environment を使うデプロイジョブの実行を承認できる担当者の一覧の全体 | 担当者の集合 |
+| `environments[].required_reviewers[].type` | 文字列 | `User` | 担当者の種類 | 担当者の集合 |
+| `environments[].required_reviewers[].id` | 整数 | 正の整数 | 担当者とする利用者の GitHub 上の ID | 担当者の集合 |
+| `environments[].variables` | シーケンス | 変数の宣言を1件以上（11.4節） | その Environment で管理する Environment Variable の一覧 | なし（要素ごとに定まる） |
 | `environments[].variables[].name` | 文字列 | 10.1節の名前 | その Environment で管理する Environment Variable の名前 | Environment Variable（関連リソースそのもの） |
 | `environments[].variables[].value` | 文字列 | 10.2節の値。`state` を書かない要素では必須 | その Environment に、その名前の Environment Variable が存在し、その値であること | Environment Variable（関連リソースそのもの） |
 | `environments[].variables[].state` | 文字列 | `absent` | その Environment に、その名前の Environment Variable が存在しないこと | Environment Variable（関連リソースそのもの） |
 
 - **`name` は必須である**：`name` のない要素は、`deployment_branch_policy` や `variables` を書いていても入力不正として拒否する。どの Environment の宣言かを補わない
-- **要素は存在の宣言を兼ねる**：`environments[]` に書いた名前の Environment が存在しなければ、作成を計画する。`variables` だけを書いた Environment も同じである。`deployment_branch_policy` と `variables` を省略した Environment は、存在だけを管理する
+- **要素は存在の宣言を兼ねる**：`environments[]` に書いた名前の Environment が存在しなければ、作成を計画する。`variables` だけを書いた Environment も同じである。`deployment_branch_policy`、`required_reviewers`、`variables` を省略した Environment は、存在だけを管理する
 - **存在しないことの宣言は受け付けない**：reco は Environment を削除しない
 - **`deployment_branch_policy` は `mode` を必須とする**：`all` はすべてのブランチとタグからのデプロイを許可する。`protected_branches` は、保護ルールのあるブランチからのデプロイだけを許可する。`protected_branches` の宣言は、Branch protection を管理することを意味しない。`selected` は、`patterns` に書いたパターンに一致するブランチとタグからのデプロイだけを許可する
 
@@ -510,7 +517,36 @@ environments:
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub デプロイ元パターン API 仕様](../research/deployment-branch-policies.md) | Repository File |
 
-### 11.3 Environment Variables
+### 11.3 担当者
+
+`required_reviewers` は、その Environment を使うデプロイジョブの実行を承認できる担当者の一覧です。
+
+```yaml
+environments:
+  - name: production
+    required_reviewers:
+      - type: User
+        id: 1234567
+```
+
+要素は、`type` と `id` の両方を持つマッピングです。`type` は `User` だけを受け付け、省略できません。省略を `User` と読まないのは、省略を GitHub が `User` と補う動作に依存しないためです。`Team` は受け付けません。個人アカウント所有のリポジトリでは GitHub が `type: Team` を受け付けず、Organization が所有するリポジトリでの動作は確かめていないためです（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 4.1）。`id` は利用者の GitHub 上の ID で、正の整数です。login では宣言できません。reco が login から ID を解決すると、解決した相手が意図した相手かを確かめる手段がないためです。ID は `show` の表示から書き写せます（[CLI 仕様](cli.md) 6章）。
+
+`required_reviewers` の値は `type` と `id` の組の **集合** です。要素の順序に意味はなく、順序だけが違う宣言は同じ期待値です。一覧の全体であり、宣言した一覧が適用後の一覧になります（2.1節）。
+
+- **`required_reviewers: []` は、担当者がいないことの宣言である**：適用すると、担当者の承認を待たずにジョブが進むようになる。省略は管理対象外である
+- **7件以上は入力不正である**：GitHub が受け付けるのは6件までである（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 4.1）
+- **`type` と `id` の組が同じ要素を二つ書けない**
+- **誤りを示す順**：件数の誤りを要素の誤りより先に示す。要素は先頭から順に、キーの過不足（`type` と `id` がそろい、ほかのキーがないこと）、`type`、`id`、先の要素との重複の順に確かめ、最初に見つかった誤りを示す
+- **入力検証は、担当者にできるかを確かめない**：`id` の利用者が存在するか、リポジトリの権限を持つかは確かめない
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `alignment` | `FR-001` | Functional Requirement |
+| `alignment` | `FR-005` | Functional Requirement |
+| `alignment` | `INV-001` | Invariant |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
+
+### 11.4 Environment Variables
 
 `environments[].variables` は、その Environment に属する Environment Variable を名前ごとに宣言するシーケンスです。Environment Variable は関連リソースであり、2.1節の規則に従います。2.1節の2つ目の規則（書いた関連リソースが存在しなければ作成する）は、変数にも、属する先の Environment にも当てはまります。変数を書くことは、属する先の Environment が存在することの宣言を兼ねるためです。
 
@@ -718,7 +754,7 @@ rules:
 | 文字列 | 型が文字列と定められた場所では文字列を要求。数値・真偽値・`null` から暗黙に変換しない。変数の `value` では、引用符のない数値・真偽値・日付に、引用符で囲んだ表記を直し方として添える |
 | `null` と値なし | どの位置でも拒否 |
 | 同一マッピング内の重複キー | 拒否。`name` と `"name"` のように表記が違っても同じキーとみなし、後勝ちで上書きしない |
-| 空のシーケンス・マッピング | `repositories: []`、`environments: []`、`variables: []`、空のリポジトリごとの宣言、空の `general` などを拒否。`rulesets: []` も拒否する。`patterns_allowed: []`、`deployment_branch_policy.patterns: []`、Ruleset の `include: []`、`exclude: []`、`bypass_actors: []`、`rules: []` は例外として有効 |
+| 空のシーケンス・マッピング | `repositories: []`、`environments: []`、`variables: []`、空のリポジトリごとの宣言、空の `general` などを拒否。`rulesets: []` も拒否する。`patterns_allowed: []`、`deployment_branch_policy.patterns: []`、`required_reviewers: []`、Ruleset の `include: []`、`exclude: []`、`bypass_actors: []`、`rules: []` は例外として有効 |
 | 関連する設定の欠落・矛盾 | 拒否。必要な設定の組み合わせを示す |
 | YAML 文書数 | 1ファイルに1文書だけを許可。文書がない場合（空のファイル、コメントだけのファイル）と複数文書を拒否 |
 | YAML のアンカー（anchor）、エイリアス（alias）、マージキー（merge key） | 拒否。宣言の共有・継承を認めない |
@@ -745,6 +781,10 @@ rules:
 | `days: "30"` | エラー（引用符付き） |
 | `days: 0` | エラー（正の整数ではない） |
 | `run_workflows_from_fork_pull_requests: false` と `send_secrets_and_variables: true` を同時に宣言 | エラー（実行を許可しないまま、Secrets と Variables の送信を有効にできない） |
+| `required_reviewers: []` | 有効（担当者がいないことの宣言） |
+| `required_reviewers: [{type: Team, id: 42}]` | エラー（`Team` は受け付けない） |
+| `required_reviewers: [{type: User, id: "1234567"}]` | エラー（引用符付き） |
+| `required_reviewers` に7件の要素 | エラー（6件まで） |
 | `value: "1.27"`（変数の値） | 有効 |
 | `value: 1.27`（変数の値） | エラー（文字列ではない。`"1.27"` を直し方として示す） |
 | `value: ""`（変数の値） | エラー（空文字列） |

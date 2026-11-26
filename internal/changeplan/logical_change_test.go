@@ -54,6 +54,7 @@ func TestUpdateOperation_Endpoint(t *testing.T) {
 		},
 		{name: "environment update has no endpoint of a setting", operation: UpdateOperation{Kind: DeploymentBranchPolicyModeUpdate, Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}}},
 		{name: "ruleset creation has no endpoint of a setting", operation: UpdateOperation{Kind: RulesetCreation, Unit: rulesetUnit(t, "protect")}},
+		{name: "required reviewers update has no endpoint of a setting", operation: UpdateOperation{Kind: RequiredReviewersUpdate, Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -612,6 +613,160 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 		{
 			name:     "mismatched variable of an environment to create panics",
 			settings: []SettingPlan{productionCreation, variablePlan(environmentVariableUnit(production, region), absentVariable, Mismatch)},
+		},
+	}
+	for _, tc := range panics {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Error("LogicalChanges() did not panic")
+				}
+			}()
+			_, _ = RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: tc.settings}.LogicalChanges()
+		})
+	}
+}
+
+// TestRepositoryPlan_LogicalChangesOfRequiredReviewers は、担当者の集合の変更予定から導く論理的な設定変更と、その変更前提の基準を確かめる。
+//
+//trace:checks INV-001 INV-004 FR-010
+func TestRepositoryPlan_LogicalChangesOfRequiredReviewers(t *testing.T) {
+	production, staging := mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging")
+	region := mustVariableName(t, "REGION")
+	stagingExistence := SettingPlan{
+		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, Observed: github.Observed(setting.Present()), Desired: setting.Present(),
+		EnvironmentIdentity: ObservedEnvironmentIdentity(7), Result: Match,
+	}
+	stagingEnvironment := PreconditionBasis{Unit: stagingExistence.Unit, AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: ObservedEnvironmentIdentity(7)}
+	productionUnit := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
+	productionCreation := SettingPlan{Unit: productionUnit, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch, Applicability: Applicable()}
+	creationBasis := PreconditionBasis{Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Absent())}
+	stagingReviewers := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: staging}
+	productionReviewers := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}
+	productionPolicy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}
+	stagingPolicy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}
+	user1 := setting.ReviewerSetValue(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}}))
+	user2 := setting.ReviewerSetValue(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 2}}))
+	noReviewers := setting.ReviewerSetValue(setting.ReviewerSetOf(nil))
+	all := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll})
+	protected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches})
+	absentEnvironment := github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent)
+	reviewersChange := func(unit setting.Unit, desired setting.Value, bases ...PreconditionBasis) LogicalChange {
+		return LogicalChange{
+			DesiredState: []configuration.ManagedSetting{{Unit: unit, Desired: desired}},
+			Operations:   []UpdateOperation{{Kind: RequiredReviewersUpdate, Unit: unit, Value: desired, PreconditionBases: bases}},
+		}
+	}
+	cases := []struct {
+		name     string
+		settings []SettingPlan
+		want     []LogicalChange
+	}{
+		{
+			name: "mismatch of an existing environment is one update based on the environment and then the observed reviewers",
+			settings: []SettingPlan{
+				stagingExistence,
+				{Unit: stagingReviewers, Observed: github.Observed(user1), Desired: user2, Result: Mismatch, Applicability: Applicable()},
+			},
+			want: []LogicalChange{reviewersChange(stagingReviewers, user2, stagingEnvironment, PreconditionBasis{Unit: stagingReviewers, AnticipatedValue: AnticipateValue(user1)})},
+		},
+		{
+			name: "reviewers of an environment to create follow its creation as another change based only on no reviewers",
+			settings: []SettingPlan{
+				productionCreation,
+				{Unit: productionReviewers, Observed: absentEnvironment, Desired: user1, Result: NotComparable, Applicability: Applicable()},
+			},
+			want: []LogicalChange{
+				{
+					DesiredState: []configuration.ManagedSetting{{Unit: productionUnit, Desired: setting.Present()}},
+					Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: productionUnit, PreconditionBases: []PreconditionBasis{creationBasis}}},
+				},
+				reviewersChange(productionReviewers, user1, PreconditionBasis{Unit: productionReviewers, AnticipatedValue: AnticipateValue(noReviewers)}),
+			},
+		},
+		{
+			// 作られたばかりの Environment は担当者の保護ルールを持たないため、空集合を作成の期待状態に加え、作成のあとの観測で確かめる
+			name: "no reviewers in an environment to create join the desired state of the creation between the mode and the declared absence of a variable",
+			settings: []SettingPlan{
+				productionCreation,
+				{Unit: productionPolicy, Observed: absentEnvironment, Desired: all, Result: NotComparable, Applicability: Applicable()},
+				{Unit: productionReviewers, Observed: absentEnvironment, Desired: noReviewers, Result: NotComparable, Applicability: Applicable()},
+				{Unit: environmentVariableUnit(production, region), Observed: absentEnvironment, Desired: setting.Absent(), Result: NotComparable, Applicability: Applicable()},
+			},
+			want: []LogicalChange{{
+				DesiredState: []configuration.ManagedSetting{
+					{Unit: productionUnit, Desired: setting.Present()},
+					{Unit: productionPolicy, Desired: all},
+					{Unit: productionReviewers, Desired: noReviewers},
+					{Unit: environmentVariableUnit(production, region), Desired: setting.Absent()},
+				},
+				Operations: []UpdateOperation{{Kind: EnvironmentCreationWithMode, Unit: productionUnit, Mode: setting.DeploymentBranchPolicyAll, PreconditionBases: []PreconditionBasis{creationBasis}}},
+			}},
+		},
+		{
+			name: "no reviewers in an environment to create without a mode join the creation without an update",
+			settings: []SettingPlan{
+				productionCreation,
+				{Unit: productionReviewers, Observed: absentEnvironment, Desired: noReviewers, Result: NotComparable, Applicability: Applicable()},
+			},
+			want: []LogicalChange{{
+				DesiredState: []configuration.ManagedSetting{{Unit: productionUnit, Desired: setting.Present()}, {Unit: productionReviewers, Desired: noReviewers}},
+				Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: productionUnit, PreconditionBases: []PreconditionBasis{creationBasis}}},
+			}},
+		},
+		{
+			name: "mode and reviewers of one existing environment are two changes in the plan order",
+			settings: []SettingPlan{
+				stagingExistence,
+				{Unit: stagingPolicy, Observed: github.Observed(all), Desired: protected, Result: Mismatch, Applicability: Applicable()},
+				{Unit: stagingReviewers, Observed: github.Observed(user1), Desired: user2, Result: Mismatch, Applicability: Applicable()},
+			},
+			want: []LogicalChange{
+				{
+					DesiredState: []configuration.ManagedSetting{{Unit: stagingPolicy, Desired: protected}},
+					Operations: []UpdateOperation{{
+						Kind: DeploymentBranchPolicyModeUpdate, Unit: stagingPolicy, Mode: setting.DeploymentBranchPolicyProtectedBranches,
+						PreconditionBases: []PreconditionBasis{stagingEnvironment, {Unit: stagingPolicy, AnticipatedValue: AnticipateValue(all)}},
+					}},
+				},
+				reviewersChange(stagingReviewers, user2, stagingEnvironment, PreconditionBasis{Unit: stagingReviewers, AnticipatedValue: AnticipateValue(user1)}),
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: tc.settings}.LogicalChanges()
+			if err != nil {
+				t.Fatalf("LogicalChanges() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("LogicalChanges() =\n%+v\nwant\n%+v", got, tc.want)
+			}
+		})
+	}
+
+	// 対にならない形は、reconcile と judgeApplicability が作らないため、基準のない更新操作を返さずに panic する
+	panics := []struct {
+		name     string
+		settings []SettingPlan
+	}{
+		{
+			name:     "reviewers without the plan of their environment panic",
+			settings: []SettingPlan{{Unit: stagingReviewers, Observed: github.Observed(user1), Desired: user2, Result: Mismatch, Applicability: Applicable()}},
+		},
+		{
+			name: "not comparable reviewers of an existing environment panic",
+			settings: []SettingPlan{
+				stagingExistence,
+				{Unit: stagingReviewers, Observed: absentEnvironment, Desired: user1, Result: NotComparable, Applicability: Applicable()},
+			},
+		},
+		{
+			name: "mismatched reviewers of an environment to create panic",
+			settings: []SettingPlan{
+				productionCreation,
+				{Unit: productionReviewers, Observed: github.Observed(user1), Desired: user2, Result: Mismatch, Applicability: Applicable()},
+			},
 		},
 	}
 	for _, tc := range panics {

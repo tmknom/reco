@@ -98,7 +98,7 @@ $ GH_TOKEN=$(gh auth token) reco plan
 
 一つのリポジトリに複数の変更予定があるときは、[YAML 設定仕様](configuration.md) の章と表の並びで表示します。設定宣言での記述順には従いません。
 
-関連リソースの変更予定も YAML 設定仕様の章の並びに従い、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。たとえば Repository Variables（10章）の変更予定は、Environments（11章）の変更予定より前に、Environments の変更予定は Security（12章）の変更予定より前に、Ruleset（13章）の変更予定は Security の変更予定のあとに表示します。Environment Variable の変更予定は、属する Environment の存在と `deployment_branch_policy` の変更予定の直後に、`variables` に書いた順で表示し、次の Environment の変更予定はそのあとに表示します（YAML 設定仕様 11章）。
+関連リソースの変更予定も YAML 設定仕様の章の並びに従い、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。たとえば Repository Variables（10章）の変更予定は、Environments（11章）の変更予定より前に、Environments の変更予定は Security（12章）の変更予定より前に、Ruleset（13章）の変更予定は Security の変更予定のあとに表示します。Environment Variable の変更予定は、属する Environment の存在、`deployment_branch_policy`、`required_reviewers` の変更予定の直後に、`variables` に書いた順で表示し、次の Environment の変更予定はそのあとに表示します（YAML 設定仕様 11章）。
 
 存在しないと確認した関連リソースの作成と、削除は、確認済みの差分として示し、集計の変更予定数に数えます。存在しないと確認できたことは、比較できる事実だからです。作成と削除は、設定の値の変更と見分けられる形で示し、削除では失われる値を示します。宣言に名前のない関連リソースは、変更計画に示しません。
 
@@ -120,6 +120,32 @@ Repository: example/project-a
     -> selected [branch "main", branch "release/*"]
     Patterns to remove: [branch "feature/*"]
     Patterns to add: [branch "release/*"]
+
+Plan: 1 repository to update, 4 changes
+Repositories checked: 1
+```
+
+Environment の担当者の集合は、`environments.<名前>.required_reviewers` の形で示します。値は `[User 583231 (octocat), User 1234567]` の形で、担当者を種類と ID で示し、観測した login を括弧で添えます。現在値は GitHub が返した順、期待値は設定宣言の順に並べ、担当者がいなければ `[]` と示します。期待値の担当者のうち、現在の集合にいる担当者には観測した login を添え、いない担当者は ID だけを示します。reco は ID から login を解決しないためです。担当者を並べた値は長くなるため、設定の行の下に現在値（比較不能なら現在の状態）と、`->` に続けて期待値を1行ずつ示します。
+
+確認済みの差分には、`->` の行の下に、なくなる担当者を `Reviewers to remove:`、加わる担当者を `Reviewers to add:` の行で、この順に添えます。どちらも値と同じ形で、なくなる担当者は現在値の順、加わる担当者は期待値の順に並べ、該当する担当者がいない行は示しません。担当者をすべて外す変更は、期待値が `[]` になり、`Reviewers to remove:` に現在の担当者の全員を示します。
+
+GitHub 上に、担当者が1人もいない `required_reviewers` の保護ルールが残っていることがあります（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 3.2）。このときの現在値は `[] (protection rule without reviewers)` と示します。`required_reviewers: []` の宣言とは一致せず、この保護ルールをなくす変更予定になります。存在しない Environment に書いた `required_reviewers` は、`deployment_branch_policy` と同じく、属する先が存在しないため比較不能な設定予定で、現在値の位置に `(environment absent)` を示し、Environment の作成とは別の変更予定として数えます。
+
+```text
+Repository: example/project-a
+  environments.production.required_reviewers:
+    [User 583231 (octocat), User 1234567 (hubot)]
+    -> [User 583231 (octocat), User 7654321]
+    Reviewers to remove: [User 1234567 (hubot)]
+    Reviewers to add: [User 7654321]
+  environments.staging.required_reviewers:
+    [User 583231 (octocat)]
+    -> []
+    Reviewers to remove: [User 583231 (octocat)]
+  environments.preview: absent -> present
+  environments.preview.required_reviewers:
+    (environment absent)
+    -> [User 583231]
 
 Plan: 1 repository to update, 4 changes
 Repositories checked: 1
@@ -556,6 +582,12 @@ Plan cannot be applied.
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-b: actions.permissions.sha_pinning_required is not applicable; example/project-c: actions.permissions.sha_pinning_required is not applicable; no changes made"}
 ```
 
+Environment の担当者の集合（`required_reviewers`）の変更予定は、`apply` がまだ実行しません。適用不能な変更予定がなく、担当者の集合の変更予定が一つでもあれば、変更計画を4章の `plan` と同じ形で stdout へ最後まで表示し、承認を求めず、どのリポジトリも更新せずにエラー終了します。同じ変更計画のほかの変更予定も実行しません。stderr のエラーは、担当者の集合の変更予定のすべてを変更計画の並びで対象と設定を挙げ、`no changes made` を添えます。`plan` は同じ変更計画を表示して終了コード `0` で終えます。
+
+```text
+{"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-a: environments.production.required_reviewers is a change that apply does not support yet; no changes made"}
+```
+
 すべて変更不要の場合の表示例は次のとおりです。
 
 ```text
@@ -685,7 +717,7 @@ Environment の方式の変更か Environment Variable の作成・値の変更�
 
 Ruleset の作成か値の変更のあとに Ruleset が存在しなかった場合は、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Ruleset が現れ、存在を確かめられなかった場合は `not confirmed (ruleset existence unknown)` と示します。作成か値の変更をした Ruleset が reco の解釈しない部分を含んでいた場合は `not confirmed (the ruleset contains parts that reco does not interpret)` と示します。存在は確かめているものの、値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。解釈しなかったものは変更結果に並べず、`plan` が示します。
 
-変更対象外の設定は、管理設定と同じ形の名前で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` がデプロイを待たせる分数、`required_reviewers` が `reviewers: [User 583231, Team 42], prevent_self_review: true` の1行（レビュアーは GitHub が返した順）、`can_admins_bypass` が `true` か `false` です。`wait_timer` と `required_reviewers` は、その保護ルールがなければ `none` と示します。複数が変わっていれば、`wait_timer`、`required_reviewers`、`can_admins_bypass` の順に1行ずつ示します。保護設定は reco が宣言を受け付けず、`show` も表示しないため、名前と値の表記はここで定めます。
+変更対象外の設定は、管理設定と同じ形の名前で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` がデプロイを待たせる分数、`required_reviewers` が `reviewers: [User 583231, Team 42], prevent_self_review: true` の1行（担当者は GitHub が返した順で、login は添えない。login だけの変化は予期しない変化に数えないため）、`can_admins_bypass` が `true` か `false` です。`wait_timer` と `required_reviewers` は、その保護ルールがなければ `none` と示します。複数が変わっていれば、`wait_timer`、`required_reviewers`、`can_admins_bypass` の順に1行ずつ示します。ここでの `required_reviewers` は、担当者と `prevent_self_review` からなる保護ルールの全体を指し、管理設定の `required_reviewers`（担当者の集合。4章）より値の範囲が広いため、名前と値の表記はここで定めます。
 
 設定グループの省略できる項目を省略した宣言で、その項目が更新の前後で変わった場合は、`<管理設定の名前>.<項目のキー>` の名前で示します。OIDC トークンの subject のカスタマイズの `use_immutable_subject` は、`actions.oidc_subject.use_immutable_subject` と示し、値は `true` か `false` です。
 
@@ -1027,7 +1059,7 @@ repositories:
     # rulesets: none
 ```
 
-表示するのは、設定宣言に書ける管理設定と関連リソースに限ります。Environment の保護設定（`wait_timer`、`required_reviewers`、`can_admins_bypass`）のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
+表示するのは、設定宣言に書ける管理設定と関連リソースに限ります。Environment の保護設定（`wait_timer`、`prevent_self_review`、`can_admins_bypass`）のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
 
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
@@ -1132,26 +1164,50 @@ Environment は `environments` に示します。Environment ごとに、`name` 
               name: "release/*"
             - type: tag
               name: "v*"
+        required_reviewers: []
         # variables: none
       - name: "staging"
         deployment_branch_policy:
           mode: protected_branches
+        required_reviewers: []
         # variables: none
 ```
 
-Environment ごとに、`deployment_branch_policy` のあとに、その Environment の Environment Variables を `variables` に示します。名前と値の示し方は Repository Variables と同じです。Repository Variable と同じ名前の変数や、別の Environment と同じ名前の変数も、それぞれの Environment の下に示します。一つもないときは `# variables: none` と示します。
+Environment ごとに、`deployment_branch_policy` のあとに、担当者を `required_reviewers` に `type` と `id` の要素として、GitHub が返した順に示します。担当者がいなければ `required_reviewers: []` と示します。種類が利用者の担当者には、`id` の行末の YAML のコメントで login を示します。設定宣言に書く ID を、login から探せるようにするためです。担当者が1人もいない `required_reviewers` の保護ルールが残っているときは、`# required_reviewers: no reviewers (a protection rule without reviewers remains)` とコメントで示します。`required_reviewers: []` と示すと、設定宣言として読んだときに観測した状態と一致しないためです。
 
 ```text
     environments:
       - name: "production"
         deployment_branch_policy:
           mode: protected_branches
+        required_reviewers:
+          - type: User
+            id: 583231 # octocat
+          - type: User
+            id: 1234567 # hubot
+        # variables: none
+      - name: "staging"
+        deployment_branch_policy:
+          mode: all
+        required_reviewers: []
+        # variables: none
+```
+
+Environment ごとに、`required_reviewers` のあとに、その Environment の Environment Variables を `variables` に示します。名前と値の示し方は Repository Variables と同じです。Repository Variable と同じ名前の変数や、別の Environment と同じ名前の変数も、それぞれの Environment の下に示します。一つもないときは `# variables: none` と示します。
+
+```text
+    environments:
+      - name: "production"
+        deployment_branch_policy:
+          mode: protected_branches
+        required_reviewers: []
         variables:
           - name: "REGION"
             value: "ap-northeast-1"
       - name: "staging"
         deployment_branch_policy:
           mode: all
+        required_reviewers: []
         # variables: none
 ```
 
@@ -1234,7 +1290,7 @@ Ruleset が一つもないときは `# rulesets: none` と示します。非公�
 
 GitHub は、Ruleset への書き込みのアクセスを持たない利用者には Bypass を返しません（[GitHub Rules API 仕様](../research/rules.md) 3.2）。この場合は、下に述べる権限の不足による欠落として、`bypass_actors` を示してエラーとします。
 
-表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。解釈しない部分を含む Ruleset（`name` だけが値として残り、必須のキーの欠落になる）、`enforcement: evaluate` や `conditions: {}` の Ruleset、`2`・`4`・`5` 以外の `RepositoryRole` の Bypass、GitHub が重複して返した Ruleset のパターンや Bypass の主体、ASCII 以外の文字を含む Ruleset の名前、`organization` の `access_level`、`run_workflows_from_fork_pull_requests` が `false` でほかの3項目のどれかが `true` の Fork Pull Request ワークフローの実行条件、`1` 未満の保持日数、`use_default` が `false` で key が一つもない（`include_claim_keys: []` と示す）OIDC トークンの subject のカスタマイズ、claim key の形式に合わない key や重複した key、ASCII 以外の文字や制御文字を含む Environment の名前、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable や Environment Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 14章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
+表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。解釈しない部分を含む Ruleset（`name` だけが値として残り、必須のキーの欠落になる）、`enforcement: evaluate` や `conditions: {}` の Ruleset、`2`・`4`・`5` 以外の `RepositoryRole` の Bypass、GitHub が重複して返した Ruleset のパターンや Bypass の主体、ASCII 以外の文字を含む Ruleset の名前、`organization` の `access_level`、`run_workflows_from_fork_pull_requests` が `false` でほかの3項目のどれかが `true` の Fork Pull Request ワークフローの実行条件、`1` 未満の保持日数、`use_default` が `false` で key が一つもない（`include_claim_keys: []` と示す）OIDC トークンの subject のカスタマイズ、claim key の形式に合わない key や重複した key、ASCII 以外の文字や制御文字を含む Environment の名前、`type: Team` の担当者、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable や Environment Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 14章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
 
 権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。行を省かず、欠けた項目を示してエラーとします。
 
@@ -1265,7 +1321,7 @@ GitHub は、Ruleset への書き込みのアクセスを持たない利用者�
 | `apply`：変更完了、または変更不要 | `0` |
 | `show`：観測成功（観測不能な値を含み得る） | `0` |
 | `plan`：適用不能な変更・観測操作の失敗 | `1` |
-| `apply`：適用不能な変更・承認拒否・承認不能・変更失敗・更新操作の成否不明・変更前提の不成立 | `1` |
+| `apply`：適用不能な変更・まだ実行しない変更（Environment の担当者の集合の変更予定）・承認拒否・承認不能・変更失敗・更新操作の成否不明・変更前提の不成立 | `1` |
 | 入力不正、認証・権限・API 通信の失敗、対象の不一致や確認不能 | `1` |
 | GitHub API の HTTP リダイレクト応答（読み取り・更新） | `1` |
 | 更新成功応答後の再観測失敗・期待状態との不一致・変更対象外の設定の予期しない変化 | `1` |

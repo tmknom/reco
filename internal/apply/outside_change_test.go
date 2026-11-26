@@ -215,6 +215,18 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 		change.Operations[0].Kind = changeplan.RulesetValueUpdate + 1
 		unexpectedOutsideChanges(change, []github.ObservationResult{{}}, github.ObservationResult{})
 	})
+
+	// 比べる範囲は担当者の集合の更新方式とともに定めるため、それまでは比べないまま完了にせず止める
+	t.Run("required reviewers update panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("unexpectedOutsideChanges() did not panic")
+			}
+		}()
+		change := allowAutoMergeChange()
+		change.Operations[0].Kind = changeplan.RequiredReviewersUpdate
+		unexpectedOutsideChanges(change, []github.ObservationResult{{}}, github.ObservationResult{})
+	})
 }
 
 // TestOIDCSubjectOmittedItemChanges は、更新操作の値が省略した項目を、更新直前と更新後の観測値で比べる規則を確かめる。

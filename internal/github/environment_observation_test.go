@@ -72,6 +72,47 @@ func TestEnvironmentObservation(t *testing.T) {
 		}
 	})
 
+	t.Run("existing environment observes its required reviewers", func(t *testing.T) {
+		reviewers := []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}, {Type: setting.ReviewerTeam, ID: 2}}
+		withRule := func(rule *setting.RequiredReviewers) EnvironmentObservation {
+			return Environments{Existing: []Environment{{ID: 7, Name: "production", Protection: setting.EnvironmentProtection{RequiredReviewers: rule}}}}.Lookup(declared)
+		}
+		cases := []struct {
+			name        string
+			observation EnvironmentObservation
+			want        setting.ReviewerSet
+		}{
+			{name: "no rule is an empty set", observation: withRule(nil), want: setting.ReviewerSetOf(nil)},
+			{name: "a rule without reviewers is a rule without reviewers", observation: withRule(&setting.RequiredReviewers{Reviewers: []setting.Reviewer{}}), want: setting.ReviewerSetOfRule(&setting.RequiredReviewers{})},
+			{name: "a rule with reviewers keeps them", observation: withRule(&setting.RequiredReviewers{Reviewers: reviewers}), want: setting.ReviewerSetOf(reviewers)},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				v, ok := tc.observation.RequiredReviewers().Value()
+				if !ok {
+					t.Fatal("RequiredReviewers().Value() ok = false, want true")
+				}
+				if want := setting.ReviewerSetValue(tc.want); !v.Equal(want) {
+					t.Errorf("RequiredReviewers() value = %v, want %v", v, want)
+				}
+			})
+		}
+	})
+
+	t.Run("absent environment makes its required reviewers unavailable as absent", func(t *testing.T) {
+		got, want := absent.RequiredReviewers(), Unavailable[setting.Value](UnavailableEnvironmentAbsent)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("RequiredReviewers() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("unavailable environment makes its required reviewers unavailable with the same reason", func(t *testing.T) {
+		got, want := unavailable.RequiredReviewers(), Unavailable[setting.Value](UnavailableNameUndetermined)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("RequiredReviewers() = %+v, want %+v", got, want)
+		}
+	})
+
 	t.Run("existing environment observes a listed variable's value and an unlisted one as absent", func(t *testing.T) {
 		if got, want := existing.Variable(mustVariableName(t, "REGION")), Observed(setting.VariableValue("eu")); !reflect.DeepEqual(got, want) {
 			t.Errorf("Variable(REGION) = %+v, want %+v", got, want)

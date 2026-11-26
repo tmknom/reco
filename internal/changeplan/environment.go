@@ -19,6 +19,9 @@ func (r RepositoryPlan) environmentChangeOf(s SettingPlan) (LogicalChange, bool)
 		return r.creationOf(s), true
 	}
 	existence, ok := r.settingPlanOf(setting.Unit{Key: setting.EnvironmentResource, Environment: s.Unit.Environment})
+	if s.Unit.Key == setting.EnvironmentRequiredReviewers {
+		return requiredReviewersChangeOf(s, existence, ok)
+	}
 	switch {
 	case isOfAbsentEnvironment(s) && ok && existence.IsEnvironmentCreation():
 		return LogicalChange{}, false
@@ -29,9 +32,10 @@ func (r RepositoryPlan) environmentChangeOf(s SettingPlan) (LogicalChange, bool)
 	panic(fmt.Sprintf("changeplan: %s has no environment plan to pair with", s.Unit.String()))
 }
 
-// creationOf は、Environment の作成の変更予定 s と、同じ名前のデプロイ元制限の変更予定と、同じ名前の Environment の中で存在しないことを宣言した変数の変更予定を、
-// 一つにまとめた論理的な設定変更を返す。期待状態は、Environment、方式、存在しないことを宣言した変数 (計画の並び) の順である。
-// 存在しない Environment の方式と変数を基準に載せないのは、存在しないことの基準が成立すれば同じ理由の観測不能に必ずなり、確かめる条件が重なるため。
+// creationOf は、Environment の作成の変更予定 s と、同じ名前のデプロイ元制限の変更予定と、同じ名前の Environment の担当者がいないことの宣言と、
+// 同じ名前の Environment の中で存在しないことを宣言した変数の変更予定を、一つにまとめた論理的な設定変更を返す。
+// 期待状態は、Environment、方式、担当者の集合、存在しないことを宣言した変数 (計画の並び) の順である。
+// 存在しない Environment の方式、担当者の集合、変数を基準に載せないのは、存在しないことの基準が成立すれば同じ理由の観測不能に必ずなり、確かめる条件が重なるため。
 // 作成でない Environment の変更予定と、存在しないことを理由にした比較不能でない方式との組は、reconcile と judgeApplicability が作らないため、
 // 不変条件の破れとして panic する。
 func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
@@ -48,6 +52,10 @@ func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
 	}
 	if ok {
 		change.DesiredState = append(change.DesiredState, configuration.ManagedSetting{Unit: policyUnit, Desired: policy.Desired})
+	}
+	reviewersUnit := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: s.Unit.Environment}
+	if reviewers, declared := r.settingPlanOf(reviewersUnit); declared && isNoReviewersInAbsentEnvironment(reviewers) {
+		change.DesiredState = append(change.DesiredState, configuration.ManagedSetting{Unit: reviewersUnit, Desired: reviewers.Desired})
 	}
 	for _, variable := range r.Settings {
 		if isDeclaredAbsentInAbsentEnvironment(variable) && variable.Unit.Environment.EqualFold(s.Unit.Environment) {
@@ -66,6 +74,25 @@ func (r RepositoryPlan) creationOf(s SettingPlan) LogicalChange {
 	created := PreconditionBasis{Unit: s.Unit, AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: CreatedByPrecedingOperation()}
 	change.Operations = append(change.Operations, deploymentPatternOperations(policyUnit, created, emptySelected(), nil, desired.Patterns)...)
 	return change
+}
+
+// requiredReviewersChangeOf は、担当者の集合の変更予定 s を、同じ名前の Environment の存在の計画 existence と組んだ論理的な設定変更にして返す。
+// 作成との分け方と基準は Environments の設計の論理的な設定変更と更新操作に従う。
+// 作成する Environment の空集合の宣言は、更新操作を持たずに作成の期待状態に加わるため (creationOf)、偽を返す。
+// 対にならない形は reconcile と judgeApplicability が作らないため、不変条件の破れとして panic する。
+func requiredReviewersChangeOf(s, existence SettingPlan, ok bool) (LogicalChange, bool) {
+	desiredState := []configuration.ManagedSetting{{Unit: s.Unit, Desired: s.Desired}}
+	switch {
+	case ok && existence.Result == Match && s.Result == Mismatch:
+		bases := []PreconditionBasis{existence.existenceBasis(), {Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)}}
+		return LogicalChange{DesiredState: desiredState, Operations: []UpdateOperation{{Kind: RequiredReviewersUpdate, Unit: s.Unit, Value: s.Desired, PreconditionBases: bases}}}, true
+	case ok && existence.IsEnvironmentCreation() && isNoReviewersInAbsentEnvironment(s):
+		return LogicalChange{}, false
+	case ok && existence.IsEnvironmentCreation() && isOfAbsentEnvironment(s):
+		bases := []PreconditionBasis{{Unit: s.Unit, AnticipatedValue: AnticipateValue(setting.ReviewerSetValue(setting.ReviewerSetOf(nil)))}}
+		return LogicalChange{DesiredState: desiredState, Operations: []UpdateOperation{{Kind: RequiredReviewersUpdate, Unit: s.Unit, Value: s.Desired, PreconditionBases: bases}}}, true
+	}
+	panic(fmt.Sprintf("changeplan: %s has no environment plan to pair with", s.Unit.String()))
 }
 
 // environmentVariableOperationOf は、Environment Variable の変更予定 s の更新操作を、同じ名前の Environment の存在の計画と組んで返す。
@@ -144,6 +171,12 @@ func (s SettingPlan) existenceBasis() PreconditionBasis {
 // isOfAbsentEnvironment は、s が、属する Environment が存在しないことを理由に比較不能な、方式か変数の計画かを返す。
 func isOfAbsentEnvironment(s SettingPlan) bool {
 	return s.Result == NotComparable && s.Observed.UnavailableReason() == github.UnavailableEnvironmentAbsent
+}
+
+// isNoReviewersInAbsentEnvironment は、s が、属する Environment が存在しないことを理由に比較不能な、担当者がいないことを宣言した担当者の集合の計画かを返す。
+// 作られたばかりの Environment は担当者の保護ルールを持たないことを確かめているため (Environments の設計の論理的な設定変更と更新操作)、作成だけで期待値が成り立つ。
+func isNoReviewersInAbsentEnvironment(s SettingPlan) bool {
+	return s.Unit.Key == setting.EnvironmentRequiredReviewers && isOfAbsentEnvironment(s) && s.Desired.Equal(setting.ReviewerSetValue(setting.ReviewerSetOf(nil)))
 }
 
 // isDeclaredAbsentInAbsentEnvironment は、s が、属する Environment が存在しないことを理由に比較不能な、存在しないことを宣言した変数の計画かを返す。

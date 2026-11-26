@@ -46,6 +46,7 @@ func TestKeyArea(t *testing.T) {
 		{key: RepositoryVariable, want: AreaRepositoryVariables},
 		{key: EnvironmentResource, want: AreaEnvironments},
 		{key: EnvironmentDeploymentBranchPolicy, want: AreaEnvironments},
+		{key: EnvironmentRequiredReviewers, want: AreaEnvironments},
 		{key: EnvironmentVariable, want: AreaEnvironmentVariables},
 		{key: DependabotAlerts, want: AreaDependabot},
 		{key: DependabotSecurityUpdates, want: AreaDependabot},
@@ -70,6 +71,7 @@ func TestKey_HasEnvironmentName(t *testing.T) {
 	}{
 		{key: EnvironmentResource, want: true},
 		{key: EnvironmentDeploymentBranchPolicy, want: true},
+		{key: EnvironmentRequiredReviewers, want: true},
 		{key: EnvironmentVariable, want: true},
 		{key: RepositoryVariable, want: false},
 		{key: AllowAutoMerge, want: false},
