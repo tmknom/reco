@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/tmknom/reco/internal/changeplan"
@@ -15,7 +14,6 @@ import (
 	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
-	"github.com/tmknom/reco/internal/setting"
 )
 
 // Config は Run の入力。
@@ -53,7 +51,6 @@ func Run(ctx context.Context, cfg Config) error {
 // applyPlan は、選択したすべての対象リポジトリの論理的な設定変更を確定してから、変更計画の全体に承認を一度だけ求め、宣言順に実行する。
 // 適用不能な変更予定が一つでもあれば、利用者がすべての理由を読めるよう変更計画を表示し、承認を求めずに止める。
 // executableChanges の拒否は最初の一件で返るため、それより先に変更計画の全体から適用不能を挙げる。
-// apply がまだ実行しない変更予定が一つでもあれば、同じく変更計画を表示し、承認を求めずに止める。
 func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changeplan.Plan) error {
 	text := changeplandisplay.Text(cfg.Configuration.Path, p)
 	if notApplicable := p.NotApplicableError(); notApplicable != nil {
@@ -65,12 +62,6 @@ func applyPlan(ctx context.Context, cfg Config, client *github.Client, p changep
 	repositories, err := executableChanges(p)
 	if err != nil {
 		return err
-	}
-	if unsupported := unsupportedChangesError(p); unsupported != nil {
-		if _, err := io.WriteString(cfg.Out, text); err != nil {
-			return err
-		}
-		return fmt.Errorf("%w; no changes made", unsupported)
 	}
 	if !slices.ContainsFunc(p.Repositories, changeplan.RepositoryPlan.HasPlannedChanges) {
 		_, err := io.WriteString(cfg.Out, text)
@@ -106,24 +97,4 @@ func executableChanges(p changeplan.Plan) ([]repositoryChanges, error) {
 		repositories[i] = repositoryChanges{plan: r, changes: all[i]}
 	}
 	return repositories, nil
-}
-
-// unsupportedChangesError は、apply がまだ実行しない、Environment の担当者の集合の変更予定を、
-// 利用者がすべてを読めるよう変更計画の並びで挙げた error を返す。なければ nil を返す。
-// 論理的な設定変更の更新操作ではなく変更予定を走査するのは、作成する Environment の空集合の宣言が更新操作を持たずに作成の期待状態に加わり、
-// 更新操作の走査では拒否から漏れるため。apply は作成のあとの担当者の集合をまだ確かめない。
-// 適用不能の拒否と同じく、対象リポジトリと管理の単位の組を "; " でつなぐ。
-func unsupportedChangesError(p changeplan.Plan) error {
-	var found []string
-	for _, r := range p.Repositories {
-		for _, s := range r.Settings {
-			if s.IsPlannedChange() && s.Unit.Key == setting.EnvironmentRequiredReviewers {
-				found = append(found, fmt.Sprintf("%s: %s is a change that apply does not support yet", r.Target, s.Unit.String()))
-			}
-		}
-	}
-	if len(found) == 0 {
-		return nil
-	}
-	return errors.New("plan cannot be applied: " + strings.Join(found, "; "))
 }

@@ -38,6 +38,8 @@ const (
 // 保護設定の表記は CLI 仕様が一か所で定めるため、RulesetDifference と違い項目の名前と値を表示の表記で持つ。
 type EnvironmentProtectionDifference struct {
 	Item, Before, After string
+	// Key は、項目が Environment の中の管理の単位に当たるときの、その形。当たらない項目はゼロ値。
+	Key Key
 }
 
 // ParseReviewerType は s が定義された値に完全一致するときだけ、その値と真を返す。
@@ -51,14 +53,21 @@ func ParseReviewerType(s string) (ReviewerType, bool) {
 }
 
 // DifferencesTo は、p を other に変えるときの値の異なる項目を返す。項目の名前、値の表記、並びは CLI 仕様の変更対象外の設定の示し方に従う。
-// 保護設定は宣言を受け付けず管理の単位の識別を持たないため、項目は名前で示す。
+// 項目は名前で示し、管理の単位に当たる項目はその形を Key にも持つ。
 func (p EnvironmentProtection) DifferencesTo(other EnvironmentProtection) []EnvironmentProtectionDifference {
 	var differences []EnvironmentProtectionDifference
 	if !p.sameWaitTimer(other) {
 		differences = append(differences, EnvironmentProtectionDifference{Item: "wait_timer", Before: p.waitTimerString(), After: other.waitTimerString()})
 	}
-	if !p.sameRequiredReviewers(other) {
-		differences = append(differences, EnvironmentProtectionDifference{Item: "required_reviewers", Before: p.requiredReviewersString(), After: other.requiredReviewersString()})
+	if !p.sameReviewerSet(other) {
+		differences = append(differences, EnvironmentProtectionDifference{
+			Item: EnvironmentRequiredReviewers.DeclaredKeyName(), Before: p.reviewerSetString(), After: other.reviewerSetString(), Key: EnvironmentRequiredReviewers,
+		})
+	}
+	if !p.samePreventSelfReview(other) {
+		differences = append(differences, EnvironmentProtectionDifference{
+			Item: "prevent_self_review", Before: strconv.FormatBool(p.RequiredReviewers.PreventSelfReview), After: strconv.FormatBool(other.RequiredReviewers.PreventSelfReview),
+		})
 	}
 	if p.CanAdminsBypass != other.CanAdminsBypass {
 		differences = append(differences, EnvironmentProtectionDifference{
@@ -76,14 +85,26 @@ func (p EnvironmentProtection) sameWaitTimer(other EnvironmentProtection) bool {
 	return *p.WaitTimer == *other.WaitTimer
 }
 
-// sameRequiredReviewers は、required_reviewers の有無、自己承認の禁止、担当者の集合が同じかを返す。
-// 担当者は、管理設定の照合と同じく ReviewerSet の判定で比べる。
-func (p EnvironmentProtection) sameRequiredReviewers(other EnvironmentProtection) bool {
+// sameReviewerSet は、担当者の集合が同じかを返す。管理設定の照合と同じく ReviewerSet の判定で比べ、保護ルールがないことは空集合として扱う。
+func (p EnvironmentProtection) sameReviewerSet(other EnvironmentProtection) bool {
+	return p.reviewerSet().equal(other.reviewerSet())
+}
+
+// samePreventSelfReview は、自己承認の禁止が同じかを返す。両方に保護ルールがあるときだけ比べる。
+// 保護ルールの有無の変化は担当者の集合の変化として示すため、ここでは差としない。
+func (p EnvironmentProtection) samePreventSelfReview(other EnvironmentProtection) bool {
 	if p.RequiredReviewers == nil || other.RequiredReviewers == nil {
-		return p.RequiredReviewers == other.RequiredReviewers
+		return true
 	}
-	return p.RequiredReviewers.PreventSelfReview == other.RequiredReviewers.PreventSelfReview &&
-		ReviewerSetOfRule(p.RequiredReviewers).equal(ReviewerSetOfRule(other.RequiredReviewers))
+	return p.RequiredReviewers.PreventSelfReview == other.RequiredReviewers.PreventSelfReview
+}
+
+// reviewerSet は、担当者の集合を login を持たない値で返す。CLI 仕様が変更対象外の設定に login を示さないため。
+func (p EnvironmentProtection) reviewerSet() ReviewerSet {
+	if p.RequiredReviewers == nil {
+		return ReviewerSetOfRule(nil)
+	}
+	return ReviewerSetOfRule(&RequiredReviewers{Reviewers: p.RequiredReviewers.Reviewers})
 }
 
 // waitTimerString は、wait_timer を表示の表記で返す。保護ルールがなければ none。
@@ -94,12 +115,7 @@ func (p EnvironmentProtection) waitTimerString() string {
 	return strconv.Itoa(*p.WaitTimer)
 }
 
-// requiredReviewersString は、required_reviewers を一行の表示の表記で返す。保護ルールがなければ none。
-// 担当者は ReviewerSet と同じ表記にし、CLI 仕様が変更対象外の設定に login を示さないため、login を添えない値で書く。
-func (p EnvironmentProtection) requiredReviewersString() string {
-	if p.RequiredReviewers == nil {
-		return "none"
-	}
-	return "reviewers: " + ReviewerSetOf(p.RequiredReviewers.Reviewers).String() +
-		", prevent_self_review: " + strconv.FormatBool(p.RequiredReviewers.PreventSelfReview)
+// reviewerSetString は、required_reviewers の値を ReviewerSet と同じ表記で返す。保護ルールがなければ空集合の表記。
+func (p EnvironmentProtection) reviewerSetString() string {
+	return p.reviewerSet().String()
 }

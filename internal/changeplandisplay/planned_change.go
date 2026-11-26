@@ -163,6 +163,10 @@ func sideEffectText(effect changeplan.SideEffect) string {
 			return "GitHub discards the current selected_actions (" + lost.String() + ")"
 		}
 		return `GitHub may discard selected_actions if allowed_actions was "selected" before GitHub Actions was disabled (` + unreadWhileDisabled + `)`
+	case changeplan.SideEffectPreventSelfReviewDiscarded:
+		// 計画時に真と観測した値だけを副作用にするため、観測値は必ずある
+		current, _ := effect.Observed.Value()
+		return "GitHub also discards prevent_self_review, which is currently " + current.String()
 	case changeplan.SideEffectDependencyGraphEnabled:
 		return "GitHub also enables the dependency graph"
 	case changeplan.SideEffectDependencyGraphDisabled:

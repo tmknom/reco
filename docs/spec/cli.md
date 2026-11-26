@@ -540,7 +540,16 @@ Repository: example/project-a
     Side effect: GitHub also disables secret_scanning_push_protection, which is currently true
 ```
 
-Dependabot security updates の値は、一時停止中なら `true (paused by GitHub)` と示します。
+```text
+Repository: example/project-a
+  environments.staging.required_reviewers:
+    [User 583231 (octocat)]
+    -> []
+    Reviewers to remove: [User 583231 (octocat)]
+    Side effect: GitHub also discards prevent_self_review, which is currently true
+```
+
+Dependabot security updates の値は、一時停止中なら `true (paused by GitHub)` と示します。担当者をすべて外す変更の `Side effect:` は、`Reviewers to remove:` のあとに示します。示す条件は [Environments の設計](../design/settings/environments.md) の適用可能性と副作用が定めます。
 
 `plan` の終了コード `0` は、差分がないことも、後の `apply` が成功することも保証しません。
 
@@ -580,12 +589,6 @@ Plan cannot be applied.
 
 ```text
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-b: actions.permissions.sha_pinning_required is not applicable; example/project-c: actions.permissions.sha_pinning_required is not applicable; no changes made"}
-```
-
-Environment の担当者の集合（`required_reviewers`）の変更予定は、`apply` がまだ実行しません。適用不能な変更予定がなく、担当者の集合の変更予定が一つでもあれば、変更計画を4章の `plan` と同じ形で stdout へ最後まで表示し、承認を求めず、どのリポジトリも更新せずにエラー終了します。同じ変更計画のほかの変更予定も実行しません。stderr のエラーは、担当者の集合の変更予定のすべてを変更計画の並びで対象と設定を挙げ、`no changes made` を添えます。`plan` は同じ変更計画を表示して終了コード `0` で終えます。
-
-```text
-{"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-a: environments.production.required_reviewers is a change that apply does not support yet; no changes made"}
 ```
 
 すべて変更不要の場合の表示例は次のとおりです。
@@ -703,7 +706,7 @@ Repositories updated: 1
 
 更新を一度も開始していない変更は `not attempted` とし、変更前提の不成立と、先行する異常による停止のどちらに当たるかを区別して理由を示します。先行する異常による停止は、同じリポジトリの先行する論理的な設定変更が完了しなかった場合（`Stopped: a preceding change did not complete`）と、先行するリポジトリが完了しなかった場合（`Stopped: a preceding repository did not complete`）を文言で区別します。
 
-変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を `Precondition: <設定> changed since approval` と示します。`<設定>` は、関連リソースそのものの変化なら `environments.<名前>`、`actions.variables.<名前>`、`rulesets.<名前>` のように関連リソースの名前で示します。変更前提で比べる設定（変える設定のほか、`Side effect:` で示した設定、副作用として示さなかったが計画時の値のままであることを確かめる設定、更新が値を変える前提として必要な設定）は、設定ごとの設計の各文書の「論理的な設定変更と更新操作」が定めます。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。承認した先行する変更による予定どおりの変化は示しません。複数の設定が変わっていた場合は、一つだけ示します。関連リソースそのものと、その中の設定やそれに属する関連リソースが両方変わっていれば、関連リソースそのものを示します。それ以外では、論理的な設定変更が変える設定を優先します。
+変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を `Precondition: <設定> changed since approval` と示します。`<設定>` は、関連リソースそのものの変化なら `environments.<名前>`、`actions.variables.<名前>`、`rulesets.<名前>` のように関連リソースの名前で示します。変更前提で比べる設定（変える設定のほか、`Side effect:` で示した設定、副作用として示さなかったが計画時の値のままであることを確かめる設定、更新が値を変える前提として必要な設定）は、設定ごとの設計の各文書の「論理的な設定変更と更新操作」が定めます。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。承認した先行する変更による予定どおりの変化は示しません。複数の設定が変わっていた場合は、一つだけ示します。関連リソースそのものと、その中の設定やそれに属する関連リソースが両方変わっていれば、関連リソースそのものを示します。それ以外では、論理的な設定変更が変える設定を優先します。担当者をすべて外す変更で、同じ保護ルールの `prevent_self_review` だけが承認のあとに変わった場合も、`environments.<名前>.required_reviewers` と示します。`prevent_self_review` は宣言を受け付けない設定で、担当者の集合の変更前提に伴って確かめるためです。
 
 `failed` には、更新操作の失敗、更新操作の成否不明、成功応答後の期待状態の確認失敗、成功応答後の期待状態との不一致、成功応答後の変更対象外の設定の予期しない変化のいずれに当たるかを添えて示します。先行操作の成功後に後続操作を開始できなかった場合は、その旨を示します。変更対象外の設定の予期しない変化では、観測した変化を示しますが、reco に起因するとは断定しません。変更対象外の設定には、同じリポジトリのほかの管理設定も含みます。更新要求の応答を確認できない場合は成否不明とし、その後の再観測で期待状態が一致しても、更新操作の成否が判明したことにはならず、`updated` に変更しません。この再観測で変更対象外の設定の変化を観測した場合も、更新操作の結果と分けて示します。成否不明になった原因は、理由の行では区別せず、エラーとして示します。
 
@@ -713,11 +716,11 @@ Repositories updated: 1
 
 期待値と比べる設定が GitHub の取得条件により観測不能だったことによる確認失敗は、宣言した設定が効いていないことを示す `not in effect` に、理由を括弧で添えて示します。理由は、Actions が無効なら `GitHub Actions is disabled`、Actions 許可ポリシーが `selected` でなければ `allowed_actions is not "selected"`、リポジトリが公開なら `the repository is public`、リポジトリが非公開なら `the repository is private` です。値そのものは確認できていないため、`does not match` とは示しません。`not confirmed` とも示さないのは、reco が確認に失敗したと読ませず、利用者が確かめるべきリポジトリの状態を示すためです。
 
-Environment の方式の変更か Environment Variable の作成・値の変更・削除のあとに Environment が存在しなかった場合は、`not in effect (the environment does not exist)` と示します。宣言した方式や変数を持つ Environment がないためです。作成のあとに Environment が存在しなかった場合は、存在しないことを確認できているため、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Environment が現れ、存在を確かめられなかった場合は、reco が確認できなかったことを示す `not confirmed (environment existence unknown)` と示します。
+Environment の方式の変更、担当者の集合の変更、Environment Variable の作成・値の変更・削除のあとに Environment が存在しなかった場合は、`not in effect (the environment does not exist)` と示します。宣言した方式や変数を持つ Environment がないためです。作成のあとに Environment が存在しなかった場合は、存在しないことを確認できているため、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Environment が現れ、存在を確かめられなかった場合は、reco が確認できなかったことを示す `not confirmed (environment existence unknown)` と示します。
 
 Ruleset の作成か値の変更のあとに Ruleset が存在しなかった場合は、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Ruleset が現れ、存在を確かめられなかった場合は `not confirmed (ruleset existence unknown)` と示します。作成か値の変更をした Ruleset が reco の解釈しない部分を含んでいた場合は `not confirmed (the ruleset contains parts that reco does not interpret)` と示します。存在は確かめているものの、値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。解釈しなかったものは変更結果に並べず、`plan` が示します。
 
-変更対象外の設定は、管理設定と同じ形の名前で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` がデプロイを待たせる分数、`required_reviewers` が `reviewers: [User 583231, Team 42], prevent_self_review: true` の1行（担当者は GitHub が返した順で、login は添えない。login だけの変化は予期しない変化に数えないため）、`can_admins_bypass` が `true` か `false` です。`wait_timer` と `required_reviewers` は、その保護ルールがなければ `none` と示します。複数が変わっていれば、`wait_timer`、`required_reviewers`、`can_admins_bypass` の順に1行ずつ示します。ここでの `required_reviewers` は、担当者と `prevent_self_review` からなる保護ルールの全体を指し、管理設定の `required_reviewers`（担当者の集合。4章）より値の範囲が広いため、名前と値の表記はここで定めます。
+変更対象外の設定は、管理設定と同じ形の名前で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.prevent_self_review`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` がデプロイを待たせる分数で、その保護ルールがなければ `none` です。`required_reviewers` は担当者の集合で、4章と同じ表記（担当者がいなければ `[]`、担当者のいない保護ルールは `[] (protection rule without reviewers)`）で GitHub が返した順に示し、login は添えません。login だけの変化は予期しない変化に数えないためです。`prevent_self_review` と `can_admins_bypass` は `true` か `false` です。`prevent_self_review` は、更新の前後のどちらにも `required_reviewers` の保護ルールがあるときだけ比べます。保護ルールの有無の変化は `required_reviewers` の変化として示されるためです。担当者の集合を変える変更のあとは、同じ Environment のデプロイ元制限の方式も `environments.<名前>.deployment_branch_policy` の名前で比べ、値は方式の名前（`all`、`protected_branches`、`selected`）で示します。個別パターンは別の更新エンドポイントの設定のため、比べず、値にも含めません。複数が変わっていれば、`deployment_branch_policy`、`wait_timer`、`required_reviewers`、`prevent_self_review`、`can_admins_bypass` の順に1行ずつ示します。
 
 設定グループの省略できる項目を省略した宣言で、その項目が更新の前後で変わった場合は、`<管理設定の名前>.<項目のキー>` の名前で示します。OIDC トークンの subject のカスタマイズの `use_immutable_subject` は、`actions.oidc_subject.use_immutable_subject` と示し、値は `true` か `false` です。
 
@@ -1321,7 +1324,7 @@ GitHub は、Ruleset への書き込みのアクセスを持たない利用者�
 | `apply`：変更完了、または変更不要 | `0` |
 | `show`：観測成功（観測不能な値を含み得る） | `0` |
 | `plan`：適用不能な変更・観測操作の失敗 | `1` |
-| `apply`：適用不能な変更・まだ実行しない変更（Environment の担当者の集合の変更予定）・承認拒否・承認不能・変更失敗・更新操作の成否不明・変更前提の不成立 | `1` |
+| `apply`：適用不能な変更・承認拒否・承認不能・変更失敗・更新操作の成否不明・変更前提の不成立 | `1` |
 | 入力不正、認証・権限・API 通信の失敗、対象の不一致や確認不能 | `1` |
 | GitHub API の HTTP リダイレクト応答（読み取り・更新） | `1` |
 | 更新成功応答後の再観測失敗・期待状態との不一致・変更対象外の設定の予期しない変化 | `1` |

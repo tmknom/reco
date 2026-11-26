@@ -2126,6 +2126,15 @@ func TestSendUpdate(t *testing.T) {
 			want:      githubtest.Request{Method: http.MethodPut, Path: "/repos/owner/repo/environments/Staging", Body: map[string]any{"deployment_branch_policy": nil}},
 		},
 		{
+			name:      "reviewers update is sent to the observed spelling with only the declared reviewers",
+			operation: reviewersChange(t, "staging", withReviewers(staging, true, 1), reviewerSet(2)).Operations[0],
+			observed:  github.ObservationResult{Environments: environments(withReviewers(staging, true, 1))},
+			response:  okEnvironment(githubtest.EnvironmentBody{ID: 7, Name: "Staging", RequiredReviewers: &githubtest.RequiredReviewersBody{Reviewers: []githubtest.ReviewerBody{{Type: "User", ID: 2}}}}),
+			want: githubtest.Request{Method: http.MethodPut, Path: "/repos/owner/repo/environments/Staging", Body: map[string]any{
+				"reviewers": []any{map[string]any{"type": "User", "id": float64(2)}},
+			}},
+		},
+		{
 			name:      "pattern addition is sent to the observed spelling with only the type and the name",
 			operation: toSelectedPatterns.Operations[1],
 			observed:  github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", nil))},
@@ -2255,15 +2264,6 @@ func TestSendUpdate(t *testing.T) {
 			name:      "pattern removal without the pattern in the read before the update panics",
 			operation: removeMainTag.Operations[0],
 			observed:  github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", []setting.DeploymentPattern{mainBranch}, 20))},
-		},
-		{
-			// apply は担当者の集合の更新要求をまだ持たず、承認の前に止めるため、届いたら要求を送らずに止める
-			name: "required reviewers update panics without a request",
-			operation: changeplan.UpdateOperation{
-				Kind: changeplan.RequiredReviewersUpdate, Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: mustEnvironmentName(t, "staging")},
-				Value: setting.ReviewerSetValue(setting.ReviewerSetOf(nil)),
-			},
-			observed: github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", nil))},
 		},
 		{
 			name: "undefined kind of an update operation panics",

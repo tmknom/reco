@@ -75,109 +75,6 @@ func TestExecutableChanges(t *testing.T) {
 	})
 }
 
-// TestUnsupportedChangesError は、apply がまだ実行しない担当者の集合の変更予定を、変更計画の並びですべて挙げることを確かめる。
-//
-//trace:checks FR-008
-func TestUnsupportedChangesError(t *testing.T) {
-	t.Run("reviewers changes across repositories are all listed in the order of the change plan", func(t *testing.T) {
-		// 対象リポジトリの宣言の並びを名前順と逆にし、名前順に並べ替える実装と、最初の一件で打ち切る実装を失敗させる
-		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{
-			newRepositoryPlanOf(t, "owner/zeta", 1, requiredReviewersMismatch(t, "production")...),
-			newRepositoryPlanOf(t, "owner/beta", 2, allowAutoMergeMismatch()),
-			newRepositoryPlanOf(t, "owner/alpha", 3, append([]changeplan.SettingPlan{allowAutoMergeMismatch()}, requiredReviewersMismatch(t, "staging")...)...),
-		}}
-		want := "plan cannot be applied: owner/zeta: environments.production.required_reviewers is a change that apply does not support yet; " +
-			"owner/alpha: environments.staging.required_reviewers is a change that apply does not support yet"
-		if err := unsupportedChangesError(p); err == nil || err.Error() != want {
-			t.Errorf("unsupportedChangesError() = %v, want %q", err, want)
-		}
-	})
-
-	// 更新操作を持たずに作成の期待状態に加わる変更予定も、apply がまだ担当者の集合を確かめないため拒否する
-	t.Run("no reviewers declared for an environment to create are listed", func(t *testing.T) {
-		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{newRepositoryPlanOf(t, "owner/repo", 1, noReviewersOfCreation(t, "preview")...)}}
-		want := "plan cannot be applied: owner/repo: environments.preview.required_reviewers is a change that apply does not support yet"
-		if err := unsupportedChangesError(p); err == nil || err.Error() != want {
-			t.Errorf("unsupportedChangesError() = %v, want %q", err, want)
-		}
-	})
-
-	t.Run("plan with matched reviewers and other changes is not rejected", func(t *testing.T) {
-		matched := requiredReviewersMismatch(t, "production")
-		matched[1].Desired, matched[1].Result, matched[1].Applicability = setting.ReviewerSetValue(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}})), changeplan.Match, changeplan.Applicability{}
-		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{newRepositoryPlanOf(t, "owner/repo", 1, append(matched, allowAutoMergeMismatch())...)}}
-		if err := unsupportedChangesError(p); err != nil {
-			t.Errorf("unsupportedChangesError() = %v, want nil", err)
-		}
-	})
-}
-
-// TestApplyPlan_UnsupportedChangeRejectedBeforeApproval は、apply がまだ実行しない担当者の集合の変更予定を含む変更計画を、
-// 変更計画を表示したうえで、承認を求めず、どの対象リポジトリも更新せずに拒否することを確かめる。
-//
-//trace:checks INV-002 INV-003 FR-008
-func TestApplyPlan_UnsupportedChangeRejectedBeforeApproval(t *testing.T) {
-	approve := func(calls *int) func(context.Context) error {
-		return func(context.Context) error {
-			*calls++
-			return nil
-		}
-	}
-
-	// 先頭の対象リポジトリを適用可能なほかの変更予定だけにし、先頭の対象リポジトリから更新を始める実装を失敗させる
-	t.Run("reviewers change is rejected with the change plan without approval or requests", func(t *testing.T) {
-		baseURL, server := newSequenceServer(t)
-		var out bytes.Buffer
-		calls := 0
-		cfg := Config{Configuration: configuration.File{Path: "./reco.yaml"}, Out: &out, Approve: approve(&calls), After: elapsedAtOnce}
-		p := changeplan.Plan{Repositories: []changeplan.RepositoryPlan{
-			newRepositoryPlanOf(t, "owner/first", 1, allowAutoMergeMismatch()),
-			newRepositoryPlanOf(t, "owner/second", 2, requiredReviewersMismatch(t, "production")...),
-		}}
-
-		err := applyPlan(context.Background(), cfg, newClient(baseURL), p)
-
-		want := "plan cannot be applied: owner/second: environments.production.required_reviewers is a change that apply does not support yet; no changes made"
-		if err == nil || err.Error() != want {
-			t.Errorf("applyPlan() error = %v, want %q", err, want)
-		}
-		// 変更予定の文言は changeplandisplay が持つため、plan と同じ変更計画を書いたことだけを確かめる
-		if wantOut := changeplandisplay.Text("./reco.yaml", p); out.String() != wantOut {
-			t.Errorf("got Out %q, want %q", out.String(), wantOut)
-		}
-		if calls != 0 || len(server.Methods()) != 0 {
-			t.Errorf("approve calls = %d, requests = %v, want none", calls, server.Methods())
-		}
-	})
-
-	t.Run("not-applicable change is reported before the unsupported change", func(t *testing.T) {
-		baseURL, server := newSequenceServer(t)
-		calls := 0
-		p := newPlan(t, append(requiredReviewersMismatch(t, "production"), shaPinningRequiredNotApplicable())...)
-
-		err := applyPlan(context.Background(), Config{Out: &bytes.Buffer{}, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), p)
-
-		if wantErr := p.NotApplicableError().Error() + "; no changes made"; err == nil || err.Error() != wantErr {
-			t.Errorf("applyPlan() error = %v, want %q", err, wantErr)
-		}
-		if calls != 0 || len(server.Methods()) != 0 {
-			t.Errorf("approve calls = %d, requests = %v, want none", calls, server.Methods())
-		}
-	})
-
-	t.Run("change plan write failure is returned without approval", func(t *testing.T) {
-		calls := 0
-		err := applyPlan(context.Background(), Config{Out: failingWriter{}, Approve: approve(&calls)}, nil, newPlan(t, requiredReviewersMismatch(t, "production")...))
-
-		if !errors.Is(err, errWrite) {
-			t.Errorf("applyPlan() error = %v, want %v", err, errWrite)
-		}
-		if calls != 0 {
-			t.Errorf("approve calls = %d, want 0", calls)
-		}
-	})
-}
-
 // failAfterWriter は、n 回の書き込みに成功したあとの書き込みを失敗させる。
 type failAfterWriter struct {
 	n   int
@@ -650,6 +547,263 @@ func TestApplyPlan_RulesetValueUpdateAndCreation(t *testing.T) {
 	if !strings.Contains(out.String(), "Apply complete.") {
 		t.Errorf("got Out %q, want it to contain %q", out.String(), "Apply complete.")
 	}
+}
+
+// TestApplyPlan_RequiredReviewers は、担当者の集合の変更予定を含む変更計画を、承認を一度だけ求めてから実行するつなぎ目を確かめる。
+//
+//trace:checks INV-001 INV-004 INV-005 FR-011
+func TestApplyPlan_RequiredReviewers(t *testing.T) {
+	approve := func(calls *int) func(context.Context) error {
+		return func(context.Context) error {
+			*calls++
+			return nil
+		}
+	}
+	reviewers := func(ids ...int64) *githubtest.RequiredReviewersBody {
+		body := &githubtest.RequiredReviewersBody{}
+		for _, id := range ids {
+			body.Reviewers = append(body.Reviewers, githubtest.ReviewerBody{Type: "User", ID: id})
+		}
+		return body
+	}
+
+	t.Run("reviewers change is applied with only the reviewers after a single approval", func(t *testing.T) {
+		before := githubtest.EnvironmentBody{ID: 7, Name: "production", RequiredReviewers: reviewers(1)}
+		after := githubtest.EnvironmentBody{ID: 7, Name: "production", RequiredReviewers: reviewers(2)}
+		baseURL, server := newSequenceServer(t,
+			okRepository(1, false, false), okEnvironments(before), okEnvironment(after),
+			okRepository(1, false, false), okEnvironments(after))
+		var out bytes.Buffer
+		calls := 0
+
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, requiredReviewersMismatch(t, "production")...))
+
+		if err != nil {
+			t.Fatalf("applyPlan() error = %v", err)
+		}
+		want := []string{
+			"GET /repos/owner/repo", "GET /repos/owner/repo/environments", "PUT /repos/owner/repo/environments/production",
+			"GET /repos/owner/repo", "GET /repos/owner/repo/environments",
+		}
+		if !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		wantBody := map[string]any{"reviewers": []any{map[string]any{"type": "User", "id": float64(2)}}}
+		if body := server.Requests()[2].Body; !reflect.DeepEqual(body, wantBody) {
+			t.Errorf("update request body = %v, want %v", body, wantBody)
+		}
+		if calls != 1 || !strings.Contains(out.String(), "owner/repo: updated") || !strings.Contains(out.String(), "Apply complete.") {
+			t.Errorf("approve calls = %d, Out = %q, want one approval and the repository updated", calls, out.String())
+		}
+	})
+
+	// 作成する Environment の空集合の宣言は作成の期待状態に加わり、担当者の更新要求を送らない
+	t.Run("creation with no reviewers declared is applied by the creation alone", func(t *testing.T) {
+		preview := githubtest.EnvironmentBody{ID: 8, Name: "preview"}
+		baseURL, server := newSequenceServer(t,
+			okRepository(1, false, false), okEnvironments(), okEnvironment(preview),
+			okRepository(1, false, false), okEnvironments(preview))
+		var out bytes.Buffer
+		calls := 0
+
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, noReviewersOfCreation(t, "preview")...))
+
+		if err != nil {
+			t.Fatalf("applyPlan() error = %v", err)
+		}
+		want := []string{
+			"GET /repos/owner/repo", "GET /repos/owner/repo/environments", "PUT /repos/owner/repo/environments/preview",
+			"GET /repos/owner/repo", "GET /repos/owner/repo/environments",
+		}
+		if !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		if calls != 1 || !strings.Contains(out.String(), "owner/repo: updated") || !strings.Contains(out.String(), "Apply complete.") {
+			t.Errorf("approve calls = %d, Out = %q, want one approval and the repository updated", calls, out.String())
+		}
+	})
+}
+
+// TestRun_RequiredReviewers は、担当者の集合の宣言を、計画の生成から実行と結果の表示までつなぐことを確かめる。
+//
+//trace:checks INV-001 INV-004 INV-005 FR-011 FR-013
+func TestRun_RequiredReviewers(t *testing.T) {
+	newConfig := func(source string, out *bytes.Buffer, baseURL *url.URL) Config {
+		return Config{
+			Token:         "test-token",
+			Configuration: configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(source)}}, Name: "reco.yaml", Path: "./reco.yaml"},
+			Out:           out,
+			Approve:       func(context.Context) error { return nil },
+			After:         elapsedAtOnce,
+			GitHubOptions: []github.Option{github.WithBaseURL(baseURL)},
+		}
+	}
+	reviewers := func(ids ...int64) *githubtest.RequiredReviewersBody {
+		body := &githubtest.RequiredReviewersBody{}
+		for _, id := range ids {
+			body.Reviewers = append(body.Reviewers, githubtest.ReviewerBody{Type: "User", ID: id})
+		}
+		return body
+	}
+	putBodies := func(server *githubtest.Server) []map[string]any {
+		var bodies []map[string]any
+		for _, r := range server.Requests() {
+			if r.Method == http.MethodPut {
+				bodies = append(bodies, r.Body)
+			}
+		}
+		return bodies
+	}
+	reads := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/environments"}
+	const putProduction = "PUT /repos/owner/repo/environments/production"
+
+	// 先行する方式の PUT が担当者を送らず、後続の担当者の PUT が方式を送らないため、互いの変更を古い値で上書きしない
+	t.Run("mode and reviewers of the same environment are sent in two update requests each with only its own key", func(t *testing.T) {
+		all := githubtest.EnvironmentBody{ID: 7, Name: "production", RequiredReviewers: reviewers(1)}
+		protected := githubtest.EnvironmentBody{ID: 7, Name: "production", DeploymentBranchPolicy: protectedBranchesBody(), RequiredReviewers: reviewers(1)}
+		reviewed := githubtest.EnvironmentBody{ID: 7, Name: "production", DeploymentBranchPolicy: protectedBranchesBody(), RequiredReviewers: reviewers(2)}
+		baseURL, server := newSequenceServer(t,
+			okRepository(1, false, false), okEnvironments(all),
+			okRepository(1, false, false), okEnvironments(all), okEnvironment(protected),
+			okRepository(1, false, false), okEnvironments(protected),
+			okRepository(1, false, false), okEnvironments(protected), okEnvironment(reviewed),
+			okRepository(1, false, false), okEnvironments(reviewed))
+		var out bytes.Buffer
+
+		err := Run(context.Background(), newConfig(`repositories:
+  - name: owner/repo
+    environments:
+      - name: production
+        deployment_branch_policy:
+          mode: protected_branches
+        required_reviewers:
+          - type: User
+            id: 2
+`, &out, baseURL))
+
+		if err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		want := slices.Concat(reads, reads, []string{putProduction}, reads, reads, []string{putProduction}, reads)
+		if !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		wantBodies := []map[string]any{
+			{"deployment_branch_policy": map[string]any{"protected_branches": true, "custom_branch_policies": false}},
+			{"reviewers": []any{map[string]any{"type": "User", "id": float64(2)}}},
+		}
+		if bodies := putBodies(server); !reflect.DeepEqual(bodies, wantBodies) {
+			t.Errorf("update request bodies = %v, want %v", bodies, wantBodies)
+		}
+		if !strings.Contains(out.String(), "owner/repo: updated") || !strings.Contains(out.String(), "Apply complete.") {
+			t.Errorf("Out = %q, want the repository updated", out.String())
+		}
+	})
+
+	// 作成と担当者の設定は別々の論理的な設定変更で、担当者の PUT が拒否されても作成は完了のまま残る
+	t.Run("reviewers declared for an absent environment are sent after the creation and their rejection leaves the creation completed", func(t *testing.T) {
+		created := githubtest.EnvironmentBody{ID: 9, Name: "production"}
+		baseURL, server := newSequenceServer(t,
+			okRepository(1, false, false), okEnvironments(),
+			okRepository(1, false, false), okEnvironments(), okEnvironment(created),
+			okRepository(1, false, false), okEnvironments(created),
+			okRepository(1, false, false), okEnvironments(created), response{status: http.StatusUnprocessableEntity})
+		var out bytes.Buffer
+
+		err := Run(context.Background(), newConfig(`repositories:
+  - name: owner/repo
+    environments:
+      - name: production
+        required_reviewers:
+          - type: User
+            id: 2
+`, &out, baseURL))
+
+		if err == nil {
+			t.Error("Run() error = nil, want an error")
+		}
+		if want := slices.Concat(reads, reads, []string{putProduction}, reads, reads, []string{putProduction}); !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		wantBodies := []map[string]any{nil, {"reviewers": []any{map[string]any{"type": "User", "id": float64(2)}}}}
+		if bodies := putBodies(server); !reflect.DeepEqual(bodies, wantBodies) {
+			t.Errorf("update request bodies = %v, want %v", bodies, wantBodies)
+		}
+		for _, line := range []string{"environments.production: updated", "environments.production.required_reviewers: failed", "Update request: rejected"} {
+			if !strings.Contains(out.String(), line) {
+				t.Errorf("Out = %q, want it to contain %q", out.String(), line)
+			}
+		}
+	})
+
+	t.Run("reviewers rejected with 422 are reported as rejected and not checked and stop the following change", func(t *testing.T) {
+		production := githubtest.EnvironmentBody{ID: 7, Name: "production", RequiredReviewers: reviewers(1)}
+		staging := githubtest.EnvironmentBody{ID: 8, Name: "staging"}
+		baseURL, server := newSequenceServer(t,
+			okRepository(1, false, false), okEnvironments(production, staging),
+			okRepository(1, false, false), okEnvironments(production, staging), response{status: http.StatusUnprocessableEntity})
+		var out bytes.Buffer
+
+		err := Run(context.Background(), newConfig(`repositories:
+  - name: owner/repo
+    environments:
+      - name: production
+        required_reviewers:
+          - type: User
+            id: 2
+      - name: staging
+        deployment_branch_policy:
+          mode: protected_branches
+`, &out, baseURL))
+
+		if err == nil {
+			t.Error("Run() error = nil, want an error")
+		}
+		if want := slices.Concat(reads, reads, []string{putProduction}); !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		for _, line := range []string{"Update request: rejected", "Desired state: not checked", "Stopped: a preceding change did not complete"} {
+			if !strings.Contains(out.String(), line) {
+				t.Errorf("Out = %q, want it to contain %q", out.String(), line)
+			}
+		}
+	})
+
+	// GitHub は担当者にできない ID を 200 で黙って除くため、更新要求の成功だけで完了にしない
+	t.Run("reviewers dropped by GitHub with 200 are reported as not matching", func(t *testing.T) {
+		before := githubtest.EnvironmentBody{ID: 7, Name: "production", RequiredReviewers: reviewers(1)}
+		dropped := githubtest.EnvironmentBody{ID: 7, Name: "production", RequiredReviewers: reviewers(2)}
+		responses := []response{
+			okRepository(1, false, false), okEnvironments(before),
+			okRepository(1, false, false), okEnvironments(before), okEnvironment(dropped),
+		}
+		// 期待状態と一致しないあいだは観測し直すため、最初の観測と観測し直しの分だけ同じ応答を返す
+		for range len(reobservationDelays) + 1 {
+			responses = append(responses, okRepository(1, false, false), okEnvironments(dropped))
+		}
+		baseURL, _ := newSequenceServer(t, responses...)
+		var out bytes.Buffer
+
+		err := Run(context.Background(), newConfig(`repositories:
+  - name: owner/repo
+    environments:
+      - name: production
+        required_reviewers:
+          - type: User
+            id: 2
+          - type: User
+            id: 3
+`, &out, baseURL))
+
+		if err == nil {
+			t.Error("Run() error = nil, want an error")
+		}
+		for _, line := range []string{"Update request: succeeded", "Desired state: does not match"} {
+			if !strings.Contains(out.String(), line) {
+				t.Errorf("Out = %q, want it to contain %q", out.String(), line)
+			}
+		}
+	})
 }
 
 const configSource = `repositories:

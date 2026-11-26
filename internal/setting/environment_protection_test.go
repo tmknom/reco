@@ -33,40 +33,69 @@ func reviewers(preventSelfReview bool, rs ...Reviewer) *RequiredReviewers {
 	return &RequiredReviewers{PreventSelfReview: preventSelfReview, Reviewers: rs}
 }
 
-//trace:checks FR-012
+//trace:checks FR-012 INV-001
 func TestEnvironmentProtection_DifferencesTo(t *testing.T) {
 	user1 := Reviewer{Type: ReviewerUser, ID: 1}
 	user2 := Reviewer{Type: ReviewerUser, ID: 2}
 	base := EnvironmentProtection{WaitTimer: new(30), RequiredReviewers: reviewers(true, user1, user2), CanAdminsBypass: true}
 	cases := []struct {
-		name  string
-		other EnvironmentProtection
-		want  []EnvironmentProtectionDifference
+		name   string
+		before EnvironmentProtection
+		other  EnvironmentProtection
+		want   []EnvironmentProtectionDifference
 	}{
 		{
-			name:  "same protection with reviewers only reordered has no difference",
-			other: EnvironmentProtection{WaitTimer: new(30), RequiredReviewers: reviewers(true, user2, user1), CanAdminsBypass: true},
+			name:   "same protection with reviewers only reordered has no difference",
+			before: base,
+			other:  EnvironmentProtection{WaitTimer: new(30), RequiredReviewers: reviewers(true, user2, user1), CanAdminsBypass: true},
 		},
 		{
-			name:  "changed required_reviewers is one difference",
-			other: EnvironmentProtection{WaitTimer: new(30), RequiredReviewers: reviewers(false, user1, user2), CanAdminsBypass: true},
+			name:   "different reviewers only is one required_reviewers difference",
+			before: base,
+			other:  EnvironmentProtection{WaitTimer: new(30), RequiredReviewers: reviewers(true, user1), CanAdminsBypass: true},
 			want: []EnvironmentProtectionDifference{{
-				Item: "required_reviewers", Before: "reviewers: [User 1, User 2], prevent_self_review: true", After: "reviewers: [User 1, User 2], prevent_self_review: false",
+				Item: "required_reviewers", Key: EnvironmentRequiredReviewers, Before: "[User 1, User 2]", After: "[User 1]",
 			}},
 		},
 		{
-			name:  "all three changed are three differences in the order wait_timer, required_reviewers, can_admins_bypass",
-			other: EnvironmentProtection{WaitTimer: new(5)},
+			name:   "different prevent_self_review only with rules on both sides is one prevent_self_review difference",
+			before: base,
+			other:  EnvironmentProtection{WaitTimer: new(30), RequiredReviewers: reviewers(false, user1, user2), CanAdminsBypass: true},
+			want: []EnvironmentProtectionDifference{{
+				Item: "prevent_self_review", Before: "true", After: "false",
+			}},
+		},
+		{
+			name:   "no rule to a rule with prevent_self_review true is only a required_reviewers difference",
+			before: EnvironmentProtection{},
+			other:  EnvironmentProtection{RequiredReviewers: reviewers(true, user1)},
+			want: []EnvironmentProtectionDifference{{
+				Item: "required_reviewers", Key: EnvironmentRequiredReviewers, Before: "[]", After: "[User 1]",
+			}},
+		},
+		{
+			name:   "a rule with prevent_self_review true to no rule is only a required_reviewers difference",
+			before: EnvironmentProtection{RequiredReviewers: reviewers(true, user1)},
+			other:  EnvironmentProtection{},
+			want: []EnvironmentProtectionDifference{{
+				Item: "required_reviewers", Key: EnvironmentRequiredReviewers, Before: "[User 1]", After: "[]",
+			}},
+		},
+		{
+			name:   "all four changed are four differences in the order wait_timer, required_reviewers, prevent_self_review, can_admins_bypass",
+			before: base,
+			other:  EnvironmentProtection{WaitTimer: new(5), RequiredReviewers: reviewers(false, user1)},
 			want: []EnvironmentProtectionDifference{
 				{Item: "wait_timer", Before: "30", After: "5"},
-				{Item: "required_reviewers", Before: "reviewers: [User 1, User 2], prevent_self_review: true", After: "none"},
+				{Item: "required_reviewers", Key: EnvironmentRequiredReviewers, Before: "[User 1, User 2]", After: "[User 1]"},
+				{Item: "prevent_self_review", Before: "true", After: "false"},
 				{Item: "can_admins_bypass", Before: "true", After: "false"},
 			},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := base.DifferencesTo(tc.other); !slices.Equal(got, tc.want) {
+			if got := tc.before.DifferencesTo(tc.other); !slices.Equal(got, tc.want) {
 				t.Errorf("DifferencesTo() = %v, want %v", got, tc.want)
 			}
 		})
@@ -95,7 +124,30 @@ func TestEnvironmentProtection_sameWaitTimer(t *testing.T) {
 	}
 }
 
-func TestEnvironmentProtection_sameRequiredReviewers(t *testing.T) {
+func TestEnvironmentProtection_samePreventSelfReview(t *testing.T) {
+	user1 := Reviewer{Type: ReviewerUser, ID: 1}
+	cases := []struct {
+		name string
+		a, b *RequiredReviewers
+		want bool
+	}{
+		{name: "both none are not compared", a: nil, b: nil, want: true},
+		{name: "none and a rule with true are not compared", a: nil, b: reviewers(true, user1), want: true},
+		{name: "a rule with true and none are not compared", a: reviewers(true, user1), b: nil, want: true},
+		{name: "same true is the same", a: reviewers(true, user1), b: reviewers(true), want: true},
+		{name: "true and false differ", a: reviewers(true, user1), b: reviewers(false, user1), want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a, b := EnvironmentProtection{RequiredReviewers: tc.a}, EnvironmentProtection{RequiredReviewers: tc.b}
+			if got := a.samePreventSelfReview(b); got != tc.want {
+				t.Errorf("samePreventSelfReview() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEnvironmentProtection_sameReviewerSet(t *testing.T) {
 	user1 := Reviewer{Type: ReviewerUser, ID: 1}
 	user2 := Reviewer{Type: ReviewerUser, ID: 2}
 	team1 := Reviewer{Type: ReviewerTeam, ID: 1}
@@ -110,7 +162,7 @@ func TestEnvironmentProtection_sameRequiredReviewers(t *testing.T) {
 		{name: "same reviewers are the same", a: reviewers(true, user1, team1), b: reviewers(true, user1, team1), want: true},
 		{name: "reviewers differing only in order are the same", a: reviewers(false, user1, user2), b: reviewers(false, user2, user1), want: true},
 		{name: "reviewers of the same ID differing only in order are the same", a: reviewers(false, user1, team1), b: reviewers(false, team1, user1), want: true},
-		{name: "different prevent_self_review differs", a: reviewers(true, user1), b: reviewers(false, user1), want: false},
+		{name: "different prevent_self_review with the same reviewers is the same", a: reviewers(true, user1), b: reviewers(false, user1), want: true},
 		{name: "same ID of a different type differs", a: reviewers(false, user1), b: reviewers(false, team1), want: false},
 		{name: "different ID differs", a: reviewers(false, user1), b: reviewers(false, user2), want: false},
 		{name: "extra reviewer differs", a: reviewers(false, user1), b: reviewers(false, user1, user2), want: false},
@@ -126,17 +178,17 @@ func TestEnvironmentProtection_sameRequiredReviewers(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			a, b := EnvironmentProtection{RequiredReviewers: tc.a}, EnvironmentProtection{RequiredReviewers: tc.b}
-			if got := a.sameRequiredReviewers(b); got != tc.want {
-				t.Errorf("sameRequiredReviewers() = %t, want %t", got, tc.want)
+			if got := a.sameReviewerSet(b); got != tc.want {
+				t.Errorf("sameReviewerSet() = %t, want %t", got, tc.want)
 			}
 		})
 	}
 }
 
-func TestEnvironmentProtection_sameRequiredReviewersKeepsOrder(t *testing.T) {
+func TestEnvironmentProtection_sameReviewerSetKeepsOrder(t *testing.T) {
 	a := EnvironmentProtection{RequiredReviewers: reviewers(false, Reviewer{Type: ReviewerUser, ID: 2}, Reviewer{Type: ReviewerUser, ID: 1})}
 	b := EnvironmentProtection{RequiredReviewers: reviewers(false, Reviewer{Type: ReviewerUser, ID: 1}, Reviewer{Type: ReviewerUser, ID: 2})}
-	_ = a.sameRequiredReviewers(b)
+	_ = a.sameReviewerSet(b)
 	if got := a.RequiredReviewers.Reviewers[0].ID; got != 2 {
 		t.Errorf("Reviewers[0].ID = %d, want 2 (the receiver must not be reordered)", got)
 	}
@@ -164,29 +216,29 @@ func TestEnvironmentProtection_waitTimerString(t *testing.T) {
 	}
 }
 
-func TestEnvironmentProtection_requiredReviewersString(t *testing.T) {
+func TestEnvironmentProtection_reviewerSetString(t *testing.T) {
 	cases := []struct {
 		name string
 		r    *RequiredReviewers
 		want string
 	}{
-		{name: "none", r: nil, want: "none"},
-		{name: "empty reviewers", r: reviewers(false), want: "reviewers: [], prevent_self_review: false"},
+		{name: "no rule is the empty set", r: nil, want: "[]"},
+		{name: "rule without reviewers is marked", r: reviewers(false), want: "[] (protection rule without reviewers)"},
 		{
 			name: "reviewers keep the observed order",
 			r:    reviewers(true, Reviewer{Type: ReviewerUser, ID: 583231}, Reviewer{Type: ReviewerTeam, ID: 42}),
-			want: "reviewers: [User 583231, Team 42], prevent_self_review: true",
+			want: "[User 583231, Team 42]",
 		},
 		{
 			name: "logins are not shown",
 			r:    &RequiredReviewers{Reviewers: []Reviewer{{Type: ReviewerUser, ID: 583231}}, Logins: map[Reviewer]string{{Type: ReviewerUser, ID: 583231}: "octocat"}},
-			want: "reviewers: [User 583231], prevent_self_review: false",
+			want: "[User 583231]",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := (EnvironmentProtection{RequiredReviewers: tc.r}).requiredReviewersString(); got != tc.want {
-				t.Errorf("requiredReviewersString() = %q, want %q", got, tc.want)
+			if got := (EnvironmentProtection{RequiredReviewers: tc.r}).reviewerSetString(); got != tc.want {
+				t.Errorf("reviewerSetString() = %q, want %q", got, tc.want)
 			}
 		})
 	}

@@ -84,7 +84,13 @@ func requiredReviewersChangeOf(s, existence SettingPlan, ok bool) (LogicalChange
 	desiredState := []configuration.ManagedSetting{{Unit: s.Unit, Desired: s.Desired}}
 	switch {
 	case ok && existence.Result == Match && s.Result == Mismatch:
-		bases := []PreconditionBasis{existence.existenceBasis(), {Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)}}
+		reviewers := PreconditionBasis{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)}
+		if len(s.Desired.ReviewerSet().Reviewers()) == 0 {
+			// 担当者をすべて外すと GitHub は自己承認の禁止も失わせるため、副作用として示した値 (示さなかったなら偽) を確かめる
+			discarded := slices.ContainsFunc(s.SideEffects, func(e SideEffect) bool { return e.Kind == SideEffectPreventSelfReviewDiscarded })
+			reviewers.AnticipatedPreventSelfReview = &discarded
+		}
+		bases := []PreconditionBasis{existence.existenceBasis(), reviewers}
 		return LogicalChange{DesiredState: desiredState, Operations: []UpdateOperation{{Kind: RequiredReviewersUpdate, Unit: s.Unit, Value: s.Desired, PreconditionBases: bases}}}, true
 	case ok && existence.IsEnvironmentCreation() && isNoReviewersInAbsentEnvironment(s):
 		return LogicalChange{}, false

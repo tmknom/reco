@@ -19,6 +19,7 @@ type unexpectedOutsideChange struct {
 // before は、開始した更新操作の分だけの直前の観測である。
 // ドメインモデルの観測の時点の定めに従い、更新エンドポイントごとに、それへ送った最初の更新操作の直前と比べる。
 // Environment の PUT (作成と方式の変更) は、宛先の Environment の保護設定を、その更新操作の直前と比べる。
+// 担当者の集合の PUT は、同じ更新エンドポイントが受け付けるデプロイ元制限の方式も比べる。
 // 個別パターンの更新操作は、その更新エンドポイントで reco が観測するのが個別パターンの集合だけのため、比べない。
 // Repository Variable と Environment Variable の更新操作も、その更新エンドポイントで reco が観測するのがその変数だけのため、比べない。
 // Environment Variable の更新操作は Environment を宛先に含むが、Environment の保護設定は別の更新エンドポイントの設定である。
@@ -40,15 +41,17 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.O
 			}
 			continue
 		case changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate:
-			changes = append(changes, environmentProtectionChanges(operation.Unit.Environment, b, after)...)
+			changes = append(changes, environmentProtectionChanges(operation.Unit.Environment, change.ExcludedFromOutsideSettings(), b, after)...)
+			continue
+		case changeplan.RequiredReviewersUpdate:
+			changes = append(changes, deploymentBranchPolicyModeChanges(operation.Unit.Environment, b, after)...)
+			changes = append(changes, environmentProtectionChanges(operation.Unit.Environment, change.ExcludedFromOutsideSettings(), b, after)...)
 			continue
 		case changeplan.DeploymentPatternAddition, changeplan.DeploymentPatternRemoval,
 			changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate, changeplan.RepositoryVariableDeletion,
 			changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate, changeplan.EnvironmentVariableDeletion,
 			changeplan.RulesetCreation, changeplan.RulesetValueUpdate:
 			continue
-		case changeplan.RequiredReviewersUpdate:
-			// 比べる範囲は担当者の集合の更新方式とともに定める。applyPlan が承認の前に止めるため、ここに届かない
 		}
 		panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))
 	}
@@ -95,10 +98,25 @@ func oidcSubjectOmittedItemChanges(operation changeplan.UpdateOperation, before,
 	}}
 }
 
+// deploymentBranchPolicyModeChanges は、宣言の名前 name の Environment のデプロイ元制限の方式について、更新直前と更新後の観測の差を、CLI 仕様の変更対象外の設定の名前と方式の名前で返す。
+// 個別パターンは別の更新エンドポイントの設定のため、比べない。
+// どちらかの観測で存在しない Environment は、比べる値がないため返さない。
+func deploymentBranchPolicyModeChanges(name setting.EnvironmentName, before, after github.ObservationResult) []unexpectedOutsideChange {
+	b, beforeOK := before.Environments.Lookup(name).Existing()
+	a, afterOK := after.Environments.Lookup(name).Existing()
+	if !beforeOK || !afterOK || b.DeploymentBranchPolicyMode == a.DeploymentBranchPolicyMode {
+		return nil
+	}
+	return []unexpectedOutsideChange{{
+		Setting: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: name}.String(),
+		Before:  string(b.DeploymentBranchPolicyMode), After: string(a.DeploymentBranchPolicyMode),
+	}}
+}
+
 // environmentProtectionChanges は、宣言の名前 name の Environment の保護設定について、更新直前と更新後の観測の差を、項目の名前に Environment の名前を前置して返す。
 // 比べる範囲はアーキテクチャ設計の未管理設定を保全する更新方式と、設定ごとの設計の更新方式に従う。
 // どちらかの観測で存在しない Environment は、比べる値がないため返さない。
-func environmentProtectionChanges(name setting.EnvironmentName, before, after github.ObservationResult) []unexpectedOutsideChange {
+func environmentProtectionChanges(name setting.EnvironmentName, excluded []setting.Unit, before, after github.ObservationResult) []unexpectedOutsideChange {
 	b, beforeOK := before.Environments.Lookup(name).Existing()
 	a, afterOK := after.Environments.Lookup(name).Existing()
 	if !beforeOK || !afterOK {
@@ -107,6 +125,9 @@ func environmentProtectionChanges(name setting.EnvironmentName, before, after gi
 	prefix := setting.Unit{Key: setting.EnvironmentResource, Environment: name}.String()
 	var changes []unexpectedOutsideChange
 	for _, d := range b.Protection.DifferencesTo(a.Protection) {
+		if slices.Contains(excluded, setting.Unit{Key: d.Key, Environment: name}) {
+			continue
+		}
 		changes = append(changes, unexpectedOutsideChange{Setting: prefix + "." + d.Item, Before: d.Before, After: d.After})
 	}
 	return changes

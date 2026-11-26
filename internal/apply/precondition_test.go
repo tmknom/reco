@@ -319,6 +319,72 @@ func TestMatchesPreconditionBasis_EnvironmentExistence(t *testing.T) {
 	}
 }
 
+// TestMatchesPreconditionBasis_RequiredReviewers は、担当者の集合の基準が、承認時に予定した担当者の集合に加えて、
+// 伴う自己承認の禁止の予定した値を更新直前の観測と比べる規則を確かめる。自己承認の禁止の比べ方は TestMatchesAnticipatedPreventSelfReview が確かめる。
+//
+//trace:checks INV-001 INV-004 FR-010
+func TestMatchesPreconditionBasis_RequiredReviewers(t *testing.T) {
+	staging := observedEnvironment(7, "staging", setting.DeploymentBranchPolicyAll)
+	// 担当者をすべて外す変更の基準は、自己承認の禁止の予定した値を持つ
+	removal := func(approved github.Environment) changeplan.PreconditionBasis {
+		return reviewersChange(t, "staging", approved, reviewerSet()).Operations[0].PreconditionBases[1]
+	}
+	cases := []struct {
+		name    string
+		basis   changeplan.PreconditionBasis
+		current github.Environment
+		want    bool
+	}{
+		{name: "removal anticipating true holds with true", basis: removal(withReviewers(staging, true, 1)), current: withReviewers(staging, true, 1), want: true},
+		{name: "removal anticipating true differs with false", basis: removal(withReviewers(staging, true, 1)), current: withReviewers(staging, false, 1), want: false},
+		{name: "removal anticipating false differs with true", basis: removal(withReviewers(staging, false, 1)), current: withReviewers(staging, true, 1), want: false},
+		{name: "removal with another set of reviewers differs even if prevent_self_review is the same", basis: removal(withReviewers(staging, true, 1)), current: withReviewers(staging, true, 2), want: false},
+		{
+			name:  "update keeping reviewers does not compare prevent_self_review",
+			basis: reviewersChange(t, "staging", withReviewers(staging, true, 1), reviewerSet(2)).Operations[0].PreconditionBases[1], current: withReviewers(staging, false, 1), want: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := github.ObservationResult{RepositoryID: 1, Environments: environments(tc.current)}
+			if got := matchesPreconditionBasis(tc.basis, observed, github.EnvironmentObservation{}); got != tc.want {
+				t.Errorf("matchesPreconditionBasis() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestMatchesAnticipatedPreventSelfReview は、承認時に予定した自己承認の禁止が、更新直前に引いた Environment の観測結果と同じかの規則を確かめる。
+//
+//trace:checks INV-001 INV-004 FR-010
+func TestMatchesAnticipatedPreventSelfReview(t *testing.T) {
+	name := mustEnvironmentName(t, "staging")
+	staging := observedEnvironment(7, "staging", setting.DeploymentBranchPolicyAll)
+	anticipated := func(v bool) *bool { return &v }
+	cases := []struct {
+		name        string
+		anticipated *bool
+		current     []github.Environment
+		want        bool
+	}{
+		{name: "no anticipated value holds without comparing", anticipated: nil, current: []github.Environment{staging}, want: true},
+		{name: "same value holds", anticipated: anticipated(false), current: []github.Environment{withReviewers(staging, false, 1)}, want: true},
+		{name: "another value differs", anticipated: anticipated(false), current: []github.Environment{withReviewers(staging, true, 1)}, want: false},
+		// 保護ルールがないことを偽と読み替えると、予定した値の偽と同じになる
+		{name: "environment without the protection rule differs", anticipated: anticipated(false), current: []github.Environment{staging}, want: false},
+		{name: "absent environment differs", anticipated: anticipated(false), want: false},
+		{name: "undetermined environment differs", anticipated: anticipated(false), current: []github.Environment{withReviewers(observedEnvironment(9, "stagïng", setting.DeploymentBranchPolicyAll), false, 1)}, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			current := github.Environments{Existing: tc.current}.Lookup(name)
+			if got := matchesAnticipatedPreventSelfReview(tc.anticipated, current); got != tc.want {
+				t.Errorf("matchesAnticipatedPreventSelfReview() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestMatchesPreconditionBasis_Ruleset は、承認時に予定した Ruleset の存在、値の全体、ID の基準が、更新直前の観測と同じかの規則を確かめる。
 // 名前で引く規則は github の Rulesets.Lookup、値の集合としての比べ方は setting の Ruleset のテストが確かめる。
 //
@@ -414,7 +480,7 @@ func TestMatchesPreconditionBasis_Ruleset(t *testing.T) {
 	}
 }
 
-// TestCheckPrecondition_Environments は、Environment の作成と方式の変更の更新直前の判定表を確かめる。
+// TestCheckPrecondition_Environments は、Environment の作成、方式の変更、担当者の集合の変更の更新直前の判定表を確かめる。
 // 存在の比べ方は TestMatchesPreconditionBasis_EnvironmentExistence、方式の値の比べ方は TestMatchesAnticipatedValue が確かめる。
 //
 //trace:checks INV-001 INV-004 FR-010
@@ -560,6 +626,19 @@ func TestCheckPrecondition_Environments(t *testing.T) {
 			observed:    github.ObservationResult{RepositoryID: 1, Environments: environments(selectedEnvironment(8, "Staging", []setting.DeploymentPattern{main}, 10))},
 			want:        preconditionCurrentValueChanged,
 			wantChanged: existence(staging),
+		},
+		{
+			name:     "reviewers update holds with the same ID and reviewers",
+			change:   reviewersChange(t, "staging", withReviewers(approvedStaging, false, 1), reviewerSet(2)),
+			observed: github.ObservationResult{RepositoryID: 1, Environments: environments(withReviewers(approvedStaging, false, 1))},
+			want:     preconditionHolds,
+		},
+		{
+			name:        "reviewers update with reviewers changed since approval is a change of the reviewers",
+			change:      reviewersChange(t, "staging", withReviewers(approvedStaging, false, 1), reviewerSet(2)),
+			observed:    github.ObservationResult{RepositoryID: 1, Environments: environments(withReviewers(approvedStaging, false, 1, 3))},
+			want:        preconditionCurrentValueChanged,
+			wantChanged: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: staging},
 		},
 		{
 			name:     "pattern addition after a creation reads only that the preceding update created the environment",

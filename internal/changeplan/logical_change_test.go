@@ -651,6 +651,7 @@ func TestRepositoryPlan_LogicalChangesOfRequiredReviewers(t *testing.T) {
 	all := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll})
 	protected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches})
 	absentEnvironment := github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent)
+	selfReviewPrevented, selfReviewAllowed := true, false
 	reviewersChange := func(unit setting.Unit, desired setting.Value, bases ...PreconditionBasis) LogicalChange {
 		return LogicalChange{
 			DesiredState: []configuration.ManagedSetting{{Unit: unit, Desired: desired}},
@@ -669,6 +670,25 @@ func TestRepositoryPlan_LogicalChangesOfRequiredReviewers(t *testing.T) {
 				{Unit: stagingReviewers, Observed: github.Observed(user1), Desired: user2, Result: Mismatch, Applicability: Applicable()},
 			},
 			want: []LogicalChange{reviewersChange(stagingReviewers, user2, stagingEnvironment, PreconditionBasis{Unit: stagingReviewers, AnticipatedValue: AnticipateValue(user1)})},
+		},
+		{
+			name: "removing every reviewer adds prevent_self_review that is true to the reviewers basis",
+			settings: []SettingPlan{
+				stagingExistence,
+				{
+					Unit: stagingReviewers, Observed: github.Observed(user1), Desired: noReviewers, Result: Mismatch, Applicability: Applicable(),
+					SideEffects: []SideEffect{{Kind: SideEffectPreventSelfReviewDiscarded, Observed: github.Observed(setting.BoolValue(true))}},
+				},
+			},
+			want: []LogicalChange{reviewersChange(stagingReviewers, noReviewers, stagingEnvironment, PreconditionBasis{Unit: stagingReviewers, AnticipatedValue: AnticipateValue(user1), AnticipatedPreventSelfReview: &selfReviewPrevented})},
+		},
+		{
+			name: "removing every reviewer adds prevent_self_review that is false to the reviewers basis",
+			settings: []SettingPlan{
+				stagingExistence,
+				{Unit: stagingReviewers, Observed: github.Observed(user1), Desired: noReviewers, Result: Mismatch, Applicability: Applicable()},
+			},
+			want: []LogicalChange{reviewersChange(stagingReviewers, noReviewers, stagingEnvironment, PreconditionBasis{Unit: stagingReviewers, AnticipatedValue: AnticipateValue(user1), AnticipatedPreventSelfReview: &selfReviewAllowed})},
 		},
 		{
 			name: "reviewers of an environment to create follow its creation as another change based only on no reviewers",

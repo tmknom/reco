@@ -11,7 +11,7 @@ import (
 // SideEffect は、変更予定に添える変更に伴う副作用で、GitHub が変える未管理設定と、起きる変化を表す。
 type SideEffect struct {
 	Kind SideEffectKind
-	// Observed は、Kind が reco の観測する設定に及ぶときだけ持つ、その設定の計画時の設定の観測結果。
+	// Observed は、Kind が reco の観測する設定に及ぶときと、Environment の自己承認の禁止が失われるときだけ持つ、その設定の計画時の設定の観測結果。
 	// 観測値なら変わる前の値を、観測不能なら失われる可能性だけを表す。観測しない設定に及ぶ副作用ではゼロ値。
 	Observed github.SettingObservation[setting.Value]
 }
@@ -31,6 +31,8 @@ const (
 	SideEffectSecurityUpdatesDisabled
 	// SideEffectPushProtectionDisabled は、リポジトリの push protection が無効になること。
 	SideEffectPushProtectionDisabled
+	// SideEffectPreventSelfReviewDiscarded は、担当者をすべて外す変更で、Environment の自己承認の禁止が失われること。Observed は失われる前の値の真。
+	SideEffectPreventSelfReviewDiscarded
 )
 
 // SettingExpectedUnaffected は、副作用を示さなかった設定と、その計画時の設定の観測結果。
@@ -39,8 +41,9 @@ type SettingExpectedUnaffected struct {
 	Observed github.SettingObservation[setting.Value]
 }
 
-// ObservedSetting は、副作用が及ぶ設定のうち reco が観測するものを返す。
+// ObservedSetting は、副作用が及ぶ設定のうち、reco が観測し、設定の識別だけで引ける設定を返す。
 // Dependency graph は観測しないため偽を返し、その副作用は変更前提にも更新後の比較にも含めない。
+// Environment の自己承認の禁止は設定の識別を持たず、変更前提は担当者の集合の基準が伴うため偽を返す。
 // 未定義の種類は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func (k SideEffectKind) ObservedSetting() (setting.Key, bool) {
 	switch k {
@@ -50,7 +53,7 @@ func (k SideEffectKind) ObservedSetting() (setting.Key, bool) {
 		return setting.DependabotSecurityUpdates, true
 	case SideEffectPushProtectionDisabled:
 		return setting.RepositoryPushProtection, true
-	case SideEffectDependencyGraphEnabled, SideEffectDependencyGraphDisabled:
+	case SideEffectDependencyGraphEnabled, SideEffectDependencyGraphDisabled, SideEffectPreventSelfReviewDiscarded:
 		return "", false
 	}
 	panic(fmt.Sprintf("changeplan: undefined side effect kind %d", int(k)))
@@ -62,6 +65,9 @@ func (k SideEffectKind) ObservedSetting() (setting.Key, bool) {
 func sideEffects(s SettingPlan, observed github.ObservationResult, settings []SettingPlan) ([]SideEffect, []SettingExpectedUnaffected) {
 	if s.Unit.Key == setting.AllowedActions {
 		return selectedActionsSideEffects(s, observed), nil
+	}
+	if s.Unit.Key == setting.EnvironmentRequiredReviewers {
+		return preventSelfReviewSideEffects(s, observed), nil
 	}
 	if s.Result != Mismatch {
 		return nil, nil
@@ -84,6 +90,21 @@ func selectedActionsSideEffects(s SettingPlan, observed github.ObservationResult
 		return nil
 	}
 	return []SideEffect{{Kind: SideEffectSelectedActionsDiscarded, Observed: observed.Setting(setting.Unit{Key: setting.SelectedActions})}}
+}
+
+// preventSelfReviewSideEffects は、担当者の集合の変更予定 s が担当者をすべて外すとき、GitHub が自己承認の禁止も失わせる副作用を返す。
+// 担当者のいない保護ルールの自己承認の禁止も、同じ保護ルールの値として失われる。
+// 存在しない Environment と保護ルールのない Environment は、失われる値がないため、副作用を添えない。
+// 一致する変更予定は、保護ルールがないことが一致の条件のため、保護ルールの有無の判定で副作用を添えない。
+func preventSelfReviewSideEffects(s SettingPlan, observed github.ObservationResult) []SideEffect {
+	if len(s.Desired.ReviewerSet().Reviewers()) > 0 {
+		return nil
+	}
+	environment, ok := observed.Environments.Lookup(s.Unit.Environment).Existing()
+	if !ok || environment.Protection.RequiredReviewers == nil || !environment.Protection.RequiredReviewers.PreventSelfReview {
+		return nil
+	}
+	return []SideEffect{{Kind: SideEffectPreventSelfReviewDiscarded, Observed: github.Observed(setting.BoolValue(true))}}
 }
 
 // dependencyGraphSideEffect は、Dependabot alerts の不一致 s に伴う Dependency graph の副作用を返す。
