@@ -36,7 +36,7 @@ func TestWriteObservationResult(t *testing.T) {
 	noForkWorkflows := &github.PrivateForkPullRequestWorkflows{Conditions: github.Observed(setting.PrivateForkPullRequestWorkflowConditions{})}
 	// 保持期間と上限を違う値にし、取り違えと、上限を値の位置に書く誤りを検出する
 	retention := &github.Retention{Days: 30, MaximumAllowedDays: 400}
-	defaultOIDCSubject := &github.OIDCSubject{Customization: setting.OIDCSubjectCustomization{UseDefault: true}}
+	defaultOIDCSubject := &github.OIDCSubject{Customization: setting.OIDCSubjectCustomization{UseDefault: true, UseImmutableSubject: new(false)}}
 	noVariables := &github.Variables{}
 	noEnvironments := &github.Environments{}
 	enabledDependabot := &github.Dependabot{Alerts: true, SecurityUpdates: setting.DependabotSecurityUpdatesEnabled}
@@ -55,11 +55,10 @@ func TestWriteObservationResult(t *testing.T) {
 			"          run_workflows_from_fork_pull_requests: false\n          send_write_tokens_to_workflows: false\n" +
 			"          send_secrets_and_variables: false\n          require_approval_for_fork_pr_workflows: false\n" +
 			"      retention:\n        days: 30 # maximum allowed: 400\n"
-		defaultOIDCSubjectLines = "      # reco does not accept the OIDC subject customization in the configuration file yet\n" +
-			"      # oidc_subject:\n      #   use_default: true\n      #   use_immutable_subject: false\n"
-		noVariable      = "      # variables: none\n"
-		noEnvironment   = "    # environments: none\n"
-		enabledSecurity = "    security:\n      dependabot_alerts: true\n      dependabot_security_updates: true\n" +
+		defaultOIDCSubjectLines = "      oidc_subject:\n        use_default: true\n        use_immutable_subject: false\n"
+		noVariable              = "      # variables: none\n"
+		noEnvironment           = "    # environments: none\n"
+		enabledSecurity         = "    security:\n      dependabot_alerts: true\n      dependabot_security_updates: true\n" +
 			"      secret_scanning: true\n      secret_scanning_push_protection: true\n      private_vulnerability_reporting: false\n"
 	)
 	cases := []struct {
@@ -386,7 +385,7 @@ func TestRun(t *testing.T) {
 			"default_workflow_permissions: write", `        - name: "GO_VERSION"`, `- name: "staging"`, `          - name: "REGION"`, "dependabot_security_updates: true # paused",
 			"        # approval_policy: unavailable (the repository is private)",
 			"        days: 90 # maximum allowed: 400",
-			"      #   include_claim_keys:\n      #     - \"repo\"",
+			"        include_claim_keys:\n          - \"repo\"",
 			"# secret_scanning: unavailable (the repository is private)",
 			"# private_vulnerability_reporting: unavailable (the repository is private)",
 			"    # rulesets: unavailable (the repository is private)",

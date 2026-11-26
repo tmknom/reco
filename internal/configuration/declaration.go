@@ -220,12 +220,12 @@ func (d document) deploymentPattern(n *yaml.Node, path string) (setting.Deployme
 	return setting.DeploymentPattern{Type: patternType, Name: name}, nil
 }
 
-// actions は、Actions の階層のうち reco が受け付ける permissions、workflow、access、fork_pull_requests、retention、variables だけを読み、desired の該当する領域を埋める。
+// actions は、Actions の階層のうち reco が受け付ける permissions、workflow、access、fork_pull_requests、retention、oidc_subject、variables だけを読み、desired の該当する領域を埋める。
 // 領域ごとの戻り値を並べず desired を埋めるのは、Actions の領域が多く、領域を足すたびに戻り値とその受け取りを直さずに済ませるため。
 // 失敗したときに途中まで埋まった desired は、呼び出し元が捨てる。
 // どれも任意のキーだが、空のマッピングは拒否されるため、成功すればどれかは必ずある。
 func (d document) actions(n *yaml.Node, path string, desired *DesiredState) error {
-	entries, err := d.mappingEntries(n, path, nil, []string{"permissions", "workflow", "access", "fork_pull_requests", "retention", "variables"})
+	entries, err := d.mappingEntries(n, path, nil, []string{"permissions", "workflow", "access", "fork_pull_requests", "retention", "oidc_subject", "variables"})
 	if err != nil {
 		return err
 	}
@@ -251,6 +251,11 @@ func (d document) actions(n *yaml.Node, path string, desired *DesiredState) erro
 	}
 	if value, ok := entries["retention"]; ok {
 		if desired.Retention, err = d.retention(value, path+".retention"); err != nil {
+			return err
+		}
+	}
+	if value, ok := entries["oidc_subject"]; ok {
+		if desired.OIDCSubject, err = d.oidcSubject(value, path+".oidc_subject"); err != nil {
 			return err
 		}
 	}
@@ -490,6 +495,72 @@ func (d document) retention(n *yaml.Node, path string) (Retention, error) {
 		return Retention{}, invalid(daysNode, path+".days", "must be a positive integer; got %d", days)
 	}
 	return Retention{Days: &days}, nil
+}
+
+// oidcSubject は、subject クレームのカスタマイズの3項目を一つの設定グループとして読む。
+// 誤りを示す順は、YAML 設定仕様の OIDC subject の章に従う。
+func (d document) oidcSubject(n *yaml.Node, path string) (OIDCSubject, error) {
+	entries, err := d.mappingEntries(n, path, []string{"use_default"}, []string{"include_claim_keys", "use_immutable_subject"})
+	if err != nil {
+		return OIDCSubject{}, err
+	}
+	useDefault, err := d.boolValue(entries["use_default"], path+".use_default")
+	if err != nil {
+		return OIDCSubject{}, err
+	}
+	keysNode, hasKeys := entries["include_claim_keys"]
+	keysPath := path + ".include_claim_keys"
+	switch {
+	case useDefault && hasKeys:
+		return OIDCSubject{}, invalid(keysNode, keysPath, "include_claim_keys is not allowed when use_default is true; GitHub does not save it")
+	case !useDefault && !hasKeys:
+		return OIDCSubject{}, invalid(n, path, "use_default false requires include_claim_keys with at least one claim key")
+	}
+	customization := setting.OIDCSubjectCustomization{UseDefault: useDefault}
+	if hasKeys {
+		if customization.IncludeClaimKeys, err = d.claimKeys(keysNode, keysPath); err != nil {
+			return OIDCSubject{}, err
+		}
+	}
+	if value, ok := entries["use_immutable_subject"]; ok {
+		immutable, err := d.boolValue(value, path+".use_immutable_subject")
+		if err != nil {
+			return OIDCSubject{}, err
+		}
+		customization.UseImmutableSubject = &immutable
+	}
+	return OIDCSubject{Customization: &customization}, nil
+}
+
+// claimKeys は、claim key の並びを宣言の順のまま返す。
+func (d document) claimKeys(n *yaml.Node, path string) ([]string, error) {
+	items, err := d.sequenceItems(n, path)
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(items))
+	for i, item := range items {
+		itemPath := fmt.Sprintf("%s[%d]", path, i)
+		key, err := d.stringValue(item, itemPath)
+		if err != nil {
+			return nil, err
+		}
+		if !isClaimKey(key) {
+			return nil, invalid(item, itemPath, "must consist of ASCII letters, digits, and underscores; got %q", key)
+		}
+		if j := slices.Index(keys, key); j >= 0 {
+			return nil, invalid(item, itemPath, "duplicate claim key %q; same as %s[%d]", key, path, j)
+		}
+		keys = append(keys, key)
+	}
+	return keys, nil
+}
+
+// isClaimKey は、s が claim key の形式 (空でなく、ASCII の英数字と _ だけ) かを返す。
+func isClaimKey(s string) bool {
+	return s != "" && !strings.ContainsFunc(s, func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_'
+	})
 }
 
 // forkPullRequests は、Fork からの Pull Request のワークフローの設定を、承認ポリシーと実行条件の二つの領域に分けて読む。

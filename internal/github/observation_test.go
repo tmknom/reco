@@ -778,3 +778,25 @@ func TestObservationResult_SettingOfUnknownSettingPanics(t *testing.T) {
 	}()
 	_ = ObservationResult{}.Setting(setting.Unit{Key: "general.unknown"})
 }
+
+// TestObservationResult_SettingOfOIDCSubject は、観測した3項目を落とさずに値にし、immutable を持たない観測を不変条件の破れとして止めることを確かめる。
+//
+//trace:checks FR-004 QR-002
+func TestObservationResult_SettingOfOIDCSubject(t *testing.T) {
+	unit := setting.Unit{Key: setting.OIDCSubject}
+	t.Run("observation keeps all three items", func(t *testing.T) {
+		customization := setting.OIDCSubjectCustomization{IncludeClaimKeys: []string{"repo", "context"}, UseImmutableSubject: new(true)}
+		got := (ObservationResult{OIDCSubject: &OIDCSubject{Customization: customization}}).Setting(unit)
+		if want := Observed(setting.OIDCSubjectCustomizationValue(customization)); !reflect.DeepEqual(got, want) {
+			t.Errorf("Setting(%q) = %+v, want %+v", setting.OIDCSubject, got, want)
+		}
+	})
+	t.Run("observation without immutable panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("Setting() did not panic for an observation without use_immutable_subject")
+			}
+		}()
+		_ = (ObservationResult{OIDCSubject: &OIDCSubject{Customization: setting.OIDCSubjectCustomization{UseDefault: true}}}).Setting(unit)
+	})
+}

@@ -101,8 +101,8 @@ func TestShow_OutputReadsAsConfiguration(t *testing.T) {
 				"GET /repos/owner/repo/actions/permissions/access":                          githubtest.OK(githubtest.ActionsAccessBody{AccessLevel: "user"}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/fork-pr-workflows-private-repos": githubtest.OK(githubtest.PrivateForkPullRequestWorkflowsBody{}.JSON()),
 				"GET /repos/owner/repo/actions/permissions/artifact-and-log-retention":      githubtest.OK(githubtest.RetentionBody{Days: 90, MaximumAllowedDays: 400}.JSON()),
-				// 改行に続けてキーを模した key も、エスケープした1行のコメントの中に収まり、設定宣言の構造を変えない
-				"GET /repos/owner/repo/actions/oidc/customization/sub": githubtest.OK(githubtest.OIDCSubjectBody{IncludeClaimKeys: []string{"repo", "a\n    general:\n      delete_branch_on_merge: false"}}.JSON()),
+				// 既定の形を使わない subject のカスタマイズも、key の並びと use_immutable_subject とともに期待値として読み戻せる
+				"GET /repos/owner/repo/actions/oidc/customization/sub": githubtest.OK(githubtest.OIDCSubjectBody{IncludeClaimKeys: []string{"repo", "context"}, UseImmutableSubject: true}.JSON()),
 				// 改行に続けてキーを模した値も、エスケープした1行の値として読み戻せ、設定宣言の構造を変えない
 				"GET /repos/owner/repo/actions/variables": githubtest.OK(githubtest.VariablesBody{TotalCount: 2, Variables: []githubtest.VariableBody{
 					{Name: "GO_VERSION", Value: "1.27"},

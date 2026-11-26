@@ -98,6 +98,13 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 		return valueObservation(o.PrivateForkPullRequestWorkflows.Conditions, setting.PrivateForkPullRequestWorkflowConditionsValue)
 	case setting.RetentionDays:
 		return Observed(setting.RetentionDaysValue(o.Retention.Days))
+	case setting.OIDCSubject:
+		customization := o.OIDCSubject.Customization
+		if customization.UseImmutableSubject == nil {
+			// 観測値がこの項目を持たないと、同じ値の判定が項目を比べずに一致とする
+			panic("github: observed oidc subject has no use_immutable_subject")
+		}
+		return Observed(setting.OIDCSubjectCustomizationValue(customization))
 	case setting.DependabotAlerts:
 		return Observed(setting.BoolValue(o.Dependabot.Alerts))
 	case setting.DependabotSecurityUpdates:

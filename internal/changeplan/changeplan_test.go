@@ -1147,6 +1147,61 @@ func TestGenerate_PrivateForkPullRequestWorkflows(t *testing.T) {
 	})
 }
 
+const oidcSubjectSource = `repositories:
+  - name: owner/repo
+    actions:
+      oidc_subject:
+        use_default: false
+        include_claim_keys:
+          - repo
+          - context
+`
+
+// TestGenerate_OIDCSubject は、oidc_subject の宣言が OIDC subject の領域だけを読ませ、不一致の計画が適用可能になり、
+// 論理的な設定変更が、省略した項目を除いた承認時に予定した値を持つ一つの更新操作になることを確かめる。
+//
+//trace:checks FR-005 FR-006
+func TestGenerate_OIDCSubject(t *testing.T) {
+	file := configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(oidcSubjectSource)}}, Name: "reco.yaml", Path: "./reco.yaml"}
+	server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+		"GET /repos/owner/repo":                                githubtest.OK(githubtest.RepositoryBody{ID: 7}.JSON()),
+		"GET /repos/owner/repo/actions/oidc/customization/sub": githubtest.OK(githubtest.OIDCSubjectBody{UseDefault: true, UseImmutableSubject: true}.JSON()),
+	}))
+	client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+	got, err := Generate(context.Background(), client, file, nil)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if want := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/actions/oidc/customization/sub"}; !slices.Equal(server.RequestLines(), want) {
+		t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+	}
+	if len(got.Repositories) != 1 {
+		t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
+	}
+	unit := setting.Unit{Key: setting.OIDCSubject}
+	observed := github.Observed(setting.OIDCSubjectCustomizationValue(setting.OIDCSubjectCustomization{UseDefault: true}))
+	desired := setting.OIDCSubjectCustomizationValue(setting.OIDCSubjectCustomization{IncludeClaimKeys: []string{"repo", "context"}})
+	wantSettings := []SettingPlan{{Unit: unit, Observed: observed, Desired: desired, Result: Mismatch, Applicability: Applicable()}}
+	if !reflect.DeepEqual(got.Repositories[0].Settings, wantSettings) {
+		t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, wantSettings)
+	}
+	changes, err := got.Repositories[0].LogicalChanges()
+	if err != nil {
+		t.Fatalf("LogicalChanges() error = %v", err)
+	}
+	wantChanges := []LogicalChange{{
+		DesiredState: []DesiredSetting{{Unit: unit, Value: desired}},
+		Operations: []UpdateOperation{{
+			Kind: SettingUpdate, Unit: unit, Value: desired,
+			PreconditionBases: []PreconditionBasis{{Unit: unit, AnticipatedValue: AnticipateUnchanged(observed)}},
+		}},
+	}}
+	if !reflect.DeepEqual(changes, wantChanges) {
+		t.Errorf("LogicalChanges() = %+v, want %+v", changes, wantChanges)
+	}
+}
+
 const retentionSource = `repositories:
   - name: owner/repo
     actions:

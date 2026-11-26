@@ -22,6 +22,7 @@ type Value struct {
 	approvalPolicy  ForkPullRequestApprovalPolicy
 	conditions      PrivateForkPullRequestWorkflowConditions
 	days            int
+	customization   OIDCSubjectCustomization
 	branchPolicy    DeploymentBranchPolicy
 	securityUpdates DependabotSecurityUpdatesState
 	variable        string
@@ -40,6 +41,7 @@ const (
 	kindForkPullRequestApprovalPolicy
 	kindPrivateForkPullRequestWorkflowConditions
 	kindRetentionDays
+	kindOIDCSubjectCustomization
 	kindDeploymentBranchPolicy
 	kindDependabotSecurityUpdates
 	kindVariable
@@ -90,6 +92,12 @@ func RetentionDaysValue(days int) Value {
 	return Value{kind: kindRetentionDays, days: days}
 }
 
+// OIDCSubjectCustomizationValue は、OIDC トークンの subject クレームのカスタマイズの値を作る。
+// 呼び出し側があとで書き換えても値が変わらないように、key の並びと UseImmutableSubject の指す先を複製して持つ。並びは整列しない。
+func OIDCSubjectCustomizationValue(c OIDCSubjectCustomization) Value {
+	return Value{kind: kindOIDCSubjectCustomization, customization: c.clone()}
+}
+
 // DeploymentBranchPolicyValue は、Environment のデプロイ元制限の値を作る。
 // 呼び出し側があとで書き換えても値が変わらないように、個別パターンを複製して持つ。
 func DeploymentBranchPolicyValue(policy DeploymentBranchPolicy) Value {
@@ -131,6 +139,8 @@ func Absent() Value {
 // 値のないゼロ値は設定の値ではなく、比べようとするのは不変条件の破れのため panic する。
 // 同じ値として扱うと、確かめていない値が一致や変更前提の成立として黙って通るため。
 // 種別ごとに使わないフィールドはゼロ値のため、種別で分岐せずに全フィールドを比べる。
+// 設定グループの省略できる項目は、両方の値が持つときだけ比べる。期待値が省略した項目の違いで照合、変更前提、期待状態の確認を止めないため。
+// そのため項目を省略した値との比較は推移的でなく、すべての項目を比べるのは、項目を必ず持つ観測値どうしの比較に限る。
 func (v Value) Equal(other Value) bool {
 	if v.kind == kindNone || other.kind == kindNone {
 		panic("setting: no value to compare")
@@ -144,6 +154,7 @@ func (v Value) Equal(other Value) bool {
 		v.approvalPolicy == other.approvalPolicy &&
 		v.conditions == other.conditions &&
 		v.days == other.days &&
+		v.customization.equal(other.customization) &&
 		v.branchPolicy.equal(other.branchPolicy) &&
 		v.securityUpdates.Enabled() == other.securityUpdates.Enabled() &&
 		v.variable == other.variable &&
@@ -175,6 +186,8 @@ func (v Value) String() string {
 			", require_approval_for_fork_pr_workflows: " + strconv.FormatBool(v.conditions.RequireApprovalForForkPullRequestWorkflows)
 	case kindRetentionDays:
 		return strconv.Itoa(v.days)
+	case kindOIDCSubjectCustomization:
+		return v.customization.format()
 	case kindDeploymentBranchPolicy:
 		if v.branchPolicy.Mode == DeploymentBranchPolicySelected {
 			return string(v.branchPolicy.Mode) + " " + v.branchPolicy.PatternsString()
@@ -265,6 +278,24 @@ func (v Value) RetentionDays() int {
 		panic("setting: value is not retention days")
 	}
 	return v.days
+}
+
+// OIDCSubjectCustomization は、OIDC トークンの subject クレームのカスタマイズの値を返す。それ以外の値は不変条件の破れのため panic する。
+// 戻り値の書き換えが値に及ばないように、複製を返す。
+func (v Value) OIDCSubjectCustomization() OIDCSubjectCustomization {
+	if v.kind != kindOIDCSubjectCustomization {
+		panic("setting: value is not an oidc subject customization")
+	}
+	return v.customization.clone()
+}
+
+// WithItemsDeclaredIn は、declared が省略した設定グループの項目を v から除いた値を返す。省略した項目を変更計画に示さず、変更前提でも比べないようにするため。
+// 種別ごとに使わないフィールドはゼロ値のため、種別で分岐しない。省略できる項目を持たない種別の値は、そのまま返る。
+func (v Value) WithItemsDeclaredIn(declared Value) Value {
+	if declared.customization.UseImmutableSubject == nil {
+		v.customization.UseImmutableSubject = nil
+	}
+	return v
 }
 
 // DeploymentBranchPolicy は、Environment のデプロイ元制限の値を返す。それ以外の値は不変条件の破れのため panic する。

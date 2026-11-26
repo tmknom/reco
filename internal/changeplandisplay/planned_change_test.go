@@ -183,6 +183,19 @@ func TestPlannedChangeText(t *testing.T) {
 				"    Note: Workflows triggered by pull requests from forks can use secrets and variables\n",
 		},
 		{
+			name: "oidc subject mismatch shows the values on separate lines and notes the subject change",
+			s: changeplan.SettingPlan{
+				Unit:     setting.Unit{Key: setting.OIDCSubject},
+				Observed: github.Observed(setting.OIDCSubjectCustomizationValue(setting.OIDCSubjectCustomization{UseDefault: true})),
+				Desired:  setting.OIDCSubjectCustomizationValue(setting.OIDCSubjectCustomization{IncludeClaimKeys: []string{"repo", "context"}}),
+				Result:   changeplan.Mismatch, Applicability: changeplan.Applicable(),
+			},
+			want: "  actions.oidc_subject:\n" +
+				"    use_default: true\n" +
+				"    -> use_default: false, include_claim_keys: [\"repo\", \"context\"]\n" +
+				"    Note: This changes how the subject claim of OIDC tokens is composed; trust conditions in external cloud providers that match the current subject claim may stop matching\n",
+		},
+		{
 			name: "private fork pull request workflows of a public repository show the repository state and the reason to remove private_repositories",
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.PrivateForkPullRequestWorkflows}, Observed: github.Unavailable[setting.Value](github.UnavailablePublicRepository),

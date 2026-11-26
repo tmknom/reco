@@ -24,32 +24,32 @@ func TestDecodeOIDCSubject(t *testing.T) {
 		{
 			name: "default customization has no claim keys",
 			body: `{"use_default": true, "use_immutable_subject": false, "sub_claim_prefix": "repo:owner/repo"}`,
-			want: setting.OIDCSubjectCustomization{UseDefault: true},
+			want: setting.OIDCSubjectCustomization{UseDefault: true, UseImmutableSubject: new(false)},
 		},
 		{
 			name: "claim keys are read in the returned order",
 			body: `{"use_default": false, "include_claim_keys": ["repo", "context", "job_workflow_ref"], "use_immutable_subject": false}`,
-			want: setting.OIDCSubjectCustomization{IncludeClaimKeys: []string{"repo", "context", "job_workflow_ref"}},
+			want: setting.OIDCSubjectCustomization{IncludeClaimKeys: []string{"repo", "context", "job_workflow_ref"}, UseImmutableSubject: new(false)},
 		},
 		{
 			name: "missing claim keys without the default is the empty sequence",
 			body: `{"use_default": false, "use_immutable_subject": false}`,
-			want: setting.OIDCSubjectCustomization{},
+			want: setting.OIDCSubjectCustomization{UseImmutableSubject: new(false)},
 		},
 		{
 			name: "null claim keys without the default is the empty sequence",
 			body: `{"use_default": false, "include_claim_keys": null, "use_immutable_subject": false}`,
-			want: setting.OIDCSubjectCustomization{},
+			want: setting.OIDCSubjectCustomization{UseImmutableSubject: new(false)},
 		},
 		{
 			name: "claim keys returned with the default are not held",
 			body: `{"use_default": true, "include_claim_keys": ["repo"], "use_immutable_subject": false}`,
-			want: setting.OIDCSubjectCustomization{UseDefault: true},
+			want: setting.OIDCSubjectCustomization{UseDefault: true, UseImmutableSubject: new(false)},
 		},
 		{
 			name: "immutable subject is read as observed",
 			body: `{"use_default": true, "use_immutable_subject": true}`,
-			want: setting.OIDCSubjectCustomization{UseDefault: true, UseImmutableSubject: true},
+			want: setting.OIDCSubjectCustomization{UseDefault: true, UseImmutableSubject: new(true)},
 		},
 	}
 	for _, tc := range successes {
@@ -58,7 +58,7 @@ func TestDecodeOIDCSubject(t *testing.T) {
 			if err != nil {
 				t.Fatalf("decodeOIDCSubject() error = %v", err)
 			}
-			if got.UseDefault != tc.want.UseDefault || got.UseImmutableSubject != tc.want.UseImmutableSubject || !slices.Equal(got.IncludeClaimKeys, tc.want.IncludeClaimKeys) {
+			if got.UseDefault != tc.want.UseDefault || *got.UseImmutableSubject != *tc.want.UseImmutableSubject || !slices.Equal(got.IncludeClaimKeys, tc.want.IncludeClaimKeys) {
 				t.Errorf("decodeOIDCSubject() = %+v, want %+v", got, tc.want)
 			}
 		})
@@ -109,7 +109,7 @@ func TestObserveRepositoryOIDCSubject(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ObserveRepository() error = %v", err)
 			}
-			want := &OIDCSubject{Customization: setting.OIDCSubjectCustomization{IncludeClaimKeys: []string{"repo", "context"}, UseImmutableSubject: true}}
+			want := &OIDCSubject{Customization: setting.OIDCSubjectCustomization{IncludeClaimKeys: []string{"repo", "context"}, UseImmutableSubject: new(true)}}
 			if !reflect.DeepEqual(observed.OIDCSubject, want) {
 				t.Errorf("ObserveRepository().OIDCSubject = %+v, want %+v", observed.OIDCSubject, want)
 			}

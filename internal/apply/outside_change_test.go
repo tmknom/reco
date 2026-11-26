@@ -175,6 +175,13 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			want:   nil,
 		},
 		{
+			name:   "oidc subject update includes the change of the omitted item",
+			change: oidcSubjectChange(),
+			before: []github.ObservationResult{oidcSubjectObservation(false)},
+			after:  oidcSubjectObservation(true),
+			want:   []unexpectedOutsideChange{{Setting: "actions.oidc_subject.use_immutable_subject", Before: "false", After: "true"}},
+		},
+		{
 			// Ruleset の更新操作は管理の単位である Ruleset の全体を送るため、同じ観測のほかの設定が変わっても比べない
 			name:   "ruleset creation compares no setting",
 			change: rulesetCreationChange(t, "protect"),
@@ -208,6 +215,60 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 		change.Operations[0].Kind = changeplan.RulesetValueUpdate + 1
 		unexpectedOutsideChanges(change, []github.ObservationResult{{}}, github.ObservationResult{})
 	})
+}
+
+// TestOIDCSubjectOmittedItemChanges は、更新操作の値が省略した項目を、更新直前と更新後の観測値で比べる規則を確かめる。
+//
+//trace:checks INV-001 FR-012
+func TestOIDCSubjectOmittedItemChanges(t *testing.T) {
+	observed := oidcSubjectObservation
+	omitting := oidcSubjectChange().Operations[0]
+	declaring := omitting
+	declaring.Value = setting.OIDCSubjectCustomizationValue(setting.OIDCSubjectCustomization{UseDefault: true, UseImmutableSubject: new(true)})
+	cases := []struct {
+		name      string
+		operation changeplan.UpdateOperation
+		before    github.ObservationResult
+		after     github.ObservationResult
+		want      []unexpectedOutsideChange
+	}{
+		{
+			name:      "omitted item changed from false to true returns the change",
+			operation: omitting,
+			before:    observed(false),
+			after:     observed(true),
+			want:      []unexpectedOutsideChange{{Setting: "actions.oidc_subject.use_immutable_subject", Before: "false", After: "true"}},
+		},
+		{
+			name:      "omitted item kept returns nothing",
+			operation: omitting,
+			before:    observed(true),
+			after:     observed(true),
+			want:      nil,
+		},
+		{
+			name:      "declared item changed returns nothing",
+			operation: declaring,
+			before:    observed(false),
+			after:     observed(true),
+			want:      nil,
+		},
+		{
+			// OIDCSubject を読まない観測で Key を確かめずに読むと、nil の参照で止まる
+			name:      "update of another setting returns nothing",
+			operation: allowAutoMergeChange().Operations[0],
+			before:    github.ObservationResult{},
+			after:     github.ObservationResult{},
+			want:      nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := oidcSubjectOmittedItemChanges(tc.operation, tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("oidcSubjectOmittedItemChanges() = %v, want %v", got, tc.want)
+			}
+		})
+	}
 }
 
 // TestOutsideChangesAt は、論理的な設定変更が変えない設定を、管理範囲によらず比べる規則を確かめる。

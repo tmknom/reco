@@ -466,3 +466,101 @@ func TestRulesetValue_IsolatesSlices(t *testing.T) {
 		})
 	}
 }
+
+func newOIDCSubjectCustomization() OIDCSubjectCustomization {
+	immutable := true
+	return OIDCSubjectCustomization{UseDefault: false, IncludeClaimKeys: []string{"repo", "context"}, UseImmutableSubject: &immutable}
+}
+
+// Value.Equal が subject のカスタマイズの同じ値の判定に委ねることを確かめる。判定の規則は OIDCSubjectCustomization.equal のテストが持つ。
+func TestOIDCSubjectCustomizationValue_Equal(t *testing.T) {
+	reordered := newOIDCSubjectCustomization()
+	reordered.IncludeClaimKeys = []string{"context", "repo"}
+	if OIDCSubjectCustomizationValue(newOIDCSubjectCustomization()).Equal(OIDCSubjectCustomizationValue(reordered)) {
+		t.Error("Equal() = true for claim keys differing only in order, want false")
+	}
+	if !OIDCSubjectCustomizationValue(newOIDCSubjectCustomization()).Equal(OIDCSubjectCustomizationValue(newOIDCSubjectCustomization())) {
+		t.Error("Equal() = false for the same customization, want true")
+	}
+}
+
+func TestOIDCSubjectCustomizationValue_String(t *testing.T) {
+	want := `use_default: false, include_claim_keys: ["repo", "context"], use_immutable_subject: true`
+	if got := OIDCSubjectCustomizationValue(newOIDCSubjectCustomization()).String(); got != want {
+		t.Errorf("String() = %q, want %q", got, want)
+	}
+}
+
+func TestValue_OIDCSubjectCustomizationOfBoolPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("OIDCSubjectCustomization() did not panic for a boolean value")
+		}
+	}()
+	_ = BoolValue(true).OIDCSubjectCustomization()
+}
+
+func TestValue_OIDCSubjectCustomizationIsolatesItems(t *testing.T) {
+	changes := []struct {
+		name   string
+		change func(*OIDCSubjectCustomization)
+	}{
+		{name: "claim keys", change: func(c *OIDCSubjectCustomization) { c.IncludeClaimKeys[0] = "changed" }},
+		{name: "immutable subject", change: func(c *OIDCSubjectCustomization) { *c.UseImmutableSubject = false }},
+	}
+	for _, c := range changes {
+		t.Run("writing to the "+c.name+" given to the constructor does not change the value", func(t *testing.T) {
+			given := newOIDCSubjectCustomization()
+			v := OIDCSubjectCustomizationValue(given)
+			c.change(&given)
+			if got := v.OIDCSubjectCustomization(); !reflect.DeepEqual(got, newOIDCSubjectCustomization()) {
+				t.Errorf("OIDCSubjectCustomization() = %+v, want the value at construction", got)
+			}
+		})
+		t.Run("writing to the "+c.name+" returned by the accessor does not change the value", func(t *testing.T) {
+			v := OIDCSubjectCustomizationValue(newOIDCSubjectCustomization())
+			returned := v.OIDCSubjectCustomization()
+			c.change(&returned)
+			if got := v.OIDCSubjectCustomization(); !reflect.DeepEqual(got, newOIDCSubjectCustomization()) {
+				t.Errorf("OIDCSubjectCustomization() = %+v, want the value at construction", got)
+			}
+		})
+	}
+}
+
+func TestValue_WithItemsDeclaredIn(t *testing.T) {
+	observed := OIDCSubjectCustomizationValue(newOIDCSubjectCustomization())
+	omitted := newOIDCSubjectCustomization()
+	omitted.UseImmutableSubject = nil
+
+	t.Run("observed value drops the item the desired value omits", func(t *testing.T) {
+		got := observed.WithItemsDeclaredIn(OIDCSubjectCustomizationValue(OIDCSubjectCustomization{UseDefault: true}))
+		if got.OIDCSubjectCustomization().UseImmutableSubject != nil {
+			t.Errorf("UseImmutableSubject = %v, want nil", *got.OIDCSubjectCustomization().UseImmutableSubject)
+		}
+		if want := OIDCSubjectCustomizationValue(omitted); got.String() != want.String() {
+			t.Errorf("WithItemsDeclaredIn() = %s, want %s", got.String(), want.String())
+		}
+	})
+
+	t.Run("observed value keeps the item the desired value declares", func(t *testing.T) {
+		got := observed.WithItemsDeclaredIn(OIDCSubjectCustomizationValue(newOIDCSubjectCustomization()))
+		if got.String() != observed.String() {
+			t.Errorf("WithItemsDeclaredIn() = %s, want %s", got.String(), observed.String())
+		}
+	})
+
+	t.Run("dropping the item leaves the original value unchanged", func(t *testing.T) {
+		_ = observed.WithItemsDeclaredIn(OIDCSubjectCustomizationValue(omitted))
+		if got := observed.OIDCSubjectCustomization(); !reflect.DeepEqual(got, newOIDCSubjectCustomization()) {
+			t.Errorf("OIDCSubjectCustomization() = %+v, want the value before dropping", got)
+		}
+	})
+
+	t.Run("values of other kinds are returned unchanged", func(t *testing.T) {
+		got := BoolValue(true).WithItemsDeclaredIn(BoolValue(false))
+		if !got.Equal(BoolValue(true)) {
+			t.Errorf("WithItemsDeclaredIn() = %s, want true", got.String())
+		}
+	})
+}

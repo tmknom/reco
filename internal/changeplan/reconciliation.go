@@ -85,9 +85,13 @@ func managedRulesets(desired configuration.DesiredState) []setting.RulesetName {
 }
 
 // newSettingPlan は、観測値があれば期待値と比べ、観測不能なら Equal に渡さずに比較不能とする。
+// 観測値があるときは、期待値が宣言した項目に限った値で Observed を組み立て直す。
+// 省略した項目を、表示の現在値にも、Observed から作る変更前提の基準にも持ち込まないため。
 func newSettingPlan(unit setting.Unit, observed github.SettingObservation[setting.Value], desired setting.Value) SettingPlan {
 	result := NotComparable
 	if v, ok := observed.Value(); ok {
+		v = v.WithItemsDeclaredIn(desired)
+		observed = github.Observed(v)
 		result = Mismatch
 		if v.Equal(desired) {
 			result = Match

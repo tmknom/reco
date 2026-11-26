@@ -60,7 +60,7 @@ func decodeOIDCSubject(data []byte) (setting.OIDCSubjectCustomization, error) {
 	if slices.Contains(p.IncludeClaimKeys, nil) {
 		return setting.OIDCSubjectCustomization{}, fmt.Errorf("%w: include_claim_keys has a null element", ErrUnexpectedResponse)
 	}
-	customization := setting.OIDCSubjectCustomization{UseDefault: *p.UseDefault, UseImmutableSubject: *p.UseImmutableSubject}
+	customization := setting.OIDCSubjectCustomization{UseDefault: *p.UseDefault, UseImmutableSubject: p.UseImmutableSubject}
 	if !customization.UseDefault {
 		for _, key := range p.IncludeClaimKeys {
 			customization.IncludeClaimKeys = append(customization.IncludeClaimKeys, *key)

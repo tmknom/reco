@@ -284,6 +284,121 @@ func TestDocumentRetention(t *testing.T) {
 	}
 }
 
+// TestDocumentOIDCSubject は、use_default と include_claim_keys の組み合わせの規則と、判定の順序 (キーの集合、use_default の値、組み合わせ、key の値、use_immutable_subject の値) を確かめる。
+// key の要素の形式と重複の規則は claimKeys のテストが確かめるため、ここでは key の値の誤りが組み合わせの後に示されることだけを確かめる。
+// 拒否のケースは、受理される入力の条件を 1 つだけ変えて作る。
+//
+//trace:checks FR-001
+func TestDocumentOIDCSubject(t *testing.T) {
+	const notAllowed = "include_claim_keys is not allowed when use_default is true; GitHub does not save it"
+	cases := []struct {
+		name       string
+		src        string
+		want       setting.OIDCSubjectCustomization
+		wantReason string
+	}{
+		{name: "use_default true alone has no keys and omits immutable", src: "use_default: true\n", want: setting.OIDCSubjectCustomization{UseDefault: true}},
+		{name: "use_immutable_subject false is read as a non-nil false", src: "use_default: true\nuse_immutable_subject: false\n", want: setting.OIDCSubjectCustomization{UseDefault: true, UseImmutableSubject: new(false)}},
+		{name: "keys are kept in declaration order", src: "use_default: false\ninclude_claim_keys: [repo, context]\n", want: setting.OIDCSubjectCustomization{IncludeClaimKeys: []string{"repo", "context"}}},
+		{name: "keys with immutable are read into three items", src: "use_default: false\ninclude_claim_keys: [repo]\nuse_immutable_subject: true\n", want: setting.OIDCSubjectCustomization{IncludeClaimKeys: []string{"repo"}, UseImmutableSubject: new(true)}},
+		{name: "use_default false without keys is rejected at the mapping", src: "use_default: false\n", wantReason: "P (line 1, column 1): use_default false requires include_claim_keys with at least one claim key"},
+		{name: "use_default false with immutable only is rejected at the mapping", src: "use_default: false\nuse_immutable_subject: true\n", wantReason: "P (line 1, column 1): use_default false requires include_claim_keys with at least one claim key"},
+		{name: "use_default false with empty keys is rejected at the keys", src: "use_default: false\ninclude_claim_keys: []\n", wantReason: "P.include_claim_keys (line 2, column 21): must not be empty"},
+		{name: "use_default true with keys is rejected at the keys", src: "use_default: true\ninclude_claim_keys: [repo]\n", wantReason: "P.include_claim_keys (line 2, column 21): " + notAllowed},
+		{name: "use_default true with empty keys is rejected as declared keys", src: "use_default: true\ninclude_claim_keys: []\n", wantReason: "P.include_claim_keys (line 2, column 21): " + notAllowed},
+		{name: "use_default true with a non-sequence keys value is rejected as declared keys", src: "use_default: true\ninclude_claim_keys: repo\n", wantReason: "P.include_claim_keys (line 2, column 21): " + notAllowed},
+		{name: "use_default true with an invalid key is rejected as declared keys before the key value", src: "use_default: true\ninclude_claim_keys: [a-b]\n", wantReason: notAllowed},
+		{name: "missing use_default is rejected", src: "use_immutable_subject: true\n", wantReason: `missing key "use_default"`},
+		{name: "unknown key is rejected listing the three keys in definition order", src: "use_default: true\nsub_claim_prefix: x\n", wantReason: `unknown key "sub_claim_prefix"; expected use_default, include_claim_keys, use_immutable_subject`},
+		{name: "invalid use_default is reported before the combination", src: "use_default: yes\ninclude_claim_keys: [repo]\n", wantReason: "P.use_default (line 1, column 14): must be true or false"},
+		{name: "keys that are not a sequence are rejected when use_default is false", src: "use_default: false\ninclude_claim_keys: repo\n", wantReason: "P.include_claim_keys (line 2, column 21): must be a sequence"},
+		{name: "an invalid key is rejected at the element", src: "use_default: false\ninclude_claim_keys: [repo, a-b]\n", wantReason: "P.include_claim_keys[1] (line 2, column 28): must consist of ASCII letters, digits, and underscores"},
+		{name: "quoted immutable is rejected at the item", src: "use_default: true\nuse_immutable_subject: \"true\"\n", wantReason: "P.use_immutable_subject (line 2, column 24): must be true or false"},
+		{name: "invalid keys are reported before invalid immutable", src: "use_default: false\ninclude_claim_keys: [a-b]\nuse_immutable_subject: yes\n", wantReason: "P.include_claim_keys[0]"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.oidcSubject(doc.root, "P")
+			if tc.wantReason != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("oidcSubject() error = %v, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("oidcSubject() error = %v", err)
+			}
+			if got.Customization == nil || !reflect.DeepEqual(*got.Customization, tc.want) {
+				t.Errorf("oidcSubject() = %+v, want %+v", got.Customization, tc.want)
+			}
+		})
+	}
+}
+
+// TestDocumentClaimKeys は、claim key の形式と、重複の判定が完全一致であることを確かめる。
+//
+//trace:checks FR-001
+func TestDocumentClaimKeys(t *testing.T) {
+	const format = "must consist of ASCII letters, digits, and underscores"
+	cases := []struct {
+		name       string
+		src        string
+		want       []string
+		wantReason string
+	}{
+		{name: "keys are kept in declaration order", src: "[repo, context]\n", want: []string{"repo", "context"}},
+		{name: "keys that differ only in letter case are not duplicates", src: "[repo, Repo]\n", want: []string{"repo", "Repo"}},
+		{name: "quoted key is the same as an unquoted key", src: "[\"repo\"]\n", want: []string{"repo"}},
+		{name: "empty key is rejected", src: "[\"\"]\n", wantReason: "P[0] (line 1, column 2): " + format + `; got ""`},
+		{name: "hyphen is rejected", src: "[repo, a-b]\n", wantReason: "P[1] (line 1, column 8): " + format + `; got "a-b"`},
+		{name: "newline is rejected", src: `["a\nb"]` + "\n", wantReason: format + `; got "a\nb"`},
+		{name: "duplicate is rejected at the later element naming the earlier one", src: "[repo, context, repo]\n", wantReason: `P[2] (line 1, column 17): duplicate claim key "repo"; same as P[0]`},
+		{name: "duplicate is judged after YAML escapes are resolved", src: "[repo, \"r\\x65po\"]\n", wantReason: `P[1] (line 1, column 8): duplicate claim key "repo"; same as P[0]`},
+		{name: "number element is rejected at the element", src: "[1]\n", wantReason: "P[0] (line 1, column 2): must be a string"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.claimKeys(doc.root, "P")
+			if tc.wantReason != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("claimKeys() error = %v, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("claimKeys() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("claimKeys() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsClaimKey(t *testing.T) {
+	cases := []struct {
+		name string
+		key  string
+		want bool
+	}{
+		{name: "lower case letters are accepted", key: "repo", want: true},
+		{name: "upper case letters, digits, and underscores are accepted", key: "Repo_2", want: true},
+		{name: "empty string is rejected", key: "", want: false},
+		{name: "hyphen is rejected", key: "a-b", want: false},
+		{name: "leading space is rejected", key: " a", want: false},
+		{name: "non-ASCII letter is rejected", key: "répo", want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isClaimKey(tc.key); got != tc.want {
+				t.Errorf("isClaimKey(%q) = %v, want %v", tc.key, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestDocumentDeclaration は、各階層で要求するキーの集合 (スキーマ) と、各段階へ渡すパスを確かめる。
 // 各段階が持つ規則 (マッピングやシーケンスの形、真偽値、name の形式) は、段階ごとのテストが確かめる。
 //
@@ -556,6 +671,20 @@ func TestDocumentDeclaration(t *testing.T) {
 			}},
 		},
 		{
+			name: "oidc_subject alone is read into the oidc subject desired state",
+			src:  second + "    actions:\n      oidc_subject:\n        use_default: false\n        include_claim_keys: [repo, context]\n",
+			want: Declaration{Repositories: []RepositoryDeclaration{
+				first,
+				{
+					Reference: mustReference(t, "owner/second"),
+					Desired: DesiredState{
+						General:     General{AllowAutoMerge: new(false)},
+						OIDCSubject: OIDCSubject{Customization: &setting.OIDCSubjectCustomization{IncludeClaimKeys: []string{"repo", "context"}}},
+					},
+				},
+			}},
+		},
+		{
 			name: "private_repositories alone is read into the private fork pull request workflows desired state",
 			src:  second + "    actions:\n      fork_pull_requests:\n        private_repositories:\n          run_workflows_from_fork_pull_requests: true\n          send_write_tokens_to_workflows: false\n          send_secrets_and_variables: false\n          require_approval_for_fork_pr_workflows: true\n",
 			want: Declaration{Repositories: []RepositoryDeclaration{
@@ -724,6 +853,13 @@ func TestDocumentDeclaration(t *testing.T) {
 			src:        second + "    actions:\n      retention:\n        days: 0\n",
 			wantPath:   "repositories[1].actions.retention.days",
 			wantReason: "must be a positive integer",
+		},
+		// OIDC subject
+		{
+			name:       "invalid use_default is rejected at actions.oidc_subject.use_default",
+			src:        second + "    actions:\n      oidc_subject:\n        use_default: yes\n",
+			wantPath:   "repositories[1].actions.oidc_subject.use_default",
+			wantReason: "must be true or false",
 		},
 		{
 			name:       "empty variables is rejected at actions.variables",

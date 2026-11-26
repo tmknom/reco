@@ -183,14 +183,16 @@ func plannedChangeNoteText(note changeplan.PlannedChangeNote) string {
 		return "Workflows triggered by pull requests from forks get a GITHUB_TOKEN with write permissions"
 	case changeplan.NoteForkWorkflowsGetSecretsAndVariables:
 		return "Workflows triggered by pull requests from forks can use secrets and variables"
+	case changeplan.NoteOIDCSubjectChanges:
+		return "This changes how the subject claim of OIDC tokens is composed; trust conditions in external cloud providers that match the current subject claim may stop matching"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined planned change note %d", int(note)))
 }
 
 // showsValuesOnSeparateLines は、現在と期待値を別の行に書くかを返す。
-// 選択方式の Actions 許可条件、非公開リポジトリの Fork Pull Request ワークフローの実行条件、個別パターンを並べる selected のデプロイ元制限は値が長く、1 行では -> を見つけにくい。
+// 選択方式の Actions 許可条件、非公開リポジトリの Fork Pull Request ワークフローの実行条件、OIDC subject のカスタマイズ、個別パターンを並べる selected のデプロイ元制限は値が長く、1 行では -> を見つけにくい。
 func showsValuesOnSeparateLines(s changeplan.SettingPlan) bool {
-	if s.Unit.Key == setting.SelectedActions || s.Unit.Key == setting.PrivateForkPullRequestWorkflows {
+	if s.Unit.Key == setting.SelectedActions || s.Unit.Key == setting.PrivateForkPullRequestWorkflows || s.Unit.Key == setting.OIDCSubject {
 		return true
 	}
 	if s.Unit.Key != setting.EnvironmentDeploymentBranchPolicy {

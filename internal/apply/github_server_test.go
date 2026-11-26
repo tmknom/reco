@@ -94,6 +94,11 @@ func okPrivateForkPullRequestWorkflows(body githubtest.PrivateForkPullRequestWor
 	return response{status: http.StatusOK, body: body.JSON()}
 }
 
+// okOIDCSubject は、subject のカスタマイズの取得の正常応答。
+func okOIDCSubject(body githubtest.OIDCSubjectBody) response {
+	return response{status: http.StatusOK, body: body.JSON()}
+}
+
 func okWorkflowPermissions(defaultWorkflowPermissions string, canApprovePullRequestReviews bool) response {
 	return response{status: http.StatusOK, body: githubtest.WorkflowPermissionsBody{
 		DefaultWorkflowPermissions: defaultWorkflowPermissions, CanApprovePullRequestReviews: canApprovePullRequestReviews}.JSON()}

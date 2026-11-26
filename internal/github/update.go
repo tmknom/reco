@@ -145,6 +145,27 @@ func (c *Client) updateRetentionDays(ctx context.Context, reference repository.R
 	return describeUpdateOutcome("update retention", reference, status, err)
 }
 
+// updateOIDCSubjectCustomization は reference のリポジトリの subject のカスタマイズを customization に更新する。
+func (c *Client) updateOIDCSubjectCustomization(ctx context.Context, reference repository.Reference, customization setting.OIDCSubjectCustomization) (UpdateOutcome, error) {
+	status, _, err := c.send(ctx, http.MethodPut, c.oidcSubjectURL(reference), encodeOIDCSubjectCustomization(customization), http.StatusCreated)
+	return describeUpdateOutcome("update oidc subject", reference, status, err)
+}
+
+// encodeOIDCSubjectCustomization は、subject のカスタマイズの更新要求の本文を組み立てる。
+// 真偽値は false も送るため、omitempty を使わずに必要な項目だけを入れる。
+// key を送るのは既定の形を使わないときだけで、nil のときも null にせず空の配列で送る。
+// use_immutable_subject は、宣言したときだけ送り、省略したときは GitHub が保持する値に任せる。
+func encodeOIDCSubjectCustomization(customization setting.OIDCSubjectCustomization) []byte {
+	body := map[string]any{"use_default": customization.UseDefault}
+	if !customization.UseDefault {
+		body["include_claim_keys"] = append([]string{}, customization.IncludeClaimKeys...)
+	}
+	if customization.UseImmutableSubject != nil {
+		body["use_immutable_subject"] = *customization.UseImmutableSubject
+	}
+	return mustMarshalJSON(body)
+}
+
 // updatePrivateForkPullRequestWorkflowConditions は reference のリポジトリの、非公開リポジトリの Fork Pull Request ワークフローの実行条件を conditions に更新する。
 // 4項目をすべて一つの要求で送り、省略したフィールドの保持に依拠しない（Actions の設計の更新方式）。
 // 正常応答の 204 は本文を持たず、成功の判定に本文を使わない。
@@ -252,6 +273,10 @@ func updateRequestOf(key setting.Key) updateRequest {
 	case setting.RetentionDays:
 		return updateRequest{RetentionEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
 			return c.updateRetentionDays(ctx, reference, value.RetentionDays())
+		}}
+	case setting.OIDCSubject:
+		return updateRequest{OIDCSubjectEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+			return c.updateOIDCSubjectCustomization(ctx, reference, value.OIDCSubjectCustomization())
 		}}
 	case setting.DependabotAlerts:
 		return updateRequest{DependabotAlertsEndpoint, boolUpdate((*Client).updateDependabotAlerts)}

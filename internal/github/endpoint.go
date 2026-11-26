@@ -19,6 +19,7 @@ const (
 	ForkPullRequestApprovalEndpoint
 	PrivateForkPullRequestWorkflowsEndpoint
 	RetentionEndpoint
+	OIDCSubjectEndpoint
 	DependabotAlertsEndpoint
 	DependabotSecurityUpdatesEndpoint
 	PrivateVulnerabilityReportingEndpoint
@@ -48,6 +49,8 @@ func (e UpdateEndpoint) ObservedSettings() []setting.Key {
 		return []setting.Key{setting.PrivateForkPullRequestWorkflows}
 	case RetentionEndpoint:
 		return []setting.Key{setting.RetentionDays}
+	case OIDCSubjectEndpoint:
+		return []setting.Key{setting.OIDCSubject}
 	case DependabotAlertsEndpoint:
 		return []setting.Key{setting.DependabotAlerts}
 	case DependabotSecurityUpdatesEndpoint:

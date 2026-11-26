@@ -32,6 +32,7 @@ type DesiredState struct {
 	ForkPullRequestApproval         ForkPullRequestApproval
 	PrivateForkPullRequestWorkflows PrivateForkPullRequestWorkflows
 	Retention                       Retention
+	OIDCSubject                     OIDCSubject
 	// RepositoryVariables は宣言の並びのまま持ち、actions.variables を省略したリポジトリでは nil。
 	RepositoryVariables []VariableDeclaration
 	// Environments は宣言の並びのまま持ち、environments を省略したリポジトリでは nil。
@@ -113,6 +114,12 @@ type PrivateForkPullRequestWorkflows struct {
 // Retention は、保持期間の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
 type Retention struct {
 	Days *int
+}
+
+// OIDCSubject は、OIDC トークンの subject クレームのカスタマイズの期待値。
+type OIDCSubject struct {
+	// Customization は設定グループの期待値で、3項目を一体として持つ。nil は期待値の省略で、その設定は管理範囲に含まれない。
+	Customization *setting.OIDCSubjectCustomization
 }
 
 // Dependabot は、Dependabot の領域の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
@@ -227,6 +234,11 @@ func (d DesiredState) value(key setting.Key) (value setting.Value, ok bool) {
 	case setting.RetentionDays:
 		if days := d.Retention.Days; days != nil {
 			return setting.RetentionDaysValue(*days), true
+		}
+		return setting.Value{}, false
+	case setting.OIDCSubject:
+		if customization := d.OIDCSubject.Customization; customization != nil {
+			return setting.OIDCSubjectCustomizationValue(*customization), true
 		}
 		return setting.Value{}, false
 	case setting.DependabotAlerts:

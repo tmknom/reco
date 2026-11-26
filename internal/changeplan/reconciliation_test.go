@@ -213,6 +213,48 @@ func TestReconcile_ActionsPermissions(t *testing.T) {
 	}
 }
 
+// TestNewSettingPlan_OIDCSubject は、期待値が省略できる項目を省略したとき、計画の観測結果がその項目を除いた値になり、
+// その項目の違いでは不一致にならず、宣言したときは観測値のまま比べることを確かめる。
+//
+//trace:checks FR-006
+func TestNewSettingPlan_OIDCSubject(t *testing.T) {
+	unit := setting.Unit{Key: setting.OIDCSubject}
+	cases := []struct {
+		name         string
+		observed     setting.OIDCSubjectCustomization
+		desired      setting.OIDCSubjectCustomization
+		wantObserved setting.OIDCSubjectCustomization
+		wantResult   ReconciliationResult
+	}{
+		{
+			name:         "omitted immutable subject is dropped from the observation",
+			observed:     setting.OIDCSubjectCustomization{UseDefault: true, UseImmutableSubject: new(true)},
+			desired:      setting.OIDCSubjectCustomization{UseDefault: true},
+			wantObserved: setting.OIDCSubjectCustomization{UseDefault: true},
+			wantResult:   Match,
+		},
+		{
+			name:         "declared immutable subject keeps the observed value",
+			observed:     setting.OIDCSubjectCustomization{UseDefault: true, UseImmutableSubject: new(false)},
+			desired:      setting.OIDCSubjectCustomization{UseDefault: true, UseImmutableSubject: new(true)},
+			wantObserved: setting.OIDCSubjectCustomization{UseDefault: true, UseImmutableSubject: new(false)},
+			wantResult:   Mismatch,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := newSettingPlan(unit, github.Observed(setting.OIDCSubjectCustomizationValue(tc.observed)), setting.OIDCSubjectCustomizationValue(tc.desired))
+			want := SettingPlan{
+				Unit: unit, Observed: github.Observed(setting.OIDCSubjectCustomizationValue(tc.wantObserved)),
+				Desired: setting.OIDCSubjectCustomizationValue(tc.desired), Result: tc.wantResult,
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("newSettingPlan() = %+v, want %+v", got, want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-004
 func TestManagedAreas(t *testing.T) {
 	cases := []struct {
