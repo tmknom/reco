@@ -31,6 +31,16 @@ func (c *Client) UpdateEnvironmentDeploymentBranchPolicy(ctx context.Context, re
 	return c.putEnvironment(ctx, "set deployment branch policy of environment", reference, name, encodeDeploymentBranchPolicyMode(mode))
 }
 
+// UpdateEnvironmentRequiredReviewers は、reference のリポジトリの name の Environment の担当者を reviewers にする PUT を一度だけ送る。再送はしない。
+// 本文は reviewers だけで、ほかの保護設定とデプロイ元制限を併送しない。GitHub は本文にない設定を保つ。
+// 空の集合は、担当者をすべて外す。担当者のいない保護ルールは宣言できない値で、空の集合として送ると保護ルールを外す要求になるため、不変条件の破れとして panic する。
+func (c *Client) UpdateEnvironmentRequiredReviewers(ctx context.Context, reference repository.Reference, name string, reviewers setting.ReviewerSet) (UpdateOutcome, error) {
+	if reviewers.IsRuleWithoutReviewers() {
+		panic(fmt.Sprintf("github: cannot send a rule without reviewers as the reviewers of environment %q", name))
+	}
+	return c.putEnvironment(ctx, "set required reviewers of environment", reference, name, encodeRequiredReviewers(reviewers))
+}
+
 // AddDeploymentPattern は、reference のリポジトリの environment の Environment に、個別パターン pattern を加える POST を一度だけ送る。再送はしない。
 // 応答の扱いはアーキテクチャ設計の HTTP 通信とリダイレクトの信頼境界と、Environments の設計の更新方式に従う。
 // 呼び出し元は宛先にできる名前だけを渡すため、URL を組めないときは不変条件の破れとして panic する。
@@ -89,6 +99,23 @@ func encodeDeploymentBranchPolicyMode(mode setting.DeploymentBranchPolicyMode) [
 		return []byte(`{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}`)
 	}
 	panic(fmt.Sprintf("github: no request body for deployment branch policy %q", mode))
+}
+
+// encodeRequiredReviewers は reviewers を Environment の PUT の本文にする。担当者は宣言の順のまま、種類と ID だけを送る。
+func encodeRequiredReviewers(reviewers setting.ReviewerSet) []byte {
+	type reviewer struct {
+		Type string `json:"type"`
+		ID   int64  `json:"id"`
+	}
+	// encoding/json は nil のスライスを null にするため、空の集合を [] として送るよう長さ 0 のスライスにする
+	declared := reviewers.Reviewers()
+	elements := make([]reviewer, 0, len(declared))
+	for _, r := range declared {
+		elements = append(elements, reviewer{string(r.Type), r.ID})
+	}
+	return mustMarshalJSON(struct {
+		Reviewers []reviewer `json:"reviewers"`
+	}{elements})
 }
 
 // encodeDeploymentPattern は pattern を個別パターンを加える POST の本文にする。

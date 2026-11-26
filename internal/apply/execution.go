@@ -174,7 +174,7 @@ func sendUpdate(ctx context.Context, client *github.Client, target repository.Re
 		id := deploymentPatternIDOf(operation.Unit.Environment, operation.Pattern, observed)
 		return client.RemoveDeploymentPattern(ctx, target, environmentDestination(operation.Unit.Environment, observed), operation.Pattern, id)
 	case changeplan.RequiredReviewersUpdate:
-		// 担当者の集合の更新要求はまだ持たない。applyPlan が承認の前に unsupportedChangesError で止めるため、ここに届かない
+		return client.UpdateEnvironmentRequiredReviewers(ctx, target, environmentDestination(operation.Unit.Environment, observed), operation.Value.ReviewerSet())
 	case changeplan.RepositoryVariableCreation:
 		return client.CreateRepositoryVariable(ctx, target, operation.Unit.Variable, operation.Value.VariableValue())
 	case changeplan.RepositoryVariableValueUpdate:

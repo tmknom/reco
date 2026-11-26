@@ -231,6 +231,37 @@ func creationWithPatternsChange(t *testing.T, name string, desired setting.Deplo
 	))
 }
 
+// reviewersChange は、計画時に approved と観測した、宣言の名前 name の Environment の担当者の集合を desired にする論理的な設定変更。
+// 基準を手で写さず、changeplan が導いたものを使う。担当者をすべて外し、approved の自己承認の禁止が真なら、変更計画の生成と同じく副作用を添える。
+func reviewersChange(t *testing.T, name string, approved github.Environment, desired setting.ReviewerSet) changeplan.LogicalChange {
+	t.Helper()
+	environment := mustEnvironmentName(t, name)
+	observed := github.Environments{Existing: []github.Environment{approved}}.Lookup(environment)
+	reviewers := changeplan.SettingPlan{
+		Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: environment}, Observed: observed.RequiredReviewers(),
+		Desired: setting.ReviewerSetValue(desired), Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
+	}
+	if rule := approved.Protection.RequiredReviewers; len(desired.Reviewers()) == 0 && rule != nil && rule.PreventSelfReview {
+		reviewers.SideEffects = []changeplan.SideEffect{{Kind: changeplan.SideEffectPreventSelfReviewDiscarded, Observed: github.Observed(setting.BoolValue(true))}}
+	}
+	return onlyLogicalChange(t, newRepositoryPlan(t,
+		changeplan.SettingPlan{
+			Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, Observed: observed.Existence(), Desired: setting.Present(),
+			EnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID), Result: changeplan.Match,
+		},
+		reviewers,
+	))
+}
+
+// reviewerSet は、種類が利用者で ID が ids の担当者を並べた担当者の集合。ids が空なら空集合になる。
+func reviewerSet(ids ...int64) setting.ReviewerSet {
+	var reviewers []setting.Reviewer
+	for _, id := range ids {
+		reviewers = append(reviewers, setting.Reviewer{Type: setting.ReviewerUser, ID: id})
+	}
+	return setting.ReviewerSetOf(reviewers)
+}
+
 // mergeMethodMismatch は、マージ方式 key を計画時の観測値 observed から desired にする、適用可能な変更予定。
 func mergeMethodMismatch(key setting.Key, observed, desired bool) changeplan.SettingPlan {
 	return changeplan.SettingPlan{

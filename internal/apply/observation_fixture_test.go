@@ -85,6 +85,17 @@ func selectedPolicy(patterns ...setting.DeploymentPattern) setting.DeploymentBra
 	return setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: append([]setting.DeploymentPattern{}, patterns...)}
 }
 
+// withReviewers は、e に、自己承認の禁止が preventSelfReview で、種類が利用者で ID が ids の担当者を並べた required_reviewers の保護ルールを持たせた Environment の観測結果。
+// ids が空なら、担当者のいない保護ルールになる。
+func withReviewers(e github.Environment, preventSelfReview bool, ids ...int64) github.Environment {
+	rule := &setting.RequiredReviewers{PreventSelfReview: preventSelfReview}
+	for _, id := range ids {
+		rule.Reviewers = append(rule.Reviewers, setting.Reviewer{Type: setting.ReviewerUser, ID: id})
+	}
+	e.Protection.RequiredReviewers = rule
+	return e
+}
+
 // variables は、existing を一覧の全体とする変数の一覧の観測結果。Repository Variables と Environment Variables で同じ形である。
 func variables(existing ...github.Variable) *github.Variables {
 	return &github.Variables{Existing: existing}

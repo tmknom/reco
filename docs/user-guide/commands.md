@@ -142,7 +142,7 @@ Repositories checked: 1
 | `environments.<Environment の名前>.variables.<名前>: ...` | Environment Variable の作成、値の変更、削除。読み方は `actions.variables.<名前>` の行と同じ。Environment がまだないときは `(environment absent) -> "<書いた値>"` と出て、承認すると Environment を作成してから変数を作る。`state: absent` の変数は `(environment absent) -> absent` と出て、Environment を作成したあとに変数がないことを確かめるだけで、削除はしない |
 | `<設定>: (<今の状態>) -> <書いた値>` | 今の値と比べられない設定。括弧の中は、比べられない理由となる今の状態（Actions が無効、Environment がまだない、Environment があるかを確かめられない、など）。承認すると右の値に変える |
 | `environments.<名前>.deployment_branch_policy:` の下に、今の値の行と `-> <書いた値>` の行 | 今の値か書いた値が `selected` の `deployment_branch_policy`。読み方は1行の形と同じで、`selected` のパターンは `selected [branch "main"]` のように角括弧の中に並ぶ |
-| `environments.<名前>.required_reviewers:` の下に、今の値の行と `-> <書いた値>` の行 | Environment のデプロイを承認できる担当者が、設定ファイルと違う。担当者は `[User 583231 (octocat), User 1234567]` のように並び、括弧の中は GitHub 上の担当者の login。設定ファイルに書いた利用者のうち、まだ担当者でない利用者は ID だけが出る。`[]` は担当者がいないこと、`[] (protection rule without reviewers)` は担当者が1人もいない承認の設定が GitHub 上に残っていること。いまは `apply` で変えられない |
+| `environments.<名前>.required_reviewers:` の下に、今の値の行と `-> <書いた値>` の行 | Environment のデプロイを承認できる担当者が、設定ファイルと違う。担当者は `[User 583231 (octocat), User 1234567]` のように並び、括弧の中は GitHub 上の担当者の login。設定ファイルに書いた利用者のうち、まだ担当者でない利用者は ID だけが出る。`[]` は担当者がいないこと、`[] (protection rule without reviewers)` は担当者が1人もいない承認の設定が GitHub 上に残っていること。承認すると `->` の行の担当者に変える |
 | `Reviewers to remove:`、`Reviewers to add:` | 外れる担当者（GitHub 上にいて設定ファイルにない利用者）と、加わる担当者（設定ファイルにあって GitHub 上でまだ担当者でない利用者） |
 | `Applicability: not applicable (<理由>)` | 安全に変えるための条件が成り立たないため、reco はすぐ上の変更をしない。括弧の中は、何が成り立っていないかと、設定ファイルの直し方 |
 | `Patterns to remove:`、`Patterns to add:` | Environment のデプロイを許可するパターンのうち、設定ファイルにないものと、GitHub 上にないもの |

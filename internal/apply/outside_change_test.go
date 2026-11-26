@@ -117,6 +117,63 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			want:   []unexpectedOutsideChange{{Setting: "environments.staging.wait_timer", Before: "30", After: "10"}},
 		},
 		{
+			name:   "reviewers update does not return the reviewers it changes",
+			change: reviewersChange(t, "staging", withReviewers(stagingAll, false, 1), reviewerSet(2)),
+			before: []github.ObservationResult{{Environments: environments(withReviewers(stagingAll, false, 1))}},
+			after:  github.ObservationResult{Environments: environments(withReviewers(stagingAll, false, 2))},
+			want:   nil,
+		},
+		{
+			// 担当者の更新エンドポイントは方式も受け付けるため、保護設定より前に方式を比べる
+			name:   "reviewers update returns the changed mode before the changed wait_timer",
+			change: reviewersChange(t, "staging", withReviewers(stagingAll, false, 1), reviewerSet(2)),
+			before: []github.ObservationResult{stagingWith(withReviewers(stagingAll, false, 1), 30)},
+			after:  stagingWith(withReviewers(observedEnvironment(7, "staging", setting.DeploymentBranchPolicyProtectedBranches), false, 2), 10),
+			want: []unexpectedOutsideChange{
+				{Setting: "environments.staging.deployment_branch_policy", Before: "all", After: "protected_branches"},
+				{Setting: "environments.staging.wait_timer", Before: "30", After: "10"},
+			},
+		},
+		{
+			name:   "reviewers update returns the changed wait_timer alone",
+			change: reviewersChange(t, "staging", withReviewers(stagingAll, false, 1), reviewerSet(2)),
+			before: []github.ObservationResult{stagingWith(withReviewers(stagingAll, false, 1), 30)},
+			after:  stagingWith(withReviewers(stagingAll, false, 2), 10),
+			want:   []unexpectedOutsideChange{{Setting: "environments.staging.wait_timer", Before: "30", After: "10"}},
+		},
+		{
+			// 個別パターンは別の更新エンドポイントの設定で、方式の名前だけを比べる
+			name:   "reviewers update does not compare the patterns of the same mode",
+			change: reviewersChange(t, "staging", withReviewers(selectedStaging, false, 1), reviewerSet(2)),
+			before: []github.ObservationResult{{Environments: environments(withReviewers(selectedEnvironment(7, "staging", []setting.DeploymentPattern{branchPattern("main")}, 10), false, 1))}},
+			after: github.ObservationResult{Environments: environments(withReviewers(
+				selectedEnvironment(7, "staging", []setting.DeploymentPattern{branchPattern("main"), branchPattern("release/*")}, 10, 11), false, 2,
+			))},
+			want: nil,
+		},
+		{
+			name:   "reviewers update keeping the rule returns the changed prevent_self_review",
+			change: reviewersChange(t, "staging", withReviewers(stagingAll, true, 1), reviewerSet(2)),
+			before: []github.ObservationResult{{Environments: environments(withReviewers(stagingAll, true, 1))}},
+			after:  github.ObservationResult{Environments: environments(withReviewers(stagingAll, false, 2))},
+			want:   []unexpectedOutsideChange{{Setting: "environments.staging.prevent_self_review", Before: "true", After: "false"}},
+		},
+		{
+			// 失われた自己承認の禁止は Side effect: で示した変化で、予期しない変化に当たらない
+			name:   "removal of all reviewers does not return prevent_self_review discarded with the rule",
+			change: reviewersChange(t, "staging", withReviewers(stagingAll, true, 1), reviewerSet()),
+			before: []github.ObservationResult{{Environments: environments(withReviewers(stagingAll, true, 1))}},
+			after:  github.ObservationResult{Environments: environments(stagingAll)},
+			want:   nil,
+		},
+		{
+			name:   "mode change returns the changed reviewers",
+			change: modeChange(t, "staging", stagingAll, setting.DeploymentBranchPolicyProtectedBranches),
+			before: []github.ObservationResult{{Environments: environments(withReviewers(stagingAll, false, 1))}},
+			after:  github.ObservationResult{Environments: environments(withReviewers(observedEnvironment(7, "staging", setting.DeploymentBranchPolicyProtectedBranches), false, 2))},
+			want:   []unexpectedOutsideChange{{Setting: "environments.staging.required_reviewers", Before: "[User 1]", After: "[User 2]"}},
+		},
+		{
 			name:   "pattern removal and addition do not compare the protection",
 			change: deploymentPatternsChange(t, "staging", selectedEnvironment(7, "staging", []setting.DeploymentPattern{branchPattern("feature/*")}, 11), selectedPolicy(branchPattern("main"))),
 			before: []github.ObservationResult{stagingWith(selectedStaging, 30), stagingWith(selectedStaging, 30)},
@@ -213,18 +270,6 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 		}()
 		change := allowAutoMergeChange()
 		change.Operations[0].Kind = changeplan.RulesetValueUpdate + 1
-		unexpectedOutsideChanges(change, []github.ObservationResult{{}}, github.ObservationResult{})
-	})
-
-	// 比べる範囲は担当者の集合の更新方式とともに定めるため、それまでは比べないまま完了にせず止める
-	t.Run("required reviewers update panics", func(t *testing.T) {
-		defer func() {
-			if recover() == nil {
-				t.Error("unexpectedOutsideChanges() did not panic")
-			}
-		}()
-		change := allowAutoMergeChange()
-		change.Operations[0].Kind = changeplan.RequiredReviewersUpdate
 		unexpectedOutsideChanges(change, []github.ObservationResult{{}}, github.ObservationResult{})
 	})
 }
@@ -484,6 +529,43 @@ func TestOutsideChangesAt(t *testing.T) {
 	}
 }
 
+// TestDeploymentBranchPolicyModeChanges は、担当者の集合の更新操作の変更対象外の設定として、その名前の Environment のデプロイ元制限の方式を比べる規則を確かめる。
+// 個別パターンを比べないことは TestUnexpectedOutsideChanges が確かめる。
+//
+//trace:checks INV-001 FR-012
+func TestDeploymentBranchPolicyModeChanges(t *testing.T) {
+	staging := mustEnvironmentName(t, "staging")
+	all := observedEnvironment(7, "Staging", setting.DeploymentBranchPolicyAll)
+	protected := observedEnvironment(7, "Staging", setting.DeploymentBranchPolicyProtectedBranches)
+	cases := []struct {
+		name          string
+		before, after github.ObservationResult
+		want          []unexpectedOutsideChange
+	}{
+		{
+			name:   "changed mode is named under the declared environment name with the mode names",
+			before: github.ObservationResult{Environments: environments(all)},
+			after:  github.ObservationResult{Environments: environments(protected)},
+			want:   []unexpectedOutsideChange{{Setting: "environments.staging.deployment_branch_policy", Before: "all", After: "protected_branches"}},
+		},
+		{name: "absent before the update is not compared", before: github.ObservationResult{Environments: environments()}, after: github.ObservationResult{Environments: environments(protected)}, want: nil},
+		{name: "absent after the update is not compared", before: github.ObservationResult{Environments: environments(all)}, after: github.ObservationResult{Environments: environments()}, want: nil},
+		{
+			name:   "changed mode of another environment is not compared",
+			before: github.ObservationResult{Environments: environments(all, observedEnvironment(8, "production", setting.DeploymentBranchPolicyAll))},
+			after:  github.ObservationResult{Environments: environments(all, observedEnvironment(8, "production", setting.DeploymentBranchPolicySelected))},
+			want:   nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := deploymentBranchPolicyModeChanges(staging, tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("deploymentBranchPolicyModeChanges() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestEnvironmentProtectionChanges は、Environment の更新操作の変更対象外の設定を、その名前の Environment の保護設定に限って比べる規則を確かめる。
 //
 //trace:checks INV-001 FR-012
@@ -503,11 +585,43 @@ func TestEnvironmentProtectionChanges(t *testing.T) {
 		return github.ObservationResult{Environments: environments(append(others, e)...)}
 	}
 	base := setting.EnvironmentProtection{WaitTimer: wait(30), RequiredReviewers: reviewers(true, 1, 2), CanAdminsBypass: true}
+	stagingReviewers := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: staging}
+	// changedReviewers は、base の担当者と can_admins_bypass を変えた保護設定
+	changedReviewers := setting.EnvironmentProtection{WaitTimer: wait(30), RequiredReviewers: reviewers(true, 3), CanAdminsBypass: false}
 	cases := []struct {
 		name          string
+		excluded      []setting.Unit
 		before, after github.ObservationResult
 		want          []unexpectedOutsideChange
 	}{
+		{
+			name:     "required_reviewers changed by the logical change is not compared",
+			excluded: []setting.Unit{stagingReviewers},
+			before:   observed(base),
+			after:    observed(changedReviewers),
+			want:     []unexpectedOutsideChange{{Setting: "environments.staging.can_admins_bypass", Before: "true", After: "false"}},
+		},
+		{
+			name:     "required_reviewers of another environment does not exclude the item",
+			excluded: []setting.Unit{{Key: setting.EnvironmentRequiredReviewers, Environment: mustEnvironmentName(t, "production")}},
+			before:   observed(base),
+			after:    observed(changedReviewers),
+			want: []unexpectedOutsideChange{
+				{Setting: "environments.staging.required_reviewers", Before: "[User 1, User 2]", After: "[User 3]"},
+				{Setting: "environments.staging.can_admins_bypass", Before: "true", After: "false"},
+			},
+		},
+		{
+			// 同じ Environment でも形の違う単位は、保護設定の項目を除かない
+			name:     "another setting of the same environment does not exclude the items",
+			excluded: []setting.Unit{{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}},
+			before:   observed(base),
+			after:    observed(changedReviewers),
+			want: []unexpectedOutsideChange{
+				{Setting: "environments.staging.required_reviewers", Before: "[User 1, User 2]", After: "[User 3]"},
+				{Setting: "environments.staging.can_admins_bypass", Before: "true", After: "false"},
+			},
+		},
 		{
 			name:   "absent before the update is not compared",
 			before: github.ObservationResult{Environments: environments()},
@@ -545,7 +659,7 @@ func TestEnvironmentProtectionChanges(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := environmentProtectionChanges(staging, tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
+			if got := environmentProtectionChanges(staging, tc.excluded, tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("environmentProtectionChanges() = %v, want %v", got, tc.want)
 			}
 		})

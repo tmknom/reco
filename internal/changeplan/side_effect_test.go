@@ -211,6 +211,45 @@ func TestSideEffects_SecretScanning(t *testing.T) {
 	}
 }
 
+//trace:checks INV-003
+func TestSideEffects_RequiredReviewers(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	unit := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}
+	octocat := setting.Reviewer{Type: setting.ReviewerUser, ID: 583231}
+	protection := func(preventSelfReview bool, reviewers ...setting.Reviewer) *setting.RequiredReviewers {
+		return &setting.RequiredReviewers{PreventSelfReview: preventSelfReview, Reviewers: reviewers}
+	}
+	observation := func(rule *setting.RequiredReviewers) github.ObservationResult {
+		return github.ObservationResult{Environments: &github.Environments{Existing: []github.Environment{{Name: "production", Protection: setting.EnvironmentProtection{RequiredReviewers: rule}}}}}
+	}
+	absent := github.ObservationResult{Environments: &github.Environments{}}
+	none := setting.ReviewerSetValue(setting.ReviewerSetOf(nil))
+	one := setting.ReviewerSetValue(setting.ReviewerSetOf([]setting.Reviewer{octocat}))
+	preventSelfReviewDiscarded := []SideEffect{{Kind: SideEffectPreventSelfReviewDiscarded, Observed: github.Observed(setting.BoolValue(true))}}
+	cases := []struct {
+		name     string
+		observed github.ObservationResult
+		desired  setting.Value
+		want     []SideEffect
+	}{
+		{name: "removing every reviewer discards prevent_self_review that is true", observed: observation(protection(true, octocat)), desired: none, want: preventSelfReviewDiscarded},
+		{name: "removing every reviewer has no side effect when prevent_self_review is false", observed: observation(protection(false, octocat)), desired: none},
+		{name: "keeping a reviewer has no side effect when prevent_self_review is true", observed: observation(protection(true, octocat)), desired: one},
+		{name: "emptying a protection rule without reviewers discards prevent_self_review that is true", observed: observation(protection(true)), desired: none, want: preventSelfReviewDiscarded},
+		{name: "environment without a protection rule matches no reviewers and has no side effect", observed: observation(nil), desired: none},
+		{name: "absent environment has no side effect", observed: absent, desired: none},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := newSettingPlan(unit, tc.observed.Setting(unit), tc.desired)
+			got, unaffected := sideEffects(plan, tc.observed, []SettingPlan{plan})
+			if !reflect.DeepEqual(got, tc.want) || unaffected != nil {
+				t.Errorf("sideEffects() = %+v, %+v, want %+v, nil", got, unaffected, tc.want)
+			}
+		})
+	}
+}
+
 func TestSideEffects_DependentWithoutObservationPanics(t *testing.T) {
 	observed := github.ObservationResult{SecretScanning: &github.SecretScanning{
 		Enabled: github.Observed(true), PushProtection: github.Unavailable[bool](github.UnavailablePrivateRepository),
@@ -233,6 +272,7 @@ func TestSideEffectKind_ObservedSetting(t *testing.T) {
 		{kind: SideEffectSelectedActionsDiscarded, want: setting.SelectedActions, wantOK: true},
 		{kind: SideEffectSecurityUpdatesDisabled, want: setting.DependabotSecurityUpdates, wantOK: true},
 		{kind: SideEffectPushProtectionDisabled, want: setting.RepositoryPushProtection, wantOK: true},
+		{kind: SideEffectPreventSelfReviewDiscarded, wantOK: false},
 		{kind: SideEffectDependencyGraphEnabled, wantOK: false},
 		{kind: SideEffectDependencyGraphDisabled, wantOK: false},
 	}

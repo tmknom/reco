@@ -84,6 +84,9 @@ func TestCreateEnvironmentPanicsOnUnaddressableName(t *testing.T) {
 		{name: "deployment branch policy", update: func() {
 			_, _ = c.UpdateEnvironmentDeploymentBranchPolicy(t.Context(), reference, "..", setting.DeploymentBranchPolicyAll)
 		}},
+		{name: "required reviewers", update: func() {
+			_, _ = c.UpdateEnvironmentRequiredReviewers(t.Context(), reference, "..", setting.ReviewerSetOf(nil))
+		}},
 		{name: "add deployment pattern", update: func() {
 			_, _ = c.AddDeploymentPattern(t.Context(), reference, "..", setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"})
 		}},
@@ -213,6 +216,95 @@ func TestCreateEnvironmentWithDeploymentBranchPolicy(t *testing.T) {
 	}
 	if err == nil || !strings.HasPrefix(err.Error(), `create environment with deployment branch policy "Prod/Eu" example/project-a: `) {
 		t.Errorf("error = %v, want it to start with the creation, the quoted name and example/project-a", err)
+	}
+}
+
+// TestUpdateEnvironmentRequiredReviewers は、本文が reviewers のキーだけで、担当者を種類と ID にして宣言の順に送ることを確かめる。
+//
+//trace:checks INV-001 FR-011
+func TestUpdateEnvironmentRequiredReviewers(t *testing.T) {
+	cases := []struct {
+		name      string
+		reviewers []setting.Reviewer
+		wantBody  string
+	}{
+		{
+			name:      "reviewers keep the declared order",
+			reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}, {Type: setting.ReviewerUser, ID: 2}},
+			wantBody:  `{"reviewers":[{"type":"User","id":1},{"type":"User","id":2}]}`,
+		},
+		{
+			name:      "descending ids are not sorted",
+			reviewers: []setting.Reviewer{{Type: setting.ReviewerTeam, ID: 9}, {Type: setting.ReviewerUser, ID: 3}},
+			wantBody:  `{"reviewers":[{"type":"Team","id":9},{"type":"User","id":3}]}`,
+		},
+		{
+			name:      "empty set sends an empty array",
+			reviewers: nil,
+			wantBody:  `{"reviewers":[]}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var received atomic.Int32
+			var gotMethod, gotPath, gotContentType string
+			var gotBody []byte
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				received.Add(1)
+				gotMethod, gotPath, gotContentType = r.Method, r.URL.EscapedPath(), r.Header.Get("Content-Type")
+				gotBody, _ = io.ReadAll(r.Body)
+				_, _ = w.Write([]byte(githubtest.EnvironmentBody{ID: 7, Name: "Prod/Eu"}.JSON()))
+			})
+
+			outcome, err := c.UpdateEnvironmentRequiredReviewers(t.Context(), mustReference(t, "owner/repo"), "Prod/Eu", setting.ReviewerSetOf(tc.reviewers))
+			if err != nil || outcome != UpdateSucceeded {
+				t.Fatalf("UpdateEnvironmentRequiredReviewers() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+			}
+
+			if n := received.Load(); n != 1 {
+				t.Errorf("server received %d requests, want 1", n)
+			}
+			if gotMethod != http.MethodPut || gotPath != "/repos/owner/repo/environments/Prod%2FEu" {
+				t.Errorf("request = %s %s, want PUT /repos/owner/repo/environments/Prod%%2FEu", gotMethod, gotPath)
+			}
+			if gotContentType != "application/json" {
+				t.Errorf("Content-Type = %q, want application/json", gotContentType)
+			}
+			if string(gotBody) != tc.wantBody {
+				t.Errorf("request body = %s, want %s", gotBody, tc.wantBody)
+			}
+		})
+	}
+}
+
+// TestUpdateEnvironmentRequiredReviewersPanicsOnRuleWithoutReviewers は、担当者のいない保護ルールを要求を送らずに panic することを確かめる。
+// 宣言できない値を空の集合として送ると、保護ルールを外す要求になるため。
+//
+//trace:checks INV-001
+func TestUpdateEnvironmentRequiredReviewersPanicsOnRuleWithoutReviewers(t *testing.T) {
+	var received atomic.Int32
+	c := newTestClient(t, func(http.ResponseWriter, *http.Request) { received.Add(1) })
+	ruleWithoutReviewers := setting.ReviewerSetOfRule(&setting.RequiredReviewers{})
+	defer func() {
+		if recover() == nil {
+			t.Error("UpdateEnvironmentRequiredReviewers with a rule without reviewers did not panic")
+		}
+		if n := received.Load(); n != 0 {
+			t.Errorf("server received %d requests, want 0", n)
+		}
+	}()
+	_, _ = c.UpdateEnvironmentRequiredReviewers(t.Context(), mustReference(t, "owner/repo"), "production", ruleWithoutReviewers)
+}
+
+// TestUpdateEnvironmentRequiredReviewersErrorNamesTheOperation は、担当者の要求の失敗が、ほかの Environment の要求とは別の操作名と名前を示すことを確かめる。
+//
+//trace:checks FR-013
+func TestUpdateEnvironmentRequiredReviewersErrorNamesTheOperation(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusUnprocessableEntity) })
+
+	_, err := c.UpdateEnvironmentRequiredReviewers(t.Context(), mustReference(t, "example/project-a"), "Prod/Eu", setting.ReviewerSetOf(nil))
+	if err == nil || !strings.HasPrefix(err.Error(), `set required reviewers of environment "Prod/Eu" example/project-a: `) {
+		t.Errorf("error = %v, want it to start with the operation, the quoted name and example/project-a", err)
 	}
 }
 

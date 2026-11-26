@@ -510,6 +510,16 @@ func TestPlannedChangeText_EnvironmentRequiredReviewers(t *testing.T) {
 			want: head + "    [User 583231 (octocat)]\n    -> []\n    Reviewers to remove: [User 583231 (octocat)]\n",
 		},
 		{
+			name: "removing every reviewer with prevent_self_review true shows the side effect after the remove line",
+			s: func() changeplan.SettingPlan {
+				s := plan(observedOf(logins, octocat), desiredOf(), changeplan.Mismatch)
+				s.SideEffects = []changeplan.SideEffect{{Kind: changeplan.SideEffectPreventSelfReviewDiscarded, Observed: github.Observed(setting.BoolValue(true))}}
+				return s
+			}(),
+			want: head + "    [User 583231 (octocat)]\n    -> []\n    Reviewers to remove: [User 583231 (octocat)]\n" +
+				"    Side effect: GitHub also discards prevent_self_review, which is currently true\n",
+		},
+		{
 			name: "protection rule without reviewers shows the remark and no remove or add line",
 			s:    plan(observedOf(nil), desiredOf(), changeplan.Mismatch),
 			want: head + "    [] (protection rule without reviewers)\n    -> []\n",

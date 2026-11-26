@@ -175,11 +175,22 @@ Applying changes...
 
 `actions.oidc_subject` に `use_immutable_subject: false` を書いた `apply` が、数十秒かかってからこの結果になったときです。GitHub は、2026年7月15日より後に作られたリポジトリと、その日より後に名前を変えたか移転したリポジトリに、`use_immutable_subject: true` の形を強制します。そのようなリポジトリでは、`false` への更新を受け付けても値を `true` のまま保つことがあります。`plan` で今の値が `true` のままかを確かめ、変わっていなければ、設定ファイルの `use_immutable_subject` を `true` に直すか、行を消して reco がこの値を変えないようにします。
 
+### Environment の担当者が設定ファイルのとおりにならない
+
+```text
+Applying changes...
+  example/project-a: failed
+    Update request: succeeded
+    Desired state: does not match
+```
+
+`required_reviewers` を変えた `apply` がこの結果になったときです。GitHub は、担当者にできない ID（存在しない利用者の ID など）を、担当者にできる利用者と一緒に受け取ると、更新を受け付けたうえで、担当者にできない ID を黙って除きます。リポジトリへの権限を持たない利用者だけを書いたときは、担当者が1人もいない承認の設定が残ります（`plan` には `[] (protection rule without reviewers)` と出ます）。`plan` で今の担当者を見て除かれた利用者を特定し、その ID が正しいか、その利用者がリポジトリへの権限を持つかを確かめます。ID を直すか権限を与えてから、`apply` し直します。
+
 ## そのほかのエラーと行
 
 | 見えたもの | 次にすること |
 |---|---|
-| `is a change that apply does not support yet` | Environment のデプロイを承認できる担当者（`required_reviewers`）の変更は、まだ `apply` で実行できない。ほかの設定の変更も含め、何も変えていない。ほかの設定だけを変えるには、その Environment の `required_reviewers` を設定ファイルから外して `apply` する |
+| `request not processable (HTTP 422)`（`set required reviewers of environment` のエラー） | GitHub が担当者の変更を受け付けなかった。担当者は変わっていない。書いた ID がどれも存在しない利用者の ID だったか、非公開リポジトリで担当者を設定できない料金プラン（公式資料は GitHub Free、Pro、Team を挙げる）だった可能性がある。そのような非公開リポジトリでは、担当者を外す変更（`required_reviewers: []`）も `422` になることがある。ID を直すか、その Environment の `required_reviewers` を設定ファイルから外してから `apply` し直す |
 | `rate limit exceeded` | GitHub の API の利用回数の上限を超えた。少なくとも1分待ってから実行し直す（上限の種類によっては、GitHub が上限をリセットする時刻まで解除されない）。同じエラーが続くなら、さらに間隔を空ける |
 | `communication failed`、`unexpected response (HTTP 5xx)` | 通信の失敗か、GitHub 側の障害。時間をおいて実行し直す |
 | `redirect not followed`（下の `HTTP 303` の行を除く） | リポジトリの名前が変わったか、移転した可能性がある。設定ファイルの `name` と `--repo` に、今の名前を書く |
@@ -204,3 +215,4 @@ Applying changes...
 - [GitHub リポジトリ API 仕様](../research/repositories.md)：名前を変えたリポジトリへのリダイレクト、GitHub Free の非公開リポジトリでの自動マージ
 - [GitHub Actions 変数 API 仕様](../research/actions-variables.md)：変数の値の大きさと件数の上限、変数の作成、更新、削除の応答
 - [GitHub Rules API 仕様](../research/rules.md)：同じ名前（大文字と小文字だけが違う名前を含む）の Ruleset の作成の拒否、Bypass の主体など書いた値の作成と内容の置き換えの拒否、消された Ruleset の内容の置き換えの `404`
+- [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md)：担当者にできない ID を送ったときの `422` と、黙って除かれる場合、権限を持たない利用者だけのときに残る担当者のいない承認の設定、非公開リポジトリで担当者を設定できる料金プランと、設定できないときの `422`
