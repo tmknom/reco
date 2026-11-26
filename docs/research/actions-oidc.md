@@ -35,19 +35,20 @@ GitHub Actions のワークフローは、OIDC トークンを外部のクラウ
 
 カスタマイズでは、`sub` を組み立てるクレームの key を並べて指定します。カスタマイズすると `sub` 全体が新しい形になります。ドキュメントは、リポジトリの key を `repository` ではなく `repo` と書くこと、コンテキストを `context` で指定できること、値の中のコロンを `%3A` に置き換えることを記載しています。`sub` の中の並びが key の指定の順になると明記した記載はありませんが、例はどれも指定の順に並んでいます（`["repo", "context", "job_workflow_ref"]` が `repo:octo-org/octo-repo:environment:prod:job_workflow_ref:...` になる）。指定できる key の一覧はなく、OIDC の設定の `claims_supported` を参照するよう案内しています。カスタムプロパティのクレームは `repo_property_` の接頭辞で指定します。
 
-OIDC のリファレンスのドキュメントは、リポジトリの名前ではなく ID にもとづく **immutable subject** の形も記載しています（`repo:OWNER@OWNER-ID/REPO@REPO-ID:ref:refs/heads/BRANCH`）。2026年7月15日より後に作られたリポジトリは、既定でこの形を使います。それより前のリポジトリは、Organization かリポジトリの単位で選んだときに限りこの形になり、2026年7月15日より後に名前を変えたか移転したリポジトリもこの形に移ります。immutable subject とカスタマイズを併用すると、`repo` の部分に所有者とリポジトリの ID が常に含まれます。
+OIDC のリファレンスのドキュメントは、リポジトリの名前ではなく ID にもとづく **immutable subject** の形も記載しています（`repo:OWNER@OWNER-ID/REPO@REPO-ID:ref:refs/heads/BRANCH`）。2026年7月15日より後に作られたリポジトリは、既定でこの形を使います。それより前のリポジトリは、Organization かリポジトリの単位で選んだときに限りこの形になり、2026年7月15日より後に名前を変えたか移転したリポジトリもこの形に移ります。changelog は、2026年7月15日から新しいリポジトリと名前の変更にこの形を自動で強制すると記載しています。強制されたリポジトリで `use_immutable_subject` を `false` にできるかは、どちらの資料にも記載がありません。immutable subject とカスタマイズを併用すると、`repo` の部分に所有者とリポジトリの ID が常に含まれます。
 
 > [!NOTE]
 > 次は、reco の開発者が実際の動作で確認した事項です。
 >
 > - 受け付ける key：公開リポジトリで、`claims_supported` の key と `repo`、`context` を一つずつ送ると、次の28個は受け付けられた。`actor`、`actor_id`、`aud`、`base_ref`、`check_run_id`、`context`、`environment`、`environment_node_id`、`event_name`、`head_ref`、`iss`、`job_workflow_ref`、`job_workflow_sha`、`ref`、`ref_type`、`repo`、`repository`、`repository_id`、`repository_owner`、`repository_owner_id`、`repository_visibility`、`run_attempt`、`run_id`、`run_number`、`runner_environment`、`workflow`、`workflow_ref`、`workflow_sha`
 > - 受け付けない key：`claims_supported` にあっても、`sub`、`exp`、`iat`、`jti`、`nbf`、`sha`、`enterprise`、`enterprise_id`、`ref_protected`、`issuer_scope` の10個は `400`（`The template has one or more unsupported claim keys.`）だった。`enterprise` と `enterprise_id` は、個人アカウントが所有するリポジトリで確かめた結果である。`repo_property_` で始まる key は `400`（`Repository property claims require an organization context for validation.`）だった
-> - 2026年7月15日より前に作られたリポジトリの immutable subject：検証に使った非公開リポジトリは2026年7月15日より前に作られたが、取得の `use_immutable_subject` は `true` で、`sub_claim_prefix` は ID を含む形だった。いつ、どの操作で有効になったかは確かめていない
+> - 2026年7月15日より前に作られ、そのあとに名前を変えたリポジトリの immutable subject：検証に使った非公開リポジトリは2026年7月15日より前に作られ、その日より後に一度名前を変えて元の名前に戻した。取得の `use_immutable_subject` は `true` で、`sub_claim_prefix` は ID を含む形だった。名前の変更の前の値は記録していない。このリポジトリでは `false` にできなかった（4章）
 
 | Relationship | Target | Target Type |
 |---|---|---|
 | `grounding` | [OpenID Connect reference](https://docs.github.com/en/actions/reference/security/oidc) | External Document |
 | `grounding` | [GitHub Actions OIDC configuration (claims_supported)](https://token.actions.githubusercontent.com/.well-known/openid-configuration) | External Document |
+| `grounding` | [Immutable subject claims for GitHub Actions OIDC tokens](https://github.blog/changelog/2026-04-23-immutable-subject-claims-for-github-actions-oidc-tokens/) | External Document |
 
 ## 3. `GET /repos/{owner}/{repo}/actions/oidc/customization/sub`
 
@@ -88,11 +89,12 @@ OIDC のリファレンスのドキュメントは、リポジトリの名前で
 > - `use_default: true` を送ったとき：`include_claim_keys` を一緒に送っても `201` で、送った key は保存されなかった。カスタマイズしていた key も消え、あとで `use_default: false` だけを送っても元の key は返らなかった
 > - `include_claim_keys` を省略したとき：カスタマイズした状態で `use_default: false` だけ（または `use_immutable_subject` を足して）を送ると、`201` を返し、保存されていた key は消えた。省略は保持ではなく、空の並びと同じだった
 > - 空の並び：`use_default: false` と、`include_claim_keys` の省略または `[]` は、どちらも `201` で受け付けられ、key のない状態で保存された。この状態で発行される `sub` の形は確かめていない
-> - `use_immutable_subject` を省略したとき：保存されていた値が保持された（`true` と `false` のどちらでも、`use_default` が `true` でも `false` でも確かめた）。`false` から `true` にして、`false` に戻すこともできた
+> - `use_immutable_subject` を省略したとき：保存されていた値が保持された（`true` と `false` のどちらでも、`use_default` が `true` でも `false` でも確かめた）
+> - `use_immutable_subject` の切り替え：名前を変えたことのない公開リポジトリでは、`false` から `true` にして、`false` に戻すことができた。2026年7月15日より後に名前を変えた非公開リポジトリ（確認の前から `true`）では、`false` を送ると `use_default` が `true` でも `false` でも `201` を返したが、取得は `true` のままで、約 31 秒後まで変わらなかった。2章の名前の変更による強制と合うが、公開範囲の違いでないことは、名前を変えていない非公開リポジトリで確かめていない
 > - `use_default` のない本文：`use_immutable_subject` だけを送ると `422`（`object is missing required key: use_default`）で、値は変わらなかった
 > - 受け付けない値：定義にない key、大文字を含む `Repo`、`-` や空白を含む key、空文字列は `400`（`The template has one or more unsupported claim keys.`）、重複した key は `400`（`The template has one or more duplicate claim keys`）だった。文字列の `"false"`、配列でない `include_claim_keys`、文字列でない要素は `422` だった。直後に取得した拒否（定義にない key、大文字、重複、`claims_supported` の受け付けない key）では、値は変わらなかった
 > - 定義にないフィールド：本文に加えても `201` で、無視された。取得専用の `sub_claim_prefix` を送っても無視された
-> - 更新直後の取得：時刻を測った更新24回（公開19回、非公開5回。値を変えない更新を含む）のどれでも、`201` を受け取ってから約 0.6〜0.8 秒後の 3章の取得から更新後の値を返し、約 3.5 秒後まで更新前の値へ戻ることはなかった
+> - 更新直後の取得：時刻を測った更新24回（公開19回、非公開5回。値を変えない更新を含む）のどれでも、`201` を受け取ってから約 0.6〜0.8 秒後の 3章の取得から更新後の値を返し、約 3.5 秒後まで更新前の値へ戻ることはなかった。`201` を受け取った直後に取得した更新6回（公開5回、非公開1回）でも、最初の取得から更新後の値を返した
 
 | Relationship | Target | Target Type |
 |---|---|---|

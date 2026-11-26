@@ -164,6 +164,17 @@ Applying changes...
 
 GitHub Free のアカウントが所有する非公開リポジトリでは、自動マージを使えません。GitHub は更新を受け付けても、値を変えないことがあります。そのようなリポジトリには、`allow_auto_merge: true` を書かないようにします。
 
+### OIDC トークンの subject の `use_immutable_subject` が `false` にならない
+
+```text
+Applying changes...
+  example/project-a: failed
+    Update request: succeeded
+    Desired state: does not match
+```
+
+`actions.oidc_subject` に `use_immutable_subject: false` を書いた `apply` が、数十秒かかってからこの結果になったときです。GitHub は、2026年7月15日より後に作られたリポジトリと、その日より後に名前を変えたか移転したリポジトリに、`use_immutable_subject: true` の形を強制します。そのようなリポジトリでは、`false` への更新を受け付けても値を `true` のまま保つことがあります。`plan` で今の値が `true` のままかを確かめ、変わっていなければ、設定ファイルの `use_immutable_subject` を `true` に直すか、行を消して reco がこの値を変えないようにします。
+
 ## そのほかのエラーと行
 
 | 見えたもの | 次にすること |
