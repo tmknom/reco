@@ -68,6 +68,8 @@ reco が管理可能な設定は、次のとおりです。具体的な設定方
 | Environment へデプロイできるブランチとタグを、制限しないか、保護ルールのあるブランチに限るか、選んだパターンに限るか | 「Environments」ページの Environment の「Deployment branches and tags」の欄の「No restriction」、「Protected branches only」、「Selected branches and tags」 |
 | 選んだパターンに限るときに、デプロイを許可するブランチとタグのパターン | 「Selected branches and tags」で追加するパターンの一覧 |
 | その Environment を使うデプロイジョブの実行を承認できる担当者 | 「Environments」ページの Environment の「Deployment protection rules」の欄の「Required reviewers」 |
+| デプロイジョブを起動した利用者が、自分のジョブを承認できないようにするか | 「Required reviewers」の下の「Prevent self-review」 |
+| デプロイジョブを実行するまで待たせる時間（分） | 「Deployment protection rules」の欄の「Wait timer」 |
 | その Environment を使うジョブから読む Environment Variables の名前と値（Environment がなければ作成する） | 「Environments」ページの Environment の「Environment variables」の欄 |
 | 依存関係の脆弱性を Dependabot alerts で知らせるか | 「Dependabot alerts」の項目 |
 | 脆弱性を直す Pull Request を Dependabot security updates に作らせるか | 「Dependabot security updates」の項目 |

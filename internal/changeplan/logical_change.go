@@ -16,7 +16,7 @@ type LogicalChange struct {
 	DesiredState []configuration.ManagedSetting
 	// Operations は構成する更新操作を実行順に並べたもの。一つ以上を持つ。
 	Operations []UpdateOperation
-	// SideEffectSettings は、変更に伴う副作用として提示した設定のうち設定の識別で引けるもの。
+	// SideEffectSettings は、変更に伴う副作用として提示した設定のうち reco が観測するもの。Environment の中の設定は、その Environment の名前を持つ単位で持つ。
 	// 承認した変化のため、同じ更新エンドポイントの設定でも変更対象外の設定に数えない。
 	SideEffectSettings []setting.Unit
 }
@@ -28,7 +28,7 @@ type UpdateOperation struct {
 	// Unit は、この更新操作が更新要求を送る先の管理の単位。MergeMethodsUpdate では、送る管理設定の先頭である。
 	Unit setting.Unit
 	// Value は、SettingUpdate が送る設定の値と、Repository Variable と Environment Variable の作成と値の変更が送る変数の値と、Ruleset の作成と値の変更が送る Ruleset の値と、
-	// RequiredReviewersUpdate が送る担当者の集合。
+	// RequiredReviewersUpdate が送る担当者の集合と、PreventSelfReviewUpdate と WaitTimerUpdate が送る値。
 	Value setting.Value
 	// Mode は、EnvironmentCreationWithMode と DeploymentBranchPolicyModeUpdate が送るデプロイ元制限の方式。
 	Mode setting.DeploymentBranchPolicyMode
@@ -62,6 +62,10 @@ const (
 	DeploymentPatternRemoval
 	// RequiredReviewersUpdate は、Environment の担当者の集合を送る。
 	RequiredReviewersUpdate
+	// PreventSelfReviewUpdate は、Environment の自己承認の禁止を送る。
+	PreventSelfReviewUpdate
+	// WaitTimerUpdate は、Environment のデプロイの待機時間を送る。
+	WaitTimerUpdate
 	// RepositoryVariableCreation は、Repository Variable を名前と値で作る。
 	RepositoryVariableCreation
 	// RepositoryVariableValueUpdate は、存在する Repository Variable の値だけを変える。
@@ -87,9 +91,6 @@ type PreconditionBasis struct {
 	AnticipatedValue AnticipatedValue
 	// AnticipatedEnvironmentIdentity は、Environment が存在すると予定したときに、存在に加えて確かめる同一性の基準。ほかではゼロ値。
 	AnticipatedEnvironmentIdentity EnvironmentIdentity
-	// AnticipatedPreventSelfReview は、担当者の集合の基準に伴う、同じ保護ルールの自己承認の禁止の承認時に予定した値。
-	// 担当者をすべて外す更新操作だけが持ち、ほかでは nil。GitHub が担当者と一緒に失わせる値を、示した副作用のとおりに確かめるため。
-	AnticipatedPreventSelfReview *bool
 	// AnticipatedRulesetIdentity は、Ruleset が存在すると予定したときに、存在と値に加えて確かめる同一性の基準。ほかではゼロ値。
 	AnticipatedRulesetIdentity RulesetIdentity
 }
@@ -133,7 +134,7 @@ func (o UpdateOperation) Endpoint() (github.UpdateEndpoint, bool) {
 	case SettingUpdate, MergeMethodsUpdate:
 		return github.UpdateEndpointOf(o.Unit.Key), true
 	case EnvironmentCreation, EnvironmentCreationWithMode, DeploymentBranchPolicyModeUpdate,
-		DeploymentPatternAddition, DeploymentPatternRemoval, RequiredReviewersUpdate,
+		DeploymentPatternAddition, DeploymentPatternRemoval, RequiredReviewersUpdate, PreventSelfReviewUpdate, WaitTimerUpdate,
 		RepositoryVariableCreation, RepositoryVariableValueUpdate, RepositoryVariableDeletion,
 		EnvironmentVariableCreation, EnvironmentVariableValueUpdate, EnvironmentVariableDeletion,
 		RulesetCreation, RulesetValueUpdate:
@@ -159,8 +160,7 @@ func (p Plan) LogicalChanges() ([][]LogicalChange, error) {
 
 // LogicalChanges は、変更予定から論理的な設定変更を、executionOrder の実行順で導く。
 // 適用可能でない変更予定があれば、承認の対象にしないため error にする。
-// 副作用を伴う変更予定の更新操作は、operationOf が副作用として提示した設定のうち設定の識別で引けるものを必ず基準に載せる。載せずに受け付けると承認の前に示していない値を失わせ得るため。
-// 設定の識別を持たない Environment の自己承認の禁止は、requiredReviewersChangeOf が担当者の集合の基準に伴わせる。
+// 副作用を伴う変更予定の更新操作は、副作用として提示した設定のうち reco が観測するものを必ず基準に載せる (sideEffectBases)。載せずに受け付けると承認の前に示していない値を失わせ得るため。
 // 遷移先が selected のポリシーの変更予定と、選択方式の Actions 許可条件の比較不能な変更予定は、ポリシーの位置で一つの論理的な設定変更にまとめ、
 // ポリシー、許可条件の順に二つの更新操作で実現する。
 // マージ方式の変更予定は、最初のマージ方式の位置で一つの論理的な設定変更にまとめる (mergeMethodsChange)。
@@ -290,18 +290,24 @@ func (r RepositoryPlan) settingPlanOf(unit setting.Unit) (SettingPlan, bool) {
 }
 
 // operationOf は、変更予定 s の設定の値を送る更新操作を返す。
-// 基準は、s の計画時の観測結果、副作用として提示した設定のうち設定の識別で引けるものの計画時の観測結果、副作用を示さなかった設定の計画時の観測結果である。
+// 基準は、s の計画時の観測結果と、sideEffectBases の基準である。
 func operationOf(s SettingPlan) UpdateOperation {
-	bases := []PreconditionBasis{{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)}}
+	bases := append([]PreconditionBasis{{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)}}, sideEffectBases(s)...)
+	return UpdateOperation{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, PreconditionBases: bases}
+}
+
+// sideEffectBases は、変更予定 s の副作用として提示した設定のうち reco が観測するものと、副作用を示さなかった設定を、計画時の観測結果を予定した値にした基準で返す。
+func sideEffectBases(s SettingPlan) []PreconditionBasis {
+	var bases []PreconditionBasis
 	for _, effect := range s.SideEffects {
 		if key, ok := effect.Kind.ObservedSetting(); ok {
-			bases = append(bases, PreconditionBasis{Unit: setting.Unit{Key: key}, AnticipatedValue: AnticipateUnchanged(effect.Observed)})
+			bases = append(bases, PreconditionBasis{Unit: relatedUnit(s, key), AnticipatedValue: AnticipateUnchanged(effect.Observed)})
 		}
 	}
 	for _, unaffected := range s.SettingsExpectedUnaffected {
-		bases = append(bases, PreconditionBasis{Unit: setting.Unit{Key: unaffected.Key}, AnticipatedValue: AnticipateUnchanged(unaffected.Observed)})
+		bases = append(bases, PreconditionBasis{Unit: relatedUnit(s, unaffected.Key), AnticipatedValue: AnticipateUnchanged(unaffected.Observed)})
 	}
-	return UpdateOperation{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, PreconditionBases: bases}
+	return bases
 }
 
 // shaPinningRequiredOperationOf は、sha_pinning_required の変更予定 s の更新操作を返す。
@@ -316,15 +322,23 @@ func shaPinningRequiredOperationOf(s SettingPlan) UpdateOperation {
 	return UpdateOperation{Kind: SettingUpdate, Unit: s.Unit, Value: s.Desired, PreconditionBases: bases}
 }
 
-// sideEffectSettingsOf は、変更予定 s の副作用として提示した設定のうち設定の識別で引けるものを返す。
+// sideEffectSettingsOf は、変更予定 s の副作用として提示した設定のうち reco が観測するものを返す。
 func sideEffectSettingsOf(s SettingPlan) []setting.Unit {
 	var units []setting.Unit
 	for _, effect := range s.SideEffects {
 		if key, ok := effect.Kind.ObservedSetting(); ok {
-			units = append(units, setting.Unit{Key: key})
+			units = append(units, relatedUnit(s, key))
 		}
 	}
 	return units
+}
+
+// relatedUnit は、変更予定 s が影響する設定の形 key を、管理の単位にして返す。Environment の名前を含む形は、s と同じ Environment の中の設定を指す。
+func relatedUnit(s SettingPlan, key setting.Key) setting.Unit {
+	if key.HasEnvironmentName() {
+		return setting.Unit{Key: key, Environment: s.Unit.Environment}
+	}
+	return setting.Unit{Key: key}
 }
 
 func targetsSelectedPolicy(s SettingPlan) bool {

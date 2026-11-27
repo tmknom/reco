@@ -53,7 +53,6 @@ func TestDecodeEnvironment(t *testing.T) {
 		],
 		"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}
 	}`
-	wait := 30
 
 	successes := []struct {
 		name string
@@ -73,7 +72,7 @@ func TestDecodeEnvironment(t *testing.T) {
 				Name:                       "Prod/Eu",
 				DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
 				Protection: setting.EnvironmentProtection{
-					WaitTimer: &wait,
+					WaitTimer: 30,
 					RequiredReviewers: &setting.RequiredReviewers{
 						PreventSelfReview: true,
 						Reviewers:         []setting.Reviewer{{Type: setting.ReviewerUser, ID: 583231}, {Type: setting.ReviewerTeam, ID: 42}},
@@ -192,7 +191,6 @@ func TestDecodeDeploymentBranchPolicyMode(t *testing.T) {
 func TestDecodeEnvironmentProtection(t *testing.T) {
 	const waitTimerRule = `{"type": "wait_timer", "wait_timer": 30}`
 	const reviewersRule = `{"type": "required_reviewers", "prevent_self_review": true, "reviewers": [{"type": "User", "reviewer": {"id": 1}}, {"type": "Team", "reviewer": {"id": 2}}]}`
-	wait30, wait0 := 30, 0
 	toRules := func(rules ...string) []json.RawMessage {
 		raws := make([]json.RawMessage, len(rules))
 		for i, r := range rules {
@@ -209,8 +207,8 @@ func TestDecodeEnvironmentProtection(t *testing.T) {
 	}{
 		{name: "no rules is no protection", rules: nil, want: setting.EnvironmentProtection{}},
 		{name: "can_admins_bypass is carried over", rules: nil, canAdminsBypass: true, want: setting.EnvironmentProtection{CanAdminsBypass: true}},
-		{name: "wait_timer rule is the wait timer", rules: []string{waitTimerRule}, want: setting.EnvironmentProtection{WaitTimer: &wait30}},
-		{name: "wait_timer 0 is a value", rules: []string{`{"type": "wait_timer", "wait_timer": 0}`}, want: setting.EnvironmentProtection{WaitTimer: &wait0}},
+		{name: "wait_timer rule is the wait timer", rules: []string{waitTimerRule}, want: setting.EnvironmentProtection{WaitTimer: 30}},
+		{name: "wait_timer 0 is a wait timer of 0", rules: []string{`{"type": "wait_timer", "wait_timer": 0}`}, want: setting.EnvironmentProtection{}},
 		{
 			name:  "required_reviewers rule keeps the reviewers in order",
 			rules: []string{reviewersRule},
@@ -228,7 +226,7 @@ func TestDecodeEnvironmentProtection(t *testing.T) {
 			name:  "both rules are read",
 			rules: []string{reviewersRule, waitTimerRule},
 			want: setting.EnvironmentProtection{
-				WaitTimer: &wait30,
+				WaitTimer: 30,
 				RequiredReviewers: &setting.RequiredReviewers{
 					PreventSelfReview: true,
 					Reviewers:         []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}, {Type: setting.ReviewerTeam, ID: 2}},
@@ -261,7 +259,7 @@ func TestDecodeEnvironmentProtection(t *testing.T) {
 			want:  setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{Reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}}}},
 		},
 		{name: "branch_policy rule is skipped", rules: []string{`{"type": "branch_policy"}`}, want: setting.EnvironmentProtection{}},
-		{name: "rule of a type reco does not know is skipped", rules: []string{`{"type": "custom_rule", "id": 9}`, waitTimerRule}, want: setting.EnvironmentProtection{WaitTimer: &wait30}},
+		{name: "rule of a type reco does not know is skipped", rules: []string{`{"type": "custom_rule", "id": 9}`, waitTimerRule}, want: setting.EnvironmentProtection{WaitTimer: 30}},
 	}
 	for _, tc := range successes {
 		t.Run(tc.name, func(t *testing.T) {

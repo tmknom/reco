@@ -18,8 +18,7 @@ type unexpectedOutsideChange struct {
 // unexpectedOutsideChanges は、change の変更対象外の設定について、更新後の観測 after での予期しない変化を返す。
 // before は、開始した更新操作の分だけの直前の観測である。
 // ドメインモデルの観測の時点の定めに従い、更新エンドポイントごとに、それへ送った最初の更新操作の直前と比べる。
-// Environment の PUT (作成と方式の変更) は、宛先の Environment の保護設定を、その更新操作の直前と比べる。
-// 担当者の集合の PUT は、同じ更新エンドポイントが受け付けるデプロイ元制限の方式も比べる。
+// Environment の PUT は、どの種類も、宛先の Environment のデプロイ元制限の方式と保護設定を、その更新操作の直前と比べる。同じ更新エンドポイントが受け付ける設定のため。
 // 個別パターンの更新操作は、その更新エンドポイントで reco が観測するのが個別パターンの集合だけのため、比べない。
 // Repository Variable と Environment Variable の更新操作も、その更新エンドポイントで reco が観測するのがその変数だけのため、比べない。
 // Environment Variable の更新操作は Environment を宛先に含むが、Environment の保護設定は別の更新エンドポイントの設定である。
@@ -40,12 +39,9 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.O
 				changes = append(changes, oidcSubjectOmittedItemChanges(operation, b, after)...)
 			}
 			continue
-		case changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate:
-			changes = append(changes, environmentProtectionChanges(operation.Unit.Environment, change.ExcludedFromOutsideSettings(), b, after)...)
-			continue
-		case changeplan.RequiredReviewersUpdate:
-			changes = append(changes, deploymentBranchPolicyModeChanges(operation.Unit.Environment, b, after)...)
-			changes = append(changes, environmentProtectionChanges(operation.Unit.Environment, change.ExcludedFromOutsideSettings(), b, after)...)
+		case changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate,
+			changeplan.RequiredReviewersUpdate, changeplan.PreventSelfReviewUpdate, changeplan.WaitTimerUpdate:
+			changes = append(changes, environmentPutOutsideChanges(operation.Unit.Environment, change.ExcludedFromOutsideSettings(), b, after)...)
 			continue
 		case changeplan.DeploymentPatternAddition, changeplan.DeploymentPatternRemoval,
 			changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate, changeplan.RepositoryVariableDeletion,
@@ -98,32 +94,23 @@ func oidcSubjectOmittedItemChanges(operation changeplan.UpdateOperation, before,
 	}}
 }
 
-// deploymentBranchPolicyModeChanges は、宣言の名前 name の Environment のデプロイ元制限の方式について、更新直前と更新後の観測の差を、CLI 仕様の変更対象外の設定の名前と方式の名前で返す。
-// 個別パターンは別の更新エンドポイントの設定のため、比べない。
-// どちらかの観測で存在しない Environment は、比べる値がないため返さない。
-func deploymentBranchPolicyModeChanges(name setting.EnvironmentName, before, after github.ObservationResult) []unexpectedOutsideChange {
-	b, beforeOK := before.Environments.Lookup(name).Existing()
-	a, afterOK := after.Environments.Lookup(name).Existing()
-	if !beforeOK || !afterOK || b.DeploymentBranchPolicyMode == a.DeploymentBranchPolicyMode {
-		return nil
-	}
-	return []unexpectedOutsideChange{{
-		Setting: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: name}.String(),
-		Before:  string(b.DeploymentBranchPolicyMode), After: string(a.DeploymentBranchPolicyMode),
-	}}
-}
-
-// environmentProtectionChanges は、宣言の名前 name の Environment の保護設定について、更新直前と更新後の観測の差を、項目の名前に Environment の名前を前置して返す。
+// environmentPutOutsideChanges は、宣言の名前 name の Environment のデプロイ元制限の方式と保護設定のうち、変更対象外の設定から除く excluded に含まれないものについて、
+// 更新直前と更新後の観測の差を、CLI 仕様の変更対象外の設定の名前と値の表記で、方式、保護設定の項目の順に返す。
+// 方式は方式の名前で示し、個別パターンは別の更新エンドポイントの設定のため比べない。
 // 比べる範囲はアーキテクチャ設計の未管理設定を保全する更新方式と、設定ごとの設計の更新方式に従う。
-// どちらかの観測で存在しない Environment は、比べる値がないため返さない。
-func environmentProtectionChanges(name setting.EnvironmentName, excluded []setting.Unit, before, after github.ObservationResult) []unexpectedOutsideChange {
+// どちらかの観測で存在しない Environment は、比べる値がないため返さない。作成の直前がこれに当たる。
+func environmentPutOutsideChanges(name setting.EnvironmentName, excluded []setting.Unit, before, after github.ObservationResult) []unexpectedOutsideChange {
 	b, beforeOK := before.Environments.Lookup(name).Existing()
 	a, afterOK := after.Environments.Lookup(name).Existing()
 	if !beforeOK || !afterOK {
 		return nil
 	}
-	prefix := setting.Unit{Key: setting.EnvironmentResource, Environment: name}.String()
 	var changes []unexpectedOutsideChange
+	policy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: name}
+	if !slices.Contains(excluded, policy) && b.DeploymentBranchPolicyMode != a.DeploymentBranchPolicyMode {
+		changes = append(changes, unexpectedOutsideChange{Setting: policy.String(), Before: string(b.DeploymentBranchPolicyMode), After: string(a.DeploymentBranchPolicyMode)})
+	}
+	prefix := setting.Unit{Key: setting.EnvironmentResource, Environment: name}.String()
 	for _, d := range b.Protection.DifferencesTo(a.Protection) {
 		if slices.Contains(excluded, setting.Unit{Key: d.Key, Environment: name}) {
 			continue

@@ -98,7 +98,7 @@ $ GH_TOKEN=$(gh auth token) reco plan
 
 一つのリポジトリに複数の変更予定があるときは、[YAML 設定仕様](configuration.md) の章と表の並びで表示します。設定宣言での記述順には従いません。
 
-関連リソースの変更予定も YAML 設定仕様の章の並びに従い、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。たとえば Repository Variables（10章）の変更予定は、Environments（11章）の変更予定より前に、Environments の変更予定は Security（12章）の変更予定より前に、Ruleset（13章）の変更予定は Security の変更予定のあとに表示します。Environment Variable の変更予定は、属する Environment の存在、`deployment_branch_policy`、`required_reviewers` の変更予定の直後に、`variables` に書いた順で表示し、次の Environment の変更予定はそのあとに表示します（YAML 設定仕様 11章）。
+関連リソースの変更予定も YAML 設定仕様の章の並びに従い、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。たとえば Repository Variables（10章）の変更予定は、Environments（11章）の変更予定より前に、Environments の変更予定は Security（12章）の変更予定より前に、Ruleset（13章）の変更予定は Security の変更予定のあとに表示します。Environment Variable の変更予定は、属する Environment の存在、`deployment_branch_policy`、`required_reviewers`、`prevent_self_review`、`wait_timer` の変更予定の直後に、`variables` に書いた順で表示し、次の Environment の変更予定はそのあとに表示します（YAML 設定仕様 11章）。
 
 存在しないと確認した関連リソースの作成と、削除は、確認済みの差分として示し、集計の変更予定数に数えます。存在しないと確認できたことは、比較できる事実だからです。作成と削除は、設定の値の変更と見分けられる形で示し、削除では失われる値を示します。宣言に名前のない関連リソースは、変更計画に示しません。
 
@@ -148,6 +148,21 @@ Repository: example/project-a
     -> [User 583231]
 
 Plan: 1 repository to update, 4 changes
+Repositories checked: 1
+```
+
+Environment の自己承認の禁止は `environments.<名前>.prevent_self_review` の形で `true` か `false` を、デプロイの待機時間は `environments.<名前>.wait_timer` の形で `30 minutes` のように分の単位を添えた値を、1行で示します。`1` の待機時間は `1 minute` と示します。`required_reviewers` の保護ルールがない現在値は `false`、待機時間の保護ルールがない現在値は `0 minutes` です（読み方は [Environments の設計](../design/settings/environments.md) の設定と管理の単位）。担当者をすべて外す変更予定と一つの論理的な設定変更にまとまる自己承認の禁止の変更予定も、ほかの変更予定と同じく `true -> false` の1行で示します。
+
+```text
+Repository: example/project-a
+  environments.production.required_reviewers:
+    []
+    -> [User 583231]
+    Reviewers to add: [User 583231]
+  environments.production.prevent_self_review: false -> true
+  environments.production.wait_timer: 0 minutes -> 30 minutes
+
+Plan: 1 repository to update, 3 changes
 Repositories checked: 1
 ```
 
@@ -430,6 +445,17 @@ Repositories checked: 1
 Plan cannot be applied.
 ```
 
+```text
+Repository: example/project-a
+  environments.production.prevent_self_review: false -> true
+    Applicability: not applicable (the environment would have no required reviewers, which GitHub requires to set prevent_self_review; declare required_reviewers with at least one reviewer or remove prevent_self_review)
+
+Plan: 1 repository to update, 1 change
+Repositories checked: 1
+
+Plan cannot be applied.
+```
+
 Ruleset の値が解釈しない部分を含むことによる適用不能では、`Applicability:` の行の下に、解釈しなかったものを6章の `show` と同じ形と並びで1行に一つずつ示します。利用者が、既存の Ruleset のどこを reco が扱えないかを、承認を求められる前に読めるようにするためです。
 
 ```text
@@ -696,7 +722,7 @@ Repositories updated: 1
 
 いずれかの論理的な設定変更で更新操作を開始しており、完了しなかった論理的な設定変更があるときは、変更結果の末尾に **変更結果の注記**（`Note:`）を添えます。開始した更新操作に成否不明があれば自動で再送していないことを、なければ自動ロールバックを行っていないことを示します。どちらの変更結果の注記にも、`reco plan` で残りの変更を確かめられることを添えます（`Run reco plan to see the remaining changes.`）。一つの変更の途中で止まった場合も、`plan` は先行する更新操作のあとの現在値を変更計画に示すため、利用者は残った中間状態と残りの変更を同じ表示で確かめられます。複数の更新操作からなる論理的な設定変更では、すべての更新操作を判定に含めます。この判定は、選択したすべてのリポジトリの論理的な設定変更について行います。先に完了したリポジトリのあとで別のリポジトリが完了しなかった場合も、適用済みの変更が残るため変更結果の注記を添えます。
 
-論理的な設定変更ごとに結果を表示するときは、論理的な設定変更を、それが変える管理設定の名前で示します。二つ以上の管理設定を変える論理的な設定変更は、変更計画に示す順に ` + ` でつないで示します（`actions.permissions.allowed_actions + actions.permissions.selected_actions`、`general.allow_squash_merge + general.allow_merge_commit + general.allow_rebase_merge`、`environments.<名前> + environments.<名前>.deployment_branch_policy`）。名前は設定宣言の綴りです。同じ管理設定を変える更新操作が複数あっても、その管理設定の名前は一度だけ示します。変更結果を一つにまとめても、承認の前に提示する変更予定は管理設定ごとの行のままです。選択方式の Actions 許可条件の3項目と、非公開リポジトリの Fork Pull Request ワークフローの実行条件の4項目は、個別の変更として示しません。
+論理的な設定変更ごとに結果を表示するときは、論理的な設定変更を、それが変える管理設定の名前で示します。二つ以上の管理設定を変える論理的な設定変更は、変更計画に示す順に ` + ` でつないで示します（`actions.permissions.allowed_actions + actions.permissions.selected_actions`、`general.allow_squash_merge + general.allow_merge_commit + general.allow_rebase_merge`、`environments.<名前> + environments.<名前>.deployment_branch_policy`、`environments.<名前>.required_reviewers + environments.<名前>.prevent_self_review`）。名前は設定宣言の綴りです。同じ管理設定を変える更新操作が複数あっても、その管理設定の名前は一度だけ示します。変更結果を一つにまとめても、承認の前に提示する変更予定は管理設定ごとの行のままです。選択方式の Actions 許可条件の3項目と、非公開リポジトリの Fork Pull Request ワークフローの実行条件の4項目は、個別の変更として示しません。
 
 関連リソースの作成と削除も、完了すれば `updated` と示します。何を作成し、何を削除したかは、承認の前に提示した変更予定が示します。Repository Variable と Environment Variable の変更結果と stderr のエラーは、変数の名前だけを示し、変数の値と更新要求の本文は示しません。削除でも、失われた値を示しません。
 
@@ -706,7 +732,7 @@ Repositories updated: 1
 
 更新を一度も開始していない変更は `not attempted` とし、変更前提の不成立と、先行する異常による停止のどちらに当たるかを区別して理由を示します。先行する異常による停止は、同じリポジトリの先行する論理的な設定変更が完了しなかった場合（`Stopped: a preceding change did not complete`）と、先行するリポジトリが完了しなかった場合（`Stopped: a preceding repository did not complete`）を文言で区別します。
 
-変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を `Precondition: <設定> changed since approval` と示します。`<設定>` は、関連リソースそのものの変化なら `environments.<名前>`、`actions.variables.<名前>`、`rulesets.<名前>` のように関連リソースの名前で示します。変更前提で比べる設定（変える設定のほか、`Side effect:` で示した設定、副作用として示さなかったが計画時の値のままであることを確かめる設定、更新が値を変える前提として必要な設定）は、設定ごとの設計の各文書の「論理的な設定変更と更新操作」が定めます。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。承認した先行する変更による予定どおりの変化は示しません。複数の設定が変わっていた場合は、一つだけ示します。関連リソースそのものと、その中の設定やそれに属する関連リソースが両方変わっていれば、関連リソースそのものを示します。それ以外では、論理的な設定変更が変える設定を優先します。担当者をすべて外す変更で、同じ保護ルールの `prevent_self_review` だけが承認のあとに変わった場合も、`environments.<名前>.required_reviewers` と示します。`prevent_self_review` は宣言を受け付けない設定で、担当者の集合の変更前提に伴って確かめるためです。
+変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を `Precondition: <設定> changed since approval` と示します。`<設定>` は、関連リソースそのものの変化なら `environments.<名前>`、`actions.variables.<名前>`、`rulesets.<名前>` のように関連リソースの名前で示します。変更前提で比べる設定（変える設定のほか、`Side effect:` で示した設定、副作用として示さなかったが計画時の値のままであることを確かめる設定、更新が値を変える前提として必要な設定）は、設定ごとの設計の各文書の「論理的な設定変更と更新操作」が定めます。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。承認した先行する変更による予定どおりの変化は示しません。複数の設定が変わっていた場合は、一つだけ示します。関連リソースそのものと、その中の設定やそれに属する関連リソースが両方変わっていれば、関連リソースそのものを示します。それ以外では、論理的な設定変更が変える設定を優先します。
 
 `failed` には、更新操作の失敗、更新操作の成否不明、成功応答後の期待状態の確認失敗、成功応答後の期待状態との不一致、成功応答後の変更対象外の設定の予期しない変化のいずれに当たるかを添えて示します。先行操作の成功後に後続操作を開始できなかった場合は、その旨を示します。変更対象外の設定の予期しない変化では、観測した変化を示しますが、reco に起因するとは断定しません。変更対象外の設定には、同じリポジトリのほかの管理設定も含みます。更新要求の応答を確認できない場合は成否不明とし、その後の再観測で期待状態が一致しても、更新操作の成否が判明したことにはならず、`updated` に変更しません。この再観測で変更対象外の設定の変化を観測した場合も、更新操作の結果と分けて示します。成否不明になった原因は、理由の行では区別せず、エラーとして示します。
 
@@ -716,11 +742,11 @@ Repositories updated: 1
 
 期待値と比べる設定が GitHub の取得条件により観測不能だったことによる確認失敗は、宣言した設定が効いていないことを示す `not in effect` に、理由を括弧で添えて示します。理由は、Actions が無効なら `GitHub Actions is disabled`、Actions 許可ポリシーが `selected` でなければ `allowed_actions is not "selected"`、リポジトリが公開なら `the repository is public`、リポジトリが非公開なら `the repository is private` です。値そのものは確認できていないため、`does not match` とは示しません。`not confirmed` とも示さないのは、reco が確認に失敗したと読ませず、利用者が確かめるべきリポジトリの状態を示すためです。
 
-Environment の方式の変更、担当者の集合の変更、Environment Variable の作成・値の変更・削除のあとに Environment が存在しなかった場合は、`not in effect (the environment does not exist)` と示します。宣言した方式や変数を持つ Environment がないためです。作成のあとに Environment が存在しなかった場合は、存在しないことを確認できているため、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Environment が現れ、存在を確かめられなかった場合は、reco が確認できなかったことを示す `not confirmed (environment existence unknown)` と示します。
+Environment の方式の変更、担当者の集合の変更、自己承認の禁止の変更、デプロイの待機時間の変更、Environment Variable の作成・値の変更・削除のあとに Environment が存在しなかった場合は、`not in effect (the environment does not exist)` と示します。宣言した方式や変数を持つ Environment がないためです。作成のあとに Environment が存在しなかった場合は、存在しないことを確認できているため、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Environment が現れ、存在を確かめられなかった場合は、reco が確認できなかったことを示す `not confirmed (environment existence unknown)` と示します。
 
 Ruleset の作成か値の変更のあとに Ruleset が存在しなかった場合は、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Ruleset が現れ、存在を確かめられなかった場合は `not confirmed (ruleset existence unknown)` と示します。作成か値の変更をした Ruleset が reco の解釈しない部分を含んでいた場合は `not confirmed (the ruleset contains parts that reco does not interpret)` と示します。存在は確かめているものの、値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。解釈しなかったものは変更結果に並べず、`plan` が示します。
 
-変更対象外の設定は、管理設定と同じ形の名前で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.prevent_self_review`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` がデプロイを待たせる分数で、その保護ルールがなければ `none` です。`required_reviewers` は担当者の集合で、4章と同じ表記（担当者がいなければ `[]`、担当者のいない保護ルールは `[] (protection rule without reviewers)`）で GitHub が返した順に示し、login は添えません。login だけの変化は予期しない変化に数えないためです。`prevent_self_review` と `can_admins_bypass` は `true` か `false` です。`prevent_self_review` は、更新の前後のどちらにも `required_reviewers` の保護ルールがあるときだけ比べます。保護ルールの有無の変化は `required_reviewers` の変化として示されるためです。担当者の集合を変える変更のあとは、同じ Environment のデプロイ元制限の方式も `environments.<名前>.deployment_branch_policy` の名前で比べ、値は方式の名前（`all`、`protected_branches`、`selected`）で示します。個別パターンは別の更新エンドポイントの設定のため、比べず、値にも含めません。複数が変わっていれば、`deployment_branch_policy`、`wait_timer`、`required_reviewers`、`prevent_self_review`、`can_admins_bypass` の順に1行ずつ示します。
+変更対象外の設定は、管理設定と同じ形の名前で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.prevent_self_review`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` が4章と同じ表記（`30 minutes`、保護ルールがなければ `0 minutes`）です。`required_reviewers` は担当者の集合で、4章と同じ表記（担当者がいなければ `[]`、担当者のいない保護ルールは `[] (protection rule without reviewers)`）で GitHub が返した順に示し、login は添えません。login だけの変化は予期しない変化に数えないためです。`prevent_self_review` と `can_admins_bypass` は `true` か `false` で、`prevent_self_review` は `required_reviewers` の保護ルールがなければ `false` です。Environment の `PUT` の更新操作（方式、担当者の集合、自己承認の禁止、デプロイの待機時間の変更）のあとは、同じ Environment のデプロイ元制限の方式も `environments.<名前>.deployment_branch_policy` の名前で比べ、値は方式の名前（`all`、`protected_branches`、`selected`）で示します。個別パターンは別の更新エンドポイントの設定のため、比べず、値にも含めません。複数が変わっていれば、`deployment_branch_policy`、`wait_timer`、`required_reviewers`、`prevent_self_review`、`can_admins_bypass` の順に1行ずつ示します。
 
 設定グループの省略できる項目を省略した宣言で、その項目が更新の前後で変わった場合は、`<管理設定の名前>.<項目のキー>` の名前で示します。OIDC トークンの subject のカスタマイズの `use_immutable_subject` は、`actions.oidc_subject.use_immutable_subject` と示し、値は `true` か `false` です。
 
@@ -949,7 +975,7 @@ Applying changes...
     environments.staging.deployment_branch_policy: failed
       Update request: succeeded
       Desired state: matches
-      Other settings: environments.staging.wait_timer changed 30 -> none (cause not determined)
+      Other settings: environments.staging.wait_timer changed 30 minutes -> 0 minutes (cause not determined)
 
 Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
@@ -1062,7 +1088,7 @@ repositories:
     # rulesets: none
 ```
 
-表示するのは、設定宣言に書ける管理設定と関連リソースに限ります。Environment の保護設定（`wait_timer`、`prevent_self_review`、`can_admins_bypass`）のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
+表示するのは、設定宣言に書ける管理設定と関連リソースに限ります。Environment の `can_admins_bypass` のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
 
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
@@ -1168,11 +1194,15 @@ Environment は `environments` に示します。Environment ごとに、`name` 
             - type: tag
               name: "v*"
         required_reviewers: []
+        prevent_self_review: false
+        wait_timer: 0 # minutes
         # variables: none
       - name: "staging"
         deployment_branch_policy:
           mode: protected_branches
         required_reviewers: []
+        prevent_self_review: false
+        wait_timer: 0 # minutes
         # variables: none
 ```
 
@@ -1188,15 +1218,21 @@ Environment ごとに、`deployment_branch_policy` のあとに、担当者を `
             id: 583231 # octocat
           - type: User
             id: 1234567 # hubot
+        prevent_self_review: true
+        wait_timer: 30 # minutes
         # variables: none
       - name: "staging"
         deployment_branch_policy:
           mode: all
         required_reviewers: []
+        prevent_self_review: false
+        wait_timer: 0 # minutes
         # variables: none
 ```
 
-Environment ごとに、`required_reviewers` のあとに、その Environment の Environment Variables を `variables` に示します。名前と値の示し方は Repository Variables と同じです。Repository Variable と同じ名前の変数や、別の Environment と同じ名前の変数も、それぞれの Environment の下に示します。一つもないときは `# variables: none` と示します。
+Environment ごとに、`required_reviewers` のあとに、自己承認の禁止を `prevent_self_review` に `true` か `false` で、デプロイの待機時間を `wait_timer` に分の整数で示します。`wait_timer` の行末には、YAML のコメントで単位を `# minutes` と示します。単位は設定宣言に書けず、値の位置に書くと設定宣言の整数として読めないためです。`required_reviewers` の保護ルールがなければ `prevent_self_review: false` と、待機時間の保護ルールがなければ `wait_timer: 0` と示します。照合と同じ読み方で、設定宣言として読んだときに観測した状態と一致するためです。担当者のいない保護ルールが残っているときも、その保護ルールが持つ `prevent_self_review` を示します。
+
+Environment ごとに、`wait_timer` のあとに、その Environment の Environment Variables を `variables` に示します。名前と値の示し方は Repository Variables と同じです。Repository Variable と同じ名前の変数や、別の Environment と同じ名前の変数も、それぞれの Environment の下に示します。一つもないときは `# variables: none` と示します。
 
 ```text
     environments:
@@ -1204,6 +1240,8 @@ Environment ごとに、`required_reviewers` のあとに、その Environment �
         deployment_branch_policy:
           mode: protected_branches
         required_reviewers: []
+        prevent_self_review: false
+        wait_timer: 0 # minutes
         variables:
           - name: "REGION"
             value: "ap-northeast-1"
@@ -1211,6 +1249,8 @@ Environment ごとに、`required_reviewers` のあとに、その Environment �
         deployment_branch_policy:
           mode: all
         required_reviewers: []
+        prevent_self_review: false
+        wait_timer: 0 # minutes
         # variables: none
 ```
 

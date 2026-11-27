@@ -41,6 +41,12 @@ func (s ReviewerSet) Reviewers() []Reviewer {
 	return slices.Clone(s.reviewers)
 }
 
+// HasNoReviewers は、s が担当者のいない状態 (保護ルールがないか、担当者のいない保護ルール) かを返す。
+// GitHub はどちらの状態でも prevent_self_review の更新を拒むため、二つを区別せずに判定する。
+func (s ReviewerSet) HasNoReviewers() bool {
+	return len(s.reviewers) == 0
+}
+
 // IsRuleWithoutReviewers は、s が担当者のいない保護ルールかを返す。
 func (s ReviewerSet) IsRuleWithoutReviewers() bool {
 	return s.ruleWithoutReviewers

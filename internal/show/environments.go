@@ -23,6 +23,7 @@ func writeEnvironments(b *strings.Builder, e github.Environments) {
 			writeDeploymentPatterns(b, policy.Patterns)
 		}
 		writeRequiredReviewers(b, setting.ReviewerSetOfRule(environment.Protection.RequiredReviewers))
+		writePreventSelfReviewAndWaitTimer(b, environment.Protection)
 		writeEnvironmentVariables(b, *environment.Variables)
 	}
 }
@@ -47,6 +48,12 @@ func writeRequiredReviewers(b *strings.Builder, reviewers setting.ReviewerSet) {
 		}
 		b.WriteString("\n")
 	}
+}
+
+// writePreventSelfReviewAndWaitTimer は自己承認の禁止とデプロイの待機時間を書く。
+// 単位は設定宣言に書けず、値の位置に書くと整数として読めないため、行末のコメントで示す。
+func writePreventSelfReviewAndWaitTimer(b *strings.Builder, protection setting.EnvironmentProtection) {
+	fmt.Fprintf(b, "        prevent_self_review: %t\n        wait_timer: %d # minutes\n", protection.PreventSelfReview(), protection.WaitTimer)
 }
 
 // writeDeploymentPatterns は個別パターンを、空なら [] で、そうでなければ type と name の要素で書く。

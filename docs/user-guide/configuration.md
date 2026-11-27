@@ -325,7 +325,7 @@ repositories:
 | `patterns[].type` | `branch` / `tag`（必須） | パターンがブランチとタグのどちらに一致するか |
 | `patterns[].name` | 文字列（必須） | ブランチ名またはタグ名のパターン（`release/*` など） |
 
-- 書いた名前の Environment がなければ、reco は作成する。`deployment_branch_policy`、`required_reviewers`、`variables` のどれも省いた Environment は、あるかどうかだけを管理する
+- 書いた名前の Environment がなければ、reco は作成する。`deployment_branch_policy`、`required_reviewers`、`prevent_self_review`、`wait_timer`、`variables` のどれも省いた Environment は、あるかどうかだけを管理する
 - 書かなかった Environment は、変更も削除もしない。設定ファイルから名前を消しても、GitHub 上の Environment は残る
 - 名前は、半角の英数字、空白、記号だけで書く。大文字と小文字だけが違う名前は同じ Environment とみなすため、同じリポジトリに並べられない
 - 保護ルールのあるブランチが一つもなければ、`protected_branches` でもすべてのブランチからデプロイできる（GitHub の仕様）。ブランチの保護ルールは reco では作れない
@@ -361,11 +361,39 @@ repositories:
 - `id` は利用者の login ではなく、数値の ID を書く。`reco show` が、いまの担当者を `id` と、行末のコメントの login で示すので、そこから書き写せる。まだ担当者でない利用者の ID は、GitHub CLI の `gh api users/<login> --jq .id` で調べられる
 - 担当者をすべて、順不同で書く。GitHub 上にいて書かなかった担当者は、外す差分として `plan` に出る
 - 担当者がいないことは `required_reviewers: []` と書く。`required_reviewers` の行を消すと、担当者を管理しなくなる
-- 担当者をすべて外すと、GitHub は画面の「Prevent self-review」（自分が起動したデプロイを自分で承認できなくする設定）も一緒に消す。有効だったなら、`plan` の `Side effect:` の行に、`prevent_self_review` が消えることが出る。あとで担当者を設定し直しても、「Prevent self-review」は無効のままになる
+- 担当者をすべて外すと、GitHub は画面の「Prevent self-review」（下の `prevent_self_review`）も一緒に無効にする。担当者を外す前に「Prevent self-review」が有効で、設定ファイルに `prevent_self_review` を書いていなければ、`plan` の `Side effect:` の行に、`prevent_self_review` が失われることが出る。あとで担当者を設定し直しても、「Prevent self-review」は無効のままになる
 - GitHub 上にない Environment に担当者を書くと、reco は Environment を作ってから担当者を設定する。担当者の設定が失敗すると、担当者のいない Environment が残る
 - `type: Team` は書けない。個人アカウントが所有するリポジトリでは GitHub が Team を担当者として受け付けず、Organization が所有するリポジトリでの動作を reco は確かめていない
 - この設定が止めるのは、その Environment を使うデプロイジョブであり、Ruleset の `pull_request` のような Pull Request のレビューとは別の設定である
-- 担当者が1人だけのとき、「Prevent self-review」を有効にすると、その人が起動したデプロイを承認できる担当者がいなくなる
+
+### 自己承認の禁止とデプロイの待機時間
+
+`environments` の各 Environment には、`prevent_self_review`（GitHub の画面の「Prevent self-review」）と `wait_timer`（画面の「Wait timer」）を書けます。
+
+```yaml
+repositories:
+  - name: example/project-a
+    environments:
+      - name: production
+        required_reviewers:
+          - type: User
+            id: 583231
+          - type: User
+            id: 1234567
+        prevent_self_review: true
+        wait_timer: 30
+```
+
+| キー | 値 | 意味 |
+|---|---|---|
+| `prevent_self_review` | `true` / `false` | デプロイジョブを起動した利用者が、担当者であっても自分のデプロイジョブを承認できないようにするか |
+| `wait_timer` | `0` から `43199` までの整数 | デプロイジョブが起動されてから実行されるまで待たせる時間（分）。`0` は待たせないこと |
+
+- 担当者が1人だけのとき、`prevent_self_review: true` にすると、その人が起動したデプロイジョブを承認できる担当者がいなくなる
+- GitHub が `prevent_self_review` の変更を受け付けるのは、担当者がいる Environment だけである。`required_reviewers: []` と `prevent_self_review: true` は一緒に書けない。`required_reviewers` を書かずに `prevent_self_review` を書き、GitHub 上に担当者がいないまま値を変える必要があるとき（承認の設定のない Environment に `true` を書いた場合や、担当者が1人もいない承認の設定に残る `true` を `false` にする場合）は、`plan` に `Applicability: not applicable` と `Plan cannot be applied.` が出る
+- `required_reviewers: []` と `prevent_self_review: false` を一緒に書くと、担当者を外す変更だけで「Prevent self-review」も無効になる。`plan` には `prevent_self_review` の変更として出て、`Side effect:` の行は出ない
+- 承認の設定（画面の「Required reviewers」）がない Environment の `prevent_self_review` は `false`、待機時間のない Environment の `wait_timer` は `0` と比べる。担当者が1人もいない承認の設定が GitHub 上に残っているとき（`reco show` が `# required_reviewers: no reviewers ...` と示す）は、その設定が持つ `prevent_self_review` の値と比べる
+- 非公開リポジトリでは、料金プランによって待機時間を設定できない（公式資料は GitHub Free、Pro、Team を挙げる）。GitHub Free の非公開リポジトリでは、`wait_timer` を変える `apply` は、`0` にする変更も含めて `422` で失敗する
 
 ### Environment Variables
 

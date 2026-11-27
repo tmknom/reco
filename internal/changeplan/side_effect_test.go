@@ -226,14 +226,32 @@ func TestSideEffects_RequiredReviewers(t *testing.T) {
 	none := setting.ReviewerSetValue(setting.ReviewerSetOf(nil))
 	one := setting.ReviewerSetValue(setting.ReviewerSetOf([]setting.Reviewer{octocat}))
 	preventSelfReviewDiscarded := []SideEffect{{Kind: SideEffectPreventSelfReviewDiscarded, Observed: github.Observed(setting.BoolValue(true))}}
+	preventSelfReviewUnaffected := []SettingExpectedUnaffected{{Key: setting.EnvironmentPreventSelfReview, Observed: github.Observed(setting.BoolValue(false))}}
+	declaredPreventSelfReview := func(t *testing.T, environment string) SettingPlan {
+		return SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: mustEnvironmentName(t, environment)}, Desired: setting.BoolValue(false)}
+	}
 	cases := []struct {
-		name     string
-		observed github.ObservationResult
-		desired  setting.Value
-		want     []SideEffect
+		name           string
+		observed       github.ObservationResult
+		desired        setting.Value
+		others         func(t *testing.T) []SettingPlan
+		want           []SideEffect
+		wantUnaffected []SettingExpectedUnaffected
 	}{
 		{name: "removing every reviewer discards prevent_self_review that is true", observed: observation(protection(true, octocat)), desired: none, want: preventSelfReviewDiscarded},
-		{name: "removing every reviewer has no side effect when prevent_self_review is false", observed: observation(protection(false, octocat)), desired: none},
+		{
+			name: "removing every reviewer expects prevent_self_review that is false to stay unaffected", observed: observation(protection(false, octocat)), desired: none,
+			wantUnaffected: preventSelfReviewUnaffected,
+		},
+		{
+			name: "removing every reviewer with prevent_self_review declared in the same environment is a change of a managed setting, not a side effect", observed: observation(protection(true, octocat)), desired: none,
+			others: func(t *testing.T) []SettingPlan { return []SettingPlan{declaredPreventSelfReview(t, "Production")} },
+		},
+		{
+			name: "prevent_self_review declared in another environment does not stop the side effect", observed: observation(protection(true, octocat)), desired: none,
+			others: func(t *testing.T) []SettingPlan { return []SettingPlan{declaredPreventSelfReview(t, "staging")} },
+			want:   preventSelfReviewDiscarded,
+		},
 		{name: "keeping a reviewer has no side effect when prevent_self_review is true", observed: observation(protection(true, octocat)), desired: one},
 		{name: "emptying a protection rule without reviewers discards prevent_self_review that is true", observed: observation(protection(true)), desired: none, want: preventSelfReviewDiscarded},
 		{name: "environment without a protection rule matches no reviewers and has no side effect", observed: observation(nil), desired: none},
@@ -242,9 +260,13 @@ func TestSideEffects_RequiredReviewers(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			plan := newSettingPlan(unit, tc.observed.Setting(unit), tc.desired)
-			got, unaffected := sideEffects(plan, tc.observed, []SettingPlan{plan})
-			if !reflect.DeepEqual(got, tc.want) || unaffected != nil {
-				t.Errorf("sideEffects() = %+v, %+v, want %+v, nil", got, unaffected, tc.want)
+			settings := []SettingPlan{plan}
+			if tc.others != nil {
+				settings = append(settings, tc.others(t)...)
+			}
+			got, unaffected := sideEffects(plan, tc.observed, settings)
+			if !reflect.DeepEqual(got, tc.want) || !reflect.DeepEqual(unaffected, tc.wantUnaffected) {
+				t.Errorf("sideEffects() = %+v, %+v, want %+v, %+v", got, unaffected, tc.want, tc.wantUnaffected)
 			}
 		})
 	}
@@ -272,7 +294,7 @@ func TestSideEffectKind_ObservedSetting(t *testing.T) {
 		{kind: SideEffectSelectedActionsDiscarded, want: setting.SelectedActions, wantOK: true},
 		{kind: SideEffectSecurityUpdatesDisabled, want: setting.DependabotSecurityUpdates, wantOK: true},
 		{kind: SideEffectPushProtectionDisabled, want: setting.RepositoryPushProtection, wantOK: true},
-		{kind: SideEffectPreventSelfReviewDiscarded, wantOK: false},
+		{kind: SideEffectPreventSelfReviewDiscarded, want: setting.EnvironmentPreventSelfReview, wantOK: true},
 		{kind: SideEffectDependencyGraphEnabled, wantOK: false},
 		{kind: SideEffectDependencyGraphDisabled, wantOK: false},
 	}

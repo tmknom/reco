@@ -2,10 +2,10 @@ package setting
 
 import "strconv"
 
-// EnvironmentProtection は、Environment の保護設定の値。reco は観測し、担当者の集合 (ReviewerSet) のほかは宣言を受け付けない。
+// EnvironmentProtection は、Environment の保護設定の値。reco は観測し、can_admins_bypass のほかは宣言を受け付ける。
 type EnvironmentProtection struct {
-	// WaitTimer はデプロイを待たせる分数。wait_timer の保護ルールがなければ nil。
-	WaitTimer *int
+	// WaitTimer はデプロイを待たせる分数。wait_timer の保護ルールがなければ 0。
+	WaitTimer int
 	// RequiredReviewers は、required_reviewers の保護ルールがなければ nil。
 	RequiredReviewers *RequiredReviewers
 	CanAdminsBypass   bool
@@ -56,17 +56,19 @@ func ParseReviewerType(s string) (ReviewerType, bool) {
 // 項目は名前で示し、管理の単位に当たる項目はその形を Key にも持つ。
 func (p EnvironmentProtection) DifferencesTo(other EnvironmentProtection) []EnvironmentProtectionDifference {
 	var differences []EnvironmentProtectionDifference
-	if !p.sameWaitTimer(other) {
-		differences = append(differences, EnvironmentProtectionDifference{Item: "wait_timer", Before: p.waitTimerString(), After: other.waitTimerString()})
+	if p.WaitTimer != other.WaitTimer {
+		differences = append(differences, EnvironmentProtectionDifference{
+			Item: EnvironmentWaitTimer.DeclaredKeyName(), Before: WaitTimerValue(p.WaitTimer).String(), After: WaitTimerValue(other.WaitTimer).String(), Key: EnvironmentWaitTimer,
+		})
 	}
 	if !p.sameReviewerSet(other) {
 		differences = append(differences, EnvironmentProtectionDifference{
 			Item: EnvironmentRequiredReviewers.DeclaredKeyName(), Before: p.reviewerSetString(), After: other.reviewerSetString(), Key: EnvironmentRequiredReviewers,
 		})
 	}
-	if !p.samePreventSelfReview(other) {
+	if p.PreventSelfReview() != other.PreventSelfReview() {
 		differences = append(differences, EnvironmentProtectionDifference{
-			Item: "prevent_self_review", Before: strconv.FormatBool(p.RequiredReviewers.PreventSelfReview), After: strconv.FormatBool(other.RequiredReviewers.PreventSelfReview),
+			Item: EnvironmentPreventSelfReview.DeclaredKeyName(), Before: strconv.FormatBool(p.PreventSelfReview()), After: strconv.FormatBool(other.PreventSelfReview()), Key: EnvironmentPreventSelfReview,
 		})
 	}
 	if p.CanAdminsBypass != other.CanAdminsBypass {
@@ -77,26 +79,16 @@ func (p EnvironmentProtection) DifferencesTo(other EnvironmentProtection) []Envi
 	return differences
 }
 
-// sameWaitTimer は、wait_timer の有無と分数が同じかを返す。
-func (p EnvironmentProtection) sameWaitTimer(other EnvironmentProtection) bool {
-	if p.WaitTimer == nil || other.WaitTimer == nil {
-		return p.WaitTimer == other.WaitTimer
-	}
-	return *p.WaitTimer == *other.WaitTimer
+// PreventSelfReview は、自己承認の禁止の値を返す。
+// required_reviewers の保護ルールがなければ偽とする。GitHub は担当者をすべて外すと保護ルールごと値をなくし、担当者だけを設定し直すと偽で作るため。
+// 担当者のいない保護ルールは、偽とみなさず保護ルールが持つ値を返す。GitHub はこの保護ルールに真を残し、担当者を戻すと真のまま戻すため。
+func (p EnvironmentProtection) PreventSelfReview() bool {
+	return p.RequiredReviewers != nil && p.RequiredReviewers.PreventSelfReview
 }
 
 // sameReviewerSet は、担当者の集合が同じかを返す。管理設定の照合と同じく ReviewerSet の判定で比べ、保護ルールがないことは空集合として扱う。
 func (p EnvironmentProtection) sameReviewerSet(other EnvironmentProtection) bool {
 	return p.reviewerSet().equal(other.reviewerSet())
-}
-
-// samePreventSelfReview は、自己承認の禁止が同じかを返す。両方に保護ルールがあるときだけ比べる。
-// 保護ルールの有無の変化は担当者の集合の変化として示すため、ここでは差としない。
-func (p EnvironmentProtection) samePreventSelfReview(other EnvironmentProtection) bool {
-	if p.RequiredReviewers == nil || other.RequiredReviewers == nil {
-		return true
-	}
-	return p.RequiredReviewers.PreventSelfReview == other.RequiredReviewers.PreventSelfReview
 }
 
 // reviewerSet は、担当者の集合を login を持たない値で返す。CLI 仕様が変更対象外の設定に login を示さないため。
@@ -105,14 +97,6 @@ func (p EnvironmentProtection) reviewerSet() ReviewerSet {
 		return ReviewerSetOfRule(nil)
 	}
 	return ReviewerSetOfRule(&RequiredReviewers{Reviewers: p.RequiredReviewers.Reviewers})
-}
-
-// waitTimerString は、wait_timer を表示の表記で返す。保護ルールがなければ none。
-func (p EnvironmentProtection) waitTimerString() string {
-	if p.WaitTimer == nil {
-		return "none"
-	}
-	return strconv.Itoa(*p.WaitTimer)
 }
 
 // reviewerSetString は、required_reviewers の値を ReviewerSet と同じ表記で返す。保護ルールがなければ空集合の表記。

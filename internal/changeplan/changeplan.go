@@ -52,7 +52,6 @@ type SettingPlan struct {
 	// SideEffects は変更予定に伴う副作用。副作用がなければ nil。
 	SideEffects []SideEffect
 	// SettingsExpectedUnaffected は、副作用を示さなかった設定。変更前提にだけ含める。当たらなければ nil。
-	// 設定の識別を持たない Environment の自己承認の禁止は並べず、requiredReviewersChangeOf が担当者の集合の基準に伴わせる。
 	SettingsExpectedUnaffected []SettingExpectedUnaffected
 	// ResumedSettings は、Actions を有効にする変更予定に添える再開する設定。当たらなければ nil。
 	ResumedSettings []setting.Key

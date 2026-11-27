@@ -76,6 +76,8 @@ repositories:
         required_reviewers:
           - type: User
             id: 583231 # octocat
+        prevent_self_review: false
+        wait_timer: 30 # minutes
         variables:
           - name: "REGION"
             value: "ap-northeast-1"
@@ -101,6 +103,7 @@ repositories:
 | `id: 583231 # octocat` | Environment のデプロイを承認できる担当者の ID が583231で、その利用者の login が `octocat`。設定ファイルには `id` の数値を書く |
 | `required_reviewers: []` | Environment にデプロイを承認できる担当者がいない |
 | `# required_reviewers: no reviewers (a protection rule without reviewers remains)` | 担当者が1人もいない承認の設定が GitHub 上に残っている。設定ファイルに `required_reviewers: []` と書くと、この設定をなくす差分が `plan` に出る |
+| `wait_timer: 30 # minutes` | Environment のデプロイを30分待たせる。設定ファイルには待機時間を分で書く。待機時間がなければ `wait_timer: 0 # minutes` |
 | `days: 90 # maximum allowed: 400` | 保持日数は90日で、このリポジトリで設定できる上限は400日 |
 | `dependabot_security_updates: true # paused by GitHub (still enabled)` | Dependabot security updates は有効だが、GitHub が一時停止している。設定ファイルでは `true` と書いたのと同じ |
 | `# secret_scanning: unavailable (the repository is private)` / `# secret_scanning_push_protection: unavailable (the repository is private)` / `# private_vulnerability_reporting: unavailable (the repository is private)` | 非公開リポジトリのため、Secret scanning、リポジトリの push protection、Private vulnerability reporting の値を読み取れない |
@@ -108,7 +111,7 @@ repositories:
 | `# rulesets: unavailable (the repository is private)` | 非公開リポジトリのため、Ruleset を読み取れない |
 | `# unavailable (the ruleset contains parts that reco does not interpret)` | 直前の `- name:` の行の Ruleset が、reco の解釈しない部分（ルール型、キー、パラメータなど）を含む。続くコメントの行が、解釈しなかったものを1行に一つずつ示す |
 
-Environment の `wait_timer`、`prevent_self_review`、`can_admins_bypass` のように、設定ファイルに書けない設定は、上のコメントで示す設定を除いて表示しません。
+Environment の `can_admins_bypass` のように、設定ファイルに書けない設定は、上のコメントで示す設定を除いて表示しません。
 
 Ruleset は、ルールを迂回できる主体（`bypass_actors`）も含めて `rulesets` に表示します。Ruleset を持つ公開リポジトリの `show` は、Ruleset への書き込みのアクセスを持たないトークンではエラーになります。GitHub が、そのトークンには迂回できる主体を返さないためです。
 
@@ -144,6 +147,8 @@ Repositories checked: 1
 | `environments.<名前>.deployment_branch_policy:` の下に、今の値の行と `-> <書いた値>` の行 | 今の値か書いた値が `selected` の `deployment_branch_policy`。読み方は1行の形と同じで、`selected` のパターンは `selected [branch "main"]` のように角括弧の中に並ぶ |
 | `environments.<名前>.required_reviewers:` の下に、今の値の行と `-> <書いた値>` の行 | Environment のデプロイを承認できる担当者が、設定ファイルと違う。担当者は `[User 583231 (octocat), User 1234567]` のように並び、括弧の中は GitHub 上の担当者の login。設定ファイルに書いた利用者のうち、まだ担当者でない利用者は ID だけが出る。`[]` は担当者がいないこと、`[] (protection rule without reviewers)` は担当者が1人もいない承認の設定が GitHub 上に残っていること。承認すると `->` の行の担当者に変える |
 | `Reviewers to remove:`、`Reviewers to add:` | 外れる担当者（GitHub 上にいて設定ファイルにない利用者）と、加わる担当者（設定ファイルにあって GitHub 上でまだ担当者でない利用者） |
+| `environments.<名前>.prevent_self_review: false -> true` | デプロイジョブを起動した利用者が自分のジョブを承認できないようにするかが、設定ファイルと違う。担当者の承認の設定がない Environment の今の値は `false` |
+| `environments.<名前>.wait_timer: 0 minutes -> 30 minutes` | デプロイを待たせる時間（分）が、設定ファイルと違う。待機時間のない Environment の今の値は `0 minutes` |
 | `Applicability: not applicable (<理由>)` | 安全に変えるための条件が成り立たないため、reco はすぐ上の変更をしない。括弧の中は、何が成り立っていないかと、設定ファイルの直し方 |
 | `Patterns to remove:`、`Patterns to add:` | Environment のデプロイを許可するパターンのうち、設定ファイルにないものと、GitHub 上にないもの |
 | `rulesets.<名前>: absent -> present` と、その下の `target:` から `rules:` までの行 | 設定ファイルに書いた Ruleset が GitHub 上にない。下の行は、作成する Ruleset の内容 |

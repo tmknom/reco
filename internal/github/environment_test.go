@@ -120,7 +120,7 @@ func TestObserveRepositoryEnvironments(t *testing.T) {
 					IDs:      map[setting.DeploymentPattern]DeploymentPatternID{mainBranch: 10, mainTag: 11, versionTag: 12},
 				},
 				Protection: setting.EnvironmentProtection{
-					WaitTimer:         &wait,
+					WaitTimer:         15,
 					RequiredReviewers: &setting.RequiredReviewers{PreventSelfReview: true, Reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 7}}},
 					CanAdminsBypass:   true,
 				},

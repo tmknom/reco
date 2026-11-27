@@ -121,6 +121,10 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 		return o.Environments.Lookup(unit.Environment).DeploymentBranchPolicy()
 	case setting.EnvironmentRequiredReviewers:
 		return o.Environments.Lookup(unit.Environment).RequiredReviewers()
+	case setting.EnvironmentPreventSelfReview:
+		return o.Environments.Lookup(unit.Environment).PreventSelfReview()
+	case setting.EnvironmentWaitTimer:
+		return o.Environments.Lookup(unit.Environment).WaitTimer()
 	case setting.EnvironmentVariable:
 		return o.Environments.Lookup(unit.Environment).Variable(unit.Variable)
 	case setting.EnvironmentResource:

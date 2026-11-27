@@ -232,25 +232,48 @@ func creationWithPatternsChange(t *testing.T, name string, desired setting.Deplo
 }
 
 // reviewersChange は、計画時に approved と観測した、宣言の名前 name の Environment の担当者の集合を desired にする論理的な設定変更。
-// 基準を手で写さず、changeplan が導いたものを使う。担当者をすべて外し、approved の自己承認の禁止が真なら、変更計画の生成と同じく副作用を添える。
+// 基準を手で写さず、changeplan が導いたものを使う。担当者をすべて外すときは、変更計画の生成と同じく、approved の自己承認の禁止が真なら副作用を、
+// 偽なら副作用を示さなかった設定を添える。副作用を導く規則は changeplan の非公開の関数のため、ここで組み立てる。
 func reviewersChange(t *testing.T, name string, approved github.Environment, desired setting.ReviewerSet) changeplan.LogicalChange {
 	t.Helper()
 	environment := mustEnvironmentName(t, name)
-	observed := github.Environments{Existing: []github.Environment{approved}}.Lookup(environment)
+	observed := github.ObservationResult{Environments: environments(approved)}
 	reviewers := changeplan.SettingPlan{
-		Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: environment}, Observed: observed.RequiredReviewers(),
+		Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: environment}, Observed: observed.Environments.Lookup(environment).RequiredReviewers(),
 		Desired: setting.ReviewerSetValue(desired), Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 	}
-	if rule := approved.Protection.RequiredReviewers; len(desired.Reviewers()) == 0 && rule != nil && rule.PreventSelfReview {
-		reviewers.SideEffects = []changeplan.SideEffect{{Kind: changeplan.SideEffectPreventSelfReviewDiscarded, Observed: github.Observed(setting.BoolValue(true))}}
+	if desired.HasNoReviewers() {
+		preventSelfReview := observed.Setting(setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: environment})
+		if value, _ := preventSelfReview.Value(); value.Bool() {
+			reviewers.SideEffects = []changeplan.SideEffect{{Kind: changeplan.SideEffectPreventSelfReviewDiscarded, Observed: preventSelfReview}}
+		} else {
+			reviewers.SettingsExpectedUnaffected = []changeplan.SettingExpectedUnaffected{{Key: setting.EnvironmentPreventSelfReview, Observed: preventSelfReview}}
+		}
 	}
+	return onlyLogicalChange(t, newRepositoryPlan(t, observedExistencePlan(environment, approved), reviewers))
+}
+
+// preventSelfReviewOrWaitTimerChange は、計画時に approved と観測した、宣言の名前 name の Environment の、自己承認の禁止かデプロイの待機時間 key を desired にする論理的な設定変更。
+// 基準を手で写さず、changeplan が導いたものを使う。
+func preventSelfReviewOrWaitTimerChange(t *testing.T, name string, approved github.Environment, key setting.Key, desired setting.Value) changeplan.LogicalChange {
+	t.Helper()
+	environment := mustEnvironmentName(t, name)
+	unit := setting.Unit{Key: key, Environment: environment}
 	return onlyLogicalChange(t, newRepositoryPlan(t,
+		observedExistencePlan(environment, approved),
 		changeplan.SettingPlan{
-			Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, Observed: observed.Existence(), Desired: setting.Present(),
-			EnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID), Result: changeplan.Match,
+			Unit: unit, Observed: github.ObservationResult{Environments: environments(approved)}.Setting(unit),
+			Desired: desired, Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 		},
-		reviewers,
 	))
+}
+
+// observedExistencePlan は、計画時に approved と観測した、宣言の名前 environment の Environment が存在することの一致した計画。
+func observedExistencePlan(environment setting.EnvironmentName, approved github.Environment) changeplan.SettingPlan {
+	return changeplan.SettingPlan{
+		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, Observed: github.Observed(setting.Present()), Desired: setting.Present(),
+		EnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID), Result: changeplan.Match,
+	}
 }
 
 // reviewerSet は、種類が利用者で ID が ids の担当者を並べた担当者の集合。ids が空なら空集合になる。

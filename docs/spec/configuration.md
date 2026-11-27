@@ -41,6 +41,8 @@ repositories:
         required_reviewers:
           - type: User
             id: 1234567
+        prevent_self_review: true
+        wait_timer: 30
         variables:
           - name: REGION
             value: ap-northeast-1
@@ -447,13 +449,15 @@ actions:
 | `environments[].required_reviewers` | シーケンス | 担当者の要素を0件以上6件以下（`[]` 可。11.3節） | その Environment を使うデプロイジョブの実行を承認できる担当者の一覧の全体 | 担当者の集合 |
 | `environments[].required_reviewers[].type` | 文字列 | `User` | 担当者の種類 | 担当者の集合 |
 | `environments[].required_reviewers[].id` | 整数 | 正の整数 | 担当者とする利用者の GitHub 上の ID | 担当者の集合 |
+| `environments[].prevent_self_review` | 真偽値 | `true` / `false`（11.5節） | デプロイジョブを起動した利用者が、自分のジョブを承認できないこと | 自己承認の禁止 |
+| `environments[].wait_timer` | 整数 | `0` 以上 `43199` 以下（11.5節） | ジョブが起動されてから実行されるまでデプロイを待たせる分数 | デプロイの待機時間 |
 | `environments[].variables` | シーケンス | 変数の宣言を1件以上（11.4節） | その Environment で管理する Environment Variable の一覧 | なし（要素ごとに定まる） |
 | `environments[].variables[].name` | 文字列 | 10.1節の名前 | その Environment で管理する Environment Variable の名前 | Environment Variable（関連リソースそのもの） |
 | `environments[].variables[].value` | 文字列 | 10.2節の値。`state` を書かない要素では必須 | その Environment に、その名前の Environment Variable が存在し、その値であること | Environment Variable（関連リソースそのもの） |
 | `environments[].variables[].state` | 文字列 | `absent` | その Environment に、その名前の Environment Variable が存在しないこと | Environment Variable（関連リソースそのもの） |
 
 - **`name` は必須である**：`name` のない要素は、`deployment_branch_policy` や `variables` を書いていても入力不正として拒否する。どの Environment の宣言かを補わない
-- **要素は存在の宣言を兼ねる**：`environments[]` に書いた名前の Environment が存在しなければ、作成を計画する。`variables` だけを書いた Environment も同じである。`deployment_branch_policy`、`required_reviewers`、`variables` を省略した Environment は、存在だけを管理する
+- **要素は存在の宣言を兼ねる**：`environments[]` に書いた名前の Environment が存在しなければ、作成を計画する。`variables` だけを書いた Environment も同じである。`deployment_branch_policy`、`required_reviewers`、`prevent_self_review`、`wait_timer`、`variables` を省略した Environment は、存在だけを管理する
 - **存在しないことの宣言は受け付けない**：reco は Environment を削除しない
 - **`deployment_branch_policy` は `mode` を必須とする**：`all` はすべてのブランチとタグからのデプロイを許可する。`protected_branches` は、保護ルールのあるブランチからのデプロイだけを許可する。`protected_branches` の宣言は、Branch protection を管理することを意味しない。`selected` は、`patterns` に書いたパターンに一致するブランチとタグからのデプロイだけを許可する
 
@@ -570,6 +574,33 @@ environments:
 | `alignment` | `FR-005` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub Actions 変数 API 仕様](../research/actions-variables.md) | Repository File |
+
+### 11.5 自己承認の禁止とデプロイの待機時間
+
+`prevent_self_review` は、デプロイジョブを起動した利用者が、担当者であっても自分のジョブを承認できなくする設定です。`wait_timer` は、ジョブが起動されてから実行されるまで待たせる分数です。どちらも、省略すれば管理対象外です。
+
+```yaml
+environments:
+  - name: production
+    required_reviewers:
+      - type: User
+        id: 1234567
+    prevent_self_review: true
+    wait_timer: 30
+```
+
+- **`prevent_self_review` は真偽値である**：表記は 14.1節の真偽値の規則に従う
+- **`required_reviewers: []` と `prevent_self_review: true` は同時に宣言できない**：GitHub は、担当者がいない Environment に `prevent_self_review` を保存しないためである（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 4.1）。`required_reviewers: []` と `prevent_self_review: false` は宣言できる
+- **`required_reviewers` を省略した `prevent_self_review` も受け付ける**：GitHub 上の担当者で適用できるかが決まるため、入力検証では確かめない。適用できない場合の扱いは [Environments の設計](../design/settings/environments.md) の適用可能性と副作用に従う
+- **`wait_timer` は `0` から `43199` までの整数である**：`0` は待機時間がないことの宣言である。表記は 14.1節の整数の規則に従い、小数（`2.0` を含む）と負の値は受け付けない。`43200` 以上を受け付けないのは、GitHub の公式資料は 43,200 までとするが、`43200` を送ると GitHub が成功を応答して値を変えなかったためである（同 4.1）
+- **誤りを示す順**：`prevent_self_review` と `wait_timer` の値の誤りを、組み合わせの誤りより先に示す。`required_reviewers` の誤りがあれば、組み合わせより先にそれを示す
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `alignment` | `FR-001` | Functional Requirement |
+| `alignment` | `FR-005` | Functional Requirement |
+| `alignment` | `INV-001` | Invariant |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
 
 ## 12. Security
 
@@ -785,6 +816,10 @@ rules:
 | `required_reviewers: [{type: Team, id: 42}]` | エラー（`Team` は受け付けない） |
 | `required_reviewers: [{type: User, id: "1234567"}]` | エラー（引用符付き） |
 | `required_reviewers` に7件の要素 | エラー（6件まで） |
+| `required_reviewers: []` と `prevent_self_review: true` を同時に宣言 | エラー（担当者がいない Environment に `prevent_self_review` を設定できない） |
+| `wait_timer: 0` | 有効（待機時間がないことの宣言） |
+| `wait_timer: 43200` | エラー（`43199` まで） |
+| `wait_timer: 2.0` | エラー（小数） |
 | `value: "1.27"`（変数の値） | 有効 |
 | `value: 1.27`（変数の値） | エラー（文字列ではない。`"1.27"` を直し方として示す） |
 | `value: ""`（変数の値） | エラー（空文字列） |

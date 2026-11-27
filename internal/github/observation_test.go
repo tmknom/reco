@@ -715,6 +715,50 @@ func TestObservationResult_SettingOfEnvironmentRequiredReviewers(t *testing.T) {
 	}
 }
 
+// 一方の Key を他方のメソッドへ届ける取り違えを検出するため、自己承認の禁止と待機時間の値が互いに異なる二つの Environment を並べ、
+// ASCII の大小が違う宣言の名前で引く。
+//
+//trace:checks FR-004
+func TestObservationResult_SettingOfPreventSelfReviewAndWaitTimer(t *testing.T) {
+	observed := ObservationResult{Environments: &Environments{Existing: []Environment{
+		{ID: 1, Name: "staging", Protection: setting.EnvironmentProtection{WaitTimer: 5}},
+		{ID: 2, Name: "Production", Protection: setting.EnvironmentProtection{WaitTimer: 30, RequiredReviewers: &setting.RequiredReviewers{PreventSelfReview: true, Reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}}}}},
+	}}}
+	cases := []struct {
+		name string
+		unit setting.Unit
+		want SettingObservation[setting.Value]
+	}{
+		{
+			name: "prevent_self_review of a declared name differing in ASCII case returns that environment's value",
+			unit: setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: mustEnvironmentName(t, "production")},
+			want: Observed(setting.BoolValue(true)),
+		},
+		{
+			name: "prevent_self_review of an absent environment returns UnavailableEnvironmentAbsent",
+			unit: setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: mustEnvironmentName(t, "qa")},
+			want: Unavailable[setting.Value](UnavailableEnvironmentAbsent),
+		},
+		{
+			name: "wait_timer of a declared name differing in ASCII case returns that environment's minutes",
+			unit: setting.Unit{Key: setting.EnvironmentWaitTimer, Environment: mustEnvironmentName(t, "production")},
+			want: Observed(setting.WaitTimerValue(30)),
+		},
+		{
+			name: "wait_timer of an absent environment returns UnavailableEnvironmentAbsent",
+			unit: setting.Unit{Key: setting.EnvironmentWaitTimer, Environment: mustEnvironmentName(t, "qa")},
+			want: Unavailable[setting.Value](UnavailableEnvironmentAbsent),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := observed.Setting(tc.unit); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Setting(%v) = %+v, want %+v", tc.unit.String(), got, tc.want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-004
 func TestObservationResult_SettingOfRepositoryVariable(t *testing.T) {
 	observed := ObservationResult{RepositoryVariables: &Variables{Existing: []Variable{{Name: "GO_VERSION", Value: "1.27"}}}}

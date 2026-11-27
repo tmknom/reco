@@ -22,7 +22,7 @@ GitHub 上に実際に存在する設定を現在状態（Current State）、rec
 |---|---|
 | リポジトリ一般設定 | Pull Request の Auto-merge の許可、マージ後のブランチ自動削除の許可、マージ方式（squash merge、merge commit、rebase merge）の許可、Pull Request のブランチの更新を常に提案するか |
 | GitHub Actions 設定 | GitHub Actions の有効・無効、Actions と再利用可能なワークフローの実行許可範囲および個別の許可条件、Actions のコミット SHA への固定の必須化、ワークフローの `GITHUB_TOKEN` の既定権限、GitHub Actions による Pull Request の作成と承認の許可、リポジトリ外のワークフローからの Actions と再利用可能なワークフローへのアクセス、公開リポジトリで Fork からの Pull Request のワークフローに承認を求める範囲、非公開リポジトリで Fork からの Pull Request のワークフローを実行するかとその条件、チェック、ワークフローの実行、コミットのステータス、Artifact、Log を保持する日数、ワークフローの OIDC トークンの subject クレームのカスタマイズ、Repository Variable の存在と値 |
-| Environments | Environment の存在、Environment へデプロイできるブランチとタグの制限の方式と、個別に指定するブランチとタグのパターン、Environment を使うデプロイジョブの実行を承認できる担当者、Environment Variable の存在と値 |
+| Environments | Environment の存在、Environment へデプロイできるブランチとタグの制限の方式と、個別に指定するブランチとタグのパターン、Environment を使うデプロイジョブの実行を承認できる担当者、デプロイジョブを起動した利用者による承認の禁止、デプロイの待機時間、Environment Variable の存在と値 |
 | セキュリティ設定 | Dependabot alerts の有効・無効、Dependabot security updates の有効・無効、Secret scanning の有効・無効、リポジトリの push protection の有効・無効、Private vulnerability reporting の有効・無効 |
 | Rulesets | Ruleset の存在と、対象のブランチ、強制の状態、Bypass、ルール（Pull Request の必須化、ブランチの削除の制限） |
 
@@ -34,7 +34,7 @@ GitHub 上に実際に存在する設定を現在状態（Current State）、rec
 
 | 関連リソース | 作成 | 管理する値・設定 | 存在しないことの宣言による削除 |
 |---|---|---|---|
-| Environment | 行う | デプロイできるブランチとタグの制限の方式と、個別に指定するブランチとタグのパターン、デプロイジョブの実行を承認できる担当者 | 行わない |
+| Environment | 行う | デプロイできるブランチとタグの制限の方式と、個別に指定するブランチとタグのパターン、デプロイジョブの実行を承認できる担当者、起動した利用者による承認の禁止、デプロイの待機時間 | 行わない |
 | Repository Variable | 行う | 値 | 行う |
 | Environment Variable | 行う | 値 | 行う |
 | Ruleset | 行う | 対象のブランチ、強制の状態、Bypass、ルールの全体 | 行わない |

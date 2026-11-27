@@ -2135,6 +2135,22 @@ func TestSendUpdate(t *testing.T) {
 			}},
 		},
 		{
+			name:      "prevent_self_review update is sent to the observed spelling with only prevent_self_review",
+			operation: preventSelfReviewOrWaitTimerChange(t, "staging", withReviewers(staging, false, 1), setting.EnvironmentPreventSelfReview, setting.BoolValue(true)).Operations[0],
+			observed:  github.ObservationResult{Environments: environments(withReviewers(staging, false, 1))},
+			response: okEnvironment(githubtest.EnvironmentBody{ID: 7, Name: "Staging", RequiredReviewers: &githubtest.RequiredReviewersBody{
+				PreventSelfReview: true, Reviewers: []githubtest.ReviewerBody{{Type: "User", ID: 1}},
+			}}),
+			want: githubtest.Request{Method: http.MethodPut, Path: "/repos/owner/repo/environments/Staging", Body: map[string]any{"prevent_self_review": true}},
+		},
+		{
+			name:      "wait_timer update is sent to the observed spelling with only the minutes",
+			operation: preventSelfReviewOrWaitTimerChange(t, "staging", staging, setting.EnvironmentWaitTimer, setting.WaitTimerValue(30)).Operations[0],
+			observed:  github.ObservationResult{Environments: environments(staging)},
+			response:  okEnvironment(githubtest.EnvironmentBody{ID: 7, Name: "Staging", WaitTimer: new(30)}),
+			want:      githubtest.Request{Method: http.MethodPut, Path: "/repos/owner/repo/environments/Staging", Body: map[string]any{"wait_timer": float64(30)}},
+		},
+		{
 			name:      "pattern addition is sent to the observed spelling with only the type and the name",
 			operation: toSelectedPatterns.Operations[1],
 			observed:  github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", nil))},
@@ -2330,7 +2346,7 @@ func TestExecuteChange_Environments(t *testing.T) {
 	stagingProtected := githubtest.EnvironmentBody{ID: 7, Name: "staging", DeploymentBranchPolicy: protectedBranchesBody(), WaitTimer: &waitTimer}
 	creation := creationWithModeChange(t, "production", setting.DeploymentBranchPolicyProtectedBranches)
 	approvedStaging := observedEnvironment(7, "staging", setting.DeploymentBranchPolicyAll)
-	approvedStaging.Protection.WaitTimer = &waitTimer
+	approvedStaging.Protection.WaitTimer = waitTimer
 	stagingMode := modeChange(t, "staging", approvedStaging, setting.DeploymentBranchPolicyProtectedBranches)
 	cases := []struct {
 		name         string
@@ -2406,7 +2422,7 @@ func TestExecuteChange_Environments(t *testing.T) {
 			wantPrecond:  preconditionHolds,
 			wantUpdate:   github.UpdateSucceeded,
 			wantDesired:  desiredStateMatches,
-			wantOutside:  []unexpectedOutsideChange{{Setting: "environments.staging.wait_timer", Before: "30", After: "none"}},
+			wantOutside:  []unexpectedOutsideChange{{Setting: "environments.staging.wait_timer", Before: "30 minutes", After: "0 minutes"}},
 			wantResult:   failed,
 		},
 		{
@@ -2863,7 +2879,7 @@ func TestExecuteChange_DeploymentPatterns(t *testing.T) {
 			wantDelays:     []time.Duration{time.Second},
 			wantOperations: []operationRecord{succeeded, succeeded},
 			wantDesired:    desiredStateMatches,
-			wantOutside:    []unexpectedOutsideChange{{Setting: "environments.production.wait_timer", Before: "30", After: "10"}},
+			wantOutside:    []unexpectedOutsideChange{{Setting: "environments.production.wait_timer", Before: "30 minutes", After: "10 minutes"}},
 			wantResult:     failed,
 		},
 	}

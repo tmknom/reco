@@ -38,6 +38,10 @@ func (u Unit) String() string {
 		return "environments." + u.Environment.String() + ".deployment_branch_policy"
 	case EnvironmentRequiredReviewers:
 		return "environments." + u.Environment.String() + ".required_reviewers"
+	case EnvironmentPreventSelfReview:
+		return "environments." + u.Environment.String() + ".prevent_self_review"
+	case EnvironmentWaitTimer:
+		return "environments." + u.Environment.String() + ".wait_timer"
 	case EnvironmentVariable:
 		return "environments." + u.Environment.String() + ".variables." + u.Variable.String()
 	case RepositoryVariable:

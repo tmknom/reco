@@ -41,6 +41,26 @@ func (c *Client) UpdateEnvironmentRequiredReviewers(ctx context.Context, referen
 	return c.putEnvironment(ctx, "set required reviewers of environment", reference, name, encodeRequiredReviewers(reviewers))
 }
 
+// UpdateEnvironmentPreventSelfReview は、reference のリポジトリの name の Environment の自己承認の禁止を prevent にする PUT を一度だけ送る。再送はしない。
+// 本文は prevent_self_review だけで、ほかの保護設定とデプロイ元制限を併送しない。prevent_self_review だけの PUT が、ほかの保護設定、方式、個別パターンを保つことを実際の動作で確かめている。
+// false も省略せずに送る。省略すると本文が空になり、禁止を解く要求にならないため。
+func (c *Client) UpdateEnvironmentPreventSelfReview(ctx context.Context, reference repository.Reference, name string, prevent bool) (UpdateOutcome, error) {
+	body := mustMarshalJSON(struct {
+		PreventSelfReview bool `json:"prevent_self_review"`
+	}{prevent})
+	return c.putEnvironment(ctx, "set prevent_self_review of environment", reference, name, body)
+}
+
+// UpdateEnvironmentWaitTimer は、reference のリポジトリの name の Environment のデプロイの待機時間を minutes 分にする PUT を一度だけ送る。再送はしない。
+// 本文は wait_timer だけで、ほかの保護設定とデプロイ元制限を併送しない。wait_timer だけの PUT が、ほかの保護設定、方式、個別パターンを保つことを実際の動作で確かめている。
+// 0 も省略せずに送る。GitHub は 0 を保存せず、待機時間の保護ルールをなくすため。
+func (c *Client) UpdateEnvironmentWaitTimer(ctx context.Context, reference repository.Reference, name string, minutes int) (UpdateOutcome, error) {
+	body := mustMarshalJSON(struct {
+		WaitTimer int `json:"wait_timer"`
+	}{minutes})
+	return c.putEnvironment(ctx, "set wait_timer of environment", reference, name, body)
+}
+
 // AddDeploymentPattern は、reference のリポジトリの environment の Environment に、個別パターン pattern を加える POST を一度だけ送る。再送はしない。
 // 応答の扱いはアーキテクチャ設計の HTTP 通信とリダイレクトの信頼境界と、Environments の設計の更新方式に従う。
 // 呼び出し元は宛先にできる名前だけを渡すため、URL を組めないときは不変条件の破れとして panic する。

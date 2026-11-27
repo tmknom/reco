@@ -53,23 +53,41 @@ func (o EnvironmentObservation) Existence() SettingObservation[setting.Value] {
 // DeploymentBranchPolicy は、その Environment の中のデプロイ元制限の設定の観測結果を返す。
 // 存在しない Environment の中の設定は値として読めないため、存在しないことを理由にした観測不能にする。
 func (o EnvironmentObservation) DeploymentBranchPolicy() SettingObservation[setting.Value] {
-	switch o.state {
-	case resourceExisting:
-		return Observed(setting.DeploymentBranchPolicyValue(o.environment.DeploymentBranchPolicy()))
-	case resourceAbsent:
-		return Unavailable[setting.Value](UnavailableEnvironmentAbsent)
-	default:
-		// 観測不能のときは同じ理由にし、ゼロ値は UnavailableReason の panic で検出する
-		return Unavailable[setting.Value](o.UnavailableReason())
-	}
+	return o.observeSetting(func(e Environment) setting.Value {
+		return setting.DeploymentBranchPolicyValue(e.DeploymentBranchPolicy())
+	})
 }
 
 // RequiredReviewers は、その Environment の中の担当者の集合の設定の観測結果を返す。
 // 存在しない Environment の中の設定は値として読めないため、存在しないことを理由にした観測不能にする。
 func (o EnvironmentObservation) RequiredReviewers() SettingObservation[setting.Value] {
+	return o.observeSetting(func(e Environment) setting.Value {
+		return setting.ReviewerSetValue(setting.ReviewerSetOfRule(e.Protection.RequiredReviewers))
+	})
+}
+
+// PreventSelfReview は、その Environment の中の自己承認の禁止の設定の観測結果を返す。保護ルールがなければ false の観測値になる。
+// 存在しない Environment の中の設定は値として読めないため、存在しないことを理由にした観測不能にする。
+func (o EnvironmentObservation) PreventSelfReview() SettingObservation[setting.Value] {
+	return o.observeSetting(func(e Environment) setting.Value {
+		return setting.BoolValue(e.Protection.PreventSelfReview())
+	})
+}
+
+// WaitTimer は、その Environment の中のデプロイの待機時間の設定の観測結果を返す。保護ルールがなければ 0 分の観測値になる。
+// 存在しない Environment の中の設定は値として読めないため、存在しないことを理由にした観測不能にする。
+func (o EnvironmentObservation) WaitTimer() SettingObservation[setting.Value] {
+	return o.observeSetting(func(e Environment) setting.Value {
+		return setting.WaitTimerValue(e.Protection.WaitTimer)
+	})
+}
+
+// observeSetting は、存在する Environment の設定の値を read で取り出して観測値にする。
+// 存在しなければ存在しないことを理由にした観測不能に、観測不能なら同じ理由にする。
+func (o EnvironmentObservation) observeSetting(read func(Environment) setting.Value) SettingObservation[setting.Value] {
 	switch o.state {
 	case resourceExisting:
-		return Observed(setting.ReviewerSetValue(setting.ReviewerSetOfRule(o.environment.Protection.RequiredReviewers)))
+		return Observed(read(o.environment))
 	case resourceAbsent:
 		return Unavailable[setting.Value](UnavailableEnvironmentAbsent)
 	default:

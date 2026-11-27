@@ -44,6 +44,8 @@ const (
 	// NotApplicableAboveMaximumAllowed は、期待値が、計画時に観測した設定できる値の範囲の上限を超えること。上限を伴う。
 	// この理由を持つのは保持日数の変更予定だけである。
 	NotApplicableAboveMaximumAllowed
+	// NotApplicableNoRequiredReviewers は、更新時点に Environment の担当者がいない状態になる見込みで、自己承認の禁止を送らずには期待値にならないこと。
+	NotApplicableNoRequiredReviewers
 )
 
 // Applicable は、適用可能の判断を返す。
@@ -117,6 +119,9 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 		if left := mergeMethodsLeftDisabled(s, settings, observed); len(left) > 0 {
 			return NotApplicable(NotApplicableNoMergeMethodEnabled, left...)
 		}
+		if s.Unit.Key == setting.EnvironmentPreventSelfReview && !preventSelfReviewReachable(s, settings, observed) {
+			return NotApplicable(NotApplicableNoRequiredReviewers)
+		}
 		return Applicable()
 	case NotComparable:
 	}
@@ -132,6 +137,9 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 		// Environment の宣言は、方式や変数だけを書いても存在の宣言を兼ねるため、同じ変更計画が先にその Environment を作成する
 		if !createsEnvironment(settings, s.Unit.Environment) {
 			panic(fmt.Sprintf("changeplan: %s is not comparable without the creation of its environment", s.Unit.String()))
+		}
+		if s.Unit.Key == setting.EnvironmentPreventSelfReview && !preventSelfReviewReachable(s, settings, observed) {
+			return NotApplicable(NotApplicableNoRequiredReviewers)
 		}
 		return Applicable()
 	case s.Unit.Key == setting.AllowedActions && reason == github.UnavailableActionsDisabled:
@@ -161,6 +169,29 @@ func expectsActionsEnabled(settings []SettingPlan) bool {
 	return slices.ContainsFunc(settings, func(s SettingPlan) bool {
 		return s.Unit.Key == setting.AllowedActions || (s.Unit.Key == setting.ActionsEnabled && s.Desired.Bool())
 	})
+}
+
+// preventSelfReviewReachable は、自己承認の禁止の変更予定 s の期待値に、更新時点で到達できる見込みかを返す。
+// GitHub は担当者のいない状態への prevent_self_review の更新を、値によらず拒むため、更新時点に担当者がいれば到達でき、
+// いなければ、担当者をすべて外す変更か作成が送らずに偽にする場合に限って到達できる (Environments の設計の適用可能性と副作用)。
+// 更新時点の担当者は、担当者の集合を宣言していればその期待値、宣言していなければ計画時の観測値で決める。宣言していない担当者の集合は reco が変えないため。
+// 呼び出し元は、s を存在する Environment の不一致か、同じ変更計画が作成する Environment の比較不能に限る。
+// 担当者の集合を観測できないのは後者だけで、そのときの担当者は作成直後の値 (担当者がいない) とする。
+func preventSelfReviewReachable(s SettingPlan, settings []SettingPlan, observed github.ObservationResult) bool {
+	reviewersUnit := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: s.Unit.Environment}
+	reviewers, declared := RepositoryPlan{Settings: settings}.settingPlanOf(reviewersUnit)
+	atUpdate := reviewers.Desired
+	if !declared {
+		current, ok := observed.Setting(reviewersUnit).Value()
+		if !ok {
+			current = createdValueOf(setting.EnvironmentRequiredReviewers)
+		}
+		atUpdate = current
+	}
+	if !atUpdate.ReviewerSet().HasNoReviewers() {
+		return true
+	}
+	return !s.Desired.Bool() && (declared || createsEnvironment(settings, s.Unit.Environment))
 }
 
 // createsEnvironment は、管理設定の計画 settings が、name の Environment の作成を含むかを返す。

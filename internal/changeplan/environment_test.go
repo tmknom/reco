@@ -63,3 +63,13 @@ func TestDeploymentBranchPolicyOperationsIgnoresPatternsOfAnotherMode(t *testing
 		t.Errorf("deploymentBranchPolicyOperations() = %+v, want one mode update sending protected_branches", got)
 	}
 }
+
+// TestCreatedValueOfPanicsOnSettingOtherThanProtectionRule は、作成直後の値を持たない設定を不変条件の破れとすることを確かめる。
+func TestCreatedValueOfPanicsOnSettingOtherThanProtectionRule(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("createdValueOf() did not panic")
+		}
+	}()
+	createdValueOf(setting.EnvironmentDeploymentBranchPolicy)
+}
