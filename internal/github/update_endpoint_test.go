@@ -21,6 +21,18 @@ func TestUpdateEndpointObservedSettings(t *testing.T) {
 		}
 	})
 
+	// 一覧に足し忘れると、マージメッセージを変えない更新の前後でマージメッセージが変わっても検出できない。
+	t.Run("repository endpoint observes the general settings, the merge messages and the secret scanning settings", func(t *testing.T) {
+		want := []setting.Key{
+			setting.DeleteBranchOnMerge, setting.AllowAutoMerge, setting.AllowSquashMerge, setting.AllowMergeCommit, setting.AllowRebaseMerge, setting.AllowUpdateBranch,
+			setting.SquashMergeCommit, setting.MergeCommit,
+			setting.SecretScanningEnabled, setting.RepositoryPushProtection,
+		}
+		if got := RepositoryEndpoint.ObservedSettings(); !slices.Equal(got, want) {
+			t.Errorf("ObservedSettings() = %v, want %v", got, want)
+		}
+	})
+
 	// 更新エンドポイントごとに本文なしの要求を送るため、ほかの設定を観測に含めると、更新後に比べる設定が増えて保全の確認が崩れる。
 	t.Run("each enablement endpoint observes only its own setting", func(t *testing.T) {
 		cases := []struct {

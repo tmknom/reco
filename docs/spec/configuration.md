@@ -10,6 +10,9 @@ repositories:
     general:
       delete_branch_on_merge: true
       allow_auto_merge: true
+      squash_merge_commit:
+        title: PR_TITLE
+        message: PR_BODY
     actions:
       permissions:
         allowed_actions: selected
@@ -86,7 +89,7 @@ repositories:
 | `repositories` | シーケンス | 1件以上のリポジトリごとの宣言を含む |
 | `repositories[]` | マッピング | `name` と、少なくとも一つの管理設定を含む `general`、`actions`、`environments`、`security`、`rulesets` のいずれかを持つ |
 | `repositories[].name` | 文字列 | 必須。空でない `OWNER/REPO` 形式 |
-| `general`、`actions`、`permissions`、`selected_actions`、`workflow`、`access`、`fork_pull_requests`、`private_repositories`、`retention`、`oidc_subject`、`security` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions`、`workflow`、`access`、`fork_pull_requests`、`retention`、`oidc_subject`、`variables` のうち一つ以上を含めばよい |
+| `general`、`squash_merge_commit`、`merge_commit`、`actions`、`permissions`、`selected_actions`、`workflow`、`access`、`fork_pull_requests`、`private_repositories`、`retention`、`oidc_subject`、`security` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions`、`workflow`、`access`、`fork_pull_requests`、`retention`、`oidc_subject`、`variables` のうち一つ以上を含めばよい |
 | `variables`（`actions` 配下） | シーケンス | 使用する場合は、1件以上の変数の宣言を含む（10章） |
 | `environments` | シーケンス | 使用する場合は、1件以上の Environment の宣言を含む（11章） |
 | `required_reviewers`（`environments[]` 配下） | シーケンス | 0件以上6件以下の担当者の宣言を含む（11.3節） |
@@ -148,6 +151,10 @@ Environment、Variable、Ruleset のように、一つのリポジトリに名�
 | `general.allow_merge_commit` | 真偽値 | `true` / `false` | Pull Request を merge commit でマージすることを許可する設定 | 独立 |
 | `general.allow_rebase_merge` | 真偽値 | `true` / `false` | Pull Request の rebase merge を許可する設定 | 独立 |
 | `general.allow_update_branch` | 真偽値 | `true` / `false` | base branch より遅れた head branch の更新を、Pull Request で常に提案する設定 | 独立 |
+| `general.squash_merge_commit.title` | 文字列 | `PR_TITLE` / `COMMIT_OR_PR_TITLE`。必須 | squash merge のコミットメッセージの既定のタイトル | squash merge のマージメッセージ（設定グループ） |
+| `general.squash_merge_commit.message` | 文字列 | `PR_BODY` / `COMMIT_MESSAGES` / `BLANK`。必須 | squash merge のコミットメッセージの既定の本文 | squash merge のマージメッセージ（設定グループ） |
+| `general.merge_commit.title` | 文字列 | `PR_TITLE` / `MERGE_MESSAGE`。必須 | merge commit のコミットメッセージの既定のタイトル | merge commit のマージメッセージ（設定グループ） |
+| `general.merge_commit.message` | 文字列 | `PR_BODY` / `PR_TITLE` / `BLANK`。必須 | merge commit のコミットメッセージの既定の本文 | merge commit のマージメッセージ（設定グループ） |
 
 これらはリポジトリ単位の設定であり、変更しても個々の Pull Request のマージ、ブランチの更新、ブランチの直接削除は行いません。`allow_update_branch` は更新を提案するボタンを表示する設定で、reco も GitHub もブランチを自動では更新しません。
 
@@ -159,7 +166,22 @@ Environment、Variable、Ruleset のように、一つのリポジトリに名�
 | 1つ以上が `true` | 有効 |
 | 一部を省略し、宣言したものがすべて `false` | 有効 |
 
-3つとも `false` と宣言できないのは、GitHub が、3つのマージ方式をすべて無効にする更新を拒否し（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）、この状態を実現できないためです。この誤りは、`general` の6つの設定のいずれかの値が真偽値でない誤りより後に示します。一部を省略した宣言では、宣言していないマージ方式の値は宣言に含まれず、reco はそれを有効にしません。
+3つとも `false` と宣言できないのは、GitHub が、3つのマージ方式をすべて無効にする更新を拒否し（[GitHub リポジトリ API 仕様](../research/repositories.md) 4章）、この状態を実現できないためです。この誤りは、`general` のほかのどの誤りよりも後に示します。一部を省略した宣言では、宣言していないマージ方式の値は宣言に含まれず、reco はそれを有効にしません。
+
+`squash_merge_commit` と `merge_commit` は、squash merge と merge commit のそれぞれについて、コミットメッセージの既定のタイトルと本文を表します。この組を **マージメッセージ** と呼びます。どちらも `title` と `message` を一体で宣言する **一つの設定グループ** で、省略できる項目はありません。二つの設定グループは互いに独立で、片方だけを宣言できます。各値の意味は [GitHub リポジトリ API 仕様](../research/repositories.md) 4章のとおりです。rebase merge にはマージメッセージの設定がありません。
+
+GitHub が更新で受け付けるタイトルと本文の組み合わせは、次の7つだけです（同 4章）。reco は、これ以外の組み合わせを入力不正として拒否します。
+
+| 設定グループ | `title` | `message` |
+|---|---|---|
+| `squash_merge_commit` | `PR_TITLE` | `PR_BODY`、`BLANK`、`COMMIT_MESSAGES` |
+| `squash_merge_commit` | `COMMIT_OR_PR_TITLE` | `COMMIT_MESSAGES` |
+| `merge_commit` | `PR_TITLE` | `PR_BODY`、`BLANK` |
+| `merge_commit` | `MERGE_MESSAGE` | `PR_TITLE` |
+
+片方だけの宣言を受け付けないのは、GitHub が片方だけを送る更新を、保存されている値と同じ値でも拒否することがあるためです（同 4章）。受け付けない組み合わせを拒否するのは、承認のあとで GitHub が拒否する宣言を、入力の時点で止めるためです。設定グループの中の誤りは、キーの集合（欠けたキーと未知のキー）、`title` の値、`message` の値、組み合わせの順に、最初の一つを示します。`general` の中の誤りは、上の表の並びで最初の一つを示します。
+
+マージメッセージは、対応するマージ方式（`squash_merge_commit` には `allow_squash_merge`、`merge_commit` には `allow_merge_commit`）の宣言によらず宣言でき、`allow_squash_merge: false` と `squash_merge_commit` も同時に宣言できます。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -805,6 +827,9 @@ rules:
 | `allow_auto_merge: TRUE` | エラー（受理する表記ではない） |
 | `allow_auto_merge: !!bool "true"` | エラー（明示タグ） |
 | `allow_squash_merge: false`、`allow_merge_commit: false`、`allow_rebase_merge: false` を同時に宣言 | エラー（3つのマージ方式をすべて無効にできない） |
+| `squash_merge_commit: {title: PR_TITLE}` | エラー（`message` が必要） |
+| `squash_merge_commit: {title: COMMIT_OR_PR_TITLE, message: PR_BODY}` | エラー（GitHub が受け付けない組み合わせ） |
+| `squash_merge_commit: {title: pr_title, message: PR_BODY}` | エラー（定義された文字列に完全一致しない） |
 | `allowed_actions: "selected"` | 値の形式は有効。ただし `selected_actions` の3項目も必要 |
 | `access_level: organization` | エラー（宣言で受け付ける値ではない） |
 | `approval_policy: FIRST_TIME_CONTRIBUTORS` | エラー（定義された文字列に完全一致しない） |

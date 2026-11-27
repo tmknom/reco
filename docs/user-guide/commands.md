@@ -39,13 +39,12 @@ repositories:
       allow_merge_commit: true
       allow_rebase_merge: true
       allow_update_branch: false
-      # reco does not accept the merge commit message settings in the configuration file yet
-      # squash_merge_commit:
-      #   title: COMMIT_OR_PR_TITLE
-      #   message: COMMIT_MESSAGES
-      # merge_commit:
-      #   title: MERGE_MESSAGE
-      #   message: PR_TITLE
+      squash_merge_commit:
+        title: COMMIT_OR_PR_TITLE
+        message: COMMIT_MESSAGES
+      merge_commit:
+        title: MERGE_MESSAGE
+        message: PR_TITLE
       # reco does not accept the repository feature and web commit signoff settings in the configuration file yet
       # has_issues: true
       # has_projects: true
@@ -108,8 +107,8 @@ repositories:
 
 | 行 | 意味 |
 |---|---|
-| `# reco does not accept ... yet` の2行と、続くコメントの行 | マージメッセージ（squash merge と merge commit のコミットメッセージの既定のタイトルと本文）、Issues・Projects・Wiki を有効にするか、Web 画面からのコミットにサインオフを求めるかは、いまの reco では設定ファイルに書けない。今の値を確かめるためだけに表示している |
-| `# squash_merge_commit: unavailable (GitHub returned a value that reco does not know)` / `# merge_commit: unavailable (GitHub returned a value that reco does not know)` | GitHub が、reco のまだ知らない選び方（GitHub が新しく足したものなど）をマージメッセージに返したため、その方式のマージメッセージを読み取れない。値は GitHub の設定画面で確かめる。ほかの設定はいつもどおり使える |
+| `# reco does not accept ... yet` の行と、続くコメントの行 | Issues・Projects・Wiki を有効にするか、Web 画面からのコミットにサインオフを求めるかは、いまの reco では設定ファイルに書けない。今の値を確かめるためだけに表示している |
+| `# squash_merge_commit: unavailable (GitHub returned a value that reco does not know)` / `# merge_commit: unavailable (GitHub returned a value that reco does not know)` | GitHub が、reco のまだ知らない選び方（GitHub が新しく足したものなど）をマージ時のコミットメッセージに返したため、その方式のコミットメッセージを読み取れない。値は GitHub の設定画面で確かめる。ほかの設定はいつもどおり使える |
 | `# web_commit_signoff_required: unavailable (GitHub did not return the value)` | GitHub がこの設定の値を返さなかったため、読み取れない。ほかの設定はいつもどおり使える |
 | `# variables: none` | `actions` の下では Repository Variables が、Environment の下ではその Environment の変数（Environment Variables）が一つもない |
 | `# environments: none` | Environment が一つもない |
@@ -169,6 +168,7 @@ Repositories checked: 1
 | `rulesets.<名前>: absent -> present` と、その下の `target:` から `rules:` までの行 | 設定ファイルに書いた Ruleset が GitHub 上にない。下の行は、作成する Ruleset の内容 |
 | `rulesets.<名前>:` と、その下の変わる部分の行 | Ruleset の内容が設定ファイルと違う。`... to remove:` の行は、設定ファイルにないためなくなるパターン、迂回できる主体、ルール。`... to add:` の行は加わるもの。`enforcement: disabled -> active` や `Rule pull_request: ...` の行は、値が変わる項目。`conditions: {} -> ref_name` の行は、GitHub 上の Ruleset が対象のブランチの条件を持たないことを示す |
 | `actions.fork_pull_requests.private_repositories:` の下に、今の値の行と `-> <書いた値>` の行 | 非公開リポジトリの Fork からの Pull Request のワークフローの実行条件。4項目をまとめて一つの変更として示す |
+| `general.squash_merge_commit:` / `general.merge_commit:` の下に、今の値の行と `-> <書いた値>` の行 | マージ時のコミットメッセージの形。`title: PR_TITLE, message: PR_BODY` のように、タイトルと本文をまとめて一つの変更として示す。今の値が `(unknown value)` のときは、GitHub が reco のまだ知らない選び方を返している |
 | `actions.oidc_subject:` の下に、今の値の行と `-> <書いた値>` の行 | OIDC トークンの subject の形の設定。`use_default`、`include_claim_keys`、`use_immutable_subject` をまとめて一つの変更として示す。設定ファイルに `use_immutable_subject` を書いていなければ、どちらの行にも出ない |
 | `Note:` | すぐ上の変更が GitHub 上で何を意味するか。Fork からの Pull Request で起動したワークフローに、書き込み権限を持つ `GITHUB_TOKEN` が渡るようになること、Secrets と Variables が使えるようになることや、OIDC トークンの subject の形が変わり、外部のクラウドなどの信頼の条件と一致しなくなり得ることを示す。変更を止めるものではなく、承認の前に読むための行である |
 | `Side effect:` | この変更に伴って GitHub が消すか変える値 |
@@ -223,7 +223,7 @@ Repositories updated: 1
 
 リポジトリのすべての変更が完了すれば、結果はリポジトリの行の `updated` だけです。変更が2件以上あり、完了しなかったものがあるときは、リポジトリの行の下に変更ごとの結果が出ます。
 
-マージ方式（`general.allow_squash_merge`、`general.allow_merge_commit`、`general.allow_rebase_merge`）の変更は、変更計画では設定ごとに出ますが、`apply` は変えるマージ方式をまとめて1回の更新で GitHub に送ります。結果が変更ごとに出るときは、`general.allow_squash_merge + general.allow_merge_commit: updated` のように、まとめた設定を ` + ` でつないだ1行になります。
+マージ方式（`general.allow_squash_merge`、`general.allow_merge_commit`、`general.allow_rebase_merge`）の変更は、変更計画では設定ごとに出ますが、`apply` は変えるマージ方式をまとめて1回の更新で GitHub に送ります。結果が変更ごとに出るときは、`general.allow_squash_merge + general.allow_merge_commit: updated` のように、まとめた設定を ` + ` でつないだ1行になります。マージ方式を無効にする変更と、そのマージ方式のコミットメッセージ（`general.squash_merge_commit` か `general.merge_commit`）の変更があるときは、GitHub が無効のマージ方式のコミットメッセージを変えさせないため、コミットメッセージを先に変えます。
 
 Repository Variables と Environment Variables は、設定ファイルに書いた順に一つずつ作成するか、値を変えるか、削除します。Environment Variables は、その Environment の作成と `deployment_branch_policy` の変更のあとに変えます。変数の変更ごとの結果は、`actions.variables.<名前>: updated` や `environments.<Environment の名前>.variables.<名前>: not attempted` のように出ます。
 

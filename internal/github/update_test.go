@@ -39,6 +39,18 @@ func TestClientUpdate(t *testing.T) {
 			wantRequest: "PATCH /repos/owner/repo", wantBody: map[string]any{"allow_update_branch": true},
 		},
 		{
+			name: "squash_merge_commit sends only the squash merge title and message", key: setting.SquashMergeCommit,
+			value:       setting.SquashMergeCommitDefaultValue(setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitleCommitOrPRTitle, Message: setting.SquashMergeCommitMessageCommitMessages}),
+			wantRequest: "PATCH /repos/owner/repo",
+			wantBody:    map[string]any{"squash_merge_commit_title": "COMMIT_OR_PR_TITLE", "squash_merge_commit_message": "COMMIT_MESSAGES"},
+		},
+		{
+			name: "merge_commit sends only the merge commit title and message", key: setting.MergeCommit,
+			value:       setting.MergeCommitDefaultValue(setting.MergeCommitDefault{Title: setting.MergeCommitTitleMergeMessage, Message: setting.MergeCommitMessagePRTitle}),
+			wantRequest: "PATCH /repos/owner/repo",
+			wantBody:    map[string]any{"merge_commit_title": "MERGE_MESSAGE", "merge_commit_message": "PR_TITLE"},
+		},
+		{
 			name: "enabled sends only enabled", key: setting.ActionsEnabled, value: setting.BoolValue(false),
 			wantRequest: "PUT /repos/owner/repo/actions/permissions", wantBody: map[string]any{"enabled": false},
 		},

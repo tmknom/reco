@@ -3,6 +3,7 @@ package changeplandisplay
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/tmknom/reco/internal/changeplan"
@@ -58,7 +59,7 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 	return b.String()
 }
 
-// repositoryStateText は、比較不能な設定予定の現在に示す、値を返さない理由から分かるリポジトリの状態を返す。
+// repositoryStateText は、比較不能な設定予定の現在に示す、観測不能の理由から分かる状態を返す。
 // 未定義の理由は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func repositoryStateText(reason github.UnavailableReason) string {
 	switch reason {
@@ -76,8 +77,10 @@ func repositoryStateText(reason github.UnavailableReason) string {
 		return "(private repository)"
 	case github.UnavailableUninterpretedParts:
 		return "(uninterpreted parts)"
-	case github.UnavailableUnknownValue, github.UnavailableNotReturned:
-		// この理由を持つのは宣言を受け付けない設定だけで、比較不能な設定予定にならない。宣言を受け付けるときに文言を足す
+	case github.UnavailableUnknownValue:
+		return "(unknown value)"
+	case github.UnavailableNotReturned:
+		// この理由を持つのは宣言を受け付けない web_commit_signoff_required だけで、比較不能な設定予定にならない
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined unavailable reason %d", int(reason)))
 }
@@ -116,6 +119,13 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 		return fmt.Sprintf("%d days exceeds the maximum of %d days that GitHub allows for this repository; declare %s: %d or less", s.Desired.RetentionDays(), maximum, key.DeclaredKeyName(), maximum)
 	case changeplan.NotApplicableNoRequiredReviewers:
 		return "the environment would have no required reviewers, which GitHub requires to set prevent_self_review; declare required_reviewers with at least one reviewer or remove prevent_self_review"
+	case changeplan.NotApplicableMergeMethodRemainsDisabled:
+		if method, ok := key.CorrespondingMergeMethod(); ok {
+			methodName, name := method.DeclaredKeyName(), key.DeclaredKeyName()
+			return methodName + " is disabled, and GitHub does not accept changes to " + name + " while it is disabled; declare " + methodName + ": true or remove " + name
+		}
+	case changeplan.NotApplicableUnknownValue:
+		return "GitHub returned a value that reco does not know; remove " + key.DeclaredKeyName() + " from the configuration"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(s.Applicability.Reason())))
 }
@@ -202,9 +212,9 @@ func plannedChangeNoteText(note changeplan.PlannedChangeNote) string {
 }
 
 // showsValuesOnSeparateLines は、現在と期待値を別の行に書くかを返す。
-// 選択方式の Actions 許可条件、非公開リポジトリの Fork Pull Request ワークフローの実行条件、OIDC subject のカスタマイズ、個別パターンを並べる selected のデプロイ元制限、Environment の担当者の集合は値が長く、1 行では -> を見つけにくい。
+// 選択方式の Actions 許可条件、非公開リポジトリの Fork Pull Request ワークフローの実行条件、OIDC subject のカスタマイズ、マージメッセージ、個別パターンを並べる selected のデプロイ元制限、Environment の担当者の集合は値が長く、1 行では -> を見つけにくい。
 func showsValuesOnSeparateLines(s changeplan.SettingPlan) bool {
-	if s.Unit.Key == setting.SelectedActions || s.Unit.Key == setting.PrivateForkPullRequestWorkflows || s.Unit.Key == setting.OIDCSubject || s.Unit.Key == setting.EnvironmentRequiredReviewers {
+	if slices.Contains([]setting.Key{setting.SelectedActions, setting.PrivateForkPullRequestWorkflows, setting.OIDCSubject, setting.SquashMergeCommit, setting.MergeCommit, setting.EnvironmentRequiredReviewers}, s.Unit.Key) {
 		return true
 	}
 	if s.Unit.Key != setting.EnvironmentDeploymentBranchPolicy {

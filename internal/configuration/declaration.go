@@ -735,8 +735,9 @@ func (d document) privateForkPullRequestWorkflows(n *yaml.Node, path string) (se
 }
 
 // general は general の設定を読む。マージ方式の組み合わせの規則は 3 つの値で決まるため、すべての値の誤りを先に示す。
+// 設定グループ (squash_merge_commit、merge_commit) の誤りも、マージ方式の組み合わせの規則より先に示す。
 func (d document) general(n *yaml.Node, path string) (General, error) {
-	entries, err := d.mappingEntries(n, path, nil, []string{"delete_branch_on_merge", "allow_auto_merge", "allow_squash_merge", "allow_merge_commit", "allow_rebase_merge", "allow_update_branch"})
+	entries, err := d.mappingEntries(n, path, nil, []string{"delete_branch_on_merge", "allow_auto_merge", "allow_squash_merge", "allow_merge_commit", "allow_rebase_merge", "allow_update_branch", "squash_merge_commit", "merge_commit"})
 	if err != nil {
 		return General{}, err
 	}
@@ -762,10 +763,82 @@ func (d document) general(n *yaml.Node, path string) (General, error) {
 		}
 		*field.dst = &v
 	}
+	if value, ok := entries["squash_merge_commit"]; ok {
+		v, err := d.squashMergeCommit(value, path+".squash_merge_commit")
+		if err != nil {
+			return General{}, err
+		}
+		general.SquashMergeCommit = &v
+	}
+	if value, ok := entries["merge_commit"]; ok {
+		v, err := d.mergeCommit(value, path+".merge_commit")
+		if err != nil {
+			return General{}, err
+		}
+		general.MergeCommit = &v
+	}
 	if disablesEveryMergeMethod(general) {
 		return General{}, invalid(n, path, "allow_squash_merge, allow_merge_commit, and allow_rebase_merge cannot all be false; GitHub requires at least one merge method")
 	}
 	return general, nil
+}
+
+// squashMergeCommit は squash merge のコミットメッセージの設定グループを読む。必須のキーと誤りを示す順は YAML 設定仕様の General が定める。
+func (d document) squashMergeCommit(n *yaml.Node, path string) (setting.SquashMergeCommitDefault, error) {
+	entries, err := d.mappingEntries(n, path, []string{"title", "message"}, nil)
+	if err != nil {
+		return setting.SquashMergeCommitDefault{}, err
+	}
+	title, err := d.squashMergeCommitTitleValue(entries["title"], path+".title")
+	if err != nil {
+		return setting.SquashMergeCommitDefault{}, err
+	}
+	message, err := d.squashMergeCommitMessageValue(entries["message"], path+".message")
+	if err != nil {
+		return setting.SquashMergeCommitDefault{}, err
+	}
+	declared := setting.SquashMergeCommitDefault{Title: title, Message: message}
+	accepted := setting.AcceptedSquashMergeCommitDefaults()
+	if !slices.Contains(accepted, declared) {
+		combinations := make([]string, len(accepted))
+		for i, a := range accepted {
+			combinations[i] = fmt.Sprintf("%s with %s", a.Title, a.Message)
+		}
+		return setting.SquashMergeCommitDefault{}, invalid(n, path, "title %s cannot be declared with message %s; GitHub accepts %s", title, message, joinAlternatives(combinations))
+	}
+	return declared, nil
+}
+
+// mergeCommit は merge commit のコミットメッセージの設定グループを読む。規則は squashMergeCommit と同じで、値の列挙と受け付ける組み合わせが異なる。
+func (d document) mergeCommit(n *yaml.Node, path string) (setting.MergeCommitDefault, error) {
+	entries, err := d.mappingEntries(n, path, []string{"title", "message"}, nil)
+	if err != nil {
+		return setting.MergeCommitDefault{}, err
+	}
+	title, err := d.mergeCommitTitleValue(entries["title"], path+".title")
+	if err != nil {
+		return setting.MergeCommitDefault{}, err
+	}
+	message, err := d.mergeCommitMessageValue(entries["message"], path+".message")
+	if err != nil {
+		return setting.MergeCommitDefault{}, err
+	}
+	declared := setting.MergeCommitDefault{Title: title, Message: message}
+	accepted := setting.AcceptedMergeCommitDefaults()
+	if !slices.Contains(accepted, declared) {
+		combinations := make([]string, len(accepted))
+		for i, a := range accepted {
+			combinations[i] = fmt.Sprintf("%s with %s", a.Title, a.Message)
+		}
+		return setting.MergeCommitDefault{}, invalid(n, path, "title %s cannot be declared with message %s; GitHub accepts %s", title, message, joinAlternatives(combinations))
+	}
+	return declared, nil
+}
+
+// joinAlternatives は、3 つ以上の選択肢を「A, B, or C」の形に連ねる。
+func joinAlternatives(items []string) string {
+	last := len(items) - 1
+	return strings.Join(items[:last], ", ") + ", or " + items[last]
 }
 
 // disablesEveryMergeMethod は、3 つのマージ方式をすべて宣言し、すべて false としているかを返す。

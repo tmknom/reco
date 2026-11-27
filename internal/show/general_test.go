@@ -16,7 +16,7 @@ func TestWriteGeneral(t *testing.T) {
 		want    string
 	}{
 		{
-			name: "declarable settings are shown as values and the merge messages and repository features as comments",
+			name: "declarable settings including the merge messages are shown as values and the repository features as comments",
 			general: github.General{
 				DeleteBranchOnMerge: true, AllowAutoMerge: false, AllowSquashMerge: true, AllowMergeCommit: false, AllowRebaseMerge: true, AllowUpdateBranch: false,
 				SquashMergeCommitDefault: github.Observed(setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitleCommitOrPRTitle, Message: setting.SquashMergeCommitMessageCommitMessages}),
@@ -30,13 +30,12 @@ func TestWriteGeneral(t *testing.T) {
 				"      allow_merge_commit: false\n" +
 				"      allow_rebase_merge: true\n" +
 				"      allow_update_branch: false\n" +
-				"      # reco does not accept the merge commit message settings in the configuration file yet\n" +
-				"      # squash_merge_commit:\n" +
-				"      #   title: COMMIT_OR_PR_TITLE\n" +
-				"      #   message: COMMIT_MESSAGES\n" +
-				"      # merge_commit:\n" +
-				"      #   title: MERGE_MESSAGE\n" +
-				"      #   message: PR_TITLE\n" +
+				"      squash_merge_commit:\n" +
+				"        title: COMMIT_OR_PR_TITLE\n" +
+				"        message: COMMIT_MESSAGES\n" +
+				"      merge_commit:\n" +
+				"        title: MERGE_MESSAGE\n" +
+				"        message: PR_TITLE\n" +
 				"      # reco does not accept the repository feature and web commit signoff settings in the configuration file yet\n" +
 				"      # has_issues: true\n" +
 				"      # has_projects: false\n" +
@@ -58,13 +57,12 @@ func TestWriteGeneral(t *testing.T) {
 				"      allow_merge_commit: true\n" +
 				"      allow_rebase_merge: false\n" +
 				"      allow_update_branch: true\n" +
-				"      # reco does not accept the merge commit message settings in the configuration file yet\n" +
-				"      # squash_merge_commit:\n" +
-				"      #   title: PR_TITLE\n" +
-				"      #   message: PR_BODY\n" +
-				"      # merge_commit:\n" +
-				"      #   title: PR_TITLE\n" +
-				"      #   message: BLANK\n" +
+				"      squash_merge_commit:\n" +
+				"        title: PR_TITLE\n" +
+				"        message: PR_BODY\n" +
+				"      merge_commit:\n" +
+				"        title: PR_TITLE\n" +
+				"        message: BLANK\n" +
 				"      # reco does not accept the repository feature and web commit signoff settings in the configuration file yet\n" +
 				"      # has_issues: false\n" +
 				"      # has_projects: true\n" +
@@ -87,11 +85,10 @@ func TestWriteGeneral(t *testing.T) {
 				"      allow_merge_commit: false\n" +
 				"      allow_rebase_merge: false\n" +
 				"      allow_update_branch: false\n" +
-				"      # reco does not accept the merge commit message settings in the configuration file yet\n" +
 				"      # squash_merge_commit: unavailable (GitHub returned a value that reco does not know)\n" +
-				"      # merge_commit:\n" +
-				"      #   title: MERGE_MESSAGE\n" +
-				"      #   message: PR_TITLE\n" +
+				"      merge_commit:\n" +
+				"        title: MERGE_MESSAGE\n" +
+				"        message: PR_TITLE\n" +
 				"      # reco does not accept the repository feature and web commit signoff settings in the configuration file yet\n" +
 				"      # has_issues: true\n" +
 				"      # has_projects: true\n" +
@@ -113,10 +110,9 @@ func TestWriteGeneral(t *testing.T) {
 				"      allow_merge_commit: true\n" +
 				"      allow_rebase_merge: false\n" +
 				"      allow_update_branch: false\n" +
-				"      # reco does not accept the merge commit message settings in the configuration file yet\n" +
-				"      # squash_merge_commit:\n" +
-				"      #   title: PR_TITLE\n" +
-				"      #   message: BLANK\n" +
+				"      squash_merge_commit:\n" +
+				"        title: PR_TITLE\n" +
+				"        message: BLANK\n" +
 				"      # merge_commit: unavailable (GitHub returned a value that reco does not know)\n" +
 				"      # reco does not accept the repository feature and web commit signoff settings in the configuration file yet\n" +
 				"      # has_issues: false\n" +

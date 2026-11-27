@@ -11,12 +11,16 @@ import (
 type Key string
 
 const (
-	DeleteBranchOnMerge          Key = "general.delete_branch_on_merge"
-	AllowAutoMerge               Key = "general.allow_auto_merge"
-	AllowSquashMerge             Key = "general.allow_squash_merge"
-	AllowMergeCommit             Key = "general.allow_merge_commit"
-	AllowRebaseMerge             Key = "general.allow_rebase_merge"
-	AllowUpdateBranch            Key = "general.allow_update_branch"
+	DeleteBranchOnMerge Key = "general.delete_branch_on_merge"
+	AllowAutoMerge      Key = "general.allow_auto_merge"
+	AllowSquashMerge    Key = "general.allow_squash_merge"
+	AllowMergeCommit    Key = "general.allow_merge_commit"
+	AllowRebaseMerge    Key = "general.allow_rebase_merge"
+	AllowUpdateBranch   Key = "general.allow_update_branch"
+	// SquashMergeCommit は、squash merge のマージメッセージ。タイトルと本文の設定グループを一つの Key で表す。
+	SquashMergeCommit Key = "general.squash_merge_commit"
+	// MergeCommit は、merge commit のマージメッセージ。タイトルと本文の設定グループを一つの Key で表す。マージ方式の AllowMergeCommit とは別の設定である。
+	MergeCommit                  Key = "general.merge_commit"
 	ActionsEnabled               Key = "actions.permissions.enabled"
 	AllowedActions               Key = "actions.permissions.allowed_actions"
 	SelectedActions              Key = "actions.permissions.selected_actions"
@@ -60,13 +64,26 @@ const (
 // 設定グループは一つの Key で表す。関連リソースに関わる管理の単位は、宣言の名前ごとに決まるため含めない。
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
 func RepositorySettingUnits() []Key {
-	return []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, ForkPullRequestApproval, PrivateForkPullRequestWorkflows, RetentionDays, OIDCSubject, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
+	return []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, SquashMergeCommit, MergeCommit, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, ForkPullRequestApproval, PrivateForkPullRequestWorkflows, RetentionDays, OIDCSubject, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
 }
 
 // MergeMethods は、GitHub がすべてを無効にすることを受け付けないマージ方式の管理の単位を、YAML 設定仕様の表の並びで返す。
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
 func MergeMethods() []Key {
 	return []Key{AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge}
+}
+
+// CorrespondingMergeMethod は、k がマージメッセージのとき、対応するマージ方式と真を返す。
+// GitHub は、対応するマージ方式が無効のあいだのマージメッセージの更新を拒否する (General の設計)。
+func (k Key) CorrespondingMergeMethod() (Key, bool) {
+	switch k {
+	case SquashMergeCommit:
+		return AllowSquashMerge, true
+	case MergeCommit:
+		return AllowMergeCommit, true
+	default:
+		return "", false
+	}
 }
 
 // DeclaredKeyName は、k の管理の単位を宣言する、設定ファイルの最も内側のキーを返す。
@@ -86,7 +103,7 @@ func (k Key) HasEnvironmentName() bool {
 // 定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func (k Key) Area() Area {
 	switch k {
-	case DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch:
+	case DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, SquashMergeCommit, MergeCommit:
 		return AreaGeneral
 	case ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired:
 		return AreaActionsPermissions

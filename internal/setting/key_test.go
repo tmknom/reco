@@ -6,7 +6,7 @@ import (
 )
 
 func TestRepositorySettingUnits_FollowsConfigurationOrder(t *testing.T) {
-	want := []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, ForkPullRequestApproval, PrivateForkPullRequestWorkflows, RetentionDays, OIDCSubject, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
+	want := []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, SquashMergeCommit, MergeCommit, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, ForkPullRequestApproval, PrivateForkPullRequestWorkflows, RetentionDays, OIDCSubject, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
 	if got := RepositorySettingUnits(); !slices.Equal(got, want) {
 		t.Errorf("RepositorySettingUnits() = %v, want %v", got, want)
 	}
@@ -21,6 +21,27 @@ func TestMergeMethods(t *testing.T) {
 	}
 }
 
+// TestKey_CorrespondingMergeMethod は、マージメッセージだけが対応するマージ方式を持ち、squash merge と merge commit を取り違えないことを確かめる。
+func TestKey_CorrespondingMergeMethod(t *testing.T) {
+	tests := []struct {
+		key        Key
+		wantMethod Key
+		wantOK     bool
+	}{
+		{key: SquashMergeCommit, wantMethod: AllowSquashMerge, wantOK: true},
+		{key: MergeCommit, wantMethod: AllowMergeCommit, wantOK: true},
+		{key: AllowSquashMerge},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.key), func(t *testing.T) {
+			method, ok := tt.key.CorrespondingMergeMethod()
+			if method != tt.wantMethod || ok != tt.wantOK {
+				t.Errorf("CorrespondingMergeMethod() = (%q, %t), want (%q, %t)", method, ok, tt.wantMethod, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestKeyArea(t *testing.T) {
 	tests := []struct {
 		key  Key
@@ -32,6 +53,8 @@ func TestKeyArea(t *testing.T) {
 		{key: AllowMergeCommit, want: AreaGeneral},
 		{key: AllowRebaseMerge, want: AreaGeneral},
 		{key: AllowUpdateBranch, want: AreaGeneral},
+		{key: SquashMergeCommit, want: AreaGeneral},
+		{key: MergeCommit, want: AreaGeneral},
 		{key: ActionsEnabled, want: AreaActionsPermissions},
 		{key: AllowedActions, want: AreaActionsPermissions},
 		{key: SHAPinningRequired, want: AreaActionsPermissions},

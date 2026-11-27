@@ -81,6 +81,42 @@ repositories:
 
 `allow_update_branch` を `true` にしても、reco も GitHub もブランチを自動では更新しません。
 
+### マージ時のコミットメッセージ
+
+`squash_merge_commit` と `merge_commit` には、squash merge と merge commit でマージするときに GitHub が最初に入れておくコミットメッセージの形を、タイトル（`title`）と本文（`message`）の組で書きます。`title` と `message` はどちらも必須で、片方だけは書けません。rebase merge にはこの設定はありません。
+
+```yaml
+    general:
+      squash_merge_commit:
+        title: PR_TITLE
+        message: PR_BODY
+      merge_commit:
+        title: MERGE_MESSAGE
+        message: PR_TITLE
+```
+
+値の意味は次のとおりです。
+
+| 値 | 意味 |
+|---|---|
+| `PR_TITLE` | Pull Request のタイトル |
+| `COMMIT_OR_PR_TITLE` | コミットが1つならそのコミットのタイトル、2つ以上なら Pull Request のタイトル（squash merge のタイトルだけ） |
+| `MERGE_MESSAGE` | `Merge pull request #123 from branch-name` のような従来のタイトル（merge commit のタイトルだけ） |
+| `PR_BODY` | Pull Request の本文 |
+| `COMMIT_MESSAGES` | ブランチのコミットメッセージ（squash merge の本文だけ） |
+| `BLANK` | 空の本文 |
+
+GitHub が受け付けるタイトルと本文の組み合わせは次の7つだけで、ほかの組み合わせを書いた設定ファイルはエラーになります。
+
+| キー | `title` | `message` |
+|---|---|---|
+| `squash_merge_commit` | `PR_TITLE` | `PR_BODY`、`BLANK`、`COMMIT_MESSAGES` |
+| `squash_merge_commit` | `COMMIT_OR_PR_TITLE` | `COMMIT_MESSAGES` |
+| `merge_commit` | `PR_TITLE` | `PR_BODY`、`BLANK` |
+| `merge_commit` | `MERGE_MESSAGE` | `PR_TITLE` |
+
+GitHub は、squash merge が無効のあいだ `squash_merge_commit` を、merge commit が無効のあいだ `merge_commit` を変えさせません。そのマージ方式が GitHub 上で無効なリポジトリで値を変えようとすると、`plan` が `Plan cannot be applied.` を表示します。reco は、マージ方式を代わりに有効にしません。`allow_squash_merge: true`（または `allow_merge_commit: true`）を書き足すか、`squash_merge_commit`（または `merge_commit`）を外します。同じ設定ファイルでマージ方式を有効にする場合は、reco がマージ方式を有効にしてからコミットメッセージを変えます。
+
 ## GitHub Actions の設定
 
 `actions` には、`permissions`（Actions の実行許可）、`workflow`（ワークフローの権限）、`access`（ほかのリポジトリのワークフローからのアクセス）、`fork_pull_requests`（Fork からの Pull Request のワークフローの承認と実行条件）、`retention`（Artifact や Log などの保持期間）、`oidc_subject`（OIDC トークンの subject の形）、`variables`（Repository Variables）を書きます。使わないものは省けます。

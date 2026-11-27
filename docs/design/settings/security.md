@@ -154,7 +154,7 @@ Security の5設定の変更予定は、それぞれ一つの更新操作から�
 
 ## 更新方式
 
-Secret scanning の2設定は、General と同じ `PATCH /repos/{owner}/{repo}` に、`security_and_analysis` の中の変える1項目の `status`（`enabled` か `disabled`）だけを送ります。正常応答は `200` で、本文が取得契約を満たせば成功です。`200` の本文が `security_and_analysis` を含まない場合があるため、本文でこの項目の値を確かめません（[GitHub API 通信の設計](../github-access.md) 3.2節）。1項目だけを送る `PATCH` が、もう一方の項目、`security_and_analysis` のほかの項目、トップレベルの一般設定を変えなかったことを公開リポジトリで確かめており（[GitHub リポジトリ API 仕様](../../research/repositories.md) 5章）、これを部分更新の根拠とします。更新後に更新直前の値と比べるのは、General の6設定と、Secret scanning の2設定のうちもう一方（副作用として示した場合を除く）です。
+Secret scanning の2設定は、General と同じ `PATCH /repos/{owner}/{repo}` に、`security_and_analysis` の中の変える1項目の `status`（`enabled` か `disabled`）だけを送ります。正常応答は `200` で、本文が取得契約を満たせば成功です。`200` の本文が `security_and_analysis` を含まない場合があるため、本文でこの項目の値を確かめません（[GitHub API 通信の設計](../github-access.md) 3.2節）。1項目だけを送る `PATCH` が、もう一方の項目、`security_and_analysis` のほかの項目、トップレベルの一般設定を変えなかったことを公開リポジトリで確かめており（[GitHub リポジトリ API 仕様](../../research/repositories.md) 5章）、これを部分更新の根拠とします。更新後に更新直前の値と比べるのは、[General の設計](general.md) の更新方式が比べると定める General の設定と、Secret scanning の2設定のうちもう一方（副作用として示した場合を除く）です。
 
 Dependabot alerts（`/repos/{owner}/{repo}/vulnerability-alerts`）、Dependabot security updates（`/repos/{owner}/{repo}/automated-security-fixes`）、Private vulnerability reporting（`/repos/{owner}/{repo}/private-vulnerability-reporting`）は、期待値が `true` なら本文のない `PUT`、`false` なら本文のない `DELETE` を送り、本文のない `204` を正常応答とします。すでに同じ状態でも `204` が返り、直後の取得が更新後の値を返すことを確かめています（GitHub リポジトリ API 仕様 6〜8章）。それぞれの更新エンドポイントで reco が観測する設定はその設定だけのため、更新後に比べる変更対象外の設定はありません。保全の根拠は次の確認結果です。
 

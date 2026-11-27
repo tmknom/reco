@@ -94,7 +94,7 @@ $ GH_TOKEN=$(gh auth token) reco plan
 
 照合結果と適用可能性は別に示します。不一致（Mismatch）でも適用不能な場合があり、比較不能（Not Comparable）でも条件を確認できれば適用可能な変更予定となります。観測操作そのものの失敗は比較不能に含めず、エラーとして報告します。
 
-集計では、変更予定のあるリポジトリ数と変更予定数を示します。変更予定のあるリポジトリ数は、そのすべてが適用可能であることを意味しません。変更予定数は、確認済みの差分と比較不能な設定予定を合わせて管理設定の単位で数えます。二つを区別するのは変更予定の行の現在値であり、集計では区別しません。比較不能な設定予定も、宣言した値へ変える変更として利用者が承認するものだからです。更新要求の数や論理的な設定変更の数とは同一視しません。選択方式の Actions 許可条件（Selected actions の3項目）は一つの設定グループとして集計し、上位の Actions 許可ポリシーとは区別します。非公開リポジトリの Fork Pull Request ワークフローの実行条件（`private_repositories` の4項目）も、一つの設定グループとして集計します。変更の必要がないと確認できた場合に限り `No changes.` と表示します。
+集計では、変更予定のあるリポジトリ数と変更予定数を示します。変更予定のあるリポジトリ数は、そのすべてが適用可能であることを意味しません。変更予定数は、確認済みの差分と比較不能な設定予定を合わせて管理設定の単位で数えます。二つを区別するのは変更予定の行の現在値であり、集計では区別しません。比較不能な設定予定も、宣言した値へ変える変更として利用者が承認するものだからです。更新要求の数や論理的な設定変更の数とは同一視しません。選択方式の Actions 許可条件（Selected actions の3項目）は一つの設定グループとして集計し、上位の Actions 許可ポリシーとは区別します。非公開リポジトリの Fork Pull Request ワークフローの実行条件（`private_repositories` の4項目）と、マージメッセージ（`squash_merge_commit` と `merge_commit` のそれぞれの `title` と `message`）も、それぞれ一つの設定グループとして集計します。変更の必要がないと確認できた場合に限り `No changes.` と表示します。
 
 一つのリポジトリに複数の変更予定があるときは、[YAML 設定仕様](configuration.md) の章と表の並びで表示します。設定宣言での記述順には従いません。
 
@@ -309,6 +309,18 @@ Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
+マージメッセージの変更予定も、タイトルと本文の組を一つの値として、同じく現在値と期待値を1行ずつ示します。値は `title: <タイトル>, message: <本文>` の形です。タイトルだけ、本文だけが違う場合も、組の全体を示します。
+
+```text
+Repository: example/project-a
+  general.squash_merge_commit:
+    title: COMMIT_OR_PR_TITLE, message: COMMIT_MESSAGES
+    -> title: PR_TITLE, message: PR_BODY
+
+Plan: 1 repository to update, 1 change
+Repositories checked: 1
+```
+
 ```text
 $ reco plan
 No changes.
@@ -341,9 +353,9 @@ Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
-比較不能な設定予定は、確認済みの差分と同じ `<設定>: <現在> -> <期待値>` の形で示し、現在値の位置に、GitHub が値を返さない理由から分かるリポジトリの状態を括弧で示します。
+比較不能な設定予定は、確認済みの差分と同じ `<設定>: <現在> -> <期待値>` の形で示し、現在値の位置に、観測不能の理由から分かる状態を括弧で示します。
 
-| 値を返さない理由 | 示す状態 | 意味 |
+| 観測不能の理由 | 示す状態 | 意味 |
 |---|---|---|
 | Actions が無効 | `(GitHub Actions disabled)` | Actions が動いておらず、この設定は効いていない |
 | Actions 許可ポリシーが `selected` でない（選択方式の Actions 許可条件だけに当たる） | `(not in use)` | 選択方式の Actions 許可条件が使われていない |
@@ -355,6 +367,7 @@ Repositories checked: 1
 | 宣言した名前と同じかどうかを判定できない名前の Ruleset があり、同じ名前の Ruleset はない（Ruleset に当たる） | `(existence unknown)` | その名前の Ruleset が存在するかを確かめられない |
 | リポジトリが非公開（Ruleset に当たる） | `(private repository)` | reco は非公開リポジトリの Ruleset を扱わない |
 | Ruleset の値が reco の解釈しない部分を含む（Ruleset に当たる） | `(uninterpreted parts)` | Ruleset は存在するが、reco はその値の全体を読み取れない |
+| GitHub が reco の知らない値を返した（マージメッセージに当たる） | `(unknown value)` | GitHub は値を返したが、reco はその値の意味を知らない |
 
 括弧の状態は、観測したリポジトリの状態から決まり、推測した値ではありません。GitHub が保存している値を示すものでもありません。利用者が知りたいのは承認すると何が起きるかであり、その判断には、いま効いている状態と宣言した値があれば足ります。確認済みの差分とは、現在値が括弧で示されることで区別します。
 
@@ -534,6 +547,18 @@ Plan cannot be applied.
 Repository: example/project-a
   general.allow_squash_merge: true -> false
     Applicability: not applicable (allow_merge_commit and allow_rebase_merge are disabled, so no merge method would remain enabled; declare allow_merge_commit: true or allow_rebase_merge: true to enable one of them)
+```
+
+```text
+Repository: example/project-a
+  general.squash_merge_commit:
+    title: COMMIT_OR_PR_TITLE, message: COMMIT_MESSAGES
+    -> title: PR_TITLE, message: PR_BODY
+    Applicability: not applicable (allow_squash_merge is disabled, and GitHub does not accept changes to squash_merge_commit while it is disabled; declare allow_squash_merge: true or remove squash_merge_commit)
+  general.merge_commit:
+    (unknown value)
+    -> title: PR_TITLE, message: PR_BODY
+    Applicability: not applicable (GitHub returned a value that reco does not know; remove merge_commit from the configuration)
 ```
 
 `Previous settings:` と `Side effect:` の表示例は次のとおりです。
@@ -746,7 +771,9 @@ Environment の方式の変更、担当者の集合の変更、自己承認の�
 
 Ruleset の作成か値の変更のあとに Ruleset が存在しなかった場合は、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Ruleset が現れ、存在を確かめられなかった場合は `not confirmed (ruleset existence unknown)` と示します。作成か値の変更をした Ruleset が reco の解釈しない部分を含んでいた場合は `not confirmed (the ruleset contains parts that reco does not interpret)` と示します。存在は確かめているものの、値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。解釈しなかったものは変更結果に並べず、`plan` が示します。
 
-変更対象外の設定は、管理設定と同じ形の名前で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.prevent_self_review`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` が4章と同じ表記（`30 minutes`、保護ルールがなければ `0 minutes`）です。`required_reviewers` は担当者の集合で、4章と同じ表記（担当者がいなければ `[]`、担当者のいない保護ルールは `[] (protection rule without reviewers)`）で GitHub が返した順に示し、login は添えません。login だけの変化は予期しない変化に数えないためです。`prevent_self_review` と `can_admins_bypass` は `true` か `false` で、`prevent_self_review` は `required_reviewers` の保護ルールがなければ `false` です。Environment の `PUT` の更新操作（方式、担当者の集合、自己承認の禁止、デプロイの待機時間の変更）のあとは、同じ Environment のデプロイ元制限の方式も `environments.<名前>.deployment_branch_policy` の名前で比べ、値は方式の名前（`all`、`protected_branches`、`selected`）で示します。個別パターンは別の更新エンドポイントの設定のため、比べず、値にも含めません。複数が変わっていれば、`deployment_branch_policy`、`wait_timer`、`required_reviewers`、`prevent_self_review`、`can_admins_bypass` の順に1行ずつ示します。
+マージメッセージの変更のあとに、GitHub がその組に reco の知らない値を返した場合は、`not confirmed (GitHub returned a value that reco does not know)` と示します。値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。
+
+変更対象外の設定は、管理設定と同じ形の名前で示します。マージメッセージは `general.squash_merge_commit` と `general.merge_commit` の名前で、値は4章と同じ `title: <タイトル>, message: <本文>` の形で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.prevent_self_review`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` が4章と同じ表記（`30 minutes`、保護ルールがなければ `0 minutes`）です。`required_reviewers` は担当者の集合で、4章と同じ表記（担当者がいなければ `[]`、担当者のいない保護ルールは `[] (protection rule without reviewers)`）で GitHub が返した順に示し、login は添えません。login だけの変化は予期しない変化に数えないためです。`prevent_self_review` と `can_admins_bypass` は `true` か `false` で、`prevent_self_review` は `required_reviewers` の保護ルールがなければ `false` です。Environment の `PUT` の更新操作（方式、担当者の集合、自己承認の禁止、デプロイの待機時間の変更）のあとは、同じ Environment のデプロイ元制限の方式も `environments.<名前>.deployment_branch_policy` の名前で比べ、値は方式の名前（`all`、`protected_branches`、`selected`）で示します。個別パターンは別の更新エンドポイントの設定のため、比べず、値にも含めません。複数が変わっていれば、`deployment_branch_policy`、`wait_timer`、`required_reviewers`、`prevent_self_review`、`can_admins_bypass` の順に1行ずつ示します。
 
 設定グループの省略できる項目を省略した宣言で、その項目が更新の前後で変わった場合は、`<管理設定の名前>.<項目のキー>` の名前で示します。OIDC トークンの subject のカスタマイズの `use_immutable_subject` は、`actions.oidc_subject.use_immutable_subject` と示し、値は `true` か `false` です。
 
@@ -1055,13 +1082,12 @@ repositories:
       allow_merge_commit: false
       allow_rebase_merge: false
       allow_update_branch: true
-      # reco does not accept the merge commit message settings in the configuration file yet
-      # squash_merge_commit:
-      #   title: COMMIT_OR_PR_TITLE
-      #   message: COMMIT_MESSAGES
-      # merge_commit:
-      #   title: MERGE_MESSAGE
-      #   message: PR_TITLE
+      squash_merge_commit:
+        title: COMMIT_OR_PR_TITLE
+        message: COMMIT_MESSAGES
+      merge_commit:
+        title: MERGE_MESSAGE
+        message: PR_TITLE
       # reco does not accept the repository feature and web commit signoff settings in the configuration file yet
       # has_issues: true
       # has_projects: true
@@ -1102,7 +1128,7 @@ repositories:
 
 表示するのは、設定宣言に書ける管理設定と関連リソースに限ります。Environment の `can_admins_bypass` のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
 
-`general` のマージメッセージ（`squash_merge_commit`、`merge_commit`）と、リポジトリの機能（`has_issues`、`has_projects`、`has_wiki`）、`web_commit_signoff_required` は、この規定の例外です。設定宣言はまだこれらを受け付けませんが、受け付けるときに使う予定のキーで、`allow_update_branch` のあとに値を示します。どの行も YAML のコメントとして示し、`squash_merge_commit` の前の行と `has_issues` の前の行で、設定ファイルに書けないことを示します。コメントにするのは、表示を設定宣言として読めるままにし、書けない設定であることを利用者が行を見て分かるようにするためです。
+`general` のリポジトリの機能（`has_issues`、`has_projects`、`has_wiki`）と `web_commit_signoff_required` は、この規定の例外です。設定宣言はまだこれらを受け付けませんが、受け付けるときに使う予定のキーで、マージメッセージのあとに値を示します。どの行も YAML のコメントとして示し、`has_issues` の前の行で、設定ファイルに書けないことを示します。コメントにするのは、表示を設定宣言として読めるままにし、書けない設定であることを利用者が行を見て分かるようにするためです。
 
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
@@ -1114,11 +1140,10 @@ GitHub の取得条件によって確認できない設定は、その取得条�
 GitHub が、タイトルか本文に reco の知らない値を返したときは、その方式の `title` と `message` の行を示さず、方式のキーの値の位置に `unavailable (GitHub returned a value that reco does not know)` と示します。GitHub が `web_commit_signoff_required` を返さなかったときは、その値の位置に `unavailable (GitHub did not return the value)` と示します。どちらも、ほかの行はいつもどおり示し、エラーにしません。知らない値そのものは示しません。GitHub が返した、reco の検証していない文字列を表示に入れないためです。値は GitHub の設定画面で確かめられます。
 
 ```text
-      # reco does not accept the merge commit message settings in the configuration file yet
       # squash_merge_commit: unavailable (GitHub returned a value that reco does not know)
-      # merge_commit:
-      #   title: MERGE_MESSAGE
-      #   message: PR_TITLE
+      merge_commit:
+        title: MERGE_MESSAGE
+        message: PR_TITLE
       # reco does not accept the repository feature and web commit signoff settings in the configuration file yet
       # has_issues: true
       # has_projects: true
@@ -1364,7 +1389,7 @@ Ruleset が一つもないときは `# rulesets: none` と示します。非公�
 
 GitHub は、Ruleset への書き込みのアクセスを持たない利用者には Bypass を返しません（[GitHub Rules API 仕様](../research/rules.md) 3.2）。この場合は、下に述べる権限の不足による欠落として、`bypass_actors` を示してエラーとします。
 
-表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。解釈しない部分を含む Ruleset（`name` だけが値として残り、必須のキーの欠落になる）、`enforcement: evaluate` や `conditions: {}` の Ruleset、`2`・`4`・`5` 以外の `RepositoryRole` の Bypass、GitHub が重複して返した Ruleset のパターンや Bypass の主体、ASCII 以外の文字を含む Ruleset の名前、`organization` の `access_level`、`run_workflows_from_fork_pull_requests` が `false` でほかの3項目のどれかが `true` の Fork Pull Request ワークフローの実行条件、`1` 未満の保持日数、`use_default` が `false` で key が一つもない（`include_claim_keys: []` と示す）OIDC トークンの subject のカスタマイズ、claim key の形式に合わない key や重複した key、ASCII 以外の文字や制御文字を含む Environment の名前、`type: Team` の担当者、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable や Environment Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 14章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
+表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。解釈しない部分を含む Ruleset（`name` だけが値として残り、必須のキーの欠落になる）、`enforcement: evaluate` や `conditions: {}` の Ruleset、`2`・`4`・`5` 以外の `RepositoryRole` の Bypass、GitHub が重複して返した Ruleset のパターンや Bypass の主体、ASCII 以外の文字を含む Ruleset の名前、`organization` の `access_level`、`run_workflows_from_fork_pull_requests` が `false` でほかの3項目のどれかが `true` の Fork Pull Request ワークフローの実行条件、`1` 未満の保持日数、GitHub が更新で受け付けないタイトルと本文の組み合わせのマージメッセージ、`use_default` が `false` で key が一つもない（`include_claim_keys: []` と示す）OIDC トークンの subject のカスタマイズ、claim key の形式に合わない key や重複した key、ASCII 以外の文字や制御文字を含む Environment の名前、`type: Team` の担当者、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable や Environment Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 14章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
 
 権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。行を省かず、欠けた項目を示してエラーとします。
 

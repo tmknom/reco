@@ -265,7 +265,33 @@ func (r RepositoryPlan) executionOrder() []SettingPlan {
 		moved := ordered[dependent]
 		ordered = slices.Insert(slices.Delete(slices.Clone(ordered), dependent, dependent+1), prerequisite, moved)
 	}
-	return ordered
+	return moveMergeMessagesBeforeDisabling(ordered)
+}
+
+// moveMergeMessagesBeforeDisabling は、対応するマージ方式を無効と宣言したマージメッセージの計画を、最初のマージ方式の計画の直前に、表の並びのまま移す。
+// 移す理由と移す先は General の設計の「論理的な設定変更と更新操作」が定める。
+// 無効と宣言して一致したマージ方式のマージメッセージも移すが、不一致なら適用不能で論理的な設定変更にならず、一致なら変更予定がないため、実行順は変わらない。
+func moveMergeMessagesBeforeDisabling(ordered []SettingPlan) []SettingPlan {
+	var moved, rest []SettingPlan
+	for _, s := range ordered {
+		if method, ok := s.Unit.Key.CorrespondingMergeMethod(); ok && declaresDisabled(ordered, method) {
+			moved = append(moved, s)
+			continue
+		}
+		rest = append(rest, s)
+	}
+	firstMergeMethod := slices.IndexFunc(rest, func(s SettingPlan) bool { return slices.Contains(setting.MergeMethods(), s.Unit.Key) })
+	if firstMergeMethod < 0 {
+		return ordered
+	}
+	return slices.Insert(rest, firstMergeMethod, moved...)
+}
+
+// declaresDisabled は、計画 ordered が、マージ方式 method を無効と宣言しているかを返す。
+func declaresDisabled(ordered []SettingPlan, method setting.Key) bool {
+	return slices.ContainsFunc(ordered, func(s SettingPlan) bool {
+		return s.Unit.Key == method && !s.Desired.Bool()
+	})
 }
 
 // criteriaFollowingPolicy は、遷移先が selected のポリシーの変更予定に続けて更新する、選択方式の Actions 許可条件の比較不能な変更予定を返す。

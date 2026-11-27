@@ -234,6 +234,58 @@ func (d document) forkPullRequestApprovalPolicyValue(n *yaml.Node, path string) 
 	return policy, nil
 }
 
+// squashMergeCommitTitleValue は、文字列のうち定義された squash merge のタイトルの値に完全一致するものだけを受理する。
+func (d document) squashMergeCommitTitleValue(n *yaml.Node, path string) (setting.SquashMergeCommitTitle, error) {
+	s, err := d.stringValue(n, path)
+	if err != nil {
+		return "", err
+	}
+	title, ok := setting.ParseSquashMergeCommitTitle(s)
+	if !ok {
+		return "", invalid(n, path, "must be PR_TITLE or COMMIT_OR_PR_TITLE; got %q", s)
+	}
+	return title, nil
+}
+
+// squashMergeCommitMessageValue は、文字列のうち定義された squash merge の本文の値に完全一致するものだけを受理する。
+func (d document) squashMergeCommitMessageValue(n *yaml.Node, path string) (setting.SquashMergeCommitMessage, error) {
+	s, err := d.stringValue(n, path)
+	if err != nil {
+		return "", err
+	}
+	message, ok := setting.ParseSquashMergeCommitMessage(s)
+	if !ok {
+		return "", invalid(n, path, "must be PR_BODY, COMMIT_MESSAGES, or BLANK; got %q", s)
+	}
+	return message, nil
+}
+
+// mergeCommitTitleValue は、文字列のうち定義された merge commit のタイトルの値に完全一致するものだけを受理する。
+func (d document) mergeCommitTitleValue(n *yaml.Node, path string) (setting.MergeCommitTitle, error) {
+	s, err := d.stringValue(n, path)
+	if err != nil {
+		return "", err
+	}
+	title, ok := setting.ParseMergeCommitTitle(s)
+	if !ok {
+		return "", invalid(n, path, "must be PR_TITLE or MERGE_MESSAGE; got %q", s)
+	}
+	return title, nil
+}
+
+// mergeCommitMessageValue は、文字列のうち定義された merge commit の本文の値に完全一致するものだけを受理する。
+func (d document) mergeCommitMessageValue(n *yaml.Node, path string) (setting.MergeCommitMessage, error) {
+	s, err := d.stringValue(n, path)
+	if err != nil {
+		return "", err
+	}
+	message, ok := setting.ParseMergeCommitMessage(s)
+	if !ok {
+		return "", invalid(n, path, "must be PR_BODY, PR_TITLE, or BLANK; got %q", s)
+	}
+	return message, nil
+}
+
 // accessLevelValue は、取り得る値のうち宣言で受け付ける none と user だけを受理する。
 // organization は show が表示し得る値のため、そのまま書いた利用者に拒否の理由を添える。
 func (d document) accessLevelValue(n *yaml.Node, path string) (setting.AccessLevel, error) {

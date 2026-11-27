@@ -331,8 +331,13 @@ func unavailableConfirmationText(u unavailableManagedSetting) string {
 		if u.unit.Key == setting.RulesetResource {
 			return "not confirmed (the ruleset contains parts that reco does not interpret)"
 		}
-	case github.UnavailableUnknownValue, github.UnavailableNotReturned:
-		// この理由を持つのは宣言を受け付けない設定だけで、期待値と比べる設定にならない。宣言を受け付けるときに文言を足す
+	case github.UnavailableUnknownValue:
+		// 知らない値で観測不能になるのは、対応するマージ方式を持つマージメッセージだけである
+		if _, ok := u.unit.Key.CorrespondingMergeMethod(); ok {
+			return "not confirmed (GitHub returned a value that reco does not know)"
+		}
+	case github.UnavailableNotReturned:
+		// この理由を持つのは宣言を受け付けない web_commit_signoff_required だけで、期待値と比べる設定にならない
 	}
 	panic(fmt.Sprintf("apply: no confirmation text for unavailable reason %d of %s", int(u.reason), u.unit.String()))
 }

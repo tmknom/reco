@@ -120,6 +120,20 @@ func TestDesiredState_ManagedSettings(t *testing.T) {
 		}
 	})
 
+	t.Run("a setting group is one managed setting per key, after allow_update_branch", func(t *testing.T) {
+		squash := setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitlePRTitle, Message: setting.SquashMergeCommitMessageBlank}
+		merge := setting.MergeCommitDefault{Title: setting.MergeCommitTitleMergeMessage, Message: setting.MergeCommitMessagePRTitle}
+		desired := DesiredState{General: General{AllowUpdateBranch: new(true), SquashMergeCommit: &squash, MergeCommit: &merge}}
+		want := []ManagedSetting{
+			{Unit: setting.Unit{Key: setting.AllowUpdateBranch}, Desired: setting.BoolValue(true)},
+			{Unit: setting.Unit{Key: setting.SquashMergeCommit}, Desired: setting.SquashMergeCommitDefaultValue(squash)},
+			{Unit: setting.Unit{Key: setting.MergeCommit}, Desired: setting.MergeCommitDefaultValue(merge)},
+		}
+		if got := desired.ManagedSettings(); !reflect.DeepEqual(got, want) {
+			t.Errorf("ManagedSettings() =\n%+v\nwant\n%+v", got, want)
+		}
+	})
+
 	t.Run("nothing declared lists no managed settings", func(t *testing.T) {
 		if got := (DesiredState{}).ManagedSettings(); len(got) != 0 {
 			t.Errorf("ManagedSettings() = %+v, want none", got)
@@ -129,6 +143,8 @@ func TestDesiredState_ManagedSettings(t *testing.T) {
 
 //trace:checks FR-001
 func TestDesiredState_value(t *testing.T) {
+	squash := setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitlePRTitle, Message: setting.SquashMergeCommitMessagePRBody}
+	merge := setting.MergeCommitDefault{Title: setting.MergeCommitTitlePRTitle, Message: setting.MergeCommitMessagePRBody}
 	cases := []struct {
 		name    string
 		desired DesiredState
@@ -161,6 +177,10 @@ func TestDesiredState_value(t *testing.T) {
 		{name: "declared allow_merge_commit returns its desired value", desired: DesiredState{General: General{AllowMergeCommit: new(true)}}, key: setting.AllowMergeCommit, want: setting.BoolValue(true), wantOK: true},
 		{name: "declared allow_rebase_merge returns its desired value", desired: DesiredState{General: General{AllowRebaseMerge: new(true)}}, key: setting.AllowRebaseMerge, want: setting.BoolValue(true), wantOK: true},
 		{name: "declared allow_update_branch returns its desired value", desired: DesiredState{General: General{AllowUpdateBranch: new(true)}}, key: setting.AllowUpdateBranch, want: setting.BoolValue(true), wantOK: true},
+		{name: "declared squash_merge_commit returns its desired value", desired: DesiredState{General: General{SquashMergeCommit: &squash}}, key: setting.SquashMergeCommit, want: setting.SquashMergeCommitDefaultValue(squash), wantOK: true},
+		{name: "declared merge_commit returns its desired value", desired: DesiredState{General: General{MergeCommit: &merge}}, key: setting.MergeCommit, want: setting.MergeCommitDefaultValue(merge), wantOK: true},
+		{name: "omitted squash_merge_commit is outside the management scope", desired: DesiredState{General: General{MergeCommit: &merge}}, key: setting.SquashMergeCommit, wantOK: false},
+		{name: "omitted merge_commit is outside the management scope", desired: DesiredState{General: General{SquashMergeCommit: &squash}}, key: setting.MergeCommit, wantOK: false},
 		{name: "omitted allow_squash_merge is outside the management scope", desired: DesiredState{General: General{AllowMergeCommit: new(true)}}, key: setting.AllowSquashMerge, wantOK: false},
 		{name: "omitted allow_merge_commit is outside the management scope", desired: DesiredState{General: General{AllowRebaseMerge: new(true)}}, key: setting.AllowMergeCommit, wantOK: false},
 		{name: "omitted allow_rebase_merge is outside the management scope", desired: DesiredState{General: General{AllowUpdateBranch: new(true)}}, key: setting.AllowRebaseMerge, wantOK: false},

@@ -46,6 +46,10 @@ const (
 	NotApplicableAboveMaximumAllowed
 	// NotApplicableNoRequiredReviewers は、更新時点に Environment の担当者がいない状態になる見込みで、自己承認の禁止を送らずには期待値にならないこと。
 	NotApplicableNoRequiredReviewers
+	// NotApplicableMergeMethodRemainsDisabled は、マージメッセージに対応するマージ方式が無効で、同じリポジトリの期待状態がその有効を含まないこと。
+	NotApplicableMergeMethodRemainsDisabled
+	// NotApplicableUnknownValue は、現在の値が reco の知らない値であること。
+	NotApplicableUnknownValue
 )
 
 // Applicable は、適用可能の判断を返す。
@@ -105,12 +109,16 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 		return Applicability{}
 	case Mismatch:
 		// GitHub は Dependabot alerts が無効のあいだ、Dependabot security updates の更新を向きによらず拒否する
-		if s.Unit.Key == setting.DependabotSecurityUpdates && !prerequisiteAvailable(setting.DependabotAlerts, settings, observed) {
+		if s.Unit.Key == setting.DependabotSecurityUpdates && !enabledAtUpdate(setting.DependabotAlerts, settings, observed) {
 			return NotApplicable(NotApplicableDependabotAlertsRemainDisabled)
 		}
 		// GitHub は Secret scanning が無効のあいだ、push protection を有効にする更新に成功を応答して値を変えない
-		if s.Unit.Key == setting.RepositoryPushProtection && s.Desired.Bool() && !prerequisiteAvailable(setting.SecretScanningEnabled, settings, observed) {
+		if s.Unit.Key == setting.RepositoryPushProtection && s.Desired.Bool() && !enabledAtUpdate(setting.SecretScanningEnabled, settings, observed) {
 			return NotApplicable(NotApplicableSecretScanningRemainsDisabled)
+		}
+		// GitHub は対応するマージ方式が無効のあいだ、マージメッセージの更新を拒否する。reco はマージ方式を宣言なしに有効にしない
+		if method, ok := s.Unit.Key.CorrespondingMergeMethod(); ok && !enabledAtUpdate(method, settings, observed) {
+			return NotApplicable(NotApplicableMergeMethodRemainsDisabled)
 		}
 		// GitHub は上限を超える値の更新を拒否し、値を変えない
 		if s.Unit.Key == setting.RetentionDays && s.Desired.RetentionDays() > observed.Retention.MaximumAllowedDays {
@@ -133,6 +141,9 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 	case s.Unit.Key == setting.RulesetResource && reason == github.UnavailableUninterpretedParts:
 		// 期待値に変える更新は解釈しない部分も置き換え、reco が承認の前に示せない値を変えるか失わせる。同じリポジトリのほかの宣言では解消しない
 		return NotApplicable(NotApplicableUninterpretedParts)
+	case isMergeMessage(s.Unit.Key) && reason == github.UnavailableUnknownValue:
+		// 置き換えで失われる値の意味を、reco が承認の前に示せない。同じリポジトリのほかの宣言では解消しない
+		return NotApplicable(NotApplicableUnknownValue)
 	case s.Unit.Key.HasEnvironmentName() && s.Unit.Key != setting.EnvironmentResource && reason == github.UnavailableEnvironmentAbsent:
 		// Environment の宣言は、方式や変数だけを書いても存在の宣言を兼ねるため、同じ変更計画が先にその Environment を作成する
 		if !createsEnvironment(settings, s.Unit.Environment) {
@@ -201,14 +212,20 @@ func createsEnvironment(settings []SettingPlan, name setting.EnvironmentName) bo
 	})
 }
 
-// prerequisiteAvailable は、依存する設定を更新する時点で、前提の設定 prerequisite が有効と見込めるかを返す。
-// 計画時に有効か、同じ変更計画が前提の設定を有効にするときに限る。期待値どうしは互いの状態を含まないため、
-// 依存する設定の期待値からは決めない。
-func prerequisiteAvailable(prerequisite setting.Key, settings []SettingPlan, observed github.ObservationResult) bool {
-	if v, ok := observed.Setting(setting.Unit{Key: prerequisite}).Value(); ok && v.Bool() {
+// isMergeMessage は、key がマージメッセージかを返す。マージメッセージは、対応するマージ方式を持つ設定として setting が一か所で定める。
+func isMergeMessage(key setting.Key) bool {
+	_, ok := key.CorrespondingMergeMethod()
+	return ok
+}
+
+// enabledAtUpdate は、ある設定を更新する時点で、その更新に有効でなければならない設定 required (前提の設定か、対応するマージ方式) が有効と見込めるかを返す。
+// 計画時に有効か、同じ変更計画が required を有効にするときに限る。計画時に有効で同じ変更計画が無効にするときも真を返す。
+// そのときは実行順で、無効にする変更より先に更新するため。期待値どうしは互いの状態を含まないため、更新する設定の期待値からは決めない。
+func enabledAtUpdate(required setting.Key, settings []SettingPlan, observed github.ObservationResult) bool {
+	if v, ok := observed.Setting(setting.Unit{Key: required}).Value(); ok && v.Bool() {
 		return true
 	}
 	return slices.ContainsFunc(settings, func(s SettingPlan) bool {
-		return s.Unit.Key == prerequisite && s.Desired.Bool()
+		return s.Unit.Key == required && s.Desired.Bool()
 	})
 }
