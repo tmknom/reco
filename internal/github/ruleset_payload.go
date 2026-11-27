@@ -313,7 +313,8 @@ func decodeHandledRulesetRule(ruleType setting.RulesetRuleType, fields map[strin
 	panic(fmt.Sprintf("github: unknown ruleset rule type %q", ruleType))
 }
 
-// decodePullRequestRule は pull_request のルールを読む。値に含める5項目は、欠けると値を作れないため、欠落を契約外の応答とする。
+// decodePullRequestRule は pull_request のルールを読む。必須の5項目は、欠けると値を作れないため、欠落を契約外の応答とする。
+// 宣言できる allowed_merge_methods と require_extra_approval_for_unattributed_changes は、読めないときだけ解釈しない部分とする（Rulesets の設計の解釈しない部分）。
 func decodePullRequestRule(fields map[string]json.RawMessage) (setting.RulesetRule, []UninterpretedPart, error) {
 	if isAbsent(fields["parameters"]) {
 		return setting.RulesetRule{}, nil, fmt.Errorf("%w: missing fields: rules.parameters", ErrUnexpectedResponse)
@@ -332,27 +333,33 @@ func decodePullRequestRule(fields map[string]json.RawMessage) (setting.RulesetRu
 			return setting.RulesetRule{}, nil, err
 		}
 	}
-	parts := slices.Concat(ruleKeyParts(fields, setting.RulesetRulePullRequest, "type", "parameters"), pullRequestParameterParts(parameters))
+	// 解釈しなかったパラメータがあれば値は作られないため、読めなかったパラメータは省略を表す nil のまま渡す
+	var unread []string
+	methods, ok := decodeAllowedMergeMethods(parameters["allowed_merge_methods"])
+	if !ok {
+		unread = append(unread, "allowed_merge_methods")
+	}
+	var extraApproval *bool
+	if v, ok := decodeOptional[bool](parameters["require_extra_approval_for_unattributed_changes"]); ok {
+		extraApproval = &v
+	} else {
+		unread = append(unread, "require_extra_approval_for_unattributed_changes")
+	}
+	parts := slices.Concat(ruleKeyParts(fields, setting.RulesetRulePullRequest, "type", "parameters"), pullRequestParameterParts(parameters, unread))
 	return setting.PullRequestRule(setting.PullRequestParameters{
-		RequiredApprovingReviewCount:   count,
-		DismissStaleReviewsOnPush:      flags[0],
-		RequireCodeOwnerReview:         flags[1],
-		RequireLastPushApproval:        flags[2],
-		RequiredReviewThreadResolution: flags[3],
+		RequiredApprovingReviewCount:               count,
+		DismissStaleReviewsOnPush:                  flags[0],
+		RequireCodeOwnerReview:                     flags[1],
+		RequireLastPushApproval:                    flags[2],
+		RequiredReviewThreadResolution:             flags[3],
+		AllowedMergeMethods:                        methods,
+		RequireExtraApprovalForUnattributedChanges: extraApproval,
 	}), parts, nil
 }
 
-// pullRequestParameterParts は、pull_request のパラメータのうち解釈しないものを、任意の3項目、ほかのキーの名前の順で返す。
-// 任意の3項目を既定値のときだけ解釈できたとする理由は、Rulesets の設計の解釈しない部分にある。
-func pullRequestParameterParts(parameters map[string]json.RawMessage) []UninterpretedPart {
-	var unread []string
-	if !isDefaultMergeMethods(parameters["allowed_merge_methods"]) {
-		unread = append(unread, "allowed_merge_methods")
-	}
-	// 読めない値はゼロ値の false になり、既定値の true と区別できる
-	if extraApproval, _ := decodeOptional[bool](parameters["require_extra_approval_for_unattributed_changes"]); !extraApproval {
-		unread = append(unread, "require_extra_approval_for_unattributed_changes")
-	}
+// pullRequestParameterParts は、pull_request のパラメータのうち解釈しないものを、読めなかった省略できるパラメータ unread、required_reviewers、ほかのキーの名前の順で返す。
+// 宣言できない required_reviewers を既定値のときだけ解釈できたとする理由は、Rulesets の設計の解釈しない部分にある。
+func pullRequestParameterParts(parameters map[string]json.RawMessage, unread []string) []UninterpretedPart {
 	// 読めない値はゼロ値の空の配列になり、既定値の [] と区別できないため、読めたかも確かめる
 	if reviewers, ok := decodeOptional[[]json.RawMessage](parameters["required_reviewers"]); !ok || len(reviewers) > 0 {
 		unread = append(unread, "required_reviewers")
@@ -438,18 +445,24 @@ func decodeStatusCheck(raw json.RawMessage) (setting.StatusCheck, []string, erro
 	return check, unread, nil
 }
 
-// isDefaultMergeMethods は、allowed_merge_methods が merge、squash、rebase の集合かを返す。順序と重複は問わない。
-// 要素を *string で受けるのは、null の要素を空文字列と読まないため。読めない値はゼロ値の要素のない集合になり、既定値と等しくない。
-func isDefaultMergeMethods(raw json.RawMessage) bool {
-	methods, _ := decodeOptional[[]*string](raw)
-	set := make(map[string]struct{}, len(methods))
-	for _, m := range methods {
-		if m == nil {
-			return false
-		}
-		set[*m] = struct{}{}
+// decodeAllowedMergeMethods は、allowed_merge_methods を応答の順のまま、重複も残して読む。
+// 空の配列、定義にない値、null の要素を含む値、配列でない値は偽を返す（Rulesets の設計の解釈しない部分）。
+// 要素を *string で受けるのは、null の要素を空文字列と読まないため。
+func decodeAllowedMergeMethods(raw json.RawMessage) ([]setting.AllowedMergeMethod, bool) {
+	texts, ok := decodeOptional[[]*string](raw)
+	if !ok || len(texts) == 0 {
+		return nil, false
 	}
-	return maps.Equal(set, map[string]struct{}{"merge": {}, "squash": {}, "rebase": {}})
+	methods := make([]setting.AllowedMergeMethod, len(texts))
+	for i, text := range texts {
+		if text == nil {
+			return nil, false
+		}
+		if methods[i], ok = setting.ParseAllowedMergeMethod(*text); !ok {
+			return nil, false
+		}
+	}
+	return methods, true
 }
 
 // ruleKeyParts は、ルールの要素の known 以外のキーを、ルール型 ruleType の解釈しないキーとして返す。

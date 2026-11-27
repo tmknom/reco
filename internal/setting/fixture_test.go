@@ -49,6 +49,12 @@ func statusChecksRule(strict bool, doNotEnforceOnCreate *bool, checks ...StatusC
 	return RequiredStatusChecksRule(RequiredStatusChecksParameters{RequiredStatusChecks: checks, StrictRequiredStatusChecksPolicy: strict, DoNotEnforceOnCreate: doNotEnforceOnCreate})
 }
 
+// pullRequestRule は、承認数 count を持ち、ほかの必須の項目がゼロ値の pull_request のルールを作る。
+// methods と extraApproval が nil なら、宣言がそのパラメータを省略したルールになる。
+func pullRequestRule(count int, methods []AllowedMergeMethod, extraApproval *bool) RulesetRule {
+	return PullRequestRule(PullRequestParameters{RequiredApprovingReviewCount: count, AllowedMergeMethods: methods, RequireExtraApprovalForUnattributedChanges: extraApproval})
+}
+
 func mustRulesetName(t *testing.T, s string) RulesetName {
 	t.Helper()
 	name, err := ParseRulesetName(s)

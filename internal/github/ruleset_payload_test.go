@@ -20,11 +20,29 @@ func baseRulesetValue() setting.Ruleset {
 		BypassActors: []setting.BypassActor{{ActorType: setting.BypassActorRepositoryRole, ActorID: 5, BypassMode: setting.BypassModeAlways}},
 		Rules: []setting.RulesetRule{
 			setting.DeletionRule(),
-			setting.PullRequestRule(setting.PullRequestParameters{RequiredApprovingReviewCount: 1, DismissStaleReviewsOnPush: true, RequireLastPushApproval: true}),
+			setting.PullRequestRule(basePullRequestParameters()),
 			setting.NonFastForwardRule(),
 			setting.RequiredStatusChecksRule(baseStatusChecksParameters()),
 		},
 	}
+}
+
+// basePullRequestParameters は、rulesetDetail の基準の本文の pull_request のルールから読むパラメータである。
+func basePullRequestParameters() setting.PullRequestParameters {
+	return setting.PullRequestParameters{
+		RequiredApprovingReviewCount:               1,
+		DismissStaleReviewsOnPush:                  true,
+		RequireLastPushApproval:                    true,
+		AllowedMergeMethods:                        []setting.AllowedMergeMethod{setting.AllowedMergeMethodMerge, setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodRebase},
+		RequireExtraApprovalForUnattributedChanges: new(true),
+	}
+}
+
+// withPullRequestParameters は、基準の値の pull_request のルールのパラメータを edit で変える。
+func withPullRequestParameters(v *setting.Ruleset, edit func(*setting.PullRequestParameters)) {
+	p := basePullRequestParameters()
+	edit(&p)
+	v.Rules[1] = setting.PullRequestRule(p)
 }
 
 // baseStatusChecksParameters は、rulesetDetail の基準の本文の required_status_checks のルールから読むパラメータである。
@@ -189,9 +207,26 @@ func TestDecodeRulesetInterpreted(t *testing.T) {
 			},
 		},
 		{
-			name: "allowed merge methods in another order with duplicates are the default",
+			name: "allowed merge methods are read in the received order with duplicates",
 			change: func(b map[string]any) {
-				pullRequestParameters(b)["allowed_merge_methods"] = []any{"rebase", "merge", "squash", "merge"}
+				pullRequestParameters(b)["allowed_merge_methods"] = []any{"squash", "squash", "merge"}
+			},
+			want: func(v *setting.Ruleset) {
+				withPullRequestParameters(v, func(p *setting.PullRequestParameters) {
+					p.AllowedMergeMethods = []setting.AllowedMergeMethod{setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodMerge}
+				})
+			},
+		},
+		{
+			name: "allowed merge methods other than all methods and false extra approval are read as values",
+			change: func(b map[string]any) {
+				p := pullRequestParameters(b)
+				p["allowed_merge_methods"], p["require_extra_approval_for_unattributed_changes"] = []any{"rebase"}, false
+			},
+			want: func(v *setting.Ruleset) {
+				withPullRequestParameters(v, func(p *setting.PullRequestParameters) {
+					p.AllowedMergeMethods, p.RequireExtraApprovalForUnattributedChanges = []setting.AllowedMergeMethod{setting.AllowedMergeMethodRebase}, new(false)
+				})
 			},
 		},
 		{
@@ -205,7 +240,10 @@ func TestDecodeRulesetInterpreted(t *testing.T) {
 				p["required_review_thread_resolution"] = true
 			},
 			want: func(v *setting.Ruleset) {
-				v.Rules[1] = setting.PullRequestRule(setting.PullRequestParameters{RequiredApprovingReviewCount: 11, RequireCodeOwnerReview: true, RequiredReviewThreadResolution: true})
+				withPullRequestParameters(v, func(p *setting.PullRequestParameters) {
+					p.RequiredApprovingReviewCount, p.DismissStaleReviewsOnPush, p.RequireCodeOwnerReview = 11, false, true
+					p.RequireLastPushApproval, p.RequiredReviewThreadResolution = false, true
+				})
 			},
 		},
 	}
@@ -380,12 +418,12 @@ func TestDecodeRulesetUninterpreted(t *testing.T) {
 			},
 		},
 		{
-			name:   "allowed merge methods that are a smaller set are uninterpreted",
-			change: func(b map[string]any) { pullRequestParameters(b)["allowed_merge_methods"] = []any{"squash"} },
+			name:   "empty allowed merge methods are uninterpreted",
+			change: func(b map[string]any) { pullRequestParameters(b)["allowed_merge_methods"] = []any{} },
 			want:   []UninterpretedPart{parameter("allowed_merge_methods")},
 		},
 		{
-			name: "allowed merge methods that are a larger set are uninterpreted",
+			name: "allowed merge methods with an undefined method are uninterpreted",
 			change: func(b map[string]any) {
 				pullRequestParameters(b)["allowed_merge_methods"] = []any{"merge", "squash", "rebase", "fast_forward"}
 			},
@@ -421,11 +459,26 @@ func TestDecodeRulesetUninterpreted(t *testing.T) {
 			want: []UninterpretedPart{parameter("allowed_merge_methods")},
 		},
 		{
-			name: "false extra approval for unattributed changes is uninterpreted",
+			name: "null extra approval for unattributed changes is uninterpreted",
 			change: func(b map[string]any) {
-				pullRequestParameters(b)["require_extra_approval_for_unattributed_changes"] = false
+				pullRequestParameters(b)["require_extra_approval_for_unattributed_changes"] = nil
 			},
 			want: []UninterpretedPart{parameter("require_extra_approval_for_unattributed_changes")},
+		},
+		{
+			name: "uninterpreted pull request parameters are ordered as the checked ones, then unread keys by name",
+			change: func(b map[string]any) {
+				p := pullRequestParameters(b)
+				p["z_key"], p["a_key"], p["required_reviewers"] = 1, 1, nil
+				p["require_extra_approval_for_unattributed_changes"], p["allowed_merge_methods"] = nil, nil
+			},
+			want: []UninterpretedPart{
+				parameter("allowed_merge_methods"),
+				parameter("require_extra_approval_for_unattributed_changes"),
+				parameter("required_reviewers"),
+				parameter("a_key"),
+				parameter("z_key"),
+			},
 		},
 		{
 			name: "missing extra approval for unattributed changes is uninterpreted",

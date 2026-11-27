@@ -492,7 +492,7 @@ func TestDocumentRulesetRule(t *testing.T) {
 		{name: "missing require_code_owner_review is rejected", src: with("  require_code_owner_review: false\n", ""), wantPath: "R.parameters", wantReason: `missing key "require_code_owner_review"`},
 		{name: "missing require_last_push_approval is rejected", src: with("  require_last_push_approval: false\n", ""), wantPath: "R.parameters", wantReason: `missing key "require_last_push_approval"`},
 		{name: "missing required_review_thread_resolution is rejected", src: with("  required_review_thread_resolution: false\n", ""), wantPath: "R.parameters", wantReason: `missing key "required_review_thread_resolution"`},
-		{name: "unknown parameter is rejected", src: base + "  allowed_merge_methods: [merge]\n", wantPath: "R.parameters", wantReason: `unknown key "allowed_merge_methods"; expected required_approving_review_count, dismiss_stale_reviews_on_push, require_code_owner_review, require_last_push_approval, required_review_thread_resolution`},
+		{name: "unknown parameter is rejected", src: base + "  automatic_copilot_code_review_enabled: false\n", wantPath: "R.parameters", wantReason: `unknown key "automatic_copilot_code_review_enabled"; expected required_approving_review_count, dismiss_stale_reviews_on_push, require_code_owner_review, require_last_push_approval, required_review_thread_resolution, allowed_merge_methods, require_extra_approval_for_unattributed_changes`},
 		{name: "count 11 is rejected", src: with("count: 1", "count: 11"), wantPath: "R.parameters.required_approving_review_count", wantReason: "must be an integer from 0 to 10; got 11"},
 		{name: "quoted count is rejected", src: with("count: 1", `count: "1"`), wantPath: "R.parameters.required_approving_review_count", wantReason: `must be an integer; got "1"`},
 		{name: "quoted dismiss_stale_reviews_on_push is rejected", src: with("dismiss_stale_reviews_on_push: false", `dismiss_stale_reviews_on_push: "false"`), wantPath: "R.parameters.dismiss_stale_reviews_on_push", wantReason: "must be true or false"},
@@ -611,6 +611,74 @@ func TestDocumentRequiredStatusChecksParameters(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("requiredStatusChecksParameters() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDocumentPullRequestParameters は、pull_request の省略できるパラメータの判定を確かめる。必須の5項目の判定は TestDocumentRulesetRule が確かめる。
+// 拒否のケースは、2項目を宣言した受理される入力 (declared) を基準にする。
+//
+//trace:checks FR-001
+func TestDocumentPullRequestParameters(t *testing.T) {
+	const base = "required_approving_review_count: 1\ndismiss_stale_reviews_on_push: false\nrequire_code_owner_review: false\nrequire_last_push_approval: false\nrequired_review_thread_resolution: false\n"
+	const declared = base + "allowed_merge_methods: [squash, merge]\nrequire_extra_approval_for_unattributed_changes: false\n"
+	with := func(old, replacement string) string { return strings.Replace(declared, old, replacement, 1) }
+	squash, merge := setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodMerge
+	cases := []struct {
+		name       string
+		src        string
+		want       setting.PullRequestParameters
+		wantPath   string
+		wantReason string
+	}{
+		{name: "omitted optional parameters are left unset", src: base, want: setting.PullRequestParameters{RequiredApprovingReviewCount: 1}},
+		{
+			name: "declared optional parameters are read in the declared order",
+			src:  declared,
+			want: setting.PullRequestParameters{RequiredApprovingReviewCount: 1, AllowedMergeMethods: []setting.AllowedMergeMethod{squash, merge}, RequireExtraApprovalForUnattributedChanges: new(false)},
+		},
+		{
+			name: "only allowed_merge_methods can be declared",
+			src:  base + "allowed_merge_methods: [rebase]\n",
+			want: setting.PullRequestParameters{RequiredApprovingReviewCount: 1, AllowedMergeMethods: []setting.AllowedMergeMethod{setting.AllowedMergeMethodRebase}},
+		},
+		{
+			name: "only require_extra_approval_for_unattributed_changes can be declared",
+			src:  base + "require_extra_approval_for_unattributed_changes: true\n",
+			want: setting.PullRequestParameters{RequiredApprovingReviewCount: 1, RequireExtraApprovalForUnattributedChanges: new(true)},
+		},
+		{name: "empty allowed_merge_methods is rejected", src: with("[squash, merge]", "[]"), wantPath: "P.allowed_merge_methods", wantReason: "must not be empty"},
+		{name: "non-string merge method is rejected", src: with("[squash, merge]", "[squash, 1]"), wantPath: "P.allowed_merge_methods[1]", wantReason: "must be a string"},
+		{name: "undefined merge method is rejected", src: with("[squash, merge]", "[squash, fast_forward]"), wantPath: "P.allowed_merge_methods[1]", wantReason: `must be merge, squash, or rebase; got "fast_forward"`},
+		{name: "duplicate merge method is rejected", src: with("[squash, merge]", "[squash, squash]"), wantPath: "P.allowed_merge_methods[1]", wantReason: `duplicate merge method "squash"; same as P.allowed_merge_methods[0]`},
+		{name: "non-boolean require_extra_approval_for_unattributed_changes is rejected", src: with("changes: false", "changes: no"), wantPath: "P.require_extra_approval_for_unattributed_changes", wantReason: "must be true or false"},
+		{name: "dismissal_restriction is rejected as an unknown key", src: base + "dismissal_restriction: {}\n", wantPath: "P", wantReason: `unknown key "dismissal_restriction"`},
+		{name: "required_reviewers is rejected as an unknown key", src: base + "required_reviewers: []\n", wantPath: "P", wantReason: `unknown key "required_reviewers"`},
+		{name: "booleans are checked before allowed_merge_methods", src: strings.Replace(with("[squash, merge]", "[]"), "resolution: false", "resolution: 0", 1), wantPath: "P.required_review_thread_resolution", wantReason: "must be true or false"},
+		{name: "allowed_merge_methods is checked before require_extra_approval_for_unattributed_changes", src: strings.Replace(with("[squash, merge]", "[]"), "changes: false", "changes: no", 1), wantPath: "P.allowed_merge_methods", wantReason: "must not be empty"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.pullRequestParameters(doc.root, "P")
+			if tc.wantPath != "" {
+				if err == nil {
+					t.Fatalf("pullRequestParameters() = %+v, want error", got)
+				}
+				if !strings.HasPrefix(err.Error(), tc.wantPath+" (") {
+					t.Errorf("pullRequestParameters() error = %q, want it to start with %q", err, tc.wantPath+" (")
+				}
+				if !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("pullRequestParameters() error = %q, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("pullRequestParameters() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("pullRequestParameters() = %+v, want %+v", got, tc.want)
 			}
 		})
 	}

@@ -296,7 +296,8 @@ func (d document) typedRulesetRule(ruleType setting.RulesetRuleType, parametersN
 	panic(fmt.Sprintf("configuration: undefined ruleset rule type %q", ruleType))
 }
 
-// pullRequestParameters は、pull_request のルールの 5 項目をすべて読む。
+// pullRequestParameters は、pull_request のルールの必須の 5 項目と、省略できる 2 項目を読む。省略した項目は nil のまま残す。
+// 判定は、キーの集合、承認数、4 つの真偽値、allowed_merge_methods、require_extra_approval_for_unattributed_changes の順に行う。
 func (d document) pullRequestParameters(n *yaml.Node, path string) (setting.PullRequestParameters, error) {
 	entries, err := d.mappingEntries(n, path, []string{
 		"required_approving_review_count",
@@ -304,7 +305,7 @@ func (d document) pullRequestParameters(n *yaml.Node, path string) (setting.Pull
 		"require_code_owner_review",
 		"require_last_push_approval",
 		"required_review_thread_resolution",
-	}, nil)
+	}, []string{"allowed_merge_methods", "require_extra_approval_for_unattributed_changes"})
 	if err != nil {
 		return setting.PullRequestParameters{}, err
 	}
@@ -329,7 +330,45 @@ func (d document) pullRequestParameters(n *yaml.Node, path string) (setting.Pull
 			return setting.PullRequestParameters{}, err
 		}
 	}
+	if node, ok := entries["allowed_merge_methods"]; ok {
+		if parameters.AllowedMergeMethods, err = d.allowedMergeMethods(node, path+".allowed_merge_methods"); err != nil {
+			return setting.PullRequestParameters{}, err
+		}
+	}
+	if node, ok := entries["require_extra_approval_for_unattributed_changes"]; ok {
+		extraApproval, err := d.boolValue(node, path+".require_extra_approval_for_unattributed_changes")
+		if err != nil {
+			return setting.PullRequestParameters{}, err
+		}
+		parameters.RequireExtraApprovalForUnattributedChanges = &extraApproval
+	}
 	return parameters, nil
+}
+
+// allowedMergeMethods は、許すマージ方式の並びを宣言の順のまま読む。GitHub が空の並びを拒否するため、空を受け付けない。
+// 集合として比べるため、同じ方式を二度書けない。誤りは要素ごとに、文字列であること、定義された方式であること、重複の順に示す。
+func (d document) allowedMergeMethods(n *yaml.Node, path string) ([]setting.AllowedMergeMethod, error) {
+	items, err := d.sequenceItems(n, path)
+	if err != nil {
+		return nil, err
+	}
+	methods := make([]setting.AllowedMergeMethod, 0, len(items))
+	for i, item := range items {
+		itemPath := fmt.Sprintf("%s[%d]", path, i)
+		s, err := d.stringValue(item, itemPath)
+		if err != nil {
+			return nil, err
+		}
+		method, ok := setting.ParseAllowedMergeMethod(s)
+		if !ok {
+			return nil, invalid(item, itemPath, "must be merge, squash, or rebase; got %q", s)
+		}
+		if j := slices.Index(methods, method); j >= 0 {
+			return nil, invalid(item, itemPath, "duplicate merge method %q; same as %s[%d]", method, path, j)
+		}
+		methods = append(methods, method)
+	}
+	return methods, nil
 }
 
 // requiredStatusChecksParameters は、required_status_checks のルールのパラメータを読む。do_not_enforce_on_create は省略でき、省略したら nil のまま残す。

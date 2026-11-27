@@ -72,10 +72,7 @@ func writeRulesetValue(b *strings.Builder, v setting.Ruleset) {
 func writeRulesetRule(b *strings.Builder, rule setting.RulesetRule) {
 	switch rule.Type() {
 	case setting.RulesetRulePullRequest:
-		p := rule.PullRequest()
-		fmt.Fprintf(b, "          - type: %s\n            parameters:\n              required_approving_review_count: %d\n              dismiss_stale_reviews_on_push: %t\n"+
-			"              require_code_owner_review: %t\n              require_last_push_approval: %t\n              required_review_thread_resolution: %t\n",
-			rule.Type(), p.RequiredApprovingReviewCount, p.DismissStaleReviewsOnPush, p.RequireCodeOwnerReview, p.RequireLastPushApproval, p.RequiredReviewThreadResolution)
+		writePullRequestRule(b, rule.PullRequest())
 		return
 	case setting.RulesetRuleDeletion, setting.RulesetRuleNonFastForward:
 		fmt.Fprintf(b, "          - type: %s\n", rule.Type())
@@ -85,6 +82,22 @@ func writeRulesetRule(b *strings.Builder, rule setting.RulesetRule) {
 		return
 	}
 	panic(fmt.Sprintf("show: undefined ruleset rule type %q", rule.Type()))
+}
+
+// writePullRequestRule は pull_request のルールを書く。許すマージ方式は返った順に重複も残して書く。
+// 観測した値は省略できるパラメータを必ず持つ。持たない値は宣言から作った値で、観測値として示すと省略を値と取り違えるため、不変条件の破れとして panic する。
+func writePullRequestRule(b *strings.Builder, p setting.PullRequestParameters) {
+	if p.AllowedMergeMethods == nil || p.RequireExtraApprovalForUnattributedChanges == nil {
+		panic("show: observed pull_request rule has an omitted optional parameter")
+	}
+	fmt.Fprintf(b, "          - type: pull_request\n            parameters:\n              required_approving_review_count: %d\n              dismiss_stale_reviews_on_push: %t\n"+
+		"              require_code_owner_review: %t\n              require_last_push_approval: %t\n              required_review_thread_resolution: %t\n",
+		p.RequiredApprovingReviewCount, p.DismissStaleReviewsOnPush, p.RequireCodeOwnerReview, p.RequireLastPushApproval, p.RequiredReviewThreadResolution)
+	b.WriteString("              allowed_merge_methods:\n")
+	for _, m := range p.AllowedMergeMethods {
+		fmt.Fprintf(b, "                - %s\n", m)
+	}
+	fmt.Fprintf(b, "              require_extra_approval_for_unattributed_changes: %t\n", *p.RequireExtraApprovalForUnattributedChanges)
 }
 
 // writeRequiredStatusChecksRule は required_status_checks のルールを書く。チェックは返った順に重複も残して書き、context は名前と同じく引用符で囲む。
