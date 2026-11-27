@@ -155,6 +155,10 @@ Environment、Variable、Ruleset のように、一つのリポジトリに名�
 | `general.squash_merge_commit.message` | 文字列 | `PR_BODY` / `COMMIT_MESSAGES` / `BLANK`。必須 | squash merge のコミットメッセージの既定の本文 | squash merge のマージメッセージ（設定グループ） |
 | `general.merge_commit.title` | 文字列 | `PR_TITLE` / `MERGE_MESSAGE`。必須 | merge commit のコミットメッセージの既定のタイトル | merge commit のマージメッセージ（設定グループ） |
 | `general.merge_commit.message` | 文字列 | `PR_BODY` / `PR_TITLE` / `BLANK`。必須 | merge commit のコミットメッセージの既定の本文 | merge commit のマージメッセージ（設定グループ） |
+| `general.has_issues` | 真偽値 | `true` / `false` | リポジトリの Issues を有効にする設定 | 独立 |
+| `general.has_projects` | 真偽値 | `true` / `false` | リポジトリの Projects を有効にする設定 | 独立 |
+| `general.has_wiki` | 真偽値 | `true` / `false` | リポジトリの Wiki を有効にする設定 | 独立 |
+| `general.web_commit_signoff_required` | 真偽値 | `true` / `false` | GitHub の Web 画面からのコミットに、作成者のサインオフを求める設定 | 独立 |
 
 これらはリポジトリ単位の設定であり、変更しても個々の Pull Request のマージ、ブランチの更新、ブランチの直接削除は行いません。`allow_update_branch` は更新を提案するボタンを表示する設定で、reco も GitHub もブランチを自動では更新しません。
 
@@ -182,6 +186,8 @@ GitHub が更新で受け付けるタイトルと本文の組み合わせは、�
 片方だけの宣言を受け付けないのは、GitHub が片方だけを送る更新を、保存されている値と同じ値でも拒否することがあるためです（同 4章）。受け付けない組み合わせを拒否するのは、承認のあとで GitHub が拒否する宣言を、入力の時点で止めるためです。設定グループの中の誤りは、キーの集合（欠けたキーと未知のキー）、`title` の値、`message` の値、組み合わせの順に、最初の一つを示します。`general` の中の誤りは、上の表の並びで最初の一つを示します。
 
 マージメッセージは、対応するマージ方式（`squash_merge_commit` には `allow_squash_merge`、`merge_commit` には `allow_merge_commit`）の宣言によらず宣言でき、`allow_squash_merge: false` と `squash_merge_commit` も同時に宣言できます。
+
+`has_issues`、`has_projects`、`has_wiki`、`web_commit_signoff_required` は、一部だけを宣言でき、マージ方式の組み合わせの規則にもマージメッセージにも関わりません。`web_commit_signoff_required` は、コミットの署名を求める設定とは別の設定です。`has_issues`、`has_projects`、`has_wiki` の `false` は機能を無効にする宣言で、reco は Issue、Project、Wiki のページを作成も削除もしません。
 
 | Relationship | Target | Target Type |
 |---|---|---|

@@ -6,7 +6,7 @@ import (
 )
 
 func TestRepositorySettingUnits_FollowsConfigurationOrder(t *testing.T) {
-	want := []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, SquashMergeCommit, MergeCommit, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, ForkPullRequestApproval, PrivateForkPullRequestWorkflows, RetentionDays, OIDCSubject, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
+	want := []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, SquashMergeCommit, MergeCommit, HasIssues, HasProjects, HasWiki, WebCommitSignoffRequired, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, ForkPullRequestApproval, PrivateForkPullRequestWorkflows, RetentionDays, OIDCSubject, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
 	if got := RepositorySettingUnits(); !slices.Equal(got, want) {
 		t.Errorf("RepositorySettingUnits() = %v, want %v", got, want)
 	}
@@ -55,6 +55,10 @@ func TestKeyArea(t *testing.T) {
 		{key: AllowUpdateBranch, want: AreaGeneral},
 		{key: SquashMergeCommit, want: AreaGeneral},
 		{key: MergeCommit, want: AreaGeneral},
+		{key: HasIssues, want: AreaGeneral},
+		{key: HasProjects, want: AreaGeneral},
+		{key: HasWiki, want: AreaGeneral},
+		{key: WebCommitSignoffRequired, want: AreaGeneral},
 		{key: ActionsEnabled, want: AreaActionsPermissions},
 		{key: AllowedActions, want: AreaActionsPermissions},
 		{key: SHAPinningRequired, want: AreaActionsPermissions},

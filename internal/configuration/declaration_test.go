@@ -568,9 +568,9 @@ func TestDocumentDeclaration(t *testing.T) {
 		// General
 		{
 			name:       "unknown key in general is rejected",
-			src:        second + "      has_issues: true\n",
+			src:        second + "      has_discussions: true\n",
 			wantPath:   "repositories[1].general",
-			wantReason: `unknown key "has_issues"; expected delete_branch_on_merge, allow_auto_merge, allow_squash_merge, allow_merge_commit, allow_rebase_merge, allow_update_branch`,
+			wantReason: `unknown key "has_discussions"; expected delete_branch_on_merge, allow_auto_merge, allow_squash_merge, allow_merge_commit, allow_rebase_merge, allow_update_branch`,
 		},
 		{
 			name:       "delete_branch_on_merge without a value is rejected rather than read as omitted",
@@ -1093,6 +1093,33 @@ func TestDocumentGeneral(t *testing.T) {
 		{name: "allow_merge_commit is read into its own field", src: "allow_merge_commit: false\n", want: General{AllowMergeCommit: new(false)}},
 		{name: "allow_rebase_merge is read into its own field", src: "allow_rebase_merge: true\n", want: General{AllowRebaseMerge: new(true)}},
 		{name: "allow_update_branch is read into its own field", src: "allow_update_branch: false\n", want: General{AllowUpdateBranch: new(false)}},
+		{name: "has_issues is read into its own field", src: "has_issues: true\n", want: General{HasIssues: new(true)}},
+		{name: "has_projects is read into its own field", src: "has_projects: false\n", want: General{HasProjects: new(false)}},
+		{name: "has_wiki is read into its own field", src: "has_wiki: true\n", want: General{HasWiki: new(true)}},
+		{name: "web_commit_signoff_required is read into its own field", src: "web_commit_signoff_required: false\n", want: General{WebCommitSignoffRequired: new(false)}},
+		{
+			name: "every repository feature declared false is read",
+			src:  "has_issues: false\nhas_projects: false\nhas_wiki: false\n",
+			want: General{HasIssues: new(false), HasProjects: new(false), HasWiki: new(false)},
+		},
+		{
+			name:       "a setting group error is reported before a repository feature error",
+			src:        "has_issues: yes\nsquash_merge_commit:\n  title: X\n  message: PR_BODY\n",
+			wantPath:   "P.squash_merge_commit.title",
+			wantReason: `got "X"`,
+		},
+		{
+			name:       "has_wiki error is reported before web_commit_signoff_required error",
+			src:        "web_commit_signoff_required: yes\nhas_wiki: yes\n",
+			wantPath:   "P.has_wiki",
+			wantReason: "must be true or false",
+		},
+		{
+			name:       "a repository feature error is reported before every merge method false",
+			src:        "allow_squash_merge: false\nallow_merge_commit: false\nallow_rebase_merge: false\nhas_issues: \"true\"\n",
+			wantPath:   "P.has_issues",
+			wantReason: "must be true or false",
+		},
 		{
 			name:       "every merge method declared false is rejected at general",
 			src:        "allow_squash_merge: false\nallow_merge_commit: false\nallow_rebase_merge: false\n",

@@ -374,6 +374,15 @@ func TestPlannedChangeText(t *testing.T) {
 				"    Applicability: not applicable (GitHub returned a value that reco does not know; remove merge_commit from the configuration)\n",
 		},
 		{
+			name: "web_commit_signoff_required not returned shows the not returned state and the reason to remove it",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.WebCommitSignoffRequired}, Observed: github.Unavailable[setting.Value](github.UnavailableNotReturned), Desired: setting.BoolValue(true),
+				Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable(changeplan.NotApplicableNotReturned),
+			},
+			want: "  general.web_commit_signoff_required: (not returned) -> true\n" +
+				"    Applicability: not applicable (GitHub did not return the value; remove web_commit_signoff_required from the configuration)\n",
+		},
+		{
 			name: "match is empty",
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true),
@@ -451,16 +460,6 @@ func TestNotApplicableReasonText_MergeMethodRemainsDisabledOfOtherSettingPanics(
 	_ = notApplicableReasonText(changeplan.SettingPlan{
 		Unit: setting.Unit{Key: setting.AllowSquashMerge}, Applicability: changeplan.NotApplicable(changeplan.NotApplicableMergeMethodRemainsDisabled),
 	})
-}
-
-// 値が返らなかったことによる観測不能は、宣言を受け付けない web_commit_signoff_required だけが持ち、比較不能な設定予定にならない。
-func TestRepositoryStateText_NotReturnedPanics(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Error("repositoryStateText() did not panic for a value GitHub did not return")
-		}
-	}()
-	_ = repositoryStateText(github.UnavailableNotReturned)
 }
 
 func squashMergeCommitValue(title setting.SquashMergeCommitTitle, message setting.SquashMergeCommitMessage) setting.Value {

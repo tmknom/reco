@@ -45,11 +45,10 @@ repositories:
       merge_commit:
         title: MERGE_MESSAGE
         message: PR_TITLE
-      # reco does not accept the repository feature and web commit signoff settings in the configuration file yet
-      # has_issues: true
-      # has_projects: true
-      # has_wiki: true
-      # web_commit_signoff_required: false
+      has_issues: true
+      has_projects: true
+      has_wiki: true
+      web_commit_signoff_required: false
     actions:
       permissions:
         enabled: true
@@ -107,9 +106,8 @@ repositories:
 
 | 行 | 意味 |
 |---|---|
-| `# reco does not accept ... yet` の行と、続くコメントの行 | Issues・Projects・Wiki を有効にするか、Web 画面からのコミットにサインオフを求めるかは、いまの reco では設定ファイルに書けない。今の値を確かめるためだけに表示している |
 | `# squash_merge_commit: unavailable (GitHub returned a value that reco does not know)` / `# merge_commit: unavailable (GitHub returned a value that reco does not know)` | GitHub が、reco のまだ知らない選び方（GitHub が新しく足したものなど）をマージ時のコミットメッセージに返したため、その方式のコミットメッセージを読み取れない。値は GitHub の設定画面で確かめる。ほかの設定はいつもどおり使える |
-| `# web_commit_signoff_required: unavailable (GitHub did not return the value)` | GitHub がこの設定の値を返さなかったため、読み取れない。ほかの設定はいつもどおり使える |
+| `# web_commit_signoff_required: unavailable (GitHub did not return the value)` | GitHub がこの設定の値を返さなかったため、読み取れない。設定ファイルに `web_commit_signoff_required` を書くと、`plan` が `Plan cannot be applied.` を表示する。ほかの設定はいつもどおり使える |
 | `# variables: none` | `actions` の下では Repository Variables が、Environment の下ではその Environment の変数（Environment Variables）が一つもない |
 | `# environments: none` | Environment が一つもない |
 | `# access:` と `#   access_level: unavailable (the repository is public)` | 公開リポジトリのため、`access_level` を読み取れない。この設定は非公開リポジトリにだけ書ける |

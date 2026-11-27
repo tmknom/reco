@@ -20,7 +20,12 @@ const (
 	// SquashMergeCommit は、squash merge のマージメッセージ。タイトルと本文の設定グループを一つの Key で表す。
 	SquashMergeCommit Key = "general.squash_merge_commit"
 	// MergeCommit は、merge commit のマージメッセージ。タイトルと本文の設定グループを一つの Key で表す。マージ方式の AllowMergeCommit とは別の設定である。
-	MergeCommit                  Key = "general.merge_commit"
+	MergeCommit Key = "general.merge_commit"
+	HasIssues   Key = "general.has_issues"
+	HasProjects Key = "general.has_projects"
+	HasWiki     Key = "general.has_wiki"
+	// WebCommitSignoffRequired は、Web 画面からのコミットに作成者のサインオフを求める設定。コミットの署名を求める設定とは別の設定である。
+	WebCommitSignoffRequired     Key = "general.web_commit_signoff_required"
 	ActionsEnabled               Key = "actions.permissions.enabled"
 	AllowedActions               Key = "actions.permissions.allowed_actions"
 	SelectedActions              Key = "actions.permissions.selected_actions"
@@ -64,7 +69,7 @@ const (
 // 設定グループは一つの Key で表す。関連リソースに関わる管理の単位は、宣言の名前ごとに決まるため含めない。
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
 func RepositorySettingUnits() []Key {
-	return []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, SquashMergeCommit, MergeCommit, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, ForkPullRequestApproval, PrivateForkPullRequestWorkflows, RetentionDays, OIDCSubject, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
+	return []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, SquashMergeCommit, MergeCommit, HasIssues, HasProjects, HasWiki, WebCommitSignoffRequired, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, ForkPullRequestApproval, PrivateForkPullRequestWorkflows, RetentionDays, OIDCSubject, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
 }
 
 // MergeMethods は、GitHub がすべてを無効にすることを受け付けないマージ方式の管理の単位を、YAML 設定仕様の表の並びで返す。
@@ -103,7 +108,7 @@ func (k Key) HasEnvironmentName() bool {
 // 定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func (k Key) Area() Area {
 	switch k {
-	case DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, SquashMergeCommit, MergeCommit:
+	case DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, SquashMergeCommit, MergeCommit, HasIssues, HasProjects, HasWiki, WebCommitSignoffRequired:
 		return AreaGeneral
 	case ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired:
 		return AreaActionsPermissions

@@ -37,11 +37,10 @@ repositories:
       merge_commit:
         title: MERGE_MESSAGE
         message: PR_TITLE
-      # reco does not accept the repository feature and web commit signoff settings in the configuration file yet
-      # has_issues: true
-      # has_projects: true
-      # has_wiki: true
-      # web_commit_signoff_required: false
+      has_issues: true
+      has_projects: true
+      has_wiki: true
+      web_commit_signoff_required: false
     actions:
       permissions:
         enabled: true

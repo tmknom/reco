@@ -52,7 +52,6 @@ type General struct {
 	AllowUpdateBranch        bool
 	SquashMergeCommitDefault SettingObservation[setting.SquashMergeCommitDefault]
 	MergeCommitDefault       SettingObservation[setting.MergeCommitDefault]
-	// リポジトリの機能と Web コミットのサインオフ必須は、宣言を受け付けないため管理の単位を持たず、Setting の対象にならない。
 	HasIssues                bool
 	HasProjects              bool
 	HasWiki                  bool
@@ -89,6 +88,14 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 		return valueObservation(o.General.SquashMergeCommitDefault, setting.SquashMergeCommitDefaultValue)
 	case setting.MergeCommit:
 		return valueObservation(o.General.MergeCommitDefault, setting.MergeCommitDefaultValue)
+	case setting.HasIssues:
+		return Observed(setting.BoolValue(o.General.HasIssues))
+	case setting.HasProjects:
+		return Observed(setting.BoolValue(o.General.HasProjects))
+	case setting.HasWiki:
+		return Observed(setting.BoolValue(o.General.HasWiki))
+	case setting.WebCommitSignoffRequired:
+		return valueObservation(o.General.WebCommitSignoffRequired, setting.BoolValue)
 	case setting.ActionsEnabled:
 		return Observed(setting.BoolValue(o.ActionsPermissions.Enabled))
 	case setting.AllowedActions:

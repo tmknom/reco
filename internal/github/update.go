@@ -53,6 +53,26 @@ func (c *Client) updateAllowUpdateBranch(ctx context.Context, reference reposito
 	return c.updateRepository(ctx, reference, fmt.Appendf(nil, `{"allow_update_branch":%t}`, allow))
 }
 
+// updateHasIssues は reference のリポジトリの has_issues を enabled に更新する。
+func (c *Client) updateHasIssues(ctx context.Context, reference repository.Reference, enabled bool) (UpdateOutcome, error) {
+	return c.updateRepository(ctx, reference, fmt.Appendf(nil, `{"has_issues":%t}`, enabled))
+}
+
+// updateHasProjects は reference のリポジトリの has_projects を enabled に更新する。
+func (c *Client) updateHasProjects(ctx context.Context, reference repository.Reference, enabled bool) (UpdateOutcome, error) {
+	return c.updateRepository(ctx, reference, fmt.Appendf(nil, `{"has_projects":%t}`, enabled))
+}
+
+// updateHasWiki は reference のリポジトリの has_wiki を enabled に更新する。
+func (c *Client) updateHasWiki(ctx context.Context, reference repository.Reference, enabled bool) (UpdateOutcome, error) {
+	return c.updateRepository(ctx, reference, fmt.Appendf(nil, `{"has_wiki":%t}`, enabled))
+}
+
+// updateWebCommitSignoffRequired は reference のリポジトリの web_commit_signoff_required を required に更新する。
+func (c *Client) updateWebCommitSignoffRequired(ctx context.Context, reference repository.Reference, required bool) (UpdateOutcome, error) {
+	return c.updateRepository(ctx, reference, fmt.Appendf(nil, `{"web_commit_signoff_required":%t}`, required))
+}
+
 // updateSquashMergeCommitDefault は reference のリポジトリの squash merge のマージメッセージを d に更新する。
 // タイトルと本文の両方だけを送り、マージ方式のフィールドは送らない。
 func (c *Client) updateSquashMergeCommitDefault(ctx context.Context, reference repository.Reference, d setting.SquashMergeCommitDefault) (UpdateOutcome, error) {
@@ -261,6 +281,14 @@ func updateRequestOf(key setting.Key) updateRequest {
 		return updateRequest{RepositoryEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
 			return c.updateMergeCommitDefault(ctx, reference, value.MergeCommitDefault())
 		}}
+	case setting.HasIssues:
+		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateHasIssues)}
+	case setting.HasProjects:
+		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateHasProjects)}
+	case setting.HasWiki:
+		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateHasWiki)}
+	case setting.WebCommitSignoffRequired:
+		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateWebCommitSignoffRequired)}
 	case setting.AllowSquashMerge, setting.AllowMergeCommit, setting.AllowRebaseMerge:
 		return updateRequest{endpoint: RepositoryEndpoint}
 	case setting.ActionsEnabled:

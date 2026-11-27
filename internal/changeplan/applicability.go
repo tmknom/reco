@@ -50,6 +50,8 @@ const (
 	NotApplicableMergeMethodRemainsDisabled
 	// NotApplicableUnknownValue は、現在の値が reco の知らない値であること。
 	NotApplicableUnknownValue
+	// NotApplicableNotReturned は、GitHub が現在の値を返さなかったこと。
+	NotApplicableNotReturned
 )
 
 // Applicable は、適用可能の判断を返す。
@@ -144,6 +146,9 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 	case isMergeMessage(s.Unit.Key) && reason == github.UnavailableUnknownValue:
 		// 置き換えで失われる値の意味を、reco が承認の前に示せない。同じリポジトリのほかの宣言では解消しない
 		return NotApplicable(NotApplicableUnknownValue)
+	case s.Unit.Key == setting.WebCommitSignoffRequired && reason == github.UnavailableNotReturned:
+		// 更新のあとの観測でも値が返らなければ、期待状態に一致したかを確かめられない。同じリポジトリのほかの宣言では解消しない
+		return NotApplicable(NotApplicableNotReturned)
 	case s.Unit.Key.HasEnvironmentName() && s.Unit.Key != setting.EnvironmentResource && reason == github.UnavailableEnvironmentAbsent:
 		// Environment の宣言は、方式や変数だけを書いても存在の宣言を兼ねるため、同じ変更計画が先にその Environment を作成する
 		if !createsEnvironment(settings, s.Unit.Environment) {

@@ -80,7 +80,7 @@ func repositoryStateText(reason github.UnavailableReason) string {
 	case github.UnavailableUnknownValue:
 		return "(unknown value)"
 	case github.UnavailableNotReturned:
-		// この理由を持つのは宣言を受け付けない web_commit_signoff_required だけで、比較不能な設定予定にならない
+		return "(not returned)"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined unavailable reason %d", int(reason)))
 }
@@ -126,6 +126,8 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 		}
 	case changeplan.NotApplicableUnknownValue:
 		return "GitHub returned a value that reco does not know; remove " + key.DeclaredKeyName() + " from the configuration"
+	case changeplan.NotApplicableNotReturned:
+		return "GitHub did not return the value; remove " + key.DeclaredKeyName() + " from the configuration"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(s.Applicability.Reason())))
 }
