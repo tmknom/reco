@@ -765,6 +765,37 @@ func TestGenerate_Rulesets(t *testing.T) {
 		}
 	})
 
+	// 判断の理由は Rulesets の設計の適用可能性と副作用にある
+	t.Run("ruleset allowing only a merge method the repository disables stays applicable without notes", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo":          githubtest.OK(githubtest.RepositoryBody{ID: 7, AllowMergeCommit: true}.JSON()),
+			"GET /repos/owner/repo/rulesets": githubtest.OK(githubtest.RulesetsBody{}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+		const src = "repositories:\n  - name: owner/repo\n    rulesets:\n      - name: protect\n        target: branch\n        enforcement: active\n" +
+			"        conditions:\n          ref_name:\n            include: [\"~DEFAULT_BRANCH\"]\n            exclude: []\n        bypass_actors: []\n" +
+			"        rules:\n          - type: pull_request\n            parameters:\n              required_approving_review_count: 0\n" +
+			"              dismiss_stale_reviews_on_push: false\n              require_code_owner_review: false\n" +
+			"              require_last_push_approval: false\n              required_review_thread_resolution: false\n" +
+			"              allowed_merge_methods: [squash]\n"
+
+		got, err := Generate(context.Background(), client, file(src), nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		settings := got.Repositories[0].Settings
+		if len(settings) != 1 {
+			t.Fatalf("settings = %+v, want only the ruleset plan", settings)
+		}
+		s := settings[0]
+		if s.Result != Mismatch || !reflect.DeepEqual(s.Applicability, Applicable()) {
+			t.Errorf("ruleset plan = %v, %+v, want Mismatch and applicable", s.Result, s.Applicability)
+		}
+		if s.SideEffects != nil || s.SettingsExpectedUnaffected != nil || s.ResumedSettings != nil {
+			t.Errorf("ruleset plan has side effects %+v, expected unaffected %+v, resumed %+v, want none", s.SideEffects, s.SettingsExpectedUnaffected, s.ResumedSettings)
+		}
+	})
+
 	t.Run("repository without declared rulesets sends no ruleset request", func(t *testing.T) {
 		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
 			"GET /repos/owner/repo": githubtest.OK(githubtest.RepositoryBody{ID: 7}.JSON()),

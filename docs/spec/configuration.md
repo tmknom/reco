@@ -767,15 +767,25 @@ conditions:
 
 `rules` の要素は、`type` と、型が持つなら `parameters` を持つマッピングです。受け付ける `type` は `pull_request`、`deletion`、`required_status_checks`、`non_fast_forward` だけです。同じ `type` の要素を二つ書けません。GitHub は、`required_status_checks` を二つ含む Ruleset を拒否し、`non_fast_forward` を二つ含む Ruleset を黙って一つにまとめて保存するためです（[GitHub Rules API 仕様](../research/rules.md) 7.3、7.4）。誤りは、`type`、`parameters` の有無、`parameters` の中身、同じ `type` の重複の順に示します。
 
-`pull_request` は、マージの前に Pull Request を経ることを求めるルールです。`parameters` は必須で、次の5項目をすべて書きます。ほかのキーは受け付けません。GitHub は未知のキーを黙って捨てるためです（[GitHub Rules API 仕様](../research/rules.md) 7.1）。
+`pull_request` は、マージの前に Pull Request を経ることを求めるルールです。`parameters` は必須で、次のキーを持ちます。ほかのキーは受け付けません。GitHub は未知のキーを黙って捨てるためです（[GitHub Rules API 仕様](../research/rules.md) 7.1）。
 
-| `parameters` のキー | 型 | 許容値 |
-|---|---|---|
-| `required_approving_review_count` | 整数 | `0` から `10` |
-| `dismiss_stale_reviews_on_push` | 真偽値 | `true` / `false` |
-| `require_code_owner_review` | 真偽値 | `true` / `false` |
-| `require_last_push_approval` | 真偽値 | `true` / `false` |
-| `required_review_thread_resolution` | 真偽値 | `true` / `false` |
+| `parameters` のキー | 型 | 許容値 | 省略 |
+|---|---|---|---|
+| `required_approving_review_count` | 整数 | `0` から `10` | 不可 |
+| `dismiss_stale_reviews_on_push` | 真偽値 | `true` / `false` | 不可 |
+| `require_code_owner_review` | 真偽値 | `true` / `false` | 不可 |
+| `require_last_push_approval` | 真偽値 | `true` / `false` | 不可 |
+| `required_review_thread_resolution` | 真偽値 | `true` / `false` | 不可 |
+| `allowed_merge_methods` | シーケンス | `merge` / `squash` / `rebase` を1件以上 | 可 |
+| `require_extra_approval_for_unattributed_changes` | 真偽値 | `true` / `false` | 可 |
+
+- **`allowed_merge_methods` は Pull Request をマージできる方式の集合である**：順序に意味はなく、順序だけが違う宣言は同じ期待値になる。`[]` は受け付けない。GitHub が拒否するためである（同 7.1）。値は書いたとおりに比べ、大文字小文字の違う `Merge` などを受け付けない。同じ方式を二度書けない。集合として比べるため、二つ目は意味を持たない
+- **`require_extra_approval_for_unattributed_changes` は、人間の共同作業者のいない Copilot の Pull Request に、もう一つの承認を求めるか** である
+- **`allowed_merge_methods` と `require_extra_approval_for_unattributed_changes` は省略できる**：`do_not_enforce_on_create` と同じく、書いたら比べて送り、省略したら管理範囲外で、期待値と比べず、送らない。省略は項目ごとに決まり、一方を書いて他方を省略できる
+- **`dismissal_restriction` と `required_reviewers` は受け付けない**：個人アカウント所有のリポジトリでは、GitHub が `dismissal_restriction` を保存せず、`required_reviewers` の空でない値を拒否するためである（同 7.1）
+- **リポジトリの General のマージ方式とは突き合わせない**：General で無効にした方式だけを `allowed_merge_methods` に書いても受け付ける。GitHub も拒否しないためである（同 7.1）
+
+誤りは、`parameters` のキー、`required_approving_review_count`、4つの真偽値、`allowed_merge_methods`（要素ごとに、値の形、定義された方式であること、同じ方式の重複）、`require_extra_approval_for_unattributed_changes` の順に示します。
 
 `deletion` は、Bypass できる主体にだけ対象のブランチの削除を許すルールです。`non_fast_forward` は、対象のブランチへの Force push を禁じるルールです。どちらも `parameters` を書けません。GitHub は送った `parameters` を黙って捨てるためです（同 7.2、7.4）。
 
@@ -809,6 +819,7 @@ rules:
       require_code_owner_review: false
       require_last_push_approval: false
       required_review_thread_resolution: true
+      allowed_merge_methods: [squash, rebase]
   - type: deletion
   - type: non_fast_forward
   - type: required_status_checks

@@ -14,11 +14,13 @@ import (
 //trace:checks INV-001 FR-011
 func TestEncodeRulesetCreation(t *testing.T) {
 	pullRequest := setting.PullRequestRule(setting.PullRequestParameters{
-		RequiredApprovingReviewCount:   1,
-		DismissStaleReviewsOnPush:      true,
-		RequireCodeOwnerReview:         false,
-		RequireLastPushApproval:        true,
-		RequiredReviewThreadResolution: false,
+		RequiredApprovingReviewCount:               1,
+		DismissStaleReviewsOnPush:                  true,
+		RequireCodeOwnerReview:                     false,
+		RequireLastPushApproval:                    true,
+		RequiredReviewThreadResolution:             false,
+		AllowedMergeMethods:                        []setting.AllowedMergeMethod{setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodMerge},
+		RequireExtraApprovalForUnattributedChanges: new(false),
 	})
 	statusChecks := setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{
 		RequiredStatusChecks:             []setting.StatusCheck{{Context: "test"}, {Context: "lint", IntegrationID: 15368}},
@@ -42,13 +44,13 @@ func TestEncodeRulesetCreation(t *testing.T) {
 		want string
 	}{
 		{
-			name:    "sends every field in the declared order, with null actor_id for DeployKey and only five pull_request parameters",
+			name:    "sends every field in the declared order, with null actor_id for DeployKey and the declared pull_request parameters",
 			ruleset: "protect",
 			value:   full,
 			want: `{"name":"protect","target":"branch","enforcement":"active",` +
 				`"conditions":{"ref_name":{"include":["~DEFAULT_BRANCH","refs/heads/release"],"exclude":["refs/heads/tmp"]}},` +
 				`"bypass_actors":[{"actor_type":"RepositoryRole","actor_id":5,"bypass_mode":"always"},{"actor_type":"DeployKey","actor_id":null,"bypass_mode":"always"}],` +
-				`"rules":[{"type":"pull_request","parameters":{"required_approving_review_count":1,"dismiss_stale_reviews_on_push":true,"require_code_owner_review":false,"require_last_push_approval":true,"required_review_thread_resolution":false}},{"type":"deletion"},{"type":"non_fast_forward"},` +
+				`"rules":[{"type":"pull_request","parameters":{"required_approving_review_count":1,"dismiss_stale_reviews_on_push":true,"require_code_owner_review":false,"require_last_push_approval":true,"required_review_thread_resolution":false,"allowed_merge_methods":["squash","merge"],"require_extra_approval_for_unattributed_changes":false}},{"type":"deletion"},{"type":"non_fast_forward"},` +
 				`{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test"},{"context":"lint","integration_id":15368}],"strict_required_status_checks_policy":true}}]}`,
 		},
 		{
@@ -74,11 +76,13 @@ func TestEncodeRulesetCreation(t *testing.T) {
 //trace:checks INV-001 FR-011
 func TestEncodeRulesetValueUpdate(t *testing.T) {
 	pullRequest := setting.PullRequestRule(setting.PullRequestParameters{
-		RequiredApprovingReviewCount:   1,
-		DismissStaleReviewsOnPush:      true,
-		RequireCodeOwnerReview:         false,
-		RequireLastPushApproval:        true,
-		RequiredReviewThreadResolution: false,
+		RequiredApprovingReviewCount:               1,
+		DismissStaleReviewsOnPush:                  true,
+		RequireCodeOwnerReview:                     false,
+		RequireLastPushApproval:                    true,
+		RequiredReviewThreadResolution:             false,
+		AllowedMergeMethods:                        []setting.AllowedMergeMethod{setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodMerge},
+		RequireExtraApprovalForUnattributedChanges: new(false),
 	})
 	statusChecks := setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{
 		RequiredStatusChecks:             []setting.StatusCheck{{Context: "test"}, {Context: "lint", IntegrationID: 15368}},
@@ -101,12 +105,12 @@ func TestEncodeRulesetValueUpdate(t *testing.T) {
 		want string
 	}{
 		{
-			name:  "sends every value field in the declared order without name, with null actor_id for DeployKey and only five pull_request parameters",
+			name:  "sends every value field in the declared order without name, with null actor_id for DeployKey and the declared pull_request parameters",
 			value: full,
 			want: `{"target":"branch","enforcement":"active",` +
 				`"conditions":{"ref_name":{"include":["~DEFAULT_BRANCH","refs/heads/release"],"exclude":["refs/heads/tmp"]}},` +
 				`"bypass_actors":[{"actor_type":"RepositoryRole","actor_id":5,"bypass_mode":"always"},{"actor_type":"DeployKey","actor_id":null,"bypass_mode":"always"}],` +
-				`"rules":[{"type":"pull_request","parameters":{"required_approving_review_count":1,"dismiss_stale_reviews_on_push":true,"require_code_owner_review":false,"require_last_push_approval":true,"required_review_thread_resolution":false}},{"type":"deletion"},{"type":"non_fast_forward"},` +
+				`"rules":[{"type":"pull_request","parameters":{"required_approving_review_count":1,"dismiss_stale_reviews_on_push":true,"require_code_owner_review":false,"require_last_push_approval":true,"required_review_thread_resolution":false,"allowed_merge_methods":["squash","merge"],"require_extra_approval_for_unattributed_changes":false}},{"type":"deletion"},{"type":"non_fast_forward"},` +
 				`{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test"},{"context":"lint","integration_id":15368}],"strict_required_status_checks_policy":true}}]}`,
 		},
 	}
@@ -119,29 +123,34 @@ func TestEncodeRulesetValueUpdate(t *testing.T) {
 	}
 }
 
-// TestEncodeRulesetRule は、required_status_checks のルールの本文が、宣言した do_not_enforce_on_create と integration_id だけを送ることを確かめる。
+// TestEncodeRulesetRule は、ルールの本文が、宣言した省略できるパラメータと integration_id だけを送ることを確かめる。
 //
 //trace:checks INV-001 FR-011
 func TestEncodeRulesetRule(t *testing.T) {
 	cases := []struct {
-		name       string
-		parameters setting.RequiredStatusChecksParameters
-		want       string
+		name string
+		rule setting.RulesetRule
+		want string
 	}{
 		{
-			name:       "declared do_not_enforce_on_create false is sent",
-			parameters: setting.RequiredStatusChecksParameters{RequiredStatusChecks: []setting.StatusCheck{}, DoNotEnforceOnCreate: new(false)},
-			want:       `{"type":"required_status_checks","parameters":{"required_status_checks":[],"strict_required_status_checks_policy":false,"do_not_enforce_on_create":false}}`,
+			name: "declared do_not_enforce_on_create false is sent",
+			rule: setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{RequiredStatusChecks: []setting.StatusCheck{}, DoNotEnforceOnCreate: new(false)}),
+			want: `{"type":"required_status_checks","parameters":{"required_status_checks":[],"strict_required_status_checks_policy":false,"do_not_enforce_on_create":false}}`,
 		},
 		{
-			name:       "nil checks are sent as an empty array",
-			parameters: setting.RequiredStatusChecksParameters{StrictRequiredStatusChecksPolicy: true},
-			want:       `{"type":"required_status_checks","parameters":{"required_status_checks":[],"strict_required_status_checks_policy":true}}`,
+			name: "nil checks are sent as an empty array",
+			rule: setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{StrictRequiredStatusChecksPolicy: true}),
+			want: `{"type":"required_status_checks","parameters":{"required_status_checks":[],"strict_required_status_checks_policy":true}}`,
+		},
+		{
+			name: "pull_request omitting the optional parameters sends only the five required ones",
+			rule: setting.PullRequestRule(setting.PullRequestParameters{RequiredApprovingReviewCount: 1}),
+			want: `{"type":"pull_request","parameters":{"required_approving_review_count":1,"dismiss_stale_reviews_on_push":false,"require_code_owner_review":false,"require_last_push_approval":false,"required_review_thread_resolution":false}}`,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := string(mustMarshalJSON(encodeRulesetRule(setting.RequiredStatusChecksRule(tc.parameters)))); got != tc.want {
+			if got := string(mustMarshalJSON(encodeRulesetRule(tc.rule))); got != tc.want {
 				t.Errorf("encodeRulesetRule() = %s, want %s", got, tc.want)
 			}
 		})

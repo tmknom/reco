@@ -3,6 +3,7 @@ package setting
 import (
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // Ruleset は、Ruleset の値。名前は同一性の基準で、値に含めない。
@@ -166,19 +167,72 @@ func (t RulesetRuleType) HasParameters() bool {
 	panic(fmt.Sprintf("setting: undefined ruleset rule type %q", t))
 }
 
-// PullRequestParameters は、pull_request のルールのパラメータのうち、値に含める5項目。
-// GitHub が既定値で返す任意の項目は、既定値のときだけ解釈できたとし、値に含めない。
+// PullRequestParameters は、pull_request のルールのパラメータのうち、値に含めるもの。
+// 宣言できない required_reviewers は、既定値のときだけ解釈できたとし、値に含めない。
 type PullRequestParameters struct {
 	RequiredApprovingReviewCount   int
 	DismissStaleReviewsOnPush      bool
 	RequireCodeOwnerReview         bool
 	RequireLastPushApproval        bool
 	RequiredReviewThreadResolution bool
+	// AllowedMergeMethods は省略できるパラメータで、nil は宣言が省略したことを表す。持つなら1件以上で、受け取った順のまま重複も残す。観測した値は必ず持つ。
+	AllowedMergeMethods []AllowedMergeMethod
+	// RequireExtraApprovalForUnattributedChanges は省略できるパラメータで、nil は宣言が省略したことを表す。観測した値は必ず持つ。
+	RequireExtraApprovalForUnattributedChanges *bool
+}
+
+// clone は、スライスとポインタを共有しない写しを返す。省略を表す nil は nil のまま残す。
+func (p PullRequestParameters) clone() PullRequestParameters {
+	p.AllowedMergeMethods = slices.Clone(p.AllowedMergeMethods)
+	if p.RequireExtraApprovalForUnattributedChanges != nil {
+		p.RequireExtraApprovalForUnattributedChanges = new(*p.RequireExtraApprovalForUnattributedChanges)
+	}
+	return p
+}
+
+// AllowedMergeMethod は、pull_request のルールが許すマージ方式。値は GitHub REST API の文字列で、表示にもそのまま使う。
+// General のマージ方式の設定（真偽値の管理の単位）とは別の概念である。
+type AllowedMergeMethod string
+
+const (
+	AllowedMergeMethodMerge  AllowedMergeMethod = "merge"
+	AllowedMergeMethodSquash AllowedMergeMethod = "squash"
+	AllowedMergeMethodRebase AllowedMergeMethod = "rebase"
+)
+
+// ParseAllowedMergeMethod は s が定義された値に完全一致するときだけ、その値と真を返す。
+func ParseAllowedMergeMethod(s string) (AllowedMergeMethod, bool) {
+	switch m := AllowedMergeMethod(s); m {
+	case AllowedMergeMethodMerge, AllowedMergeMethodSquash, AllowedMergeMethodRebase:
+		return m, true
+	default:
+		return "", false
+	}
+}
+
+// AllowedMergeMethodsText は、許すマージ方式の並びを、受け取った順のまま重複も残した表示の表記で返す。
+// 要素は定義された値だけで、行を偽装する文字を含み得ないため、引用符で囲まない。
+func AllowedMergeMethodsText(methods []AllowedMergeMethod) string {
+	texts := make([]string, len(methods))
+	for i, m := range methods {
+		texts[i] = string(m)
+	}
+	return "[" + strings.Join(texts, ", ") + "]"
 }
 
 // PullRequestRule は、パラメータ parameters を持つ pull_request のルールを作る。
+// nil でない空の AllowedMergeMethods と定義にない方式は、宣言も観測も作らないため、不変条件の破れとして panic する。
+// 定義にない方式を通すと、引用符で囲まずに示す表示が変更計画の行を偽装し得る。
 func PullRequestRule(parameters PullRequestParameters) RulesetRule {
-	return RulesetRule{ruleType: RulesetRulePullRequest, pullRequest: parameters}
+	if parameters.AllowedMergeMethods != nil && len(parameters.AllowedMergeMethods) == 0 {
+		panic("setting: pull_request rule with empty allowed_merge_methods")
+	}
+	for _, m := range parameters.AllowedMergeMethods {
+		if _, ok := ParseAllowedMergeMethod(string(m)); !ok {
+			panic(fmt.Sprintf("setting: pull_request rule with undefined merge method %q", m))
+		}
+	}
+	return RulesetRule{ruleType: RulesetRulePullRequest, pullRequest: parameters.clone()}
 }
 
 // RequiredStatusChecksParameters は、required_status_checks のルールのパラメータ。
@@ -226,12 +280,12 @@ func (r RulesetRule) Type() RulesetRuleType {
 	return r.ruleType
 }
 
-// PullRequest は pull_request のルールのパラメータを返す。ほかの型のルールでは、ゼロ値をパラメータとして読ませないよう panic する。
+// PullRequest は pull_request のルールのパラメータの写しを返す。ほかの型のルールでは、ゼロ値をパラメータとして読ませないよう panic する。
 func (r RulesetRule) PullRequest() PullRequestParameters {
 	if r.ruleType != RulesetRulePullRequest {
 		panic(fmt.Sprintf("setting: rule %q has no pull_request parameters", r.ruleType))
 	}
-	return r.pullRequest
+	return r.pullRequest.clone()
 }
 
 // RequiredStatusChecks は required_status_checks のルールのパラメータの写しを返す。ほかの型のルールでは、ゼロ値をパラメータとして読ませないよう panic する。

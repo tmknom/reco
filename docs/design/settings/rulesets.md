@@ -24,7 +24,15 @@ Ruleset の中身は項目ごとの管理の単位に分けず、値の全体を
 | `target`、`enforcement` | 文字列の一致 |
 | 対象の条件 | `ref_name` があるかないか。あれば `include` と `exclude` を、それぞれ文字列の集合として比べる（順序と重複を問わず、大文字小文字を区別する）。`ref_name` のない値（`conditions: {}`）は、`include` と `exclude` がどちらも空の値とも異なる |
 | Bypass | `actor_type`、`actor_id`、`bypass_mode` の組の集合 |
-| ルール | ルール型とパラメータの値の組の集合。`pull_request` は5項目の一致、`deletion` と `non_fast_forward` は型の一致、`required_status_checks` は下のとおり |
+| ルール | ルール型とパラメータの値の組の集合。`deletion` と `non_fast_forward` は型の一致、`pull_request` と `required_status_checks` は下のとおり |
+
+`pull_request` の二つのルールは、次のすべてが同じときに限り同じです。
+
+| パラメータ | 比べ方 |
+|---|---|
+| `required_approving_review_count`、`dismiss_stale_reviews_on_push`、`require_code_owner_review`、`require_last_push_approval`、`required_review_thread_resolution` | 値の一致 |
+| `allowed_merge_methods` | 二つの値の両方が持つときだけ、方式の集合の一致（順序と重複を問わない）。片方が持たなければ比べない |
+| `require_extra_approval_for_unattributed_changes` | 二つの値の両方が持つときだけ、真偽値の一致。片方が持たなければ比べない |
 
 `required_status_checks` の二つのルールは、次のすべてが同じときに限り同じです。
 
@@ -34,10 +42,10 @@ Ruleset の中身は項目ごとの管理の単位に分けず、値の全体を
 | `strict_required_status_checks_policy` | 真偽値の一致 |
 | `do_not_enforce_on_create` | 二つの値の両方が持つときだけ、真偽値の一致。片方が持たなければ比べない |
 
-`do_not_enforce_on_create` は、ルールの省略できるパラメータです（[ドメインモデル](../domain.md) の省略できる項目のうち、送らなかったときに GitHub が決まった値にするもの）。宣言で省略した値はこのパラメータを持たず、観測した値は必ず持ちます。
+`pull_request` の `allowed_merge_methods` と `require_extra_approval_for_unattributed_changes`、`required_status_checks` の `do_not_enforce_on_create` は、ルールの省略できるパラメータです（[ドメインモデル](../domain.md) の省略できる項目のうち、送らなかったときに GitHub が決まった値にするもの）。宣言で省略した値はそのパラメータを持たず、観測した値は必ず持ちます。
 
 - **集合として比べる理由**：GitHub は更新で `rules` の順を保たず、Bypass の順も保つとは限らない（GitHub Rules API 仕様 4.2、6章）。`include` と `exclude` は送った順で返ったが、Ruleset は `include` のどれかに一致し `exclude` のどれにも一致しない ref に効くため、順は意味を持たない（同 5章）
-- **`include` とステータスチェックの重複**：GitHub は `include` とステータスチェックの重複を残して保存する（同 5章、7.3）。重複を問わないため、観測の `[a, a]` と宣言の `[a]` は同じ値で、更新しない。どのチェックも必須という意味は、順序と重複で変わらない
+- **`include`、ステータスチェック、許すマージ方式の重複**：GitHub は `include`、ステータスチェック、`allowed_merge_methods` の重複を残して保存する（同 5章、7.1、7.3）。重複を問わないため、観測の `[a, a]` と宣言の `[a]` は同じ値で、更新しない。どのチェックも必須という意味も、どの方式を許すかという意味も、順序と重複で変わらない
 - **Bypass の同じ主体**：`actor_type` と `actor_id` が同じ要素を二つ送ると、GitHub は先の要素だけを残す（同 6章）。観測した値は受け取ったまま比べ、宣言では二つ書けない（YAML 設定仕様 13.4節）
 
 | Relationship | Target | Target Type |
@@ -80,7 +88,7 @@ Rulesets は、`GET /repos/{owner}/{repo}` の応答の `private` が偽のと�
 - **`rules` の欠落と `null`**：作成で `rules` を省いても `[]` で返った（GitHub Rules API 仕様 4.1）。欠けた応答の意味を根拠づけられない
 - **`conditions` の `null`**：公式のスキーマは `null` を取り得るとするが、`conditions` を送らずに作った Ruleset は `{}` を返した（GitHub Rules API 仕様 5章）。`null` を `{}` と同じと読む根拠がない
 - **`enforcement`、`bypass_mode`、`DeployKey` の `actor_id`**：`enforcement` の値は公式資料が三つに限る。`bypass_mode` は、欠けたときに GitHub の既定値（`always`）で補うと、Bypass の方式を推測で示すことになる。`DeployKey` の `actor_id` は、公式資料が `null` とし、整数を送っても `null` で保存された（GitHub Rules API 仕様 6章）
-- **`pull_request` の5項目と、`required_status_checks` の必須の項目**：値に含める項目で、欠けると値を作れない
+- **`pull_request` の必須の5項目と、`required_status_checks` の必須の項目**：値に含める項目で、欠けると値を作れない。省略できるパラメータの欠落は、下の解釈しない部分とする
 
 `id`、`name`、`target`、`enforcement`、`conditions`、`bypass_actors`、`rules` のほかのトップレベルのフィールド（`source_type`、`source`、`current_user_can_bypass`、`node_id`、`_links`、`created_at`、`updated_at`、reco の知らないフィールド）は読まず、値にも、解釈しない部分にもしません。Ruleset の値を変える更新で送らないフィールドで、省いても既存の値が残るためです（ドメインモデルの現在状態・観測結果・観測失敗、GitHub Rules API 仕様 4.2）。
 
@@ -99,23 +107,23 @@ Rulesets は、`GET /repos/{owner}/{repo}` の応答の `private` が偽のと�
 | ルールのキー | 解釈するルール型の要素の、`type`・`parameters` 以外のキー。`deletion` と `non_fast_forward` の `parameters`（`{}` と `null` を含む） |
 | ルールのパラメータ | 下の `pull_request` と `required_status_checks` の表で、解釈しないとするもの |
 
-解釈しなかったものは、`target`、`conditions`、`bypass_actors`、`rules` の順に、配列は応答の順に並べ、同じものは最初の一つだけを持ちます。一つの要素の中では、値を確かめる項目（`bypass_mode`、`pull_request` の任意の3項目、`required_status_checks` の `do_not_enforce_on_create` と `integration_id`）を先に、reco が読まないキーを名前の順にあとに並べ、ルールの要素のキーを `parameters` の中より先に並べます。JSON のオブジェクトのキーの並びは意味を持たず、応答の並びに合わせる根拠がないためです。`target` が `branch` 以外でも、ほかの部分も同じように確かめます。利用者が、その Ruleset のどこを reco が解釈しないかを一度に知るためです。
+解釈しなかったものは、`target`、`conditions`、`bypass_actors`、`rules` の順に、配列は応答の順に並べ、同じものは最初の一つだけを持ちます。一つの要素の中では、値を確かめる項目（`bypass_mode`、`pull_request` の `allowed_merge_methods`・`require_extra_approval_for_unattributed_changes`・`required_reviewers`、`required_status_checks` の `do_not_enforce_on_create` と `integration_id`）を先に、reco が読まないキーを名前の順にあとに並べ、ルールの要素のキーを `parameters` の中より先に並べます。JSON のオブジェクトのキーの並びは意味を持たず、応答の並びに合わせる根拠がないためです。`target` が `branch` 以外でも、ほかの部分も同じように確かめます。利用者が、その Ruleset のどこを reco が解釈しないかを一度に知るためです。
 
 `enforcement` の `evaluate`、`conditions: {}`（`ref_name` がない）、`2`・`4`・`5` 以外の `RepositoryRole` の `actor_id`、`include` の重複、同じ主体の Bypass と同じ型のルールの重複は、解釈する値として受け取ったまま読みます。宣言では書けない値ですが、どれも Ruleset の値として意味が定まるためです（ドメインモデルの概念が属する文脈）。
 
-`pull_request` のパラメータは次のとおり読みます。GitHub は取得で任意の3項目を既定値つきで返すため（GitHub Rules API 仕様 7.1）、既定値と同じときに限り、解釈できたものとします。既定値の3項目は、値に含めません。必須の5項目だけを送る更新が、この3項目を既定値にするためです（同 7.1）。
+`pull_request` のパラメータは次のとおり読みます。`allowed_merge_methods` と `require_extra_approval_for_unattributed_changes` は宣言できるため、定義された値なら値に含めます（解釈する範囲は宣言で受け付ける範囲をすべて含む）。宣言できない `required_reviewers` は、GitHub が取得で既定値つきで返すため（GitHub Rules API 仕様 7.1）、既定値と同じときに限り解釈できたものとし、値に含めません。必須の5項目と宣言したパラメータだけを送る更新が、`required_reviewers` を既定値にするためです（同 7.1）。
 
 | パラメータ | 扱い |
 |---|---|
 | `required_approving_review_count`、`dismiss_stale_reviews_on_push`、`require_code_owner_review`、`require_last_push_approval`、`required_review_thread_resolution` | 値に含める。範囲（承認数の `0`〜`10` など）は確かめない |
-| `allowed_merge_methods` | `merge`、`squash`、`rebase` の集合（順序と重複を問わない）なら解釈できた既定値。ほかの集合、欠落、`null`、文字列の配列でない値は解釈しない |
-| `require_extra_approval_for_unattributed_changes` | `true` なら解釈できた既定値。ほかの値と欠落は解釈しない |
+| `allowed_merge_methods` | `merge`、`squash`、`rebase` だけからなる空でない配列なら値に含める。応答の順のまま、重複も受け取ったまま読む。`[]`、定義にない値や文字列でない要素を含む配列、欠落、`null`、配列でない値は解釈しない。GitHub は `[]` と定義にない値を拒否したため、返ったときの意味を定める根拠がない |
+| `require_extra_approval_for_unattributed_changes` | `true` と `false` を値に含める。欠落、`null`、真偽値でない値は解釈しない |
 | `required_reviewers` | `[]` なら解釈できた既定値。空でない配列、欠落、配列でない値は解釈しない |
 | `dismissal_restriction` とほかのキー | 解釈しない |
 
-任意の3項目の欠落と型違いを取得契約に適合しない応答にせず、解釈しない部分とするのは、どちらでも Ruleset の値を作らず、そのほうが状態確認を止めないためです。
+`pull_request` の任意の3項目の欠落と型違いを取得契約に適合しない応答にせず、解釈しない部分とするのは、どちらでも Ruleset の値を作らず、そのほうが状態確認を止めないためです。
 
-`required_status_checks` のパラメータは次のとおり読みます。`pull_request` の任意の3項目と違い、`do_not_enforce_on_create` は宣言できるため、どちらの値も解釈できた値として値に含めます（解釈する範囲は宣言で受け付ける範囲をすべて含む）。
+`required_status_checks` のパラメータは次のとおり読みます。`do_not_enforce_on_create` は宣言できるため、どちらの値も解釈できた値として値に含めます。
 
 | パラメータ | 扱い |
 |---|---|
@@ -137,7 +145,7 @@ GitHub Pro 以上のアカウントや Organization が所有する非公開リ�
 ### 確かめていない条件
 
 - GitHub が Ruleset の名前を同じとみなす範囲が、Unicode の単純な大文字小文字の畳み込みより広いか。広ければ、同じとみなされる名前が一覧に二つあることは起きない。狭ければ、別々の Ruleset の名前を重複と誤り、状態確認が観測操作の失敗で止まる
-- Organization が所有するリポジトリで、`dismissal_restriction` を設定した Ruleset の取得がそれを返すか。返さないまま保存されるなら、reco はそれを観測できず、`pull_request` の5項目だけを送る更新が外し得る。個人アカウントが所有するリポジトリでは、GitHub は送った値を `200` のまま保存しないと見られ、外す値はない（GitHub Rules API 仕様 7.1）
+- Organization が所有するリポジトリで、`dismissal_restriction` を設定した Ruleset の取得がそれを返すか。返さないまま保存されるなら、reco はそれを観測できず、`pull_request` の必須の5項目と宣言したパラメータだけを送る更新が外し得る。個人アカウントが所有するリポジトリでは、GitHub は送った値を `200` のまま保存しないと見られ、外す値はない（GitHub Rules API 仕様 7.1）
 - Admin 以外の書き込みのアクセス（Write、Maintain）を持つ利用者のトークンで、取得が `bypass_actors` を返すか
 
 | Relationship | Target | Target Type |
@@ -151,11 +159,19 @@ GitHub Pro 以上のアカウントや Organization が所有する非公開リ�
 
 Rulesets に固有の適用不能の条件は、リポジトリが非公開であることと、省略したパラメータを GitHub が変えることです。非公開のリポジトリでは、Rulesets が非公開を理由とする観測不能のため、宣言した Ruleset はどれも比較不能になります。取得条件による比較不能は一般には適用可能になり得ますが、GitHub Free の非公開リポジトリでは Ruleset の作成も `403` を返すため（GitHub Rules API 仕様 1章）、適用不能にします。公開範囲を変える宣言は reco にないため、ほかの宣言では解消しません。ほかの設定の照合は続けます。
 
-省略したパラメータに当たるのは `required_status_checks` の `do_not_enforce_on_create` です。宣言がこれを省略し、計画時に観測した値が `false` でない値の変更は、適用不能です。GitHub は、`rules` を置き換える更新で送らなかった `do_not_enforce_on_create` を `false` にするためです（GitHub Rules API 仕様 7.3）。扱いの一般の規則は、ドメインモデルの照合結果と適用可能性に従います。
+省略したパラメータに当たるのは、次の3つです。宣言がどれかを省略し、計画時に観測した値が、GitHub が送らなかったときに決める値と違う値の変更は、適用不能です。GitHub は、`rules` を置き換える更新で送らなかったパラメータを、次の値にするためです。
+
+| ルール型 | パラメータ | 送らなかったときに GitHub が決める値 | 根拠 |
+|---|---|---|---|
+| `pull_request` | `allowed_merge_methods` | `merge`、`squash`、`rebase` の集合 | GitHub Rules API 仕様 7.1 |
+| `pull_request` | `require_extra_approval_for_unattributed_changes` | `true` | 同 7.1 |
+| `required_status_checks` | `do_not_enforce_on_create` | `false` | 同 7.3 |
+
+`allowed_merge_methods` の観測値は集合として比べ、`["rebase", "merge", "squash", "squash"]` は当たりません。扱いの一般の規則は、ドメインモデルの照合結果と適用可能性に従います。
 
 値が解釈しない部分を含むことと、名前の同一性を判定できないことによる適用不能は、ドメインモデルの照合結果と適用可能性と、照合と変更予定に従います。適用不能の理由には、解釈しなかったものを、観測の解釈しない部分の並びで添えます。`enforcement: evaluate` や `conditions: {}` の Ruleset は、宣言が受け付けない値でも解釈する値のため（観測の解釈しない部分）、照合は Mismatch で、宣言した値へ置き換える変更は適用可能です。
 
-宣言の内容から、Pull Request をマージできなくなる設定（承認者のいない個人アカウントのリポジトリで承認数を1以上にするなど）を判定しません。設定の望ましさの評価になるためです（[Constitution](../../CONSTITUTION.md) の Non-Goals）。
+宣言の内容から、Pull Request をマージできなくなる設定（承認者のいない個人アカウントのリポジトリで承認数を1以上にするなど）を判定しません。設定の望ましさの評価になるためです（[Constitution](../../CONSTITUTION.md) の Non-Goals）。リポジトリの General で無効にしたマージ方式だけを `allowed_merge_methods` に宣言した場合も同じで、適用可能のまま、注記も添えません。GitHub はこの食い違いをどちら向きにも拒否せず、Ruleset の作成と更新も、General のマージ方式の更新も反映します（GitHub Rules API 仕様 7.1）。そのため、Ruleset の変更計画の確認と設定変更は General を読みません。
 
 Ruleset の変更予定に、変更に伴う副作用と再開する設定はありません。`PUT` がリポジトリのマージ方式と Branch protection を変えないことを確かめています（GitHub Rules API 仕様 4.2）。宣言にないルールや Bypass がなくなることは、Ruleset という一つの管理設定の値の変更です（ドメインモデルの一覧の全体を宣言する設定との違い）。
 
@@ -176,7 +192,7 @@ Ruleset の変更予定は、Ruleset ごとに、一つの更新操作からな�
 
 名前は、GitHub と同じく ASCII の大文字小文字を区別せずに比べます。作成の「存在しないこと」も、値の変更で引く Ruleset も、この比べ方で決まります。綴りだけが承認のあとに変わった Ruleset は、`id` と値の全体が同じなら同じ Ruleset として値を変えます。`PUT` は `name` を送らないため、綴りは GitHub 上のまま残ります。
 
-値の変更の `PUT` の宛先は、承認時に予定した `id`（計画時の観測で、その名前の Ruleset が持っていた `id`）です。更新直前の観測では、値の全体を計画時の観測値と比べます。`PUT` は Ruleset の全体を置き換え、宣言が変えない部分を承認のあとに外部主体が足していても消すため、変える予定の部分だけを比べることはしません。宣言で省略した `do_not_enforce_on_create` も比べます（ドメインモデルの承認と変更前提）。宣言の名前の Ruleset が消されたか名前を変えられて存在しない場合と、`id` が計画時と違う（作り直された）場合は、関係する現在値の変化として `PUT` を送りません。
+値の変更の `PUT` の宛先は、承認時に予定した `id`（計画時の観測で、その名前の Ruleset が持っていた `id`）です。更新直前の観測では、値の全体を計画時の観測値と比べます。`PUT` は Ruleset の全体を置き換え、宣言が変えない部分を承認のあとに外部主体が足していても消すため、変える予定の部分だけを比べることはしません。宣言で省略したパラメータも比べます（ドメインモデルの承認と変更前提）。宣言の名前の Ruleset が消されたか名前を変えられて存在しない場合と、`id` が計画時と違う（作り直された）場合は、関係する現在値の変化として `PUT` を送りません。
 
 解釈しない部分を含む Ruleset と判定できない名前の扱いは、ドメインモデルの変更前提と期待状態の確認に従います。
 
@@ -195,17 +211,17 @@ Ruleset の変更予定は、Ruleset ごとに、一つの更新操作からな�
 - **空の集合**：`include`、`exclude`、`bypass_actors`、`rules` が空なら `[]` を送る。`[]` を明示した `POST` が空の配列で作ることを確かめている（GitHub Rules API 仕様 4.1）
 - **並び**：`include`、`exclude`、`bypass_actors`、`rules` は宣言の並びで送る。比較は並びを問わないため、GitHub が並びを保つことには依拠しない
 - **`DeployKey`**：`actor_id: null` を送る。公式資料が `DeployKey` では `null` にするとし、`null` の `POST` が受け付けられることを確かめている（同 6章）
-- **`pull_request`**：`parameters` に宣言できる5項目だけを送る。任意の3項目は既定値で作られ、観測では既定値を解釈できる値として読むため、期待状態と一致する（同 7.1）
+- **`pull_request`**：`parameters` に必須の5項目を必ず送り、`allowed_merge_methods`（宣言の並び）と `require_extra_approval_for_unattributed_changes` は宣言したときだけ送る。省略したときは GitHub が適用可能性と副作用の表の値で保存し（同 7.1）、適用可能な変更予定では観測値もその値のため、値は変わらない。`required_reviewers` は送らず、既定値の `[]` で保存される
 - **`deletion` と `non_fast_forward`**：`{"type": "deletion"}` と `{"type": "non_fast_forward"}` だけを送り、`parameters` を持たせない（同 7.2、7.4）
-- **`required_status_checks`**：`parameters` に、`required_status_checks`（空なら `[]`）と `strict_required_status_checks_policy` を必ず送る。チェックは `context` と、宣言したときだけ `integration_id` を送る。`do_not_enforce_on_create` は宣言したときだけ送る。省略したときは GitHub が `false` で保存し（同 7.3）、適用可能な変更予定では観測値も `false` のため、値は変わらない。インストールされていない App の `integration_id` は、GitHub が `422` で拒否し（同 7.3）、更新操作の失敗になる
+- **`required_status_checks`**：`parameters` に、`required_status_checks`（空なら `[]`）と `strict_required_status_checks_policy` を必ず送る。チェックは `context` と、宣言したときだけ `integration_id` を送る。`do_not_enforce_on_create` は宣言したときだけ送る。省略したときの扱いは `pull_request` の省略できるパラメータと同じである（同 7.3）。インストールされていない App の `integration_id` は、GitHub が `422` で拒否し（同 7.3）、更新操作の失敗になる
 
 正常応答は `201` で、本文は詳細の取得と同じ形です（同 4.1）。更新の契約は詳細の取得契約で、本文が適合しなければ成否不明とします。解釈しない部分を含む本文は契約に適合する応答として成功とし、作成した値は更新後の観測で確かめます。存在しない `RepositoryRole` の ID に GitHub は `500` を返して変更を反映しませんが（同 1章）、`5xx` の一般の扱いどおり成否不明とします。
 
-値の変更の `PUT` には、作成の `POST` から `name` を除いた5つのフィールドを、同じ細則ですべて送ります。名前を送らないのは、reco が Ruleset の名前を変えないためです（ドメインモデルの関連リソースの同一性）。ほかのフィールドを省略しないのは、`PUT` が省略したフィールドの既存の値を保持するためです（GitHub Rules API 仕様 4.2）。省略すると、承認の前に示した値と違う値が残ります。`name` を除いた5つを送る `PUT` が `name` と `id` を保ったまま値を置き換えることを確かめています（同 4.2）。`pull_request` の任意の3項目は、必須の5項目だけを送る更新で既定値に戻るため（同 7.1）、期待状態と一致します。
+値の変更の `PUT` には、作成の `POST` から `name` を除いた5つのフィールドを、同じ細則ですべて送ります。名前を送らないのは、reco が Ruleset の名前を変えないためです（ドメインモデルの関連リソースの同一性）。ほかのフィールドを省略しないのは、`PUT` が省略したフィールドの既存の値を保持するためです（GitHub Rules API 仕様 4.2）。省略すると、承認の前に示した値と違う値が残ります。`name` を除いた5つを送る `PUT` が `name` と `id` を保ったまま値を置き換えることを確かめています（同 4.2）。`pull_request` の `required_reviewers` は、送らない更新で既定値に戻るため（同 7.1）、期待状態と一致します。
 
 `PUT` の正常応答は `200` で、本文は詳細の取得と同じ形です（同 4.2）。更新の契約と、解釈しない部分を含む本文、`5xx` の扱いは作成と同じです。
 
-作成と値の変更のどちらの更新エンドポイントでも、reco が観測するのは宛先の Ruleset だけのため、ほかの設定は変更対象外の設定として比べません。値の変更では、宣言で省略した `do_not_enforce_on_create` の更新直前と更新後の観測値を、変更対象外の設定と同じく比べます（ドメインモデルの管理の単位と管理設定）。適用可能な変更予定では、更新の前後のどちらも `false` のはずです。作成は、更新直前に比べる値がありません。更新操作の成功後の不一致に添える `Possible cause:` の候補もありません。GitHub が `200` を返しながら送った値を変えて保存した事例（同じ種類のルールをまとめる、名前の前後の空白を除くなど）は、どれも宣言の検証で送らない形です。
+作成と値の変更のどちらの更新エンドポイントでも、reco が観測するのは宛先の Ruleset だけのため、ほかの設定は変更対象外の設定として比べません。値の変更では、宣言で省略したパラメータごとに、更新直前と更新後の観測値を、変更対象外の設定と同じく比べます（ドメインモデルの管理の単位と管理設定）。`allowed_merge_methods` は集合として比べます。適用可能な変更予定では、更新の前後のどちらも、GitHub が送らなかったときに決める値のはずです。作成は、更新直前に比べる値がありません。更新操作の成功後の不一致に添える `Possible cause:` の候補もありません。GitHub が `200` を返しながら送った値を変えて保存した事例（同じ種類のルールをまとめる、名前の前後の空白を除くなど）は、どれも宣言の検証で送らない形です。
 
 ### 防げない競合
 
@@ -226,8 +242,12 @@ Ruleset の変更予定は、Ruleset ごとに、一つの更新操作からな�
 |---|---|---|
 | 非公開リポジトリの状態確認 | Ruleset の要求を送らず、Rulesets を非公開を理由とする観測不能として示す。ほかの設定を示して成り立つ | 一覧を送り、`403` で観測操作の失敗にする。または、Ruleset が一つもないと示す |
 | 公開リポジトリで一覧が `403` を返した | 観測操作の失敗 | 非公開と同じ観測不能にする |
-| `pull_request` の `allowed_merge_methods` が `["squash"]` | 解釈しない部分を含み、値を作らない | 必須の5項目が読めたので値を作る |
-| `pull_request` の任意の3項目が既定値 | 解釈できた値。値は5項目だけを持つ | 宣言できない項目があるので解釈しない |
+| `pull_request` の `allowed_merge_methods` が `["squash"]` | 解釈できた値。`allowed_merge_methods` を値に含める | 既定値でないので解釈しない部分とする |
+| `pull_request` の `required_reviewers` が空でない | 解釈しない部分を含み、値を作らない | 必須の5項目が読めたので値を作る |
+| `pull_request` の `allowed_merge_methods` を省略し、GitHub 上は `["squash"]` で、ほかは宣言と同じ | Match。何も送らない | 省略を3方式とみなして Mismatch |
+| 上の宣言で、`required_approving_review_count` が宣言と違う | Mismatch で適用不能。理由に `allowed_merge_methods` の観測値を添える | 更新して3方式に戻す |
+| `allowed_merge_methods` が宣言と順序だけ違う | Match | 並びが違うので更新する |
+| General で `allow_squash_merge` を無効にしたリポジトリで、`allowed_merge_methods: [squash]` を宣言した | 適用可能で、注記も添えない | マージできなくなるので適用不能にする。または、警告を添える |
 | 取得の応答に `bypass_actors` がない | 観測操作の失敗 | Bypass がないとして空集合で読む |
 | `target` が `tag` の Ruleset | 解釈しない部分を含み、値を作らない。存在はするため、名前は示す | 一覧から省く |
 | 一覧が100件を返した | 観測操作の失敗 | 100件をすべての Ruleset とする |

@@ -121,6 +121,37 @@ func TestParseRulesetRuleType(t *testing.T) {
 	}
 }
 
+func TestParseAllowedMergeMethod(t *testing.T) {
+	cases := []struct {
+		name   string
+		input  string
+		want   AllowedMergeMethod
+		wantOK bool
+	}{
+		{name: "merge is accepted", input: "merge", want: AllowedMergeMethodMerge, wantOK: true},
+		{name: "squash is accepted", input: "squash", want: AllowedMergeMethodSquash, wantOK: true},
+		{name: "rebase is accepted", input: "rebase", want: AllowedMergeMethodRebase, wantOK: true},
+		{name: "different letter case is rejected", input: "Merge"},
+		{name: "undefined method is rejected", input: "fast_forward"},
+		{name: "empty string is rejected", input: ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := ParseAllowedMergeMethod(tc.input)
+			if got != tc.want || ok != tc.wantOK {
+				t.Errorf("ParseAllowedMergeMethod(%q) = (%q, %t), want (%q, %t)", tc.input, got, ok, tc.want, tc.wantOK)
+			}
+		})
+	}
+}
+
+func TestAllowedMergeMethodsText(t *testing.T) {
+	got := AllowedMergeMethodsText([]AllowedMergeMethod{AllowedMergeMethodSquash, AllowedMergeMethodSquash, AllowedMergeMethodMerge})
+	if want := "[squash, squash, merge]"; got != want {
+		t.Errorf("AllowedMergeMethodsText() = %q, want %q (the given order with duplicates)", got, want)
+	}
+}
+
 func TestRulesetRuleType_HasParameters(t *testing.T) {
 	cases := []struct {
 		ruleType RulesetRuleType
@@ -150,14 +181,53 @@ func TestRulesetRuleType_HasParameters(t *testing.T) {
 
 func TestRulesetRule(t *testing.T) {
 	t.Run("pull_request rule has its type and parameters", func(t *testing.T) {
-		parameters := PullRequestParameters{RequiredApprovingReviewCount: 2, RequireCodeOwnerReview: true}
+		parameters := PullRequestParameters{
+			RequiredApprovingReviewCount:               2,
+			RequireCodeOwnerReview:                     true,
+			AllowedMergeMethods:                        []AllowedMergeMethod{AllowedMergeMethodSquash},
+			RequireExtraApprovalForUnattributedChanges: new(false),
+		}
 		rule := PullRequestRule(parameters)
 		if got := rule.Type(); got != RulesetRulePullRequest {
 			t.Errorf("Type() = %q, want %q", got, RulesetRulePullRequest)
 		}
-		if got := rule.PullRequest(); got != parameters {
+		if got := rule.PullRequest(); !reflect.DeepEqual(got, parameters) {
 			t.Errorf("PullRequest() = %+v, want %+v", got, parameters)
 		}
+	})
+	t.Run("pull_request rule keeps omitted parameters omitted", func(t *testing.T) {
+		got := PullRequestRule(PullRequestParameters{}).PullRequest()
+		if got.AllowedMergeMethods != nil || got.RequireExtraApprovalForUnattributedChanges != nil {
+			t.Errorf("PullRequest() = %+v, want omitted optional parameters", got)
+		}
+	})
+	t.Run("pull_request rule does not share its parameters with the caller", func(t *testing.T) {
+		extraApproval := true
+		methods := []AllowedMergeMethod{AllowedMergeMethodSquash}
+		rule := PullRequestRule(PullRequestParameters{AllowedMergeMethods: methods, RequireExtraApprovalForUnattributedChanges: &extraApproval})
+		methods[0], extraApproval = AllowedMergeMethodRebase, false
+		got := rule.PullRequest()
+		got.AllowedMergeMethods[0], *got.RequireExtraApprovalForUnattributedChanges = AllowedMergeMethodRebase, false
+		again := rule.PullRequest()
+		if again.AllowedMergeMethods[0] != AllowedMergeMethodSquash || !*again.RequireExtraApprovalForUnattributedChanges {
+			t.Errorf("PullRequest() = %+v, want the parameters given at construction", again)
+		}
+	})
+	t.Run("pull_request rule with empty but not omitted allowed_merge_methods panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("PullRequestRule() did not panic")
+			}
+		}()
+		PullRequestRule(PullRequestParameters{AllowedMergeMethods: []AllowedMergeMethod{}})
+	})
+	t.Run("pull_request rule with an undefined merge method panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("PullRequestRule() did not panic")
+			}
+		}()
+		PullRequestRule(PullRequestParameters{AllowedMergeMethods: []AllowedMergeMethod{"squash\n    Rule deletion"}})
 	})
 	t.Run("deletion rule has its type", func(t *testing.T) {
 		if got := DeletionRule().Type(); got != RulesetRuleDeletion {

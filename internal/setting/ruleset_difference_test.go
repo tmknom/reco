@@ -14,6 +14,8 @@ func TestRuleset_DifferenceTo(t *testing.T) {
 	noApproval := PullRequestRule(PullRequestParameters{})
 	oneApproval := PullRequestRule(PullRequestParameters{RequiredApprovingReviewCount: 1})
 	test, testByActions := StatusCheck{Context: "test"}, StatusCheck{Context: "test", IntegrationID: 15368}
+	merge, squash, rebase := AllowedMergeMethodMerge, AllowedMergeMethodSquash, AllowedMergeMethodRebase
+	allMethods := []AllowedMergeMethod{merge, squash, rebase}
 	cases := []struct {
 		name  string
 		from  Ruleset
@@ -154,6 +156,48 @@ func TestRuleset_DifferenceTo(t *testing.T) {
 			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, new(true), test)}, RulesAdded: []RulesetRule{statusChecksRule(true, nil, test)}},
 		},
 		{
+			name:  "allowed_merge_methods differing only in order and duplicates have no difference",
+			from:  newTestRuleset(withRules(pullRequestRule(0, []AllowedMergeMethod{merge, squash, rebase, rebase}, new(true)))),
+			to:    newTestRuleset(withRules(pullRequestRule(0, []AllowedMergeMethod{rebase, squash, merge}, new(true)))),
+			equal: true,
+		},
+		{
+			name: "allowed_merge_methods held by both values and different removes and adds the rule",
+			from: newTestRuleset(withRules(pullRequestRule(0, allMethods, new(true)))),
+			to:   newTestRuleset(withRules(pullRequestRule(0, []AllowedMergeMethod{squash}, new(true)))),
+			want: RulesetDifference{RulesRemoved: []RulesetRule{pullRequestRule(0, allMethods, new(true))}, RulesAdded: []RulesetRule{pullRequestRule(0, []AllowedMergeMethod{squash}, new(true))}},
+		},
+		{
+			name: "require_extra_approval_for_unattributed_changes held by both values and different removes and adds the rule",
+			from: newTestRuleset(withRules(pullRequestRule(0, allMethods, new(true)))),
+			to:   newTestRuleset(withRules(pullRequestRule(0, allMethods, new(false)))),
+			want: RulesetDifference{RulesRemoved: []RulesetRule{pullRequestRule(0, allMethods, new(true))}, RulesAdded: []RulesetRule{pullRequestRule(0, allMethods, new(false))}},
+		},
+		{
+			name:  "require_extra_approval_for_unattributed_changes omitted by one value is not compared",
+			from:  newTestRuleset(withRules(pullRequestRule(0, allMethods, new(false)))),
+			to:    newTestRuleset(withRules(pullRequestRule(0, allMethods, nil))),
+			equal: true,
+		},
+		{
+			name: "parameter declared beside an omitted one in the same rule is compared",
+			from: newTestRuleset(withRules(pullRequestRule(0, []AllowedMergeMethod{squash}, new(true)))),
+			to:   newTestRuleset(withRules(pullRequestRule(0, nil, new(false)))),
+			want: RulesetDifference{RulesRemoved: []RulesetRule{pullRequestRule(0, []AllowedMergeMethod{squash}, new(true))}, RulesAdded: []RulesetRule{pullRequestRule(0, nil, new(false))}},
+		},
+		{
+			name:  "parameter declared beside an omitted one that matches has no difference",
+			from:  newTestRuleset(withRules(pullRequestRule(0, []AllowedMergeMethod{squash}, new(true)))),
+			to:    newTestRuleset(withRules(pullRequestRule(0, nil, new(true)))),
+			equal: true,
+		},
+		{
+			name: "parameter omitted in another rule type does not stop comparing a declared one",
+			from: newTestRuleset(withRules(pullRequestRule(0, allMethods, new(true)), statusChecksRule(false, new(false), test))),
+			to:   newTestRuleset(withRules(pullRequestRule(0, nil, nil), statusChecksRule(false, new(true), test))),
+			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, new(false), test)}, RulesAdded: []RulesetRule{statusChecksRule(false, new(true), test)}},
+		},
+		{
 			name: "duplicated elements are reported once",
 			from: newTestRuleset(withRefName([]string{"a", "a"}, nil), withBypassActors(deployKey, deployKey)),
 			to:   newTestRuleset(withRefName([]string{"b", "b"}, nil), withBypassActors()),
@@ -191,6 +235,104 @@ func TestRulesetDifference_Empty(t *testing.T) {
 		{name: "added bypass actor is not empty", difference: RulesetDifference{BypassActorsAdded: []BypassActor{{ActorType: BypassActorDeployKey, BypassMode: BypassModeAlways}}}},
 		{name: "removed rule is not empty", difference: RulesetDifference{RulesRemoved: []RulesetRule{DeletionRule()}}},
 		{name: "added rule is not empty", difference: RulesetDifference{RulesAdded: []RulesetRule{DeletionRule()}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.difference.Empty(); got != tc.want {
+				t.Errorf("Empty() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPullRequestParameters_DifferenceTo は、パラメータの差を確かめ、差が空であることと、ルールを同じ値とする判定が一致することも確かめる。
+// 二つは別々に実装しているため、食い違うと、同じ値と判定したルールの表示に差の行が出るか、差の行のない不一致になる。
+//
+//trace:checks FR-005
+func TestPullRequestParameters_DifferenceTo(t *testing.T) {
+	merge, squash, rebase := AllowedMergeMethodMerge, AllowedMergeMethodSquash, AllowedMergeMethodRebase
+	all := []AllowedMergeMethod{merge, squash, rebase}
+	parameters := func(methods []AllowedMergeMethod, extraApproval *bool) PullRequestParameters {
+		return PullRequestParameters{AllowedMergeMethods: methods, RequireExtraApprovalForUnattributedChanges: extraApproval}
+	}
+	cases := []struct {
+		name     string
+		from, to PullRequestParameters
+		want     PullRequestDifference
+	}{
+		{name: "same parameters have no difference", from: parameters(all, new(true)), to: parameters(all, new(true))},
+		{
+			name: "different required_approving_review_count is a change",
+			from: PullRequestParameters{}, to: PullRequestParameters{RequiredApprovingReviewCount: 1},
+			want: PullRequestDifference{RequiredApprovingReviewCountChanged: true},
+		},
+		{
+			name: "different dismiss_stale_reviews_on_push is a change",
+			from: PullRequestParameters{}, to: PullRequestParameters{DismissStaleReviewsOnPush: true},
+			want: PullRequestDifference{DismissStaleReviewsOnPushChanged: true},
+		},
+		{
+			name: "different require_code_owner_review is a change",
+			from: PullRequestParameters{}, to: PullRequestParameters{RequireCodeOwnerReview: true},
+			want: PullRequestDifference{RequireCodeOwnerReviewChanged: true},
+		},
+		{
+			name: "different require_last_push_approval is a change",
+			from: PullRequestParameters{}, to: PullRequestParameters{RequireLastPushApproval: true},
+			want: PullRequestDifference{RequireLastPushApprovalChanged: true},
+		},
+		{
+			name: "different required_review_thread_resolution is a change",
+			from: PullRequestParameters{}, to: PullRequestParameters{RequiredReviewThreadResolution: true},
+			want: PullRequestDifference{RequiredReviewThreadResolutionChanged: true},
+		},
+		{
+			name: "allowed_merge_methods differing only in order and duplicates have no difference",
+			from: parameters([]AllowedMergeMethod{squash, squash, merge}, nil), to: parameters([]AllowedMergeMethod{merge, squash}, nil),
+		},
+		{
+			name: "allowed_merge_methods held by both and different is a change",
+			from: parameters(all, nil), to: parameters([]AllowedMergeMethod{rebase}, nil),
+			want: PullRequestDifference{AllowedMergeMethodsChanged: true},
+		},
+		{name: "allowed_merge_methods omitted by the argument is not compared", from: parameters(all, nil), to: parameters(nil, nil)},
+		{name: "allowed_merge_methods omitted by the receiver is not compared", from: parameters(nil, nil), to: parameters([]AllowedMergeMethod{squash}, nil)},
+		{
+			name: "require_extra_approval_for_unattributed_changes held by both and different is a change",
+			from: parameters(nil, new(true)), to: parameters(nil, new(false)),
+			want: PullRequestDifference{RequireExtraApprovalForUnattributedChangesChanged: true},
+		},
+		{name: "require_extra_approval_for_unattributed_changes omitted by the argument is not compared", from: parameters(nil, new(true)), to: parameters(nil, nil)},
+		{name: "require_extra_approval_for_unattributed_changes omitted by the receiver is not compared", from: parameters(nil, nil), to: parameters(nil, new(false))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.from.DifferenceTo(tc.to)
+			if got != tc.want {
+				t.Errorf("DifferenceTo() = %+v, want %+v", got, tc.want)
+			}
+			from, to := newTestRuleset(withRules(PullRequestRule(tc.from))), newTestRuleset(withRules(PullRequestRule(tc.to)))
+			if eq, empty := from.equal(to), got.Empty(); eq != empty {
+				t.Errorf("rulesets equal() = %t, but parameter difference Empty() = %t", eq, empty)
+			}
+		})
+	}
+}
+
+func TestPullRequestDifference_Empty(t *testing.T) {
+	cases := []struct {
+		name       string
+		difference PullRequestDifference
+		want       bool
+	}{
+		{name: "zero difference is empty", want: true},
+		{name: "required_approving_review_count change is not empty", difference: PullRequestDifference{RequiredApprovingReviewCountChanged: true}},
+		{name: "dismiss_stale_reviews_on_push change is not empty", difference: PullRequestDifference{DismissStaleReviewsOnPushChanged: true}},
+		{name: "require_code_owner_review change is not empty", difference: PullRequestDifference{RequireCodeOwnerReviewChanged: true}},
+		{name: "require_last_push_approval change is not empty", difference: PullRequestDifference{RequireLastPushApprovalChanged: true}},
+		{name: "required_review_thread_resolution change is not empty", difference: PullRequestDifference{RequiredReviewThreadResolutionChanged: true}},
+		{name: "allowed_merge_methods change is not empty", difference: PullRequestDifference{AllowedMergeMethodsChanged: true}},
+		{name: "require_extra_approval_for_unattributed_changes change is not empty", difference: PullRequestDifference{RequireExtraApprovalForUnattributedChangesChanged: true}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -158,7 +158,7 @@ func TestUninterpretedPart_String(t *testing.T) {
 		{part: UninterpretedPart{Kind: UninterpretedBypassActorKey, Name: "note"}, want: `bypass actor key: "note"`},
 		{part: UninterpretedPart{Kind: UninterpretedRuleType, Name: "tag_name_pattern"}, want: `rule type: "tag_name_pattern"`},
 		{part: UninterpretedPart{Kind: UninterpretedRuleKey, Rule: setting.RulesetRuleDeletion, Name: "extra"}, want: `deletion key: "extra"`},
-		{part: UninterpretedPart{Kind: UninterpretedRuleParameter, Rule: setting.RulesetRulePullRequest, Name: "allowed_merge_methods"}, want: `pull_request parameter: "allowed_merge_methods"`},
+		{part: UninterpretedPart{Kind: UninterpretedRuleParameter, Rule: setting.RulesetRulePullRequest, Name: "required_reviewers"}, want: `pull_request parameter: "required_reviewers"`},
 		// GitHub が返した任意の名前を、行の区切りや表示の向きを変えずに一行に収める
 		{part: UninterpretedPart{Kind: UninterpretedRuleType, Name: "x\n\"y\"\u202e"}, want: `rule type: "x\n\"y\"\u202e"`},
 	}

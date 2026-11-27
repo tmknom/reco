@@ -209,9 +209,10 @@ Repositories checked: 1
 
 Ruleset の変更予定は、`rulesets.<名前>` の形で示し、集計では Ruleset 一つを一つの変更予定として数えます。Ruleset の値は1行に収まらないため、期待値の位置に `present` を置き、値を続く行に示します。
 
-作成は、`absent -> present` の行の下に、宣言した値の全体を `target`、`enforcement`、`include`、`exclude`、`bypass_actors`、`rules` の順で1行ずつ示します。パターンは `["~DEFAULT_BRANCH", "refs/heads/main"]` のように二重引用符で囲んでエスケープし、Bypass は `<actor_type> <actor_id> <bypass_mode>`（`DeployKey` は `DeployKey <bypass_mode>`）、ルールは `deletion`、`non_fast_forward` か、`pull_request (<パラメータ>: <値>, ...)`、`required_status_checks (<パラメータ>: <値>, ...)` の形で、どれも宣言の順に並べます。`required_status_checks` のチェックは、`context` を二重引用符で囲んでエスケープし、`integration_id` を持つチェックには ` (integration_id: <ID>)` を添えます。`do_not_enforce_on_create` は、値が持つときだけ示し、宣言で省略した値には示しません。
+作成は、`absent -> present` の行の下に、宣言した値の全体を `target`、`enforcement`、`include`、`exclude`、`bypass_actors`、`rules` の順で1行ずつ示します。パターンは `["~DEFAULT_BRANCH", "refs/heads/main"]` のように二重引用符で囲んでエスケープし、Bypass は `<actor_type> <actor_id> <bypass_mode>`（`DeployKey` は `DeployKey <bypass_mode>`）、ルールは `deletion`、`non_fast_forward` か、`pull_request (<パラメータ>: <値>, ...)`、`required_status_checks (<パラメータ>: <値>, ...)` の形で、どれも宣言の順に並べます。`required_status_checks` のチェックは、`context` を二重引用符で囲んでエスケープし、`integration_id` を持つチェックには ` (integration_id: <ID>)` を添えます。ルールの省略できるパラメータ（`pull_request` の `allowed_merge_methods` と `require_extra_approval_for_unattributed_changes`、`required_status_checks` の `do_not_enforce_on_create`）は、値が持つときだけ必須のパラメータのあとに示し、宣言で省略した値には示しません。`allowed_merge_methods` は `[squash, rebase]` のように、引用符で囲まずに、値の並びのまま示します。
 
 ```text
+pull_request (required_approving_review_count: 1, dismiss_stale_reviews_on_push: false, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false, allowed_merge_methods: [squash, rebase], require_extra_approval_for_unattributed_changes: false)
 required_status_checks (required_status_checks: ["test", "lint" (integration_id: 15368)], strict_required_status_checks_policy: true)
 ```
 
@@ -242,7 +243,7 @@ Repositories checked: 1
 | `Bypass actor <actor_type> <actor_id>: <現在の方式> -> <期待する方式>` | 同じ主体の Bypass で、`bypass_mode` だけが変わる |
 | `Rules to remove:`、`Rules to add:` | なくなるルール、加わるルール |
 | `Required status checks to remove:`、`Required status checks to add:` | 同じ型の `required_status_checks` のルールで、なくなるチェック、加わるチェック。`integration_id` だけが違うチェックは、なくなるチェックと加わるチェックとして示す |
-| `Rule <ルール型>: <パラメータ>: <現在値> -> <期待値>, ...` | 同じ型のルールで、真偽値か整数のパラメータが変わる。変わるパラメータだけを示す。`required_status_checks` の `do_not_enforce_on_create` は、宣言したときだけ示す |
+| `Rule <ルール型>: <パラメータ>: <現在値> -> <期待値>, ...` | 同じ型のルールで、真偽値か整数のパラメータか、`pull_request` の `allowed_merge_methods` が変わる。変わるパラメータだけを示す。`allowed_merge_methods` は方式の集合が違うときだけ、作成と同じ表記で `[merge, squash, rebase] -> [squash]` と示す。省略できるパラメータは、宣言したときだけ示す |
 
 なくなる要素は現在値の順、加わる要素は期待値の順に並べ、要素の表記は作成と同じです。なくなるルールはパラメータを含めて示します。集合として比べるため、順序だけの違いと、GitHub 上の重複した要素は示しません。同じ型のルールの組が二つ以上あれば、ルールの行とチェックの行は、組ごとに期待値のルールの順で示します。
 
@@ -257,7 +258,7 @@ Repository: example/project-a
     Bypass actor RepositoryRole 5: always -> pull_request
     Rules to remove: [deletion]
     Rules to add: [non_fast_forward]
-    Rule pull_request: required_approving_review_count: 0 -> 1, require_code_owner_review: false -> true
+    Rule pull_request: required_approving_review_count: 0 -> 1, require_code_owner_review: false -> true, allowed_merge_methods: [merge, squash, rebase] -> [squash]
     Required status checks to remove: ["build"]
     Required status checks to add: ["lint" (integration_id: 15368)]
     Rule required_status_checks: strict_required_status_checks_policy: false -> true
@@ -491,7 +492,7 @@ Repository: example/project-a
     bypass_actors: []
     rules: [deletion]
     Applicability: not applicable (the ruleset on GitHub contains parts that reco does not interpret; remove this ruleset from the configuration)
-      pull_request parameter: "allowed_merge_methods"
+      pull_request parameter: "required_reviewers"
       rule type: "creation"
   rulesets.legacy: (existence unknown) -> present
     target: branch
@@ -508,13 +509,16 @@ Repositories checked: 1
 Plan cannot be applied.
 ```
 
-省略したパラメータを GitHub が変えることによる適用不能では、`Applicability:` の行の下に、そのパラメータを `<ルール型>.<パラメータ>: <現在値>` の形で1行に一つずつ、宣言のルールの順に示します。
+省略したパラメータを GitHub が変えることによる適用不能では、`Applicability:` の行の下に、そのパラメータを `<ルール型>.<パラメータ>: <現在値>` の形で1行に一つずつ、宣言のルールの順に、同じルールの中では YAML 設定仕様のパラメータの表の順に示します。現在値の表記は作成と同じで、`allowed_merge_methods` は GitHub が返した並びのまま示します。
 
 ```text
 Repository: example/project-a
   rulesets.protect-default-branch:
+    Rule pull_request: required_approving_review_count: 0 -> 1
     Rule required_status_checks: strict_required_status_checks_policy: false -> true
     Applicability: not applicable (updating the ruleset would change parameters that the configuration omits to the values GitHub sets; declare them in the configuration)
+      pull_request.allowed_merge_methods: [squash]
+      pull_request.require_extra_approval_for_unattributed_changes: false
       required_status_checks.do_not_enforce_on_create: true
 
 Plan: 1 repository to update, 1 change
@@ -806,7 +810,7 @@ Ruleset の作成か値の変更のあとに Ruleset が存在しなかった場
 
 変更対象外の設定は、管理設定と同じ形の名前で示します。マージメッセージは `general.squash_merge_commit` と `general.merge_commit` の名前で、値は4章と同じ `title: <タイトル>, message: <本文>` の形で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.prevent_self_review`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` が4章と同じ表記（`30 minutes`、保護ルールがなければ `0 minutes`）です。`required_reviewers` は担当者の集合で、4章と同じ表記（担当者がいなければ `[]`、担当者のいない保護ルールは `[] (protection rule without reviewers)`）で GitHub が返した順に示し、login は添えません。login だけの変化は予期しない変化に数えないためです。`prevent_self_review` と `can_admins_bypass` は `true` か `false` で、`prevent_self_review` は `required_reviewers` の保護ルールがなければ `false` です。Environment の `PUT` の更新操作（方式、担当者の集合、自己承認の禁止、デプロイの待機時間の変更）のあとは、同じ Environment のデプロイ元制限の方式も `environments.<名前>.deployment_branch_policy` の名前で比べ、値は方式の名前（`all`、`protected_branches`、`selected`）で示します。個別パターンは別の更新エンドポイントの設定のため、比べず、値にも含めません。複数が変わっていれば、`deployment_branch_policy`、`wait_timer`、`required_reviewers`、`prevent_self_review`、`can_admins_bypass` の順に1行ずつ示します。
 
-設定グループの省略できる項目を省略した宣言で、その項目が更新の前後で変わった場合は、`<管理設定の名前>.<項目のキー>` の名前で示します。OIDC トークンの subject のカスタマイズの `use_immutable_subject` は、`actions.oidc_subject.use_immutable_subject` と示し、値は `true` か `false` です。Ruleset のルールの省略できるパラメータは、`<管理設定の名前>.<ルール型>.<パラメータ>` の名前で示します。`required_status_checks` の `do_not_enforce_on_create` は、`rulesets.<名前>.required_status_checks.do_not_enforce_on_create` と示し、値は `true` か `false` です。
+設定グループの省略できる項目を省略した宣言で、その項目が更新の前後で変わった場合は、`<管理設定の名前>.<項目のキー>` の名前で示します。OIDC トークンの subject のカスタマイズの `use_immutable_subject` は、`actions.oidc_subject.use_immutable_subject` と示し、値は `true` か `false` です。Ruleset のルールの省略できるパラメータは、`<管理設定の名前>.<ルール型>.<パラメータ>` の名前で示します。`required_status_checks` の `do_not_enforce_on_create` は、`rulesets.<名前>.required_status_checks.do_not_enforce_on_create` と示し、値は `true` か `false` です。`pull_request` の `allowed_merge_methods` と `require_extra_approval_for_unattributed_changes` は、`rulesets.<名前>.pull_request.allowed_merge_methods` などと示し、値は4章と同じ表記です。`allowed_merge_methods` は集合として比べ、並びだけの変化は示しません。
 
 更新操作が成功したのに期待状態と一致しない場合、reco は原因を断定しません。設定ごとの設計が原因の候補を挙げている場合は、`Possible cause:` として可能性の形で添えます。更新操作の成否が不明な場合は添えません。
 
@@ -1389,6 +1393,11 @@ Ruleset は `rulesets` に示します。リポジトリに属する Ruleset を
               require_code_owner_review: false
               require_last_push_approval: false
               required_review_thread_resolution: false
+              allowed_merge_methods:
+                - merge
+                - squash
+                - rebase
+              require_extra_approval_for_unattributed_changes: true
           - type: deletion
           - type: non_fast_forward
           - type: required_status_checks
@@ -1401,7 +1410,7 @@ Ruleset は `rulesets` に示します。リポジトリに属する Ruleset を
               do_not_enforce_on_create: false
 ```
 
-`actor_type` が `DeployKey` の Bypass は `actor_id` を持たないため、その行を示しません。`ref_name` を持たない Ruleset は `conditions: {}` と示します。`pull_request` のパラメータは、上の5項目だけを示します。`required_status_checks` のチェックは、`context` を二重引用符で囲んでエスケープし、GitHub が返した順に、重複も残して示します。`integration_id` を持たないチェックは、その行を示しません。チェックがなければ `required_status_checks: []` と示します。`do_not_enforce_on_create` は常に示します。
+`actor_type` が `DeployKey` の Bypass は `actor_id` を持たないため、その行を示しません。`ref_name` を持たない Ruleset は `conditions: {}` と示します。`pull_request` のパラメータは、上の7項目を常に示します。`allowed_merge_methods` は、GitHub が返した順に、重複も残して、引用符で囲まずに示します。`required_status_checks` のチェックは、`context` を二重引用符で囲んでエスケープし、GitHub が返した順に、重複も残して示します。`integration_id` を持たないチェックは、その行を示しません。チェックがなければ `required_status_checks: []` と示します。`do_not_enforce_on_create` は常に示します。
 
 Ruleset が reco の解釈しない部分を含むときは、`name` だけを示し、続く行を YAML のコメントにして、`unavailable (the ruleset contains parts that reco does not interpret)` と、解釈しなかったものを1行に一つずつ示します。解釈できた部分だけを値として示すことはしません。一部だけを設定宣言に書き写すと、書かなかった部分を外す宣言になるためです。解釈しなかったものの名前は GitHub が返した文字列で、二重引用符で囲んでエスケープして示します。どの部分を解釈するかは [Rulesets の設計](../design/settings/rulesets.md) の観測が定めます。
 
@@ -1412,7 +1421,7 @@ Ruleset が reco の解釈しない部分を含むときは、`name` だけを�
         #   rule type: "tag_name_pattern"
       - name: "strict-review"
         # unavailable (the ruleset contains parts that reco does not interpret)
-        #   pull_request parameter: "allowed_merge_methods"
+        #   pull_request parameter: "required_reviewers"
         #   rule type: "creation"
 ```
 
@@ -1435,7 +1444,7 @@ Ruleset が一つもないときは `# rulesets: none` と示します。非公�
 
 GitHub は、Ruleset への書き込みのアクセスを持たない利用者には Bypass を返しません（[GitHub Rules API 仕様](../research/rules.md) 3.2）。この場合は、下に述べる権限の不足による欠落として、`bypass_actors` を示してエラーとします。
 
-表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。解釈しない部分を含む Ruleset（`name` だけが値として残り、必須のキーの欠落になる）、`enforcement: evaluate` や `conditions: {}` の Ruleset、`2`・`4`・`5` 以外の `RepositoryRole` の Bypass、GitHub が重複して返した Ruleset のパターンや Bypass の主体、ステータスチェック、空文字列の `context`、ASCII 以外の文字を含む Ruleset の名前、`organization` の `access_level`、`run_workflows_from_fork_pull_requests` が `false` でほかの3項目のどれかが `true` の Fork Pull Request ワークフローの実行条件、`1` 未満の保持日数、GitHub が更新で受け付けないタイトルと本文の組み合わせのマージメッセージ、`use_default` が `false` で key が一つもない（`include_claim_keys: []` と示す）OIDC トークンの subject のカスタマイズ、claim key の形式に合わない key や重複した key、ASCII 以外の文字や制御文字を含む Environment の名前、`type: Team` の担当者、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable や Environment Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 14章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
+表示を設定宣言として読めるのは、観測した値が設定宣言の入力検証を通る場合に限ります。解釈しない部分を含む Ruleset（`name` だけが値として残り、必須のキーの欠落になる）、`enforcement: evaluate` や `conditions: {}` の Ruleset、`2`・`4`・`5` 以外の `RepositoryRole` の Bypass、GitHub が重複して返した Ruleset のパターンや Bypass の主体、ステータスチェック、許すマージ方式、空文字列の `context`、ASCII 以外の文字を含む Ruleset の名前、`organization` の `access_level`、`run_workflows_from_fork_pull_requests` が `false` でほかの3項目のどれかが `true` の Fork Pull Request ワークフローの実行条件、`1` 未満の保持日数、GitHub が更新で受け付けないタイトルと本文の組み合わせのマージメッセージ、`use_default` が `false` で key が一つもない（`include_claim_keys: []` と示す）OIDC トークンの subject のカスタマイズ、claim key の形式に合わない key や重複した key、ASCII 以外の文字や制御文字を含む Environment の名前、`type: Team` の担当者、GitHub が重複して返した `patterns_allowed` の要素、Dependabot alerts が無効で Dependabot security updates が有効（一時停止中を含む）という組、値が空文字列の Repository Variable や Environment Variable などは、そのまま示すため、設定宣言として読むと入力検証で拒否されます（[YAML 設定仕様](configuration.md) 14章）。表示を設定宣言に合わせて書き換えると、観測した値を推測・補完して示すことになるため、書き換えません。
 
 権限の不足により GitHub が値を応答に含めない場合は、取得条件による観測不能ではなく観測操作の失敗です（3章）。行を省かず、欠けた項目を示してエラーとします。
 

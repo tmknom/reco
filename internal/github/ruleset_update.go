@@ -68,12 +68,16 @@ type rulesetRuleBody struct {
 	Parameters any    `json:"parameters,omitempty"`
 }
 
+// pullRequestParametersBody の省略できる2項目は、宣言したときだけ送るため omitempty で持つ。
+// 省略を表す nil のスライスとポインタは省かれ、false を指すポインタは省かれない。宣言は空の AllowedMergeMethods を作らない。
 type pullRequestParametersBody struct {
-	RequiredApprovingReviewCount   int  `json:"required_approving_review_count"`
-	DismissStaleReviewsOnPush      bool `json:"dismiss_stale_reviews_on_push"`
-	RequireCodeOwnerReview         bool `json:"require_code_owner_review"`
-	RequireLastPushApproval        bool `json:"require_last_push_approval"`
-	RequiredReviewThreadResolution bool `json:"required_review_thread_resolution"`
+	RequiredApprovingReviewCount               int      `json:"required_approving_review_count"`
+	DismissStaleReviewsOnPush                  bool     `json:"dismiss_stale_reviews_on_push"`
+	RequireCodeOwnerReview                     bool     `json:"require_code_owner_review"`
+	RequireLastPushApproval                    bool     `json:"require_last_push_approval"`
+	RequiredReviewThreadResolution             bool     `json:"required_review_thread_resolution"`
+	AllowedMergeMethods                        []string `json:"allowed_merge_methods,omitempty"`
+	RequireExtraApprovalForUnattributedChanges *bool    `json:"require_extra_approval_for_unattributed_changes,omitempty"`
 }
 
 // requiredStatusChecksParametersBody の DoNotEnforceOnCreate は、宣言したときだけ送るため omitempty のポインタで持つ。false を指すポインタは省かれない。
@@ -135,12 +139,18 @@ func encodeRulesetRule(rule setting.RulesetRule) rulesetRuleBody {
 	switch rule.Type() {
 	case setting.RulesetRulePullRequest:
 		p := rule.PullRequest()
+		var methods []string
+		for _, m := range p.AllowedMergeMethods {
+			methods = append(methods, string(m))
+		}
 		return rulesetRuleBody{Type: string(rule.Type()), Parameters: &pullRequestParametersBody{
-			RequiredApprovingReviewCount:   p.RequiredApprovingReviewCount,
-			DismissStaleReviewsOnPush:      p.DismissStaleReviewsOnPush,
-			RequireCodeOwnerReview:         p.RequireCodeOwnerReview,
-			RequireLastPushApproval:        p.RequireLastPushApproval,
-			RequiredReviewThreadResolution: p.RequiredReviewThreadResolution,
+			RequiredApprovingReviewCount:               p.RequiredApprovingReviewCount,
+			DismissStaleReviewsOnPush:                  p.DismissStaleReviewsOnPush,
+			RequireCodeOwnerReview:                     p.RequireCodeOwnerReview,
+			RequireLastPushApproval:                    p.RequireLastPushApproval,
+			RequiredReviewThreadResolution:             p.RequiredReviewThreadResolution,
+			AllowedMergeMethods:                        methods,
+			RequireExtraApprovalForUnattributedChanges: p.RequireExtraApprovalForUnattributedChanges,
 		}}
 	case setting.RulesetRuleDeletion, setting.RulesetRuleNonFastForward:
 		return rulesetRuleBody{Type: string(rule.Type())}

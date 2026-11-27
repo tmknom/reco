@@ -221,9 +221,16 @@ func ruleText(r setting.RulesetRule) string {
 	switch r.Type() {
 	case setting.RulesetRulePullRequest:
 		p := r.PullRequest()
-		return fmt.Sprintf("%s (required_approving_review_count: %d, dismiss_stale_reviews_on_push: %t, require_code_owner_review: %t, "+
-			"require_last_push_approval: %t, required_review_thread_resolution: %t)",
+		text := fmt.Sprintf("%s (required_approving_review_count: %d, dismiss_stale_reviews_on_push: %t, require_code_owner_review: %t, "+
+			"require_last_push_approval: %t, required_review_thread_resolution: %t",
 			r.Type(), p.RequiredApprovingReviewCount, p.DismissStaleReviewsOnPush, p.RequireCodeOwnerReview, p.RequireLastPushApproval, p.RequiredReviewThreadResolution)
+		if p.AllowedMergeMethods != nil {
+			text += ", allowed_merge_methods: " + setting.AllowedMergeMethodsText(p.AllowedMergeMethods)
+		}
+		if p.RequireExtraApprovalForUnattributedChanges != nil {
+			text += fmt.Sprintf(", require_extra_approval_for_unattributed_changes: %t", *p.RequireExtraApprovalForUnattributedChanges)
+		}
+		return text + ")"
 	case setting.RulesetRuleDeletion, setting.RulesetRuleNonFastForward:
 		return string(r.Type())
 	case setting.RulesetRuleRequiredStatusChecks:
@@ -251,24 +258,35 @@ func statusChecksText(checks []setting.StatusCheck) string {
 }
 
 // pullRequestParameterChangesText は、pull_request のパラメータのうち変わるものだけを、パラメータの順に現在値 -> 期待値で返す。
+// 省略できるパラメータは、両方が持つときだけ差になるため、宣言が省略したときは示さない。
 func pullRequestParameterChangesText(from, to setting.PullRequestParameters) string {
+	d := from.DifferenceTo(to)
 	var changes []string
-	if from.RequiredApprovingReviewCount != to.RequiredApprovingReviewCount {
+	if d.RequiredApprovingReviewCountChanged {
 		changes = append(changes, fmt.Sprintf("required_approving_review_count: %d -> %d", from.RequiredApprovingReviewCount, to.RequiredApprovingReviewCount))
 	}
 	flags := []struct {
 		name     string
+		changed  bool
 		from, to bool
 	}{
-		{"dismiss_stale_reviews_on_push", from.DismissStaleReviewsOnPush, to.DismissStaleReviewsOnPush},
-		{"require_code_owner_review", from.RequireCodeOwnerReview, to.RequireCodeOwnerReview},
-		{"require_last_push_approval", from.RequireLastPushApproval, to.RequireLastPushApproval},
-		{"required_review_thread_resolution", from.RequiredReviewThreadResolution, to.RequiredReviewThreadResolution},
+		{"dismiss_stale_reviews_on_push", d.DismissStaleReviewsOnPushChanged, from.DismissStaleReviewsOnPush, to.DismissStaleReviewsOnPush},
+		{"require_code_owner_review", d.RequireCodeOwnerReviewChanged, from.RequireCodeOwnerReview, to.RequireCodeOwnerReview},
+		{"require_last_push_approval", d.RequireLastPushApprovalChanged, from.RequireLastPushApproval, to.RequireLastPushApproval},
+		{"required_review_thread_resolution", d.RequiredReviewThreadResolutionChanged, from.RequiredReviewThreadResolution, to.RequiredReviewThreadResolution},
 	}
 	for _, f := range flags {
-		if f.from != f.to {
+		if f.changed {
 			changes = append(changes, fmt.Sprintf("%s: %t -> %t", f.name, f.from, f.to))
 		}
+	}
+	if d.AllowedMergeMethodsChanged {
+		changes = append(changes, fmt.Sprintf("allowed_merge_methods: %s -> %s",
+			setting.AllowedMergeMethodsText(from.AllowedMergeMethods), setting.AllowedMergeMethodsText(to.AllowedMergeMethods)))
+	}
+	if d.RequireExtraApprovalForUnattributedChangesChanged {
+		changes = append(changes, fmt.Sprintf("require_extra_approval_for_unattributed_changes: %t -> %t",
+			*from.RequireExtraApprovalForUnattributedChanges, *to.RequireExtraApprovalForUnattributedChanges))
 	}
 	return strings.Join(changes, ", ")
 }

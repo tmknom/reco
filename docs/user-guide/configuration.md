@@ -571,9 +571,20 @@ repositories:
 - 書いた名前の Ruleset がなければ、`plan` は作成を示す。書かなかった Ruleset を、reco は変更も削除もしない
 - 名前は、半角の英数字、空白、記号だけで書き、前後に空白を置かない。大文字と小文字だけが違う名前は同じ Ruleset とみなすため、同じリポジトリに並べられない
 - `bypass_actors` の `actor_type` は `RepositoryRole`、`User`、`Integration`、`DeployKey` のどれか。`bypass_mode` は `always`、`pull_request`、`exempt` のどれかで、省略できない。`RepositoryRole` の `actor_id` は `2`、`4`、`5` のどれかで、ロール名ではなく数値で書く。どの数値がどのロールかは公開されていないため、`show` の表示から書き写す。`DeployKey` には `actor_id` を書かず、`bypass_mode` は `always` だけ
-- `pull_request` の `parameters` は、例に示したキーをすべて書く。`required_approving_review_count` は `0` から `10` の整数
+- `pull_request` の `parameters` は、例に示した5つのキーをすべて書く。`required_approving_review_count` は `0` から `10` の整数。省略できるキーは下の表のとおり
 - `deletion` と `non_fast_forward` には `parameters` を書かない
 - 一覧の要素の順序は問わない。並びだけが違っても変更にならない
+
+`pull_request` の `parameters` には、5つのキーのほかに、次のキーを書けます。
+
+| キー | 値 | 意味 |
+|---|---|---|
+| `allowed_merge_methods` | `merge` / `squash` / `rebase` の一覧（省略可。1件以上） | Pull Request をマージできる方式 |
+| `require_extra_approval_for_unattributed_changes` | `true` / `false`（省略可） | 人間の共同作業者のいない Copilot の Pull Request に、もう一つの承認を求めるか |
+
+- `allowed_merge_methods` は、同じ方式を二度書けない
+- どちらも、省略すると reco はその値を比べず、送らない。ただし、GitHub は送らなかった値を、`allowed_merge_methods` は3つの方式すべてに、`require_extra_approval_for_unattributed_changes` は `true` にする。そのため、GitHub 上でほかの値の Ruleset のほかの内容を変えようとすると、`plan` に `Applicability: not applicable` と、`pull_request.allowed_merge_methods: [squash]` のような今の値が出る。今の値を保つならその値を、変えるならほかの値を書き足す
+- **reco は、`allowed_merge_methods` をリポジトリの General のマージ方式（`allow_squash_merge` など）と突き合わせません**。General で無効にした方式だけを許す Ruleset も、GitHub は受け付け、reco も止めず、`plan` にも示さない。ただし、GitHub の公式資料によると、その状態では対象のブランチへの Pull Request をマージできない場合がある。設定ファイルの `general` のマージ方式と一緒に見直す
 
 `required_status_checks` の `parameters` には、次のキーを書きます。
 
@@ -592,7 +603,7 @@ repositories:
 - `do_not_enforce_on_create` を省略すると、reco はこの値を比べず、送らない。ただし、GitHub は送らなかった `do_not_enforce_on_create` を `false` にするため、GitHub 上で `true` の Ruleset のほかの内容を変えようとすると、`plan` に `Applicability: not applicable` と `required_status_checks.do_not_enforce_on_create: true` が出る。今の値を保つなら `do_not_enforce_on_create: true` を、`false` に変えるなら `do_not_enforce_on_create: false` を書き足す
 - 非公開リポジトリには書けない。書くと `plan` に `Applicability: not applicable` と `Plan cannot be applied.` が出る
 - GitHub 上に、半角の英数字、空白、記号以外の文字（`é` など）を含む名前の Ruleset があると、そのリポジトリにまだない名前の Ruleset は作成できない。GitHub がその名前を書いた名前と同じとみなすかを reco が判断できないため、`plan` は `(existence unknown)` と `Applicability: not applicable` を示す。GitHub 上にすでにある Ruleset の名前を書いた場合は、内容を比べられる
-- reco がまだ解釈しないルール（`creation` など）や `pull_request` の設定（`allowed_merge_methods` など）を持つ Ruleset の名前を書くと、`plan` に `Applicability: not applicable` と、reco の解釈しない部分の一覧が出る。そうした Ruleset は設定ファイルから外す
+- reco がまだ解釈しないルール（`creation` など）や `pull_request` の設定（空でない `required_reviewers` など）を持つ Ruleset の名前を書くと、`plan` に `Applicability: not applicable` と、reco の解釈しない部分の一覧が出る。そうした Ruleset は設定ファイルから外す
 
 GitHub 上にある Ruleset を管理に取り込むときは、`reco show` の `rulesets` の表示から、その Ruleset の要素を設定ファイルに書き写します。表示は設定ファイルと同じキーと値で示すため、書き写したあとの `plan` は、その Ruleset に差分を示しません。ただし、`unavailable` のコメントが付いた Ruleset は取り込めません。`enforcement: evaluate`、`conditions: {}`、`2`・`4`・`5` 以外の `RepositoryRole` のように設定ファイルに書けない値を持つ Ruleset は、そのまま書き写すと設定ファイルの誤りになります。
 

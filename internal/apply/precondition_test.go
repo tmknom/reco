@@ -380,6 +380,10 @@ func TestCheckPrecondition_RequiredReviewersRemoval(t *testing.T) {
 func TestMatchesPreconditionBasis_Ruleset(t *testing.T) {
 	name := mustRulesetName(t, "protect")
 	unit := setting.Unit{Key: setting.RulesetResource, Ruleset: name}
+	// observedPullRequestRule は、計画時の観測値と同じく、省略できるパラメータを持つ pull_request のルールを作る
+	observedPullRequestRule := func(methods ...setting.AllowedMergeMethod) setting.RulesetRule {
+		return setting.PullRequestRule(setting.PullRequestParameters{RequiredApprovingReviewCount: 1, AllowedMergeMethods: methods, RequireExtraApprovalForUnattributedChanges: new(true)})
+	}
 	// approvedValue は、順序の違いを作れるよう、ルールと Bypass を二つずつ持つ
 	approvedValue := setting.Ruleset{
 		Target:      setting.RulesetTargetBranch,
@@ -389,7 +393,7 @@ func TestMatchesPreconditionBasis_Ruleset(t *testing.T) {
 			{ActorType: setting.BypassActorRepositoryRole, ActorID: 5, BypassMode: setting.BypassModeAlways},
 			{ActorType: setting.BypassActorDeployKey, BypassMode: setting.BypassModeAlways},
 		},
-		Rules: []setting.RulesetRule{setting.DeletionRule(), setting.PullRequestRule(setting.PullRequestParameters{RequiredApprovingReviewCount: 1})},
+		Rules: []setting.RulesetRule{setting.DeletionRule(), observedPullRequestRule(setting.AllowedMergeMethodMerge, setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodRebase)},
 	}
 	reordered := approvedValue
 	reordered.BypassActors = []setting.BypassActor{approvedValue.BypassActors[1], approvedValue.BypassActors[0]}
@@ -411,6 +415,8 @@ func TestMatchesPreconditionBasis_Ruleset(t *testing.T) {
 	}
 	statusChecksBasis := approvedBasis
 	statusChecksBasis.AnticipatedValue = changeplan.AnticipateValue(setting.RulesetValue(statusChecksValue(false)))
+	squashOnly := approvedValue
+	squashOnly.Rules = []setting.RulesetRule{setting.DeletionRule(), observedPullRequestRule(setting.AllowedMergeMethodSquash)}
 	cases := []struct {
 		name    string
 		basis   changeplan.PreconditionBasis
@@ -433,6 +439,11 @@ func TestMatchesPreconditionBasis_Ruleset(t *testing.T) {
 			// 宣言が省略しても、値の全体を置き換える更新はこの項目を GitHub の決める値に変えるため、比べる
 			name: "same ID whose do_not_enforce_on_create alone changed differs", basis: statusChecksBasis,
 			current: []github.Ruleset{github.InterpretedRuleset(42, "protect", statusChecksValue(true))},
+			want:    false,
+		},
+		{
+			name: "same ID whose allowed_merge_methods alone changed differs", basis: approvedBasis,
+			current: []github.Ruleset{github.InterpretedRuleset(42, "protect", squashOnly)},
 			want:    false,
 		},
 		{name: "only an undetermined name differs", basis: approvedBasis, current: []github.Ruleset{github.InterpretedRuleset(42, "protëct", approvedValue)}, want: false},

@@ -19,6 +19,18 @@ func TestWriteRulesets(t *testing.T) {
 		return setting.Ruleset{Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive, Conditions: conditions, BypassActors: actors, Rules: rules}
 	}
 	emptyRefName := setting.RulesetConditions{RefName: &setting.RefNameCondition{}}
+	// observedPullRequest は、観測した値と同じく、省略できるパラメータを持つ pull_request のルールを作る。持たない p の項目には GitHub の既定値を入れる。
+	observedPullRequest := func(p setting.PullRequestParameters) setting.RulesetRule {
+		if p.AllowedMergeMethods == nil {
+			p.AllowedMergeMethods = []setting.AllowedMergeMethod{setting.AllowedMergeMethodMerge, setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodRebase}
+		}
+		if p.RequireExtraApprovalForUnattributedChanges == nil {
+			p.RequireExtraApprovalForUnattributedChanges = new(true)
+		}
+		return setting.PullRequestRule(p)
+	}
+	const defaultOptionalLines = "              allowed_merge_methods:\n                - merge\n                - squash\n                - rebase\n" +
+		"              require_extra_approval_for_unattributed_changes: true\n"
 	observed := func(rulesets ...github.Ruleset) github.Rulesets {
 		return github.Rulesets{Existing: github.Observed(rulesets)}
 	}
@@ -45,7 +57,7 @@ func TestWriteRulesets(t *testing.T) {
 					{ActorType: setting.BypassActorRepositoryRole, ActorID: 5, BypassMode: setting.BypassModeAlways},
 					{ActorType: setting.BypassActorDeployKey, BypassMode: setting.BypassModeAlways},
 				},
-				[]setting.RulesetRule{setting.PullRequestRule(setting.PullRequestParameters{RequiredApprovingReviewCount: 1}), setting.DeletionRule()},
+				[]setting.RulesetRule{observedPullRequest(setting.PullRequestParameters{RequiredApprovingReviewCount: 1}), setting.DeletionRule()},
 			))),
 			want: "    rulesets:\n" +
 				"      - name: \"protect-default-branch\"\n" +
@@ -70,6 +82,7 @@ func TestWriteRulesets(t *testing.T) {
 				"              require_code_owner_review: false\n" +
 				"              require_last_push_approval: false\n" +
 				"              required_review_thread_resolution: false\n" +
+				defaultOptionalLines +
 				"          - type: deletion\n",
 		},
 		{
@@ -81,10 +94,14 @@ func TestWriteRulesets(t *testing.T) {
 				BypassActors: []setting.BypassActor{{ActorType: setting.BypassActorUser, ActorID: 7, BypassMode: setting.BypassModePullRequest}},
 				// 各ブール値を別々に true にして、項目の取り違えを検出する
 				Rules: []setting.RulesetRule{
-					setting.PullRequestRule(setting.PullRequestParameters{RequiredApprovingReviewCount: 2, DismissStaleReviewsOnPush: true}),
-					setting.PullRequestRule(setting.PullRequestParameters{RequireCodeOwnerReview: true}),
-					setting.PullRequestRule(setting.PullRequestParameters{RequireLastPushApproval: true}),
-					setting.PullRequestRule(setting.PullRequestParameters{RequiredReviewThreadResolution: true}),
+					observedPullRequest(setting.PullRequestParameters{
+						RequiredApprovingReviewCount: 2, DismissStaleReviewsOnPush: true,
+						AllowedMergeMethods:                        []setting.AllowedMergeMethod{setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodMerge},
+						RequireExtraApprovalForUnattributedChanges: new(false),
+					}),
+					observedPullRequest(setting.PullRequestParameters{RequireCodeOwnerReview: true}),
+					observedPullRequest(setting.PullRequestParameters{RequireLastPushApproval: true}),
+					observedPullRequest(setting.PullRequestParameters{RequiredReviewThreadResolution: true}),
 				},
 			})),
 			want: "    rulesets:\n      - name: \"n\"\n        target: branch\n        enforcement: evaluate\n" +
@@ -94,15 +111,17 @@ func TestWriteRulesets(t *testing.T) {
 				"          - type: pull_request\n            parameters:\n              required_approving_review_count: 2\n" +
 				"              dismiss_stale_reviews_on_push: true\n              require_code_owner_review: false\n" +
 				"              require_last_push_approval: false\n              required_review_thread_resolution: false\n" +
+				"              allowed_merge_methods:\n                - squash\n                - squash\n                - merge\n" +
+				"              require_extra_approval_for_unattributed_changes: false\n" +
 				"          - type: pull_request\n            parameters:\n              required_approving_review_count: 0\n" +
 				"              dismiss_stale_reviews_on_push: false\n              require_code_owner_review: true\n" +
-				"              require_last_push_approval: false\n              required_review_thread_resolution: false\n" +
+				"              require_last_push_approval: false\n              required_review_thread_resolution: false\n" + defaultOptionalLines +
 				"          - type: pull_request\n            parameters:\n              required_approving_review_count: 0\n" +
 				"              dismiss_stale_reviews_on_push: false\n              require_code_owner_review: false\n" +
-				"              require_last_push_approval: true\n              required_review_thread_resolution: false\n" +
+				"              require_last_push_approval: true\n              required_review_thread_resolution: false\n" + defaultOptionalLines +
 				"          - type: pull_request\n            parameters:\n              required_approving_review_count: 0\n" +
 				"              dismiss_stale_reviews_on_push: false\n              require_code_owner_review: false\n" +
-				"              require_last_push_approval: false\n              required_review_thread_resolution: true\n",
+				"              require_last_push_approval: false\n              required_review_thread_resolution: true\n" + defaultOptionalLines,
 		},
 		{
 			name: "non_fast_forward and required_status_checks are shown with quoted checks in the returned order with duplicates",
@@ -167,7 +186,7 @@ func TestWriteRulesets(t *testing.T) {
 				{Kind: github.UninterpretedBypassActorKey, Name: "note"},
 				{Kind: github.UninterpretedRuleType, Name: "tag_name_pattern"},
 				{Kind: github.UninterpretedRuleKey, Rule: setting.RulesetRuleDeletion, Name: "extra"},
-				{Kind: github.UninterpretedRuleParameter, Rule: setting.RulesetRulePullRequest, Name: "allowed_merge_methods"},
+				{Kind: github.UninterpretedRuleParameter, Rule: setting.RulesetRulePullRequest, Name: "required_reviewers"},
 			})),
 			want: "    rulesets:\n      - name: \"n\"\n" + unavailableLine +
 				"        #   target: \"tag\"\n" +
@@ -177,7 +196,7 @@ func TestWriteRulesets(t *testing.T) {
 				"        #   bypass actor key: \"note\"\n" +
 				"        #   rule type: \"tag_name_pattern\"\n" +
 				"        #   deletion key: \"extra\"\n" +
-				"        #   pull_request parameter: \"allowed_merge_methods\"\n",
+				"        #   pull_request parameter: \"required_reviewers\"\n",
 		},
 		{
 			name: "a ruleset name with a quote, a newline, and a key-like text is escaped into one line",
@@ -233,6 +252,20 @@ func TestWriteRulesets(t *testing.T) {
 			in: observed(github.InterpretedRuleset(1, "n", setting.Ruleset{
 				Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive,
 				Rules: []setting.RulesetRule{setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{})},
+			})),
+		},
+		{
+			name: "a pull_request rule without allowed_merge_methods panics",
+			in: observed(github.InterpretedRuleset(1, "n", setting.Ruleset{
+				Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive,
+				Rules: []setting.RulesetRule{setting.PullRequestRule(setting.PullRequestParameters{RequireExtraApprovalForUnattributedChanges: new(true)})},
+			})),
+		},
+		{
+			name: "a pull_request rule without require_extra_approval_for_unattributed_changes panics",
+			in: observed(github.InterpretedRuleset(1, "n", setting.Ruleset{
+				Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive,
+				Rules: []setting.RulesetRule{setting.PullRequestRule(setting.PullRequestParameters{AllowedMergeMethods: []setting.AllowedMergeMethod{setting.AllowedMergeMethodMerge}})},
 			})),
 		},
 	}
