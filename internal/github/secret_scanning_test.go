@@ -160,7 +160,7 @@ func TestObserveRepositorySecretScanning(t *testing.T) {
 	})
 
 	// 公開リポジトリで、マージ関連のフィールドは返るが security_and_analysis だけを欠く応答。権限の足りない場合を想定した形で、実際の応答は確かめていない
-	const publicWithoutSecurityAndAnalysis = `{"id": 1296269, "allow_auto_merge": true, "delete_branch_on_merge": false, "allow_squash_merge": true, "allow_merge_commit": false, "allow_rebase_merge": true, "allow_update_branch": false, "private": false, "permissions": {"admin": true}}`
+	const publicWithoutSecurityAndAnalysis = `{"id": 1296269, "allow_auto_merge": true, "delete_branch_on_merge": false, "allow_squash_merge": true, "allow_merge_commit": false, "allow_rebase_merge": true, "allow_update_branch": false, "squash_merge_commit_title": "COMMIT_OR_PR_TITLE", "squash_merge_commit_message": "COMMIT_MESSAGES", "merge_commit_title": "MERGE_MESSAGE", "merge_commit_message": "PR_TITLE", "has_issues": true, "has_projects": true, "has_wiki": true, "web_commit_signoff_required": false, "private": false, "permissions": {"admin": true}}`
 
 	t.Run("public repository without security_and_analysis fails before the other read requests", func(t *testing.T) {
 		s := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{

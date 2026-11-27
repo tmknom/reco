@@ -50,6 +50,13 @@ type General struct {
 	AllowMergeCommit    bool
 	AllowRebaseMerge    bool
 	AllowUpdateBranch   bool
+	// マージメッセージ、リポジトリの機能、Web コミットのサインオフ必須は、宣言を受け付けないため管理の単位を持たず、Setting の対象にならない。
+	SquashMergeCommitDefault SettingObservation[setting.SquashMergeCommitDefault]
+	MergeCommitDefault       SettingObservation[setting.MergeCommitDefault]
+	HasIssues                bool
+	HasProjects              bool
+	HasWiki                  bool
+	WebCommitSignoffRequired SettingObservation[bool]
 }
 
 // NamedResources は、観測を使う側が名指した関連リソースの名前を種類ごとに持つ。関連リソースごとの読み取りを送る範囲を決める。

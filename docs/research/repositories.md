@@ -181,13 +181,13 @@ Pull Request の自動マージは、GitHub Free と GitHub Free for organizatio
 >     ```
 >
 > - 片方だけを送る要求：merge commit では、タイトルだけ、本文だけのどちらの要求も、保存されている値と同じ値を送っても、保存されているもう一方と受け付ける組み合わせになる値を送っても、`422`（`invalid_merge_commit_setting_combo`）だった。squash merge では、タイトルだけの要求は、保存されている本文との組み合わせが受け付けるものなら `200` で反映され、そうでなければ `422` だった。本文だけの要求は、`COMMIT_MESSAGES` だけが `200` で、保存されているタイトルとの組み合わせが受け付けるものでも `PR_BODY` と `BLANK` は `422` だった。どの場合も、`200` の要求は送らなかった側の値を変えなかった
-> - ほかの設定の保持：squash merge のタイトルと本文を送る要求は merge commit のタイトルと本文を変えず、逆も同じだった。どちらも、マージ方式の3項目、`allow_auto_merge`、`delete_branch_on_merge`、`allow_update_branch`、リポジトリの機能の4項目を変えなかった。マージメッセージの4フィールドを一つの要求で送っても、`200` で4つとも反映された
+> - ほかの設定の保持：squash merge のタイトルと本文を送る要求は merge commit のタイトルと本文を変えず、逆も同じだった。どちらも、マージ方式の3項目、`allow_auto_merge`、`delete_branch_on_merge`、`allow_update_branch`、リポジトリの機能と `web_commit_signoff_required` を変えなかった。マージメッセージの4フィールドを一つの要求で送っても、`200` で4つとも反映された
 > - マージ方式が無効のとき：squash merge が無効のあいだ、`GET` は squash merge のタイトルと本文を値とともに返すが、それらを送る要求は、受け付ける組み合わせでも `422`（`Sorry, you need to allow the squash merge strategy in order to set the default squash commit message title or message. (no_squash_merge_strategy)`）で、値は変わらない。merge commit が無効のときも同じで、`errors[0].message` は `Sorry, you need to allow the merge commit strategy in order to set the default merge commit message title and message. (no_merge_strategy)` だった。どちらも、無効にして有効に戻したあと、タイトルと本文は無効にする前の値だった
 > - マージ方式の変更と同じ要求：無効のマージ方式を `true` にするフィールドと、その方式のタイトルと本文を一つの要求で送ると、`200` で3つとも反映された。有効のマージ方式を `false` にするフィールドと、その方式のタイトルと本文を一つの要求で送ると、`no_squash_merge_strategy` の `422` で、マージ方式も含めて何も変わらなかった（squash merge で確認）。GitHub は、要求を反映したあとの状態で検証していると見られる
 > - リポジトリの機能と `web_commit_signoff_required`：`has_issues`、`has_projects`、`has_wiki`、`web_commit_signoff_required` のどれか一つだけを `true` か `false` で送ると、`200` が返り、直後の `GET` は送った値を返した。ほかの3つと、マージ関連の10フィールドは変わらなかった（公開・非公開。非公開の `has_wiki` は次の項目）
 > - 非公開リポジトリの `has_wiki`：GitHub Free のアカウントが所有する非公開リポジトリで `has_wiki: true` だけを送ると、`200` が返るが、値は `false` のまま変わらない。応答本文と直後の `GET` も `false` を示す。`allow_auto_merge`（上の注釈）と同じ動作である
 > - Issues の無効化：`has_issues: false` のあいだ、`GET /repos/{owner}/{repo}/issues/{issue_number}` は `410`（`Issues are disabled for this repo`）を返した。`true` に戻すと、無効にする前の Issue（公開リポジトリで確認用に作ったもの、非公開リポジトリの既存のもの）が同じ状態とタイトルで返った
-> - `200` の応答本文：上のどの `200` の本文も、マージメッセージの4フィールド、リポジトリの機能の4項目、マージ方式の3項目を含み、値は直後の `GET` と一致した
+> - `200` の応答本文：上のどの `200` の本文も、マージメッセージの4フィールド、リポジトリの機能と `web_commit_signoff_required`、マージ方式の3項目を含み、値は直後の `GET` と一致した。`delete_branch_on_merge` だけ（公開・非公開）、`allow_auto_merge` だけ（公開）、`security_and_analysis.secret_scanning.status` だけ（公開）を、保存されている値と同じ値で送った要求の `200` の本文も、マージメッセージの4フィールド、リポジトリの機能と `web_commit_signoff_required` を含んだ
 > - Wiki のページと Projects の内容が、無効にして有効に戻したあとに残るかは確認していない。ページのない Wiki の Git リポジトリは `404` で、確認用のページを作れなかった。トークンに `read:project` の scope がなく、リポジトリに関連付けた Project を読めなかった
 
 | Relationship | Target | Target Type |

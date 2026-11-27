@@ -26,6 +26,14 @@ const repositoryBody = `{
 	"allow_merge_commit": false,
 	"allow_rebase_merge": true,
 	"allow_update_branch": false,
+	"squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
+	"squash_merge_commit_message": "COMMIT_MESSAGES",
+	"merge_commit_title": "MERGE_MESSAGE",
+	"merge_commit_message": "PR_TITLE",
+	"has_issues": true,
+	"has_projects": false,
+	"has_wiki": true,
+	"web_commit_signoff_required": false,
 	"permissions": {"admin": true, "push": true, "pull": true},
 	"security_and_analysis": ` + repositorySecurityAndAnalysis + `
 }`
