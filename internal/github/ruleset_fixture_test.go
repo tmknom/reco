@@ -29,7 +29,7 @@ func interpretedRulesetValue() setting.Ruleset {
 
 // rulesetDetail は、Ruleset の取得の応答のうち受理される基準の本文を change で変えて返す。
 // 基準は、値に含めるすべての部分と、reco が読まないトップレベルのフィールドを持つ。
-// rules は deletion、pull_request の順で、bypass_actors は RepositoryRole の一つだけを持つ。
+// rules は deletion、pull_request、non_fast_forward、required_status_checks の順で、bypass_actors は RepositoryRole の一つだけを持つ。
 func rulesetDetail(t *testing.T, change func(body map[string]any)) []byte {
 	t.Helper()
 	body := map[string]any{
@@ -56,6 +56,12 @@ func rulesetDetail(t *testing.T, change func(body map[string]any)) []byte {
 				"allowed_merge_methods":                           []any{"merge", "squash", "rebase"},
 				"require_extra_approval_for_unattributed_changes": true,
 				"required_reviewers":                              []any{},
+			}},
+			map[string]any{"type": "non_fast_forward"},
+			map[string]any{"type": "required_status_checks", "parameters": map[string]any{
+				"required_status_checks":               []any{map[string]any{"context": "test"}, map[string]any{"context": "lint", "integration_id": 15368}},
+				"strict_required_status_checks_policy": true,
+				"do_not_enforce_on_create":             false,
 			}},
 		},
 		"node_id":                 "RRS_1",

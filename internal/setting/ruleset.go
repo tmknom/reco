@@ -127,28 +127,43 @@ func ParseBypassMode(s string) (BypassMode, bool) {
 }
 
 // RulesetRule は、Ruleset のルール。型に合わないパラメータを持たないよう、フィールドを公開せずコンストラクタでだけ作る。
-// 比較演算子で比べられる値のまま保つ。
+// パラメータのスライスとポインタは、コンストラクタとアクセサが複製し、作った後に誰も書き換えられない。そのため、ルールの並びの浅い写しで Ruleset を複製できる。
 type RulesetRule struct {
-	ruleType    RulesetRuleType
-	pullRequest PullRequestParameters
+	ruleType     RulesetRuleType
+	pullRequest  PullRequestParameters
+	statusChecks RequiredStatusChecksParameters
 }
 
 // RulesetRuleType は、reco が解釈するルール型。値は GitHub REST API の文字列で、表示にもそのまま使う。
 type RulesetRuleType string
 
 const (
-	RulesetRulePullRequest RulesetRuleType = "pull_request"
-	RulesetRuleDeletion    RulesetRuleType = "deletion"
+	RulesetRulePullRequest          RulesetRuleType = "pull_request"
+	RulesetRuleDeletion             RulesetRuleType = "deletion"
+	RulesetRuleRequiredStatusChecks RulesetRuleType = "required_status_checks"
+	RulesetRuleNonFastForward       RulesetRuleType = "non_fast_forward"
 )
 
 // ParseRulesetRuleType は s が reco の解釈するルール型に完全一致するときだけ、その型と真を返す。
 func ParseRulesetRuleType(s string) (RulesetRuleType, bool) {
 	switch r := RulesetRuleType(s); r {
-	case RulesetRulePullRequest, RulesetRuleDeletion:
+	case RulesetRulePullRequest, RulesetRuleDeletion, RulesetRuleRequiredStatusChecks, RulesetRuleNonFastForward:
 		return r, true
 	default:
 		return "", false
 	}
+}
+
+// HasParameters は、ルール型が parameters を持つかを返す。
+// ルール型を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かず、定義にない型は panic する。
+func (t RulesetRuleType) HasParameters() bool {
+	switch t {
+	case RulesetRulePullRequest, RulesetRuleRequiredStatusChecks:
+		return true
+	case RulesetRuleDeletion, RulesetRuleNonFastForward:
+		return false
+	}
+	panic(fmt.Sprintf("setting: undefined ruleset rule type %q", t))
 }
 
 // PullRequestParameters は、pull_request のルールのパラメータのうち、値に含める5項目。
@@ -166,9 +181,44 @@ func PullRequestRule(parameters PullRequestParameters) RulesetRule {
 	return RulesetRule{ruleType: RulesetRulePullRequest, pullRequest: parameters}
 }
 
+// RequiredStatusChecksParameters は、required_status_checks のルールのパラメータ。
+type RequiredStatusChecksParameters struct {
+	// RequiredStatusChecks は受け取った順のまま、重複も残して持つ。順は意味を持たないが、表示に使う。
+	RequiredStatusChecks             []StatusCheck
+	StrictRequiredStatusChecksPolicy bool
+	// DoNotEnforceOnCreate は省略できるパラメータで、nil は宣言が省略したことを表す。観測した値は必ず持つ。
+	DoNotEnforceOnCreate *bool
+}
+
+// clone は、スライスとポインタを共有しない写しを返す。
+func (p RequiredStatusChecksParameters) clone() RequiredStatusChecksParameters {
+	p.RequiredStatusChecks = slices.Clone(p.RequiredStatusChecks)
+	if p.DoNotEnforceOnCreate != nil {
+		p.DoNotEnforceOnCreate = new(*p.DoNotEnforceOnCreate)
+	}
+	return p
+}
+
+// StatusCheck は、必須のステータスチェック。
+type StatusCheck struct {
+	Context string
+	// IntegrationID は、発行元を限らないチェックでは 0 になる。GitHub は 0 を ID として受け付けないため、ID と取り違えない。
+	IntegrationID int64
+}
+
 // DeletionRule は、パラメータを持たない deletion のルールを作る。
 func DeletionRule() RulesetRule {
 	return RulesetRule{ruleType: RulesetRuleDeletion}
+}
+
+// RequiredStatusChecksRule は、パラメータ parameters を持つ required_status_checks のルールを作る。
+func RequiredStatusChecksRule(parameters RequiredStatusChecksParameters) RulesetRule {
+	return RulesetRule{ruleType: RulesetRuleRequiredStatusChecks, statusChecks: parameters.clone()}
+}
+
+// NonFastForwardRule は、パラメータを持たない non_fast_forward のルールを作る。
+func NonFastForwardRule() RulesetRule {
+	return RulesetRule{ruleType: RulesetRuleNonFastForward}
 }
 
 // Type はルール型を返す。
@@ -182,4 +232,12 @@ func (r RulesetRule) PullRequest() PullRequestParameters {
 		panic(fmt.Sprintf("setting: rule %q has no pull_request parameters", r.ruleType))
 	}
 	return r.pullRequest
+}
+
+// RequiredStatusChecks は required_status_checks のルールのパラメータの写しを返す。ほかの型のルールでは、ゼロ値をパラメータとして読ませないよう panic する。
+func (r RulesetRule) RequiredStatusChecks() RequiredStatusChecksParameters {
+	if r.ruleType != RulesetRuleRequiredStatusChecks {
+		panic(fmt.Sprintf("setting: rule %q has no required_status_checks parameters", r.ruleType))
+	}
+	return r.statusChecks.clone()
 }

@@ -43,6 +43,12 @@ func withRules(rules ...RulesetRule) testRulesetOption {
 	return func(r *Ruleset) { r.Rules = rules }
 }
 
+// statusChecksRule は、チェック checks と厳格な再検証 strict を持つ required_status_checks のルールを作る。
+// doNotEnforceOnCreate が nil なら、宣言が省略したルールになる。
+func statusChecksRule(strict bool, doNotEnforceOnCreate *bool, checks ...StatusCheck) RulesetRule {
+	return RequiredStatusChecksRule(RequiredStatusChecksParameters{RequiredStatusChecks: checks, StrictRequiredStatusChecksPolicy: strict, DoNotEnforceOnCreate: doNotEnforceOnCreate})
+}
+
 func mustRulesetName(t *testing.T, s string) RulesetName {
 	t.Helper()
 	name, err := ParseRulesetName(s)

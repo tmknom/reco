@@ -703,7 +703,7 @@ GitHub が Dependabot security updates を一時停止していても、設定�
 
 - **`name`、`target`、`enforcement`、`conditions`、`bypass_actors`、`rules` はどれも必須である**：省略を空のシーケンスや GitHub の既定値に補わない。要素が持てるキーはこの6つだけで、`id` と `state` も受け付けない
 - **要素は、存在と値の宣言を兼ねる**：書いた名前の Ruleset が存在しなければ作成を計画し、存在して値が違えば値の変更を計画する
-- **宣言は、その Ruleset の全体である**：`include`、`exclude`、`bypass_actors`、`rules` は一覧の全体として読む（2.1節の、要素の一覧を値とする設定の読み方）。GitHub 上の Ruleset にあって宣言にないルール、Bypass、パターンは、適用するとなくなる
+- **宣言は、その Ruleset の全体である**：`include`、`exclude`、`bypass_actors`、`rules` は一覧の全体として読む（2.1節の、要素の一覧を値とする設定の読み方）。GitHub 上の Ruleset にあって宣言にないルール、Bypass、パターンは、適用するとなくなる。ただし、ルールの省略できるパラメータ（13.5節）を省略した場合、そのパラメータは管理範囲外で、reco は期待値と比べない
 - **存在しないことの宣言は受け付けない**：reco は Ruleset を削除しない
 - **宣言に書かなかった名前の Ruleset は管理範囲外である**：reco は作成も変更も削除もせず、要求も送らない
 
@@ -765,7 +765,7 @@ conditions:
 
 ### 13.5 ルール
 
-`rules` の要素は、`type` と、型が持つなら `parameters` を持つマッピングです。受け付ける `type` は `pull_request` と `deletion` だけです。同じ `type` の要素を二つ書けません。誤りは、`type`、`parameters` の有無、`parameters` の中身、同じ `type` の重複の順に示します。
+`rules` の要素は、`type` と、型が持つなら `parameters` を持つマッピングです。受け付ける `type` は `pull_request`、`deletion`、`required_status_checks`、`non_fast_forward` だけです。同じ `type` の要素を二つ書けません。GitHub は、`required_status_checks` を二つ含む Ruleset を拒否し、`non_fast_forward` を二つ含む Ruleset を黙って一つにまとめて保存するためです（[GitHub Rules API 仕様](../research/rules.md) 7.3、7.4）。誤りは、`type`、`parameters` の有無、`parameters` の中身、同じ `type` の重複の順に示します。
 
 `pull_request` は、マージの前に Pull Request を経ることを求めるルールです。`parameters` は必須で、次の5項目をすべて書きます。ほかのキーは受け付けません。GitHub は未知のキーを黙って捨てるためです（[GitHub Rules API 仕様](../research/rules.md) 7.1）。
 
@@ -777,7 +777,28 @@ conditions:
 | `require_last_push_approval` | 真偽値 | `true` / `false` |
 | `required_review_thread_resolution` | 真偽値 | `true` / `false` |
 
-`deletion` は、Bypass できる主体にだけ対象のブランチの削除を許すルールです。`parameters` を書けません。GitHub は送った `parameters` を黙って捨てるためです（同 7.2）。
+`deletion` は、Bypass できる主体にだけ対象のブランチの削除を許すルールです。`non_fast_forward` は、対象のブランチへの Force push を禁じるルールです。どちらも `parameters` を書けません。GitHub は送った `parameters` を黙って捨てるためです（同 7.2、7.4）。
+
+`required_status_checks` は、対象のブランチを更新する前に、指定したステータスチェックの成功を求めるルールです。`parameters` は必須で、次のキーを持ちます。ほかのキーは受け付けません。
+
+| `parameters` のキー | 型 | 許容値 | 省略 |
+|---|---|---|---|
+| `required_status_checks` | シーケンス | 下のチェックを0件以上（`[]` 可） | 不可 |
+| `strict_required_status_checks_policy` | 真偽値 | `true` / `false` | 不可 |
+| `do_not_enforce_on_create` | 真偽値 | `true` / `false` | 可 |
+
+| チェックのキー | 型 | 許容値 | 省略 |
+|---|---|---|---|
+| `context` | 文字列 | 空でない文字列 | 不可 |
+| `integration_id` | 整数 | 正の整数 | 可 |
+
+- **`context` はチェックの名前をそのまま書く**：前後の空白も大文字小文字も、書いたとおりに比べ、正規化しない。GitHub も送ったとおりに保存し、大文字小文字だけが違う名前を別のチェックとして保存する（同 7.3）。空文字列は、GitHub が拒否するため受け付けない
+- **`integration_id` は発行元の GitHub App の ID である**：省略したチェックは、どの発行元のステータスも受け付ける。省略と ID の指定は別のチェックで、同じ `context` で `integration_id` だけが違うチェックは二つ書ける。reco は、その App がリポジトリにインストールされているかを確かめない
+- **同じチェックを二度書けない**：`context` と `integration_id`（省略を一つの値とする）の組が同じチェックを二つ書くと拒否する。チェックの集合として比べるため（13章）、二つ目は意味を持たない
+- **`do_not_enforce_on_create` は省略できる**：書いたら比べて送る。省略したら管理範囲外で、期待値と比べず、送らない。省略した宣言が GitHub 上でどう扱われ、いつ適用不能になるかは [Rulesets の設計](../design/settings/rulesets.md) の適用可能性と副作用が定める
+- **未知のキーは受け付けない**：GitHub も `parameters` とチェックの未知のキーを拒否する（同 7.3）
+
+誤りは、`parameters` のキー、`required_status_checks` のチェックごとのキーと値、同じチェックの重複、`strict_required_status_checks_policy`、`do_not_enforce_on_create` の順に示します。チェックの数と `context` の長さは確かめません。上限が確かめられていないためです。
 
 ```yaml
 rules:
@@ -789,6 +810,14 @@ rules:
       require_last_push_approval: false
       required_review_thread_resolution: true
   - type: deletion
+  - type: non_fast_forward
+  - type: required_status_checks
+    parameters:
+      required_status_checks:
+        - context: "test"
+        - context: "lint"
+          integration_id: 15368
+      strict_required_status_checks_policy: true
 ```
 
 `rules: []` は、ルールを一つも持たない Ruleset の宣言です。

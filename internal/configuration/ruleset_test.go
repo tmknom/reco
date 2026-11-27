@@ -98,7 +98,7 @@ func TestDocumentRuleset(t *testing.T) {
 		{name: "non-string enforcement is rejected", src: with("enforcement: active", "enforcement: true"), wantPath: "R.enforcement", wantReason: "must be a string"},
 		{name: "invalid conditions is rejected at conditions", src: with("exclude: []", "exclude: [main]"), wantPath: "R.conditions.ref_name.exclude[0]", wantReason: "must be ~DEFAULT_BRANCH, ~ALL, or start with refs/heads/"},
 		{name: "invalid bypass_actors is rejected at bypass_actors", src: with("actor_id: 5", "actor_id: 3"), wantPath: "R.bypass_actors[0].actor_id", wantReason: "must be 2, 4, or 5"},
-		{name: "invalid rules is rejected at rules", src: with("- type: deletion", "- type: non_fast_forward"), wantPath: "R.rules[0].type", wantReason: "must be pull_request or deletion"},
+		{name: "invalid rules is rejected at rules", src: with("- type: deletion", "- type: creation"), wantPath: "R.rules[0].type", wantReason: "must be pull_request, deletion, required_status_checks, or non_fast_forward"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -142,7 +142,7 @@ bypass_actors:
   - actor_type: Team
     bypass_mode: always
 rules:
-  - type: non_fast_forward
+  - type: creation
 `
 	cases := []struct {
 		name     string
@@ -400,6 +400,7 @@ func TestDocumentBypassActor(t *testing.T) {
 func TestDocumentRulesetRules(t *testing.T) {
 	const deletionItem = "- type: deletion\n"
 	const pullRequestItem = "- type: pull_request\n  parameters:\n    required_approving_review_count: 1\n    dismiss_stale_reviews_on_push: false\n    require_code_owner_review: false\n    require_last_push_approval: false\n    required_review_thread_resolution: false\n"
+	const statusChecksItem = "- type: required_status_checks\n  parameters:\n    required_status_checks: []\n    strict_required_status_checks_policy: false\n"
 	pullRequest := setting.PullRequestRule(setting.PullRequestParameters{RequiredApprovingReviewCount: 1})
 	cases := []struct {
 		name       string
@@ -412,9 +413,15 @@ func TestDocumentRulesetRules(t *testing.T) {
 		{name: "duplicate deletion is rejected naming the earlier index", src: deletionItem + deletionItem, wantReason: `v[1] (line 2, column 3): duplicate rule type "deletion"; same as v[0]`},
 		{name: "duplicate pull_request is rejected even with different parameters", src: pullRequestItem + strings.Replace(pullRequestItem, "count: 1", "count: 2", 1), wantReason: `duplicate rule type "pull_request"; same as v[0]`},
 		{name: "duplicate is reported at the later of three rules", src: deletionItem + pullRequestItem + deletionItem, wantReason: `v[2]`},
+		{name: "duplicate non_fast_forward is rejected", src: "- type: non_fast_forward\n- type: non_fast_forward\n", wantReason: `duplicate rule type "non_fast_forward"; same as v[0]`},
+		{
+			name:       "duplicate required_status_checks is rejected even with different parameters",
+			src:        statusChecksItem + strings.Replace(statusChecksItem, "policy: false", "policy: true", 1),
+			wantReason: `duplicate rule type "required_status_checks"; same as v[0]`,
+		},
 		{name: "null is rejected", src: "~\n", wantReason: "must not be null"},
 		{name: "mapping is rejected as not a sequence", src: "type: deletion\n", wantReason: "must be a sequence"},
-		{name: "invalid rule is rejected at its index", src: deletionItem + "- type: non_fast_forward\n", wantReason: `v[1].type (line 2, column 9): must be pull_request or deletion; got "non_fast_forward"`},
+		{name: "invalid rule is rejected at its index", src: deletionItem + "- type: creation\n", wantReason: `v[1].type (line 2, column 9): must be pull_request, deletion, required_status_checks, or non_fast_forward; got "creation"`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -465,9 +472,18 @@ func TestDocumentRulesetRule(t *testing.T) {
 		{name: "required_review_thread_resolution true is read into its own field", src: with("required_review_thread_resolution: false", "required_review_thread_resolution: true"), want: parameters(func(p *setting.PullRequestParameters) { p.RequiredReviewThreadResolution = true })},
 		{name: "missing type is rejected", src: "parameters: {}\n", wantPath: "R", wantReason: `missing key "type"`},
 		{name: "unknown key is rejected", src: "type: deletion\nname: x\n", wantPath: "R", wantReason: `unknown key "name"; expected type, parameters`},
-		{name: "unsupported type is rejected", src: "type: non_fast_forward\n", wantPath: "R.type", wantReason: `must be pull_request or deletion; got "non_fast_forward"`},
+		{name: "unsupported type is rejected", src: "type: creation\n", wantPath: "R.type", wantReason: `must be pull_request, deletion, required_status_checks, or non_fast_forward; got "creation"`},
 		{name: "non-string type is rejected", src: "type: 1\n", wantPath: "R.type", wantReason: "must be a string"},
 		{name: "deletion with parameters is rejected", src: "type: deletion\nparameters:\n  a: 1\n", wantPath: "R.parameters", wantReason: `parameters is not allowed when type is "deletion"`},
+		{name: "non_fast_forward without parameters is read", src: "type: non_fast_forward\n", want: setting.NonFastForwardRule()},
+		{name: "non_fast_forward with parameters is rejected", src: "type: non_fast_forward\nparameters: {}\n", wantPath: "R.parameters", wantReason: `parameters is not allowed when type is "non_fast_forward"`},
+		{
+			name: "required_status_checks with parameters is read",
+			src:  "type: required_status_checks\nparameters:\n  required_status_checks: []\n  strict_required_status_checks_policy: true\n",
+			want: setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{RequiredStatusChecks: []setting.StatusCheck{}, StrictRequiredStatusChecksPolicy: true}),
+		},
+		{name: "required_status_checks without parameters is rejected", src: "type: required_status_checks\n", wantPath: "R", wantReason: `type "required_status_checks" requires parameters`},
+		{name: "invalid required_status_checks parameters are rejected at parameters", src: "type: required_status_checks\nparameters:\n  required_status_checks: []\n", wantPath: "R.parameters", wantReason: `missing key "strict_required_status_checks_policy"`},
 		{name: "pull_request without parameters is rejected", src: "type: pull_request\n", wantPath: "R", wantReason: `type "pull_request" requires parameters`},
 		{name: "empty parameters is rejected", src: "type: pull_request\nparameters: {}\n", wantPath: "R.parameters", wantReason: "must not be empty"},
 		{name: "null parameters is rejected", src: "type: pull_request\nparameters:\n", wantPath: "R.parameters", wantReason: "must not be null or empty"},
@@ -483,7 +499,7 @@ func TestDocumentRulesetRule(t *testing.T) {
 		{name: "non-boolean require_code_owner_review is rejected", src: with("require_code_owner_review: false", "require_code_owner_review: yes"), wantPath: "R.parameters.require_code_owner_review", wantReason: "must be true or false"},
 		{name: "non-boolean require_last_push_approval is rejected", src: with("require_last_push_approval: false", "require_last_push_approval: 1"), wantPath: "R.parameters.require_last_push_approval", wantReason: "must be true or false"},
 		{name: "non-boolean required_review_thread_resolution is rejected", src: with("required_review_thread_resolution: false", "required_review_thread_resolution: 0"), wantPath: "R.parameters.required_review_thread_resolution", wantReason: "must be true or false"},
-		{name: "type error is shown before the parameters combination", src: "type: other\nparameters: {}\n", wantPath: "R.type", wantReason: "must be pull_request or deletion"},
+		{name: "type error is shown before the parameters combination", src: "type: other\nparameters: {}\n", wantPath: "R.type", wantReason: "must be pull_request, deletion, required_status_checks, or non_fast_forward"},
 		{name: "count is checked before the booleans", src: strings.Replace(with("count: 1", "count: 11"), "dismiss_stale_reviews_on_push: false", "dismiss_stale_reviews_on_push: maybe", 1), wantPath: "R.parameters.required_approving_review_count", wantReason: "from 0 to 10"},
 	}
 	for _, tc := range cases {
@@ -505,9 +521,107 @@ func TestDocumentRulesetRule(t *testing.T) {
 			if err != nil {
 				t.Fatalf("rulesetRule() error = %v", err)
 			}
-			if got != tc.want {
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("rulesetRule() = %+v, want %+v", got, tc.want)
 			}
 		})
 	}
+}
+
+// TestDocumentRequiredStatusChecksParameters は、required_status_checks のパラメータとチェックの判定を確かめる。
+// 拒否のケースは、受理される入力 (base) の条件を 1 つだけ変えて作る。
+//
+//trace:checks FR-001
+func TestDocumentRequiredStatusChecksParameters(t *testing.T) {
+	const base = "required_status_checks:\n  - context: test\n  - context: lint\n    integration_id: 15368\nstrict_required_status_checks_policy: false\n"
+	with := func(old, replacement string) string { return strings.Replace(base, old, replacement, 1) }
+	test, lint := setting.StatusCheck{Context: "test"}, setting.StatusCheck{Context: "lint", IntegrationID: 15368}
+	parameters := func(edit func(*setting.RequiredStatusChecksParameters)) setting.RequiredStatusChecksParameters {
+		p := setting.RequiredStatusChecksParameters{RequiredStatusChecks: []setting.StatusCheck{test, lint}}
+		edit(&p)
+		return p
+	}
+	unchanged := func(*setting.RequiredStatusChecksParameters) {}
+	cases := []struct {
+		name       string
+		src        string
+		want       setting.RequiredStatusChecksParameters
+		wantPath   string
+		wantReason string
+	}{
+		{name: "checks are read in declared order with omitted do_not_enforce_on_create left unset", src: base, want: parameters(unchanged)},
+		{name: "strict policy true is read", src: with("policy: false", "policy: true"), want: parameters(func(p *setting.RequiredStatusChecksParameters) { p.StrictRequiredStatusChecksPolicy = true })},
+		{name: "declared do_not_enforce_on_create true is read", src: base + "do_not_enforce_on_create: true\n", want: parameters(func(p *setting.RequiredStatusChecksParameters) { p.DoNotEnforceOnCreate = new(true) })},
+		{name: "declared do_not_enforce_on_create false is read", src: base + "do_not_enforce_on_create: false\n", want: parameters(func(p *setting.RequiredStatusChecksParameters) { p.DoNotEnforceOnCreate = new(false) })},
+		{
+			name: "empty checks are read as non-nil empty",
+			src:  "required_status_checks: []\nstrict_required_status_checks_policy: false\n",
+			want: setting.RequiredStatusChecksParameters{RequiredStatusChecks: []setting.StatusCheck{}},
+		},
+		{
+			name: "context with surrounding spaces and upper case is read as written",
+			src:  with("context: test", `context: " CI/Test "`),
+			want: parameters(func(p *setting.RequiredStatusChecksParameters) { p.RequiredStatusChecks[0].Context = " CI/Test " }),
+		},
+		{
+			name: "same context with and without integration_id is read as two checks",
+			src:  with("context: lint", "context: test"),
+			want: parameters(func(p *setting.RequiredStatusChecksParameters) { p.RequiredStatusChecks[1].Context = "test" }),
+		},
+		{name: "missing checks are rejected", src: "strict_required_status_checks_policy: false\n", wantPath: "P", wantReason: `missing key "required_status_checks"`},
+		{name: "missing strict policy is rejected", src: with("strict_required_status_checks_policy: false\n", ""), wantPath: "P", wantReason: `missing key "strict_required_status_checks_policy"`},
+		{name: "unknown parameter is rejected", src: base + "other: 1\n", wantPath: "P", wantReason: `unknown key "other"`},
+		{name: "null checks are rejected", src: with("required_status_checks:\n  - context: test\n  - context: lint\n    integration_id: 15368\n", "required_status_checks:\n"), wantPath: "P.required_status_checks", wantReason: "must not be null"},
+		{name: "missing context is rejected", src: with("  - context: test\n", "  - integration_id: 1\n"), wantPath: "P.required_status_checks[0]", wantReason: `missing key "context"`},
+		{name: "unknown check key is rejected", src: with("  - context: test\n", "  - context: test\n    app: x\n"), wantPath: "P.required_status_checks[0]", wantReason: `unknown key "app"`},
+		{name: "empty context is rejected", src: with("context: test", `context: ""`), wantPath: "P.required_status_checks[0].context", wantReason: "must not be empty"},
+		{name: "non-string context is rejected", src: with("context: test", "context: 1"), wantPath: "P.required_status_checks[0].context", wantReason: "must be a string"},
+		{name: "zero integration_id is rejected", src: with("integration_id: 15368", "integration_id: 0"), wantPath: "P.required_status_checks[1].integration_id", wantReason: "must be a positive integer; got 0"},
+		{name: "quoted integration_id is rejected", src: with("integration_id: 15368", `integration_id: "15368"`), wantPath: "P.required_status_checks[1].integration_id", wantReason: "must be an integer"},
+		{name: "duplicate check without integration_id is rejected", src: with("context: lint\n    integration_id: 15368", "context: test"), wantPath: "P.required_status_checks[1]", wantReason: `duplicate status check "test"; same as P.required_status_checks[0]`},
+		{
+			name:       "duplicate check with the same integration_id is rejected",
+			src:        with("strict_required", "  - context: lint\n    integration_id: 15368\nstrict_required"),
+			wantPath:   "P.required_status_checks[2]",
+			wantReason: `duplicate status check "lint" with integration_id 15368; same as P.required_status_checks[1]`,
+		},
+		{name: "non-boolean strict policy is rejected", src: with("policy: false", "policy: yes"), wantPath: "P.strict_required_status_checks_policy", wantReason: "must be true or false"},
+		{name: "non-boolean do_not_enforce_on_create is rejected", src: base + "do_not_enforce_on_create: 1\n", wantPath: "P.do_not_enforce_on_create", wantReason: "must be true or false"},
+		{name: "checks are checked before the strict policy", src: strings.Replace(with("policy: false", "policy: yes"), "context: test", `context: ""`, 1), wantPath: "P.required_status_checks[0].context", wantReason: "must not be empty"},
+		{name: "strict policy is checked before do_not_enforce_on_create", src: with("policy: false", "policy: yes") + "do_not_enforce_on_create: 1\n", wantPath: "P.strict_required_status_checks_policy", wantReason: "must be true or false"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.requiredStatusChecksParameters(doc.root, "P")
+			if tc.wantPath != "" {
+				if err == nil {
+					t.Fatalf("requiredStatusChecksParameters() = %+v, want error", got)
+				}
+				if !strings.HasPrefix(err.Error(), tc.wantPath+" (") {
+					t.Errorf("requiredStatusChecksParameters() error = %q, want it to start with %q", err, tc.wantPath+" (")
+				}
+				if !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("requiredStatusChecksParameters() error = %q, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("requiredStatusChecksParameters() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("requiredStatusChecksParameters() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDocumentTypedRulesetRule_UndefinedTypePanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("typedRulesetRule() did not panic for an undefined rule type")
+		}
+	}()
+	doc := decodeSnippet(t, "{}\n")
+	_, _ = doc.typedRulesetRule(setting.RulesetRuleType("creation"), nil, "R.parameters")
 }

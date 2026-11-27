@@ -105,6 +105,30 @@ func TestWriteRulesets(t *testing.T) {
 				"              require_last_push_approval: false\n              required_review_thread_resolution: true\n",
 		},
 		{
+			name: "non_fast_forward and required_status_checks are shown with quoted checks in the returned order with duplicates",
+			in: observed(github.InterpretedRuleset(1, "n", active(emptyRefName, nil, []setting.RulesetRule{
+				setting.NonFastForwardRule(),
+				setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{
+					RequiredStatusChecks:             []setting.StatusCheck{{Context: "test"}, {Context: "lint", IntegrationID: 15368}, {Context: "a\"b\n# x:"}, {Context: "test"}},
+					StrictRequiredStatusChecksPolicy: true,
+					DoNotEnforceOnCreate:             new(false),
+				}),
+				setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{RequiredStatusChecks: []setting.StatusCheck{}, DoNotEnforceOnCreate: new(true)}),
+			}))),
+			want: "    rulesets:\n      - name: \"n\"\n        target: branch\n        enforcement: active\n" +
+				"        conditions:\n          ref_name:\n            include: []\n            exclude: []\n        bypass_actors: []\n" +
+				"        rules:\n" +
+				"          - type: non_fast_forward\n" +
+				"          - type: required_status_checks\n            parameters:\n              required_status_checks:\n" +
+				"                - context: \"test\"\n" +
+				"                - context: \"lint\"\n                  integration_id: 15368\n" +
+				"                - context: \"a\\\"b\\n# x:\"\n" +
+				"                - context: \"test\"\n" +
+				"              strict_required_status_checks_policy: true\n              do_not_enforce_on_create: false\n" +
+				"          - type: required_status_checks\n            parameters:\n              required_status_checks: []\n" +
+				"              strict_required_status_checks_policy: false\n              do_not_enforce_on_create: true\n",
+		},
+		{
 			name: "conditions without ref_name is shown as an empty mapping",
 			in:   observed(github.InterpretedRuleset(1, "n", active(setting.RulesetConditions{}, nil, nil))),
 			want: "    rulesets:\n      - name: \"n\"\n        target: branch\n        enforcement: active\n        conditions: {}\n        bypass_actors: []\n        rules: []\n",
@@ -202,6 +226,13 @@ func TestWriteRulesets(t *testing.T) {
 			name: "a rule of an undefined rule type panics",
 			in: observed(github.InterpretedRuleset(1, "n", setting.Ruleset{
 				Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive, Rules: []setting.RulesetRule{{}},
+			})),
+		},
+		{
+			name: "a required_status_checks rule without do_not_enforce_on_create panics",
+			in: observed(github.InterpretedRuleset(1, "n", setting.Ruleset{
+				Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive,
+				Rules: []setting.RulesetRule{setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{})},
 			})),
 		},
 	}

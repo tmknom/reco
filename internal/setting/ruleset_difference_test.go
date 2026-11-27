@@ -13,6 +13,7 @@ func TestRuleset_DifferenceTo(t *testing.T) {
 	deployKey := BypassActor{ActorType: BypassActorDeployKey, BypassMode: BypassModeAlways}
 	noApproval := PullRequestRule(PullRequestParameters{})
 	oneApproval := PullRequestRule(PullRequestParameters{RequiredApprovingReviewCount: 1})
+	test, testByActions := StatusCheck{Context: "test"}, StatusCheck{Context: "test", IntegrationID: 15368}
 	cases := []struct {
 		name  string
 		from  Ruleset
@@ -117,6 +118,42 @@ func TestRuleset_DifferenceTo(t *testing.T) {
 			want: RulesetDifference{IncludeRemoved: []string{"c", "a", "b"}, IncludeAdded: []string{"z", "x", "y"}},
 		},
 		{
+			name: "status check differing only in integration_id removes and adds the rule",
+			from: newTestRuleset(withRules(statusChecksRule(false, nil, test))),
+			to:   newTestRuleset(withRules(statusChecksRule(false, nil, testByActions))),
+			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, nil, test)}, RulesAdded: []RulesetRule{statusChecksRule(false, nil, testByActions)}},
+		},
+		{
+			name: "status checks differing only in letter case of context remove and add the rule",
+			from: newTestRuleset(withRules(statusChecksRule(false, nil, test))),
+			to:   newTestRuleset(withRules(statusChecksRule(false, nil, StatusCheck{Context: "Test"}))),
+			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, nil, test)}, RulesAdded: []RulesetRule{statusChecksRule(false, nil, StatusCheck{Context: "Test"})}},
+		},
+		{
+			name: "different strict policy removes and adds the rule",
+			from: newTestRuleset(withRules(statusChecksRule(false, nil, test))),
+			to:   newTestRuleset(withRules(statusChecksRule(true, nil, test))),
+			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, nil, test)}, RulesAdded: []RulesetRule{statusChecksRule(true, nil, test)}},
+		},
+		{
+			name: "do_not_enforce_on_create held by both values and different removes and adds the rule",
+			from: newTestRuleset(withRules(statusChecksRule(false, new(true), test))),
+			to:   newTestRuleset(withRules(statusChecksRule(false, new(false), test))),
+			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, new(true), test)}, RulesAdded: []RulesetRule{statusChecksRule(false, new(false), test)}},
+		},
+		{
+			name:  "do_not_enforce_on_create omitted by one value is not compared",
+			from:  newTestRuleset(withRules(statusChecksRule(false, new(true), test))),
+			to:    newTestRuleset(withRules(statusChecksRule(false, nil, test))),
+			equal: true,
+		},
+		{
+			name: "removed rule keeps the do_not_enforce_on_create that was not compared",
+			from: newTestRuleset(withRules(statusChecksRule(false, new(true), test))),
+			to:   newTestRuleset(withRules(statusChecksRule(true, nil, test))),
+			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, new(true), test)}, RulesAdded: []RulesetRule{statusChecksRule(true, nil, test)}},
+		},
+		{
 			name: "duplicated elements are reported once",
 			from: newTestRuleset(withRefName([]string{"a", "a"}, nil), withBypassActors(deployKey, deployKey)),
 			to:   newTestRuleset(withRefName([]string{"b", "b"}, nil), withBypassActors()),
@@ -154,6 +191,69 @@ func TestRulesetDifference_Empty(t *testing.T) {
 		{name: "added bypass actor is not empty", difference: RulesetDifference{BypassActorsAdded: []BypassActor{{ActorType: BypassActorDeployKey, BypassMode: BypassModeAlways}}}},
 		{name: "removed rule is not empty", difference: RulesetDifference{RulesRemoved: []RulesetRule{DeletionRule()}}},
 		{name: "added rule is not empty", difference: RulesetDifference{RulesAdded: []RulesetRule{DeletionRule()}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.difference.Empty(); got != tc.want {
+				t.Errorf("Empty() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRequiredStatusChecksParameters_DifferenceTo は、パラメータの差を確かめ、差が空であることと、ルールを同じ値とする判定が一致することも確かめる。
+// 二つは別々に実装しているため、食い違うと、同じ値と判定したルールの表示に差の行が出るか、差の行のない不一致になる。
+//
+//trace:checks FR-005
+func TestRequiredStatusChecksParameters_DifferenceTo(t *testing.T) {
+	test, testByActions, lint := StatusCheck{Context: "test"}, StatusCheck{Context: "test", IntegrationID: 15368}, StatusCheck{Context: "lint"}
+	parameters := func(strict bool, doNotEnforceOnCreate *bool, checks ...StatusCheck) RequiredStatusChecksParameters {
+		return RequiredStatusChecksParameters{RequiredStatusChecks: checks, StrictRequiredStatusChecksPolicy: strict, DoNotEnforceOnCreate: doNotEnforceOnCreate}
+	}
+	cases := []struct {
+		name     string
+		from, to RequiredStatusChecksParameters
+		want     RequiredStatusChecksDifference
+	}{
+		{name: "same parameters have no difference", from: parameters(true, new(true), test), to: parameters(true, new(true), test)},
+		{name: "checks differing only in order and duplicates have no difference", from: parameters(false, nil, test, lint, lint), to: parameters(false, nil, lint, test)},
+		{name: "empty checks have no difference", from: parameters(false, nil), to: parameters(false, nil)},
+		{
+			name: "removed checks follow the receiver's order once each and added ones the argument's order",
+			from: parameters(false, nil, lint, test, lint),
+			to:   parameters(false, nil, testByActions),
+			want: RequiredStatusChecksDifference{ChecksRemoved: []StatusCheck{lint, test}, ChecksAdded: []StatusCheck{testByActions}},
+		},
+		{name: "different strict policy is a strict policy change", from: parameters(false, nil), to: parameters(true, nil), want: RequiredStatusChecksDifference{StrictPolicyChanged: true}},
+		{name: "do_not_enforce_on_create held by both and different is a change", from: parameters(false, new(true)), to: parameters(false, new(false)), want: RequiredStatusChecksDifference{DoNotEnforceOnCreateChanged: true}},
+		{name: "do_not_enforce_on_create omitted by the argument is not compared", from: parameters(false, new(true)), to: parameters(false, nil)},
+		{name: "do_not_enforce_on_create omitted by the receiver is not compared", from: parameters(false, nil), to: parameters(false, new(true))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.from.DifferenceTo(tc.to)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("DifferenceTo() = %+v, want %+v", got, tc.want)
+			}
+			from, to := newTestRuleset(withRules(RequiredStatusChecksRule(tc.from))), newTestRuleset(withRules(RequiredStatusChecksRule(tc.to)))
+			if eq, empty := from.equal(to), got.Empty(); eq != empty {
+				t.Errorf("rulesets equal() = %t, but parameter difference Empty() = %t", eq, empty)
+			}
+		})
+	}
+}
+
+func TestRequiredStatusChecksDifference_Empty(t *testing.T) {
+	cases := []struct {
+		name       string
+		difference RequiredStatusChecksDifference
+		want       bool
+	}{
+		{name: "zero difference is empty", want: true},
+		{name: "removed check is not empty", difference: RequiredStatusChecksDifference{ChecksRemoved: []StatusCheck{{Context: "test"}}}},
+		{name: "added check is not empty", difference: RequiredStatusChecksDifference{ChecksAdded: []StatusCheck{{Context: "test"}}}},
+		{name: "strict policy change is not empty", difference: RequiredStatusChecksDifference{StrictPolicyChanged: true}},
+		{name: "do_not_enforce_on_create change is not empty", difference: RequiredStatusChecksDifference{DoNotEnforceOnCreateChanged: true}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

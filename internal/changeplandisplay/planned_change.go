@@ -128,6 +128,8 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 		return "GitHub returned a value that reco does not know; remove " + key.DeclaredKeyName() + " from the configuration"
 	case changeplan.NotApplicableNotReturned:
 		return "GitHub did not return the value; remove " + key.DeclaredKeyName() + " from the configuration"
+	case changeplan.NotApplicableOmittedParametersReset:
+		return "updating the ruleset would change parameters that the configuration omits to the values GitHub sets; declare them in the configuration"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(s.Applicability.Reason())))
 }
