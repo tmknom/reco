@@ -464,3 +464,17 @@ func rulesetValueUpdateChange(t *testing.T, name string) changeplan.LogicalChang
 	t.Helper()
 	return onlyLogicalChange(t, newRepositoryPlan(t, rulesetValueMismatch(t, name, 42)))
 }
+
+// rulesetDeletionChange は、計画時に ID が 42 で enforcement が disabled の protectRuleset と観測した name の Ruleset を、
+// 存在しないことの宣言に基づいて削除する論理的な設定変更。
+// 期待値が存在しないことで、値を持つ期待値の変更予定とは作る状態が違うため、rulesetMismatch を使わない。
+// 変更前提の基準を手で写さず、changeplan が導いた論理的な設定変更を使う。
+func rulesetDeletionChange(t *testing.T, name string) changeplan.LogicalChange {
+	t.Helper()
+	return onlyLogicalChange(t, newRepositoryPlan(t, changeplan.SettingPlan{
+		Unit:            setting.Unit{Key: setting.RulesetResource, Ruleset: mustRulesetName(t, name)},
+		Observed:        github.Observed(setting.RulesetValue(protectRuleset(setting.RulesetEnforcementDisabled))),
+		RulesetIdentity: changeplan.ObservedRulesetIdentity(42),
+		Desired:         setting.Absent(), Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
+	}))
+}

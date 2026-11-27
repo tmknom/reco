@@ -283,6 +283,9 @@ func TestJudgeApplicability_Rulesets(t *testing.T) {
 	statusChecksPlan := func(observed, declared setting.Ruleset) SettingPlan {
 		return newSettingPlan(unit, github.Observed(setting.RulesetValue(observed)), setting.RulesetValue(declared))
 	}
+	absentDeclared := func(observed github.SettingObservation[setting.Value]) SettingPlan {
+		return newSettingPlan(unit, observed, setting.Absent())
+	}
 	cases := []struct {
 		name string
 		in   SettingPlan
@@ -298,6 +301,10 @@ func TestJudgeApplicability_Rulesets(t *testing.T) {
 			want: NotApplicableResetParameters([]setting.ResetParameter{{Rule: setting.RulesetRuleRequiredStatusChecks, Name: "do_not_enforce_on_create", Value: "true"}}),
 		},
 		{name: "creation with an omitted parameter is applicable", in: newSettingPlan(unit, github.Observed(setting.Absent()), setting.RulesetValue(statusChecksRuleset(true, nil))), want: Applicable()},
+		{name: "deletion of a ruleset with an observed parameter that GitHub decides is applicable", in: absentDeclared(github.Observed(setting.RulesetValue(statusChecksRuleset(false, new(true))))), want: Applicable()},
+		{name: "declared absence not comparable because of uninterpreted parts is not applicable", in: absentDeclared(github.Unavailable[setting.Value](github.UnavailableUninterpretedParts)), want: NotApplicable(NotApplicableUninterpretedParts)},
+		{name: "declared absence not comparable because the name cannot be determined is not applicable", in: absentDeclared(github.Unavailable[setting.Value](github.UnavailableNameUndetermined)), want: NotApplicable(NotApplicableNameUndetermined)},
+		{name: "declared absence not comparable because the repository is private is not applicable", in: absentDeclared(github.Unavailable[setting.Value](github.UnavailablePrivateRepository)), want: NotApplicable(NotApplicablePrivateRepository)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

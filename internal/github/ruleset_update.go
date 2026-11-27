@@ -30,6 +30,13 @@ func (c *Client) UpdateRulesetValue(ctx context.Context, reference repository.Re
 	return describeUpdateOutcome(fmt.Sprintf("update ruleset %q", name.String()), reference, status, err)
 }
 
+// DeleteRuleset は、reference のリポジトリの、ID が id の Ruleset を削除する DELETE を一度だけ送る。再送はしない。
+// 宛先は呼び出し側が承認時に予定した ID で、name はエラーの文言にだけ使う。
+func (c *Client) DeleteRuleset(ctx context.Context, reference repository.Reference, id RulesetID, name setting.RulesetName) (UpdateOutcome, error) {
+	status, _, err := c.send(ctx, http.MethodDelete, c.rulesetURL(reference, id), nil, http.StatusNoContent)
+	return describeUpdateOutcome(fmt.Sprintf("delete ruleset %q", name.String()), reference, status, err)
+}
+
 // rulesetCreationBody は、作成の POST の本文。名前と、値の全体を送る。
 type rulesetCreationBody struct {
 	Name string `json:"name"`

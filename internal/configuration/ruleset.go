@@ -11,6 +11,9 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
+// rulesetValueKeys は、Ruleset の値を構成する 5 つのキーを、誤りを示す順に並べる。
+var rulesetValueKeys = []string{"target", "enforcement", "conditions", "bypass_actors", "rules"}
+
 // rulesets は、Ruleset の宣言の並びを宣言の順のまま読む。
 // 同じ Ruleset とみなす名前の宣言は一つに限る。GitHub は名前の英字の大小を区別しないため、大小だけが違う名前も重複にする。
 func (d document) rulesets(n *yaml.Node, path string) ([]RulesetDeclaration, error) {
@@ -33,11 +36,11 @@ func (d document) rulesets(n *yaml.Node, path string) ([]RulesetDeclaration, err
 	return declarations, nil
 }
 
-// ruleset は、存在し値を伴うことを宣言する一つの Ruleset を読む。
-// 6 つのキーはどれも必須で、省略を補わない。
-// 判定は、キーの集合、name、target、enforcement、conditions、bypass_actors、rules の順に行う。
+// ruleset は、存在し値を伴うこと (値の 5 つのキー) か、存在しないこと (state: absent) を宣言する一つの Ruleset を読む。
+// 判定は、キーの集合、name、state、組み合わせ、target、enforcement、conditions、bypass_actors、rules の順に行い、削除は state: absent だけが表す。
+// state を書かない要素は 5 つのキーがどれも必須で、省略を補わない。欠落は state: absent を案内せず、キーの書き忘れを削除にしない。
 func (d document) ruleset(n *yaml.Node, path string) (RulesetDeclaration, error) {
-	entries, err := d.mappingEntries(n, path, []string{"name", "target", "enforcement", "conditions", "bypass_actors", "rules"}, nil)
+	entries, err := d.mappingEntries(n, path, []string{"name"}, slices.Concat(rulesetValueKeys, []string{"state"}))
 	if err != nil {
 		return RulesetDeclaration{}, err
 	}
@@ -49,6 +52,21 @@ func (d document) ruleset(n *yaml.Node, path string) (RulesetDeclaration, error)
 	rulesetName, err := setting.ParseRulesetName(name)
 	if err != nil {
 		return RulesetDeclaration{}, invalid(entries["name"], namePath, "%v; got %q", err, name)
+	}
+	if stateNode, hasState := entries["state"]; hasState {
+		if err := d.declaredAbsence(stateNode, path+".state"); err != nil {
+			return RulesetDeclaration{}, err
+		}
+		// 組み合わせによって使われない値は、中身を読まずに、書かれたキーのうち rulesetValueKeys の並びで最初のものの位置で拒否する
+		for _, key := range rulesetValueKeys {
+			if valueNode, ok := entries[key]; ok {
+				return RulesetDeclaration{}, invalid(valueNode, path+"."+key, `%s is not allowed when state is "absent"`, key)
+			}
+		}
+		return RulesetDeclaration{Name: rulesetName, Desired: setting.Absent()}, nil
+	}
+	if err := d.requireKeys(n, path, entries, rulesetValueKeys); err != nil {
+		return RulesetDeclaration{}, err
 	}
 	var ruleset setting.Ruleset
 	if ruleset.Target, err = d.rulesetTarget(entries["target"], path+".target"); err != nil {

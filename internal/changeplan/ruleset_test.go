@@ -10,9 +10,9 @@ import (
 )
 
 // TestRulesetChangeOf は、Ruleset の変更予定を、計画時の観測から種類を選んだ更新操作一つの論理的な設定変更にし、
-// 計画時の観測を変更前提の基準に、宣言の値を送る値にすることを確かめる。
+// 計画時の観測を変更前提の基準にすることと、作成と値の変更は宣言の値を送り、削除は値を送らないことを確かめる。
 //
-//trace:checks INV-004 FR-011
+//trace:checks INV-001 INV-004 FR-010 FR-011
 func TestRulesetChangeOf(t *testing.T) {
 	unit := rulesetUnit(t, "protect")
 	desired := setting.RulesetValue(protectRuleset())
@@ -22,18 +22,21 @@ func TestRulesetChangeOf(t *testing.T) {
 		name     string
 		observed setting.Value
 		identity RulesetIdentity
+		desired  setting.Value
 		wantKind UpdateOperationKind
+		wantSent setting.Value
 	}{
-		{name: "absent ruleset is a creation based on its absence without an ID", observed: setting.Absent(), wantKind: RulesetCreation},
-		{name: "different value is a value update based on the planned value and ID", observed: setting.RulesetValue(disabled), identity: ObservedRulesetIdentity(42), wantKind: RulesetValueUpdate},
+		{name: "absent ruleset is a creation based on its absence without an ID", observed: setting.Absent(), desired: desired, wantKind: RulesetCreation, wantSent: desired},
+		{name: "different value is a value update based on the planned value and ID", observed: setting.RulesetValue(disabled), identity: ObservedRulesetIdentity(42), desired: desired, wantKind: RulesetValueUpdate, wantSent: desired},
+		{name: "declared absence of an existing ruleset is a deletion based on the planned value and ID sending no value", observed: setting.RulesetValue(disabled), identity: ObservedRulesetIdentity(42), desired: setting.Absent(), wantKind: RulesetDeletion},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			s := SettingPlan{Unit: unit, Observed: github.Observed(tc.observed), Desired: desired, RulesetIdentity: tc.identity, Result: Mismatch, Applicability: Applicable()}
+			s := SettingPlan{Unit: unit, Observed: github.Observed(tc.observed), Desired: tc.desired, RulesetIdentity: tc.identity, Result: Mismatch, Applicability: Applicable()}
 			want := LogicalChange{
-				DesiredState: []configuration.ManagedSetting{{Unit: unit, Desired: desired}},
+				DesiredState: []configuration.ManagedSetting{{Unit: unit, Desired: tc.desired}},
 				Operations: []UpdateOperation{{
-					Kind: tc.wantKind, Unit: unit, Value: desired,
+					Kind: tc.wantKind, Unit: unit, Value: tc.wantSent,
 					PreconditionBases: []PreconditionBasis{{Unit: unit, AnticipatedValue: AnticipateValue(tc.observed), AnticipatedRulesetIdentity: tc.identity}},
 				}},
 			}
@@ -43,12 +46,13 @@ func TestRulesetChangeOf(t *testing.T) {
 		})
 	}
 
-	// 不一致でない計画を、作成とも値の変更とも取り違えない
+	// 不一致でない計画を、作成とも値の変更とも削除とも取り違えない
 	panics := []struct {
 		name string
 		plan SettingPlan
 	}{
 		{name: "matched ruleset panics", plan: SettingPlan{Unit: unit, Observed: github.Observed(desired), Desired: desired, Result: Match}},
+		{name: "absent ruleset declared absent panics", plan: SettingPlan{Unit: unit, Observed: github.Observed(setting.Absent()), Desired: setting.Absent(), Result: Mismatch}},
 	}
 	for _, tc := range panics {
 		t.Run(tc.name, func(t *testing.T) {

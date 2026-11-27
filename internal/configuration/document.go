@@ -52,12 +52,33 @@ func (d document) mappingEntries(n *yaml.Node, path string, required, optional [
 		}
 		entries[key.Value] = value
 	}
-	for _, k := range required {
-		if _, ok := entries[k]; !ok {
-			return nil, invalid(n, path, "missing key %q", k)
-		}
+	if err := d.requireKeys(n, path, entries, required); err != nil {
+		return nil, err
 	}
 	return entries, nil
+}
+
+// requireKeys は、entries が keys をすべて持つことを確かめ、欠けたキーのうち keys の並びで最初のものを n の位置で示す。
+func (d document) requireKeys(n *yaml.Node, path string, entries map[string]*yaml.Node, keys []string) error {
+	for _, k := range keys {
+		if _, ok := entries[k]; !ok {
+			return invalid(n, path, "missing key %q", k)
+		}
+	}
+	return nil
+}
+
+// declaredAbsence は、state の値が文字列の absent に完全一致することを確かめる。
+// 存在しないことの宣言は、この一致だけが表す。null、空文字列、absent 以外の文字列は省略とも宣言とも読まずに拒否する。
+func (d document) declaredAbsence(n *yaml.Node, path string) error {
+	state, err := d.stringValue(n, path)
+	if err != nil {
+		return err
+	}
+	if state != "absent" {
+		return invalid(n, path, "must be absent; got %q", state)
+	}
+	return nil
 }
 
 // checkNode は、どの位置のノードにも共通する YAML の形式規則を確かめる。

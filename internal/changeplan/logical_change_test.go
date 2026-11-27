@@ -54,6 +54,7 @@ func TestUpdateOperation_Endpoint(t *testing.T) {
 		},
 		{name: "environment update has no endpoint of a setting", operation: UpdateOperation{Kind: DeploymentBranchPolicyModeUpdate, Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}}},
 		{name: "ruleset creation has no endpoint of a setting", operation: UpdateOperation{Kind: RulesetCreation, Unit: rulesetUnit(t, "protect")}},
+		{name: "ruleset deletion has no endpoint of a setting", operation: UpdateOperation{Kind: RulesetDeletion, Unit: rulesetUnit(t, "protect")}},
 		{name: "required reviewers update has no endpoint of a setting", operation: UpdateOperation{Kind: RequiredReviewersUpdate, Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}}},
 		{name: "prevent self-review update has no endpoint of a setting", operation: UpdateOperation{Kind: PreventSelfReviewUpdate, Unit: setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: production}}},
 		{name: "wait timer update has no endpoint of a setting", operation: UpdateOperation{Kind: WaitTimerUpdate, Unit: setting.Unit{Key: setting.EnvironmentWaitTimer, Environment: production}}},
@@ -454,7 +455,7 @@ func TestRepositoryPlan_LogicalChangesOfRepositoryVariables(t *testing.T) {
 
 // TestRepositoryPlan_LogicalChangesOfRulesets は、Ruleset の変更予定が、Ruleset ごとに一つの更新操作からなる別々の論理的な設定変更になり、計画の並びで実行されることを確かめる。
 //
-//trace:checks INV-002 INV-004 FR-011
+//trace:checks INV-001 INV-002 INV-004 FR-011
 func TestRepositoryPlan_LogicalChangesOfRulesets(t *testing.T) {
 	desired := setting.RulesetValue(protectRuleset())
 	disabled := protectRuleset()
@@ -464,7 +465,8 @@ func TestRepositoryPlan_LogicalChangesOfRulesets(t *testing.T) {
 	// 値が一致した Ruleset は、変更予定がないため論理的な設定変更にならない
 	matched := SettingPlan{Unit: rulesetUnit(t, "matched"), Observed: github.Observed(desired), Desired: desired, Result: Match}
 	valueChange := SettingPlan{Unit: rulesetUnit(t, "alpha"), Observed: github.Observed(setting.RulesetValue(disabled)), RulesetIdentity: ObservedRulesetIdentity(42), Desired: desired, Result: Mismatch, Applicability: Applicable()}
-	plan := RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: []SettingPlan{mismatch, creation, matched, valueChange}}
+	deletion := SettingPlan{Unit: rulesetUnit(t, "legacy"), Observed: github.Observed(setting.RulesetValue(disabled)), RulesetIdentity: ObservedRulesetIdentity(43), Desired: setting.Absent(), Result: Mismatch, Applicability: Applicable()}
+	plan := RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: []SettingPlan{mismatch, creation, matched, deletion, valueChange}}
 
 	got, err := plan.LogicalChanges()
 	if err != nil {
@@ -473,6 +475,7 @@ func TestRepositoryPlan_LogicalChangesOfRulesets(t *testing.T) {
 	want := []LogicalChange{
 		{DesiredState: []configuration.ManagedSetting{{Unit: mismatch.Unit, Desired: mismatch.Desired}}, Operations: []UpdateOperation{operationOf(mismatch)}},
 		rulesetChangeOf(creation),
+		rulesetChangeOf(deletion),
 		rulesetChangeOf(valueChange),
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -1689,7 +1692,7 @@ func TestPlan_LogicalChanges(t *testing.T) {
 
 // TestCheckUpdateEndpoint は、更新操作の更新要求の宛先を承認の前に決められるかの規則を確かめる。
 //
-//trace:checks INV-002 INV-005
+//trace:checks INV-002 INV-004 INV-005
 func TestCheckUpdateEndpoint(t *testing.T) {
 	production := mustEnvironmentName(t, "production")
 	squash := configuration.ManagedSetting{Unit: setting.Unit{Key: setting.AllowSquashMerge}, Desired: setting.BoolValue(true)}
@@ -1703,6 +1706,13 @@ func TestCheckUpdateEndpoint(t *testing.T) {
 		{name: "setting update with an update endpoint passes", operation: UpdateOperation{Kind: SettingUpdate, Unit: autoMerge.Unit, Value: autoMerge.Desired}},
 		{name: "merge methods update sending only merge methods passes", operation: UpdateOperation{Kind: MergeMethodsUpdate, Unit: squash.Unit, Settings: []configuration.ManagedSetting{squash, rebase}}},
 		{name: "environment creation passes without an endpoint of a setting", operation: UpdateOperation{Kind: EnvironmentCreation, Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}}},
+		{
+			name: "ruleset deletion based on an observed ID passes without looking up an endpoint",
+			operation: UpdateOperation{
+				Kind: RulesetDeletion, Unit: rulesetUnit(t, "protect"),
+				PreconditionBases: []PreconditionBasis{{Unit: rulesetUnit(t, "protect"), AnticipatedRulesetIdentity: ObservedRulesetIdentity(42)}},
+			},
+		},
 		{
 			name: "ruleset value update based on an observed ID passes without looking up an endpoint",
 			operation: UpdateOperation{
@@ -1727,6 +1737,7 @@ func TestCheckUpdateEndpoint(t *testing.T) {
 		operation UpdateOperation
 	}{
 		{name: "ruleset value update without an observed ID panics", operation: UpdateOperation{Kind: RulesetValueUpdate, Unit: rulesetUnit(t, "protect"), Value: setting.RulesetValue(protectRuleset())}},
+		{name: "ruleset deletion without an observed ID panics", operation: UpdateOperation{Kind: RulesetDeletion, Unit: rulesetUnit(t, "protect")}},
 		{name: "setting without an update request panics", operation: UpdateOperation{Kind: SettingUpdate, Unit: setting.Unit{Key: "general.unknown"}}},
 		{name: "merge method updated on its own panics", operation: UpdateOperation{Kind: SettingUpdate, Unit: squash.Unit, Value: squash.Desired}},
 		{name: "merge methods update without a setting to send panics", operation: UpdateOperation{Kind: MergeMethodsUpdate, Unit: squash.Unit}},

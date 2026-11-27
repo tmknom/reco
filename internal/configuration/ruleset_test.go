@@ -28,6 +28,10 @@ func TestDocumentRulesets(t *testing.T) {
 		{name: "mapping is rejected as not a sequence", src: rulesetBase, wantPath: "R", wantReason: "must be a sequence"},
 		{name: "null is rejected", src: "~\n", wantPath: "R", wantReason: "must not be null or empty"},
 		{name: "invalid ruleset is rejected at its index", src: rulesetSequence("a") + "- name: b\n", wantPath: "R[1]", wantReason: `missing key "target"`},
+		{name: "declaration of absence alone is read as a sequence of one", src: "- name: legacy\n  state: absent\n", want: []RulesetDeclaration{{Name: mustRulesetName(t, "legacy"), Desired: setting.Absent()}}},
+		{name: "declaration of absence is read in the declared order beside a value", src: rulesetSequence("protect") + "- name: legacy\n  state: absent\n", want: []RulesetDeclaration{declaration("protect"), {Name: mustRulesetName(t, "legacy"), Desired: setting.Absent()}}},
+		{name: "absence after a value of the same name is rejected at the later declaration", src: rulesetSequence("protect") + "- name: protect\n  state: absent\n", wantPath: "R[1]", wantReason: `duplicate name "protect"; same as R[0] (compared ignoring letter case)`},
+		{name: "value after an absence of the same name is rejected at the later declaration", src: "- name: protect\n  state: absent\n" + rulesetSequence("protect"), wantPath: "R[1]", wantReason: `duplicate name "protect"; same as R[0] (compared ignoring letter case)`},
 		{name: "same name is rejected at the later ruleset", src: rulesetSequence("a", "b", "a"), wantPath: "R[2]", wantReason: `duplicate name "a"; same as R[0] (compared ignoring letter case)`},
 		{name: "name differing only in letter case is rejected as a duplicate", src: rulesetSequence("protect", "Protect"), wantPath: "R[1]", wantReason: `duplicate name "Protect"; same as R[0] (compared ignoring letter case)`},
 	}
@@ -57,9 +61,10 @@ func TestDocumentRulesets(t *testing.T) {
 	}
 }
 
-// TestDocumentRuleset は、6 つのキーがすべて必須であることと、誤りを示す順序、name・target・enforcement の判定を確かめる。
+// TestDocumentRuleset は、state を書かない要素は 5 つの値のキーがすべて必須であることと、state: absent の組み合わせ、誤りを示す順序、name・target・enforcement の判定を確かめる。
+// 拒否のケースは、誤りを示す順序を確かめるものを除き、受理される入力 (rulesetBase と absentBase) の条件を 1 つだけ変えて作る。
 //
-//trace:checks FR-001
+//trace:checks FR-001 INV-001
 func TestDocumentRuleset(t *testing.T) {
 	with := func(old, replacement string) string { return strings.Replace(rulesetBase, old, replacement, 1) }
 	withEnforcement := func(e setting.RulesetEnforcement) setting.Ruleset {
@@ -70,6 +75,7 @@ func TestDocumentRuleset(t *testing.T) {
 	declaration := func(name string, r setting.Ruleset) RulesetDeclaration {
 		return RulesetDeclaration{Name: mustRulesetName(t, name), Desired: setting.RulesetValue(r)}
 	}
+	const absentBase = "name: legacy\nstate: absent\n"
 	cases := []struct {
 		name       string
 		src        string
@@ -77,7 +83,13 @@ func TestDocumentRuleset(t *testing.T) {
 		wantPath   string
 		wantReason string
 	}{
-		{name: "all six keys are read into the name and the value", src: rulesetBase, want: declaration("protect", baseRuleset())},
+		{name: "name and state absent are read as the declaration of absence", src: absentBase, want: RulesetDeclaration{Name: mustRulesetName(t, "legacy"), Desired: setting.Absent()}},
+		{name: "state absent with rules of a wrong content is rejected at rules without reading the content", src: absentBase + "rules:\n  - type: creation\n", wantPath: "R.rules", wantReason: `rules is not allowed when state is "absent"`},
+		{name: "state absent with several value keys is rejected at the first in the key order, not the written order", src: absentBase + "rules: []\nenforcement: active\n", wantPath: "R.enforcement", wantReason: `enforcement is not allowed when state is "absent"`},
+		{name: "state present is rejected at the state", src: "name: legacy\nstate: present\n", wantPath: "R.state", wantReason: `must be absent; got "present"`},
+		{name: "state present with all five value keys is rejected at the state, before the value keys", src: rulesetBase + "state: present\n", wantPath: "R.state", wantReason: `must be absent; got "present"`},
+		{name: "name against the naming rule with state absent is rejected at the name", src: "name: Protéct\nstate: absent\n", wantPath: "R.name", wantReason: `must consist of printable ASCII characters; got "Protéct"`},
+		{name: "all five keys are read into the name and the value", src: rulesetBase, want: declaration("protect", baseRuleset())},
 		{name: "enforcement disabled is accepted", src: with("enforcement: active", "enforcement: disabled"), want: declaration("protect", withEnforcement(setting.RulesetEnforcementDisabled))},
 		{name: "name with inner space is accepted keeping its spelling", src: with("name: protect", `name: "Default branch"`), want: declaration("Default branch", baseRuleset())},
 		{name: "missing name is rejected", src: strings.TrimPrefix(rulesetBase, "name: protect\n"), wantPath: "R", wantReason: `missing key "name"`},
@@ -87,8 +99,8 @@ func TestDocumentRuleset(t *testing.T) {
 		{name: "missing bypass_actors is rejected without suggesting an empty sequence", src: with("bypass_actors:\n  - actor_type: RepositoryRole\n    actor_id: 5\n    bypass_mode: always\n", ""), wantPath: "R", wantReason: `missing key "bypass_actors"`},
 		{name: "missing rules is rejected", src: with("rules:\n  - type: deletion\n", ""), wantPath: "R", wantReason: `missing key "rules"`},
 		{name: "first missing key is reported when several are missing", src: "name: protect\nrules: []\n", wantPath: "R", wantReason: `missing key "target"`},
-		{name: "id key is rejected", src: rulesetBase + "id: 1\n", wantPath: "R", wantReason: `unknown key "id"; expected name, target, enforcement, conditions, bypass_actors, rules`},
-		{name: "state key is rejected", src: rulesetBase + "state: absent\n", wantPath: "R", wantReason: `unknown key "state"; expected name, target, enforcement, conditions, bypass_actors, rules`},
+		{name: "id key is rejected and the expected keys include state", src: rulesetBase + "id: 1\n", wantPath: "R", wantReason: `unknown key "id"; expected name, target, enforcement, conditions, bypass_actors, rules, state`},
+		{name: "state written twice is rejected as a duplicate key", src: absentBase + "state: absent\n", wantPath: "R", wantReason: `duplicate key "state"`},
 		{name: "non-ASCII name is rejected", src: with("name: protect", "name: Protéct"), wantPath: "R.name", wantReason: `must consist of printable ASCII characters; got "Protéct"`},
 		{name: "number name is rejected", src: with("name: protect", "name: 42"), wantPath: "R.name", wantReason: "must be a string"},
 		{name: "target tag is rejected", src: with("target: branch", "target: tag"), wantPath: "R.target", wantReason: `must be branch; got "tag"`},
@@ -121,6 +133,35 @@ func TestDocumentRuleset(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("ruleset() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDocumentRuleset_MissingKeyDoesNotSuggestAbsence は、state を書かず値のキーが欠けた要素の誤りが、state: absent を案内しないことを確かめる。
+// 案内すると、キーを書き忘れた利用者を削除の宣言へ誘導するため。
+//
+//trace:checks INV-001
+func TestDocumentRuleset_MissingKeyDoesNotSuggestAbsence(t *testing.T) {
+	cases := []struct {
+		name       string
+		src        string
+		wantReason string
+	}{
+		{name: "name alone", src: "name: protect\n", wantReason: `missing key "target"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.ruleset(doc.root, "R")
+			if err == nil {
+				t.Fatalf("ruleset() = %+v, want error", got)
+			}
+			if !strings.Contains(err.Error(), tc.wantReason) {
+				t.Errorf("ruleset() error = %q, want it to contain %q", err, tc.wantReason)
+			}
+			if strings.Contains(err.Error(), "state") || strings.Contains(err.Error(), "absent") {
+				t.Errorf("ruleset() error = %q, want it not to mention state or absent", err)
 			}
 		})
 	}

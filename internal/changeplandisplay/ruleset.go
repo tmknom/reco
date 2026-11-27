@@ -14,8 +14,9 @@ type changedPair[T any] struct {
 	from, to T
 }
 
-// rulesetChangeText は、Ruleset の変更予定を CLI 仕様の形で返す。値は1行に収まらないため、期待値の位置に present を置き、値を続く行に示す。
-// 現在が値でない (作成と比較不能) なら宣言の値の全体を、値なら値の差だけを示す。
+// rulesetChangeText は、Ruleset の変更予定を CLI 仕様の形で返す。値は1行に収まらないため、期待値の位置に present または absent を置き、値を続く行に示す。
+// 期待値が値なら、現在が値でない (作成と比較不能) なら宣言の値の全体を、値なら値の差だけを示す。
+// 期待値が存在しないなら、削除は計画時の観測値の全体を示し、比較不能は現在の値が読めていないため値の行を示さない。
 // 解釈しなかったものは、理由が解釈しない部分であることと一つ以上あることが一致しなければ、扱えない部分を示さずに承認を求め得るため、不変条件の破れとして panic する。
 func rulesetChangeText(s changeplan.SettingPlan) string {
 	var b strings.Builder
@@ -23,14 +24,21 @@ func rulesetChangeText(s changeplan.SettingPlan) string {
 	case changeplan.Match:
 		return ""
 	case changeplan.Mismatch:
-		if s.IsConfirmedCreation() {
-			fmt.Fprintf(&b, "  %s: absent -> present\n%s", s.Unit.String(), rulesetValueLines(s.Desired.Ruleset()))
-		} else {
-			observed, _ := s.Observed.Value()
+		observed, _ := s.Observed.Value()
+		switch {
+		case s.Desired.Equal(setting.Absent()):
+			fmt.Fprintf(&b, "  %s: present -> absent\n%s", s.Unit.String(), rulesetValueLines(observed.Ruleset()))
+		case s.IsConfirmedCreation():
+			fmt.Fprintf(&b, "  %s: absent -> present\n%s", s.Unit.String(), declaredRulesetValueLines(s.Desired.Ruleset()))
+		default:
 			fmt.Fprintf(&b, "  %s:\n%s", s.Unit.String(), rulesetDifferenceLines(observed.Ruleset(), s.Desired.Ruleset()))
 		}
 	case changeplan.NotComparable:
-		fmt.Fprintf(&b, "  %s: %s -> present\n%s", s.Unit.String(), repositoryStateText(s.Observed.UnavailableReason()), rulesetValueLines(s.Desired.Ruleset()))
+		if s.Desired.Equal(setting.Absent()) {
+			fmt.Fprintf(&b, "  %s: %s -> absent\n", s.Unit.String(), repositoryStateText(s.Observed.UnavailableReason()))
+		} else {
+			fmt.Fprintf(&b, "  %s: %s -> present\n%s", s.Unit.String(), repositoryStateText(s.Observed.UnavailableReason()), declaredRulesetValueLines(s.Desired.Ruleset()))
+		}
 	}
 	if s.Applicability.IsNotApplicable() {
 		fmt.Fprintf(&b, "    Applicability: not applicable (%s)\n", notApplicableReasonText(s))
@@ -48,15 +56,24 @@ func rulesetChangeText(s changeplan.SettingPlan) string {
 	return b.String()
 }
 
-// rulesetValueLines は、宣言の値の全体を CLI 仕様の順で1行ずつ返す。
-// 宣言の値は必ず ref_name を持ち、ref_name のない値の表記は CLI 仕様にないため、不変条件の破れとして panic する。
-func rulesetValueLines(r setting.Ruleset) string {
-	ref := r.Conditions.RefName
-	if ref == nil {
+// declaredRulesetValueLines は、宣言の値の全体を CLI 仕様の順で1行ずつ返す。
+// 宣言の値は必ず ref_name を持ち、持たない値は conditions: {} と示すと承認した値と違う値を示すことになるため、不変条件の破れとして panic する。
+func declaredRulesetValueLines(r setting.Ruleset) string {
+	if r.Conditions.RefName == nil {
 		panic("changeplandisplay: declared ruleset value has no ref_name")
 	}
-	return fmt.Sprintf("    target: %s\n    enforcement: %s\n    include: %s\n    exclude: %s\n    bypass_actors: %s\n    rules: %s\n",
-		r.Target, r.Enforcement, patternsText(ref.Include), patternsText(ref.Exclude), bypassActorsText(r.BypassActors), rulesText(r.Rules))
+	return rulesetValueLines(r)
+}
+
+// rulesetValueLines は、Ruleset の値の全体を CLI 仕様の順で1行ずつ返す。
+// 観測値は ref_name を持たないことがあり、その値は、include と exclude がどちらも空の値と異なるため、2行の代わりに conditions: {} の1行で示す。
+func rulesetValueLines(r setting.Ruleset) string {
+	conditions := "    conditions: {}\n"
+	if ref := r.Conditions.RefName; ref != nil {
+		conditions = fmt.Sprintf("    include: %s\n    exclude: %s\n", patternsText(ref.Include), patternsText(ref.Exclude))
+	}
+	return fmt.Sprintf("    target: %s\n    enforcement: %s\n%s    bypass_actors: %s\n    rules: %s\n",
+		r.Target, r.Enforcement, conditions, bypassActorsText(r.BypassActors), rulesText(r.Rules))
 }
 
 // rulesetDifferenceLines は、現在の値 observed を宣言の値 desired に変えるときの値の差を、CLI 仕様の行の表の順で返す。

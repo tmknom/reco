@@ -410,3 +410,73 @@ func TestUpdateRulesetValueOutcome(t *testing.T) {
 		})
 	}
 }
+
+// TestDeleteRuleset は、削除が引数の ID の URL へ、本文も Content-Type もなしで DELETE を一度だけ送ることを確かめる。
+//
+//trace:checks INV-001 FR-011 INV-005
+func TestDeleteRuleset(t *testing.T) {
+	var received atomic.Int32
+	var gotMethod, gotPath, gotRawQuery, gotContentType string
+	var gotBody []byte
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		received.Add(1)
+		gotMethod, gotPath, gotRawQuery, gotContentType = r.Method, r.URL.EscapedPath(), r.URL.RawQuery, r.Header.Get("Content-Type")
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	outcome, err := c.DeleteRuleset(t.Context(), mustReference(t, "owner/repo"), 42, mustRulesetName(t, "legacy"))
+	if err != nil || outcome != UpdateSucceeded {
+		t.Fatalf("DeleteRuleset() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+	}
+
+	if n := received.Load(); n != 1 {
+		t.Errorf("server received %d requests, want 1", n)
+	}
+	if gotMethod != http.MethodDelete || gotPath != "/repos/owner/repo/rulesets/42" || gotRawQuery != "" {
+		t.Errorf("request = %s %s?%s, want DELETE /repos/owner/repo/rulesets/42 without a query", gotMethod, gotPath, gotRawQuery)
+	}
+	if len(gotBody) != 0 || gotContentType != "" {
+		t.Errorf("request body = %q, Content-Type = %q, want neither", gotBody, gotContentType)
+	}
+}
+
+// TestDeleteRulesetOutcome は、削除の応答の分類と、要求を送り直さないことを確かめる。
+//
+//trace:checks FR-012 FR-013 INV-005
+func TestDeleteRulesetOutcome(t *testing.T) {
+	cases := []struct {
+		name        string
+		status      int
+		wantOutcome UpdateOutcome
+		wantErr     error
+	}{
+		{name: "404 is rejected, not read as already absent", status: http.StatusNotFound, wantOutcome: UpdateRejected, wantErr: ErrNotFound},
+		{name: "500 is unknown and not retried", status: http.StatusInternalServerError, wantOutcome: UpdateUnknown, wantErr: ErrUnexpectedResponse},
+		{name: "200 is unknown", status: http.StatusOK, wantOutcome: UpdateUnknown, wantErr: ErrUnexpectedResponse},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var received atomic.Int32
+			c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+				received.Add(1)
+				w.WriteHeader(tc.status)
+			})
+
+			outcome, err := c.DeleteRuleset(t.Context(), mustReference(t, "owner/repo"), 42, mustRulesetName(t, "legacy"))
+
+			if outcome != tc.wantOutcome {
+				t.Errorf("DeleteRuleset() outcome = %v, want %v", outcome, tc.wantOutcome)
+			}
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("DeleteRuleset() error = %v, want %v", err, tc.wantErr)
+			}
+			if want := `delete ruleset "legacy" owner/repo: `; !strings.HasPrefix(err.Error(), want) {
+				t.Errorf("error = %q, want prefix %q", err, want)
+			}
+			if n := received.Load(); n != 1 {
+				t.Errorf("server received %d requests, want 1", n)
+			}
+		})
+	}
+}

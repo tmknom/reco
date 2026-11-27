@@ -242,6 +242,124 @@ func TestExecuteChange_RulesetValueUpdate(t *testing.T) {
 	}
 }
 
+// TestExecuteChange_RulesetDeletion は、存在しないことを宣言した Ruleset の削除を、承認時に予定した ID へ一度だけ DELETE で送り、
+// 成功応答だけで完了にせず、更新後の観測で存在しないと確かめるつなぎ目を確かめる。
+// 値の全体と ID の比べ方は TestMatchesPreconditionBasis_Ruleset、宛先は TestSendUpdate が確かめている。
+//
+//trace:checks INV-001 INV-004 INV-005 FR-010 FR-011 FR-012 FR-013
+func TestExecuteChange_RulesetDeletion(t *testing.T) {
+	const (
+		getRepository = "GET /repos/owner/repo"
+		getRulesets   = "GET /repos/owner/repo/rulesets"
+		getProtect    = "GET /repos/owner/repo/rulesets/42"
+		deleteProtect = "DELETE /repos/owner/repo/rulesets/42"
+		getRecreated  = "GET /repos/owner/repo/rulesets/43"
+	)
+	protect := githubtest.RulesetSummaryBody{ID: 42, Name: "protect"}
+	other := githubtest.RulesetSummaryBody{ID: 7, Name: "other"}
+	approved := protectRulesetBody(42, "protect", setting.RulesetEnforcementDisabled)
+	before := []response{okRepository(1, false, false), okRulesets(other, protect), okRuleset(approved)}
+	beforeRequests := []string{getRepository, getRulesets, getProtect}
+	// remaining は、削除のあとの観測を、毎回 protect がまだ存在する応答で返す応答と、その要求の並び。
+	var remaining []response
+	var remainingRequests []string
+	for range 1 + len(reobservationDelays) {
+		remaining = append(remaining, okRepository(1, false, false), okRulesets(other, protect), okRuleset(approved))
+		remainingRequests = append(remainingRequests, getRepository, getRulesets, getProtect)
+	}
+	cases := []struct {
+		name         string
+		responses    []response
+		wantRequests []string
+		wantPrecond  preconditionCheck
+		wantUpdate   github.UpdateOutcome
+		wantDesired  desiredStateConfirmation
+		wantResult   changeResult
+	}{
+		{
+			// 宣言していない other は、一覧に現れても詳細を読まず、DELETE も送らない
+			name:         "ruleset as approved is deleted once and completes when the read after the update finds it absent",
+			responses:    slices.Concat(before, []response{noContent(), okRepository(1, false, false), okRulesets(other)}),
+			wantRequests: slices.Concat(beforeRequests, []string{deleteProtect, getRepository, getRulesets}),
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMatches,
+			wantResult:   completed,
+		},
+		{
+			name:         "ruleset whose value changed before the update is not deleted",
+			responses:    []response{okRepository(1, false, false), okRulesets(protect), okRuleset(protectRulesetBody(42, "protect", setting.RulesetEnforcementActive))},
+			wantRequests: beforeRequests,
+			wantPrecond:  preconditionCurrentValueChanged,
+			wantResult:   notAttempted,
+		},
+		{
+			name:         "ruleset recreated with the same value before the update is not deleted",
+			responses:    []response{okRepository(1, false, false), okRulesets(githubtest.RulesetSummaryBody{ID: 43, Name: "protect"}), okRuleset(protectRulesetBody(43, "protect", setting.RulesetEnforcementDisabled))},
+			wantRequests: []string{getRepository, getRulesets, getRecreated},
+			wantPrecond:  preconditionCurrentValueChanged,
+			wantResult:   notAttempted,
+		},
+		{
+			// すでに存在しないことは期待状態と同じでも、承認した削除を行っていないため完了にしない
+			name:         "ruleset already absent before the update is not attempted rather than completed",
+			responses:    []response{okRepository(1, false, false), okRulesets(other)},
+			wantRequests: []string{getRepository, getRulesets},
+			wantPrecond:  preconditionCurrentValueChanged,
+			wantResult:   notAttempted,
+		},
+		{
+			name:         "404 to DELETE is a rejected update and is not read as absence",
+			responses:    slices.Concat(before, []response{{status: http.StatusNotFound}}),
+			wantRequests: slices.Concat(beforeRequests, []string{deleteProtect}),
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateRejected,
+			wantResult:   failed,
+		},
+		{
+			name:         "ruleset still present in every read after the update is a mismatch",
+			responses:    slices.Concat(before, []response{noContent()}, remaining),
+			wantRequests: slices.Concat(beforeRequests, []string{deleteProtect}, remainingRequests),
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateMismatch,
+			wantResult:   failed,
+		},
+		{
+			name:         "read failure after the update is not read as absence",
+			responses:    slices.Concat(before, []response{noContent(), okRepository(1, false, false), {status: http.StatusNotFound}}),
+			wantRequests: slices.Concat(beforeRequests, []string{deleteProtect, getRepository, getRulesets}),
+			wantPrecond:  preconditionHolds,
+			wantUpdate:   github.UpdateSucceeded,
+			wantDesired:  desiredStateObservationFailed,
+			wantResult:   failed,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseURL, server := newSequenceServer(t, tc.responses...)
+
+			got := executeChange(context.Background(), newClient(baseURL), newRepositoryPlan(t), rulesetDeletionChange(t, "protect"), elapsedAtOnce, &updateInterval{})
+
+			if !slices.Equal(server.RequestLines(), tc.wantRequests) {
+				t.Errorf("requests = %v, want %v", server.RequestLines(), tc.wantRequests)
+			}
+			if got.operation(0).precondition != tc.wantPrecond {
+				t.Errorf("precondition = %v, want %v", got.operation(0).precondition, tc.wantPrecond)
+			}
+			if tc.wantPrecond == preconditionHolds && got.operation(0).update != tc.wantUpdate {
+				t.Errorf("update = %v, want %v", got.operation(0).update, tc.wantUpdate)
+			}
+			if got.confirmation != tc.wantDesired {
+				t.Errorf("confirmation = %v, want %v", got.confirmation, tc.wantDesired)
+			}
+			if got.result() != tc.wantResult {
+				t.Errorf("result() = %v, want %v", got.result(), tc.wantResult)
+			}
+		})
+	}
+}
+
 // TestExecuteChanges_Rulesets は、二つの Ruleset の作成を変更の並びで実行し、あいだに更新要求の間隔を一度だけ待ち、
 // 二つ目の観測が、一つ目が作った Ruleset の詳細を読まないことを確かめる。
 //

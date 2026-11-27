@@ -718,7 +718,7 @@ const rulesetsSource = `repositories:
 
 // TestGenerate_Rulesets は、入口が宣言した Ruleset の名前を観測の読む範囲に渡し、Ruleset の計画を照合と適用可能性まで生成することを確かめる。
 //
-//trace:checks FR-004 FR-005
+//trace:checks INV-001 FR-004 FR-005
 func TestGenerate_Rulesets(t *testing.T) {
 	file := func(src string) configuration.File {
 		return configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(src)}}, Name: "reco.yaml", Path: "./reco.yaml"}
@@ -760,6 +760,33 @@ func TestGenerate_Rulesets(t *testing.T) {
 			{"general.allow_auto_merge", Match, Applicability{}},
 			{"rulesets.protect", Mismatch, Applicable()},
 		}
+		if got := plansOf(got); !reflect.DeepEqual(got, want) {
+			t.Errorf("plans = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("ruleset declared absent is read in detail only for the same name and planned as a deletion", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo": githubtest.OK(githubtest.RepositoryBody{ID: 7}.JSON()),
+			"GET /repos/owner/repo/rulesets": githubtest.OK(githubtest.RulesetsBody{
+				{ID: 2, Name: "undeclared"}, {ID: 1, Name: "Legacy"},
+			}.JSON()),
+			"GET /repos/owner/repo/rulesets/1": githubtest.OK(githubtest.RulesetBody{
+				ID: 1, Name: "Legacy", Target: "branch", Enforcement: "disabled", Include: []string{"~DEFAULT_BRANCH"},
+				BypassActors: []githubtest.BypassActorBody{{ActorType: "RepositoryRole", ActorID: 5, BypassMode: "always"}}, Rules: []string{githubtest.DeletionRuleBody},
+			}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+		const src = "repositories:\n  - name: owner/repo\n    rulesets:\n      - name: legacy\n        state: absent\n"
+
+		got, err := Generate(context.Background(), client, file(src), nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		if want := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/rulesets", "GET /repos/owner/repo/rulesets/1"}; !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		want := []planned{{"rulesets.legacy", Mismatch, Applicable()}}
 		if got := plansOf(got); !reflect.DeepEqual(got, want) {
 			t.Errorf("plans = %+v, want %+v", got, want)
 		}

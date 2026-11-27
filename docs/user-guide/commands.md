@@ -164,6 +164,7 @@ Repositories checked: 1
 | `Applicability: not applicable (<理由>)` | 安全に変えるための条件が成り立たないため、reco はすぐ上の変更をしない。括弧の中は、何が成り立っていないかと、設定ファイルの直し方 |
 | `Patterns to remove:`、`Patterns to add:` | Environment のデプロイを許可するパターンのうち、設定ファイルにないものと、GitHub 上にないもの |
 | `rulesets.<名前>: absent -> present` と、その下の `target:` から `rules:` までの行 | 設定ファイルに書いた Ruleset が GitHub 上にない。下の行は、作成する Ruleset の内容 |
+| `rulesets.<名前>: present -> absent` と、その下の `target:` から `rules:` までの行 | `state: absent` を書いた Ruleset が GitHub 上にある。承認すると削除する。下の行は、削除で失われる今の内容の全体で、GitHub が返した順に示す。対象のブランチの条件を持たない Ruleset は、`include:` と `exclude:` の代わりに `conditions: {}` の行が出る |
 | `rulesets.<名前>:` と、その下の変わる部分の行 | Ruleset の内容が設定ファイルと違う。`... to remove:` の行は、設定ファイルにないためなくなるパターン、迂回できる主体、ルール。`... to add:` の行は加わるもの。`enforcement: disabled -> active` や `Rule pull_request: ...` の行は、値が変わる項目。`Required status checks to remove:` と `Required status checks to add:` の行は、`required_status_checks` のルールでなくなるチェックと加わるチェック。`conditions: {} -> ref_name` の行は、GitHub 上の Ruleset が対象のブランチの条件を持たないことを示す |
 | `actions.fork_pull_requests.private_repositories:` の下に、今の値の行と `-> <書いた値>` の行 | 非公開リポジトリの Fork からの Pull Request のワークフローの実行条件。4項目をまとめて一つの変更として示す |
 | `general.squash_merge_commit:` / `general.merge_commit:` の下に、今の値の行と `-> <書いた値>` の行 | マージ時のコミットメッセージの形。`title: PR_TITLE, message: PR_BODY` のように、タイトルと本文をまとめて一つの変更として示す。今の値が `(unknown value)` のときは、GitHub が reco のまだ知らない選び方を返している |
@@ -217,7 +218,7 @@ Repositories updated: 1
 
 変更計画に `Plan cannot be applied.` が出たときは、承認を求めず、どのリポジトリの設定も変えずにエラーで終わります。直し方は [Troubleshooting](troubleshooting.md#plan-cannot-be-applied-と表示された) にあります。
 
-`apply` は、設定ファイルに書いた Ruleset を、書いた順に一つずつ処理します。GitHub 上になければ作成し、あって内容が違えば、書いた内容で全体を置き換えます。置き換える直前の確認は [承認のあとで設定が変わったら止まる](safety.md#承認のあとで設定が変わったら止まる) にあります。
+`apply` は、設定ファイルに書いた Ruleset を、書いた順に一つずつ処理します。GitHub 上になければ作成し、あって内容が違えば、書いた内容で全体を置き換えます。`state: absent` を書いた Ruleset は、GitHub 上にあれば消します。置き換えと削除の直前の確認は [承認のあとで設定が変わったら止まる](safety.md#承認のあとで設定が変わったら止まる) にあります。
 
 リポジトリのすべての変更が完了すれば、結果はリポジトリの行の `updated` だけです。変更が2件以上あり、完了しなかったものがあるときは、リポジトリの行の下に変更ごとの結果が出ます。
 

@@ -886,7 +886,7 @@ func TestWriteChangeReport_DeploymentPatterns(t *testing.T) {
 
 	t.Run("undefined kind of an update operation panics", func(t *testing.T) {
 		change := deploymentPatternsChange(t, "production", selectedEnvironment(7, "production", []setting.DeploymentPattern{main}, 10), selectedPolicy(main, release, version))
-		change.Operations[0].Kind = changeplan.RulesetValueUpdate + 1
+		change.Operations[0].Kind = changeplan.RulesetDeletion + 1
 		defer func() {
 			if recover() == nil {
 				t.Error("updateRequestLines() did not panic")
@@ -1110,6 +1110,7 @@ func TestUpdateRequestLabel_Rulesets(t *testing.T) {
 	}{
 		{name: "creation is named by the ruleset", operation: rulesetCreationChange(t, "protect").Operations[0]},
 		{name: "value update is named by the ruleset", operation: rulesetValueUpdateChange(t, "protect").Operations[0]},
+		{name: "deletion is named by the ruleset", operation: rulesetDeletionChange(t, "protect").Operations[0]},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

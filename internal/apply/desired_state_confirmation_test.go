@@ -306,6 +306,54 @@ func TestConfirmDesiredState_RulesetOmittedParameter(t *testing.T) {
 	}
 }
 
+// TestConfirmDesiredState_RulesetDeletion は、Ruleset の削除の期待状態を、更新後の観測で宣言の名前の Ruleset が存在しないと確かめたときだけ一致にすることを確かめる。
+// 存在しないと確かめられない観測を、存在しないと読まない。
+//
+//trace:checks FR-012 QR-002
+func TestConfirmDesiredState_RulesetDeletion(t *testing.T) {
+	cases := []struct {
+		name       string
+		rulesets   []github.Ruleset
+		want       desiredStateConfirmation
+		wantReason github.UnavailableReason
+	}{
+		{
+			name:     "deletion matches when the list lacks the declared name",
+			rulesets: []github.Ruleset{github.InterpretedRuleset(7, "other", protectRuleset(setting.RulesetEnforcementActive))},
+			want:     desiredStateMatches,
+		},
+		{
+			// 削除の要求への成功応答だけでは、存在しないことを確かめたことにならない
+			name:     "deletion is a mismatch when the declared name still has an interpreted value",
+			rulesets: []github.Ruleset{github.InterpretedRuleset(42, "Protect", protectRuleset(setting.RulesetEnforcementDisabled))},
+			want:     desiredStateMismatch,
+		},
+		{
+			name:       "deletion is not confirmed when only a name that cannot be compared exists",
+			rulesets:   []github.Ruleset{github.InterpretedRuleset(7, "Protéct", protectRuleset(setting.RulesetEnforcementActive))},
+			want:       desiredStateUnavailable,
+			wantReason: github.UnavailableNameUndetermined,
+		},
+		{
+			name:       "deletion is not confirmed when the declared name exists with uninterpreted parts",
+			rulesets:   []github.Ruleset{github.UninterpretedRuleset(43, "protect", []github.UninterpretedPart{{Kind: github.UninterpretedRuleType, Name: "creation"}})},
+			want:       desiredStateUnavailable,
+			wantReason: github.UnavailableUninterpretedParts,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := github.ObservationResult{RepositoryID: 1, Rulesets: &github.Rulesets{Existing: github.Observed(tc.rulesets)}}
+
+			got, unavailable := confirmDesiredState(1, rulesetDeletionChange(t, "protect"), observed)
+
+			if got != tc.want || unavailable.reason != tc.wantReason {
+				t.Errorf("confirmDesiredState() = %v, %v, want %v with reason %v", got, unavailable, tc.want, tc.wantReason)
+			}
+		})
+	}
+}
+
 // TestConfirmDesiredState_EnvironmentVariables は、Environment Variable の期待状態を、宣言の名前で引いた Environment の変数の値で確かめ、
 // Environment がなければ存在しないことを理由に確認失敗にすることを確かめる。
 //

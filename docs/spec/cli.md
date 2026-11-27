@@ -230,6 +230,22 @@ Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
+存在しないことを宣言した Ruleset の削除は、`present -> absent` の行の下に、消える Ruleset の計画時の値の全体を、作成と同じ順と表記で1行ずつ示します。値は GitHub が返したもので、パターン、Bypass、ルール、チェック、`allowed_merge_methods` は返った順に、重複も残して示します。ルールの省略できるパラメータは、観測した値が必ず持つため、必ず示します。`ref_name` を持たない Ruleset は、`include` と `exclude` の行の代わりに `conditions: {}` の1行を示します（6章と同じ表記）。`enforcement: evaluate` のように設定宣言に書けない値も、そのまま示します。存在しない Ruleset に存在しないことを宣言した場合は一致であり、行を示しません。
+
+```text
+Repository: example/project-a
+  rulesets.legacy: present -> absent
+    target: branch
+    enforcement: active
+    include: ["refs/heads/legacy/*"]
+    exclude: []
+    bypass_actors: [RepositoryRole 5 always]
+    rules: [pull_request (required_approving_review_count: 1, dismiss_stale_reviews_on_push: false, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false, allowed_merge_methods: [merge, squash, rebase], require_extra_approval_for_unattributed_changes: false), deletion]
+
+Plan: 1 repository to update, 1 change
+Repositories checked: 1
+```
+
 値の変更は、設定の行に値を置かず、変わる部分だけを続く行に示します。宣言が Ruleset の全体であり、宣言にないルールや Bypass も外すため、利用者が何が外れるかを全体を見比べずに読めるようにするためです。行は次の順に示し、該当するものがない行は示しません。
 
 | 行 | 示すもの |
@@ -267,7 +283,7 @@ Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
-比較不能な Ruleset の変更予定は、現在の状態を括弧で示し、作成と同じく宣言した値の全体を続く行に示します（表示例は後述の適用不能の例）。
+比較不能な Ruleset の変更予定は、現在の状態を括弧で示し、作成と同じく宣言した値の全体を続く行に示します（表示例は後述の適用不能の例）。存在しないことを宣言した Ruleset が比較不能な場合は `(<状態>) -> absent` と示し、値の行を示しません。期待値は値を持たず、現在の値は読めていないためです。
 
 ```text
 $ reco plan
@@ -504,6 +520,20 @@ Repository: example/project-a
     Applicability: not applicable (a ruleset on GitHub has a name reco cannot compare, such as one with non-ASCII characters; remove this ruleset from the configuration)
 
 Plan: 1 repository to update, 2 changes
+Repositories checked: 1
+
+Plan cannot be applied.
+```
+
+次の例は、存在しないことを宣言した Ruleset が解釈しない部分を含む場合です。
+
+```text
+Repository: example/project-a
+  rulesets.legacy: (uninterpreted parts) -> absent
+    Applicability: not applicable (the ruleset on GitHub contains parts that reco does not interpret; remove this ruleset from the configuration)
+      rule type: "creation"
+
+Plan: 1 repository to update, 1 change
 Repositories checked: 1
 
 Plan cannot be applied.
@@ -784,7 +814,7 @@ Repositories updated: 1
 
 論理的な設定変更ごとに結果を表示するときは、論理的な設定変更を、それが変える管理設定の名前で示します。二つ以上の管理設定を変える論理的な設定変更は、変更計画に示す順に ` + ` でつないで示します（`actions.permissions.allowed_actions + actions.permissions.selected_actions`、`general.allow_squash_merge + general.allow_merge_commit + general.allow_rebase_merge`、`environments.<名前> + environments.<名前>.deployment_branch_policy`、`environments.<名前>.required_reviewers + environments.<名前>.prevent_self_review`）。名前は設定宣言の綴りです。同じ管理設定を変える更新操作が複数あっても、その管理設定の名前は一度だけ示します。変更結果を一つにまとめても、承認の前に提示する変更予定は管理設定ごとの行のままです。選択方式の Actions 許可条件の3項目と、非公開リポジトリの Fork Pull Request ワークフローの実行条件の4項目は、個別の変更として示しません。
 
-関連リソースの作成と削除も、完了すれば `updated` と示します。何を作成し、何を削除したかは、承認の前に提示した変更予定が示します。Repository Variable と Environment Variable の変更結果と stderr のエラーは、変数の名前だけを示し、変数の値と更新要求の本文は示しません。削除でも、失われた値を示しません。
+関連リソースの作成と削除も、完了すれば `updated` と示します。何を作成し、何を削除したかは、承認の前に提示した変更予定が示します。Repository Variable と Environment Variable の変更結果と stderr のエラーは、変数の名前だけを示し、変数の値と更新要求の本文は示しません。削除でも、失われた値を示しません。Ruleset の削除の変更結果と stderr のエラーも、Ruleset の名前だけを示し、消した値を示しません。
 
 複数の更新操作からなる論理的な設定変更が、更新操作を開始したあとで完了しなかった場合は、`Update request` の行を実行順に示します。行は `Update request (<対象>): <結果>` の形で、結果は `succeeded`、`rejected`、`unknown`、開始しなかった更新操作を表す `not started` のいずれかです。`<対象>` は、その更新操作が変える管理設定です。ただし、個別パターンを取り除く更新操作は `patterns to remove [<パターン>, ...]`、加える更新操作は `patterns to add [<パターン>, ...]` と示し、パターンは `plan` と同じく `branch "main"` の形で書きます。個別パターンの更新操作のうち、加えるか取り除くかと結果が同じで続けて並ぶものは、1行にまとめてパターンを実行順に並べます。そのため、この行は複数の更新要求を表すことがあります。先行する更新操作が成功し、後続の更新操作を開始できなかった場合は、完了済みの更新操作を `succeeded`、未開始の更新操作を `not started` と示し、変更全体を `failed` とします。`not started` は更新操作についての表示で、論理的な設定変更の `not attempted` とは区別します。
 
@@ -804,7 +834,7 @@ Repositories updated: 1
 
 Environment の方式の変更、担当者の集合の変更、自己承認の禁止の変更、デプロイの待機時間の変更、Environment Variable の作成・値の変更・削除のあとに Environment が存在しなかった場合は、`not in effect (the environment does not exist)` と示します。宣言した方式や変数を持つ Environment がないためです。作成のあとに Environment が存在しなかった場合は、存在しないことを確認できているため、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Environment が現れ、存在を確かめられなかった場合は、reco が確認できなかったことを示す `not confirmed (environment existence unknown)` と示します。
 
-Ruleset の作成か値の変更のあとに Ruleset が存在しなかった場合は、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Ruleset が現れ、存在を確かめられなかった場合は `not confirmed (ruleset existence unknown)` と示します。作成か値の変更をした Ruleset が reco の解釈しない部分を含んでいた場合は `not confirmed (the ruleset contains parts that reco does not interpret)` と示します。存在は確かめているものの、値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。解釈しなかったものは変更結果に並べず、`plan` が示します。
+Ruleset の作成か値の変更のあとに Ruleset が存在しなかった場合は、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Ruleset が現れ、存在を確かめられなかった場合は `not confirmed (ruleset existence unknown)` と示します。作成か値の変更をした Ruleset が reco の解釈しない部分を含んでいた場合は `not confirmed (the ruleset contains parts that reco does not interpret)` と示します。存在は確かめているものの、値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。解釈しなかったものは変更結果に並べず、`plan` が示します。Ruleset の削除のあとにその名前の Ruleset がまだ存在した場合は `does not match` と示します。存在を確かめられなかった場合と、その名前の Ruleset が reco の解釈しない部分を含んで存在した場合は、作成と値の変更と同じ `not confirmed` の表示です。後者は、計画時に同じ状態の Ruleset を比較不能にするのと同じ判定を使うためで、消したはずの名前の Ruleset が存在しており、削除が効いていないことは確定しています。
 
 マージメッセージの変更のあとに、GitHub がその組に reco の知らない値を返した場合は、`not confirmed (GitHub returned a value that reco does not know)` と示します。`web_commit_signoff_required` の変更のあとに、GitHub がその値を返さなかった場合は、`not confirmed (GitHub did not return the value)` と示します。どちらも、値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。
 

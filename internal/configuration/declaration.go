@@ -408,21 +408,16 @@ func (d document) variable(n *yaml.Node, path string) (VariableDeclaration, erro
 	stateNode, hasState := entries["state"]
 	valueNode, hasValue := entries["value"]
 	if hasState {
-		statePath := path + ".state"
-		state, err := d.stringValue(stateNode, statePath)
-		if err != nil {
+		if err := d.declaredAbsence(stateNode, path+".state"); err != nil {
 			return VariableDeclaration{}, err
-		}
-		if state != "absent" {
-			return VariableDeclaration{}, invalid(stateNode, statePath, "must be absent; got %q", state)
 		}
 		if hasValue {
 			return VariableDeclaration{}, invalid(valueNode, path+".value", `value is not allowed when state is "absent"`)
 		}
 		return VariableDeclaration{Name: variableName, Desired: setting.Absent()}, nil
 	}
-	if !hasValue {
-		return VariableDeclaration{}, invalid(n, path, "missing key %q", "value")
+	if err := d.requireKeys(n, path, entries, []string{"value"}); err != nil {
+		return VariableDeclaration{}, err
 	}
 	valuePath := path + ".value"
 	value, err := d.quotableStringValue(valueNode, valuePath)

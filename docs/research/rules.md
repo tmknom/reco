@@ -29,7 +29,8 @@ Ruleset を利用できる料金プランとリポジトリの公開範囲は、
 >
 > - 非公開リポジトリ：GitHub Free の個人アカウントが所有する非公開リポジトリでは、一覧、取得、作成（`enforcement` が `disabled` でも `active` でも）、ブランチに適用されるルールの取得（`GET .../rules/branches/{branch}`）が、どれも `403` を返した。本文の `message` は `Upgrade to GitHub Pro or make this repository public to enable this feature.` だった
 > - 公開リポジトリ：一覧、取得、作成、更新、削除ができた。削除は `204` を返した
-> - 存在しない `ruleset_id`：取得は `404`（`message` は `Not Found`）を返した。削除した Ruleset の取得も `404` だった
+> - 存在しない `ruleset_id`：取得は `404`（`message` は `Not Found`）を返した。削除した Ruleset の取得も `404` だった。削除した Ruleset の `id` への削除も `404`（`message` は `Not Found`）を返した
+> - 削除の応答と影響：本文を送らない削除は `204` を返し、応答に本文はなかった。削除の前後で、同じリポジトリのほかの Ruleset の取得の本文、`GET /repos/{owner}/{repo}` のマージ方式、マージメッセージ、リポジトリ機能のフィールド、デフォルトブランチの Branch protection の取得の本文は変わらなかった
 > - `500` の応答：`bypass_actors` に `actor_type: RepositoryRole`、`actor_id: 999` を含む更新は `500` を返し、本文はなかった。同じ要求で送ったほかの変更（`rules`）も反映されず、直後の取得は要求の前と一致した
 
 | Relationship | Target | Target Type |

@@ -518,7 +518,7 @@ Private vulnerability reporting の設定で気をつけることは次のとお
 
 ## Ruleset
 
-`rulesets` には、ブランチへの操作を制限する Ruleset を、名前ごとに並べます。書いた名前の Ruleset が GitHub 上になければ、`apply` が作成します。あって内容が違えば、`apply` が、書いた内容で Ruleset の全体を置き換えます。
+`rulesets` には、ブランチへの操作を制限する Ruleset を、名前ごとに並べます。書いた名前の Ruleset が GitHub 上になければ、`apply` が作成します。あって内容が違えば、`apply` が、書いた内容で Ruleset の全体を置き換えます。`state: absent` を書いた名前の Ruleset は、`apply` が消します。
 
 ```yaml
 repositories:
@@ -563,12 +563,22 @@ repositories:
 | `conditions.ref_name.exclude` | パターンの一覧（必須。`[]` 可） | 対象から外すブランチ |
 | `bypass_actors` | 要素の一覧（必須。`[]` 可） | ルールを迂回できる主体。`actor_type`、`actor_id`、`bypass_mode` を書く |
 | `rules` | 要素の一覧（必須。`[]` 可） | 課すルール。`pull_request`（Pull Request を経ることを必須にする）、`deletion`（ブランチの削除の制限）、`non_fast_forward`（Force push の制限）、`required_status_checks`（ステータスチェックの成功を必須にする）を書ける。同じ `type` は一つだけ |
+| `state` | `absent` | その名前の Ruleset がないこと。`name` 以外のキーと同時に書けない |
 
 **Ruleset は、書いた内容がその Ruleset の全体になります**。GitHub 上の Ruleset にあって設定ファイルにないルール、迂回できる主体、パターンは、適用するとなくなります。`plan` は、なくなるものを `Rules to remove:` や `Bypass actors to remove:` の行で示します。
 
-表のキーはどれも省略できません。書き忘れを既定値で補わないためです。ほかに気をつけることは次のとおりです。
+`state` を書かない要素では、表のキーはどれも省略できません。書き忘れを既定値で補わないためです。ほかに気をつけることは次のとおりです。
 
-- 書いた名前の Ruleset がなければ、`plan` は作成を示す。書かなかった Ruleset を、reco は変更も削除もしない
+- 書いた名前の Ruleset がなければ、`plan` は作成を示す。書かなかった Ruleset を、reco は変更も削除もしない。設定ファイルから要素を消しても、GitHub 上の Ruleset は残る
+- Ruleset を消すには、要素を消すのではなく、`name` と `state: absent` だけを書く。Ruleset があれば、`plan` は `present -> absent` と、消える Ruleset の今の内容の全体を示し、`apply` が消す。Ruleset がなければ、変更はない。消えたあとは、その要素を設定ファイルから消してよい
+- キーを書き忘れた要素や `rules: []` は削除の宣言にならない。書き忘れは設定ファイルの誤りとして拒否する
+
+```yaml
+    rulesets:
+      - name: legacy
+        state: absent
+```
+
 - 名前は、半角の英数字、空白、記号だけで書き、前後に空白を置かない。大文字と小文字だけが違う名前は同じ Ruleset とみなすため、同じリポジトリに並べられない
 - `bypass_actors` の `actor_type` は `RepositoryRole`、`User`、`Integration`、`DeployKey` のどれか。`bypass_mode` は `always`、`pull_request`、`exempt` のどれかで、省略できない。`RepositoryRole` の `actor_id` は `2`、`4`、`5` のどれかで、ロール名ではなく数値で書く。どの数値がどのロールかは公開されていないため、`show` の表示から書き写す。`DeployKey` には `actor_id` を書かず、`bypass_mode` は `always` だけ
 - `pull_request` の `parameters` は、例に示した5つのキーをすべて書く。`required_approving_review_count` は `0` から `10` の整数。省略できるキーは下の表のとおり
@@ -603,7 +613,8 @@ repositories:
 - `do_not_enforce_on_create` を省略すると、reco はこの値を比べず、送らない。ただし、GitHub は送らなかった `do_not_enforce_on_create` を `false` にするため、GitHub 上で `true` の Ruleset のほかの内容を変えようとすると、`plan` に `Applicability: not applicable` と `required_status_checks.do_not_enforce_on_create: true` が出る。今の値を保つなら `do_not_enforce_on_create: true` を、`false` に変えるなら `do_not_enforce_on_create: false` を書き足す
 - 非公開リポジトリには書けない。書くと `plan` に `Applicability: not applicable` と `Plan cannot be applied.` が出る
 - GitHub 上に、半角の英数字、空白、記号以外の文字（`é` など）を含む名前の Ruleset があると、そのリポジトリにまだない名前の Ruleset は作成できない。GitHub がその名前を書いた名前と同じとみなすかを reco が判断できないため、`plan` は `(existence unknown)` と `Applicability: not applicable` を示す。GitHub 上にすでにある Ruleset の名前を書いた場合は、内容を比べられる
-- reco がまだ解釈しないルール（`creation` など）や `pull_request` の設定（空でない `required_reviewers` など）を持つ Ruleset の名前を書くと、`plan` に `Applicability: not applicable` と、reco の解釈しない部分の一覧が出る。そうした Ruleset は設定ファイルから外す
+- reco がまだ解釈しないルール（`creation` など）や `pull_request` の設定（空でない `required_reviewers` など）を持つ Ruleset の名前を書くと、`plan` に `Applicability: not applicable` と、reco の解釈しない部分の一覧が出る。そうした Ruleset は設定ファイルから外す。`state: absent` を書いた場合も同じで、消える内容の全体を示せないため、reco は消さない
+- `é` などを含む名前の Ruleset があるリポジトリで、GitHub 上にない名前に `state: absent` を書くと、その名前の Ruleset がないことを reco が確かめられないため、`plan` は `(existence unknown) -> absent` と `Applicability: not applicable` を示す
 
 GitHub 上にある Ruleset を管理に取り込むときは、`reco show` の `rulesets` の表示から、その Ruleset の要素を設定ファイルに書き写します。表示は設定ファイルと同じキーと値で示すため、書き写したあとの `plan` は、その Ruleset に差分を示しません。ただし、`unavailable` のコメントが付いた Ruleset は取り込めません。`enforcement: evaluate`、`conditions: {}`、`2`・`4`・`5` 以外の `RepositoryRole` のように設定ファイルに書けない値を持つ Ruleset は、そのまま書き写すと設定ファイルの誤りになります。
 

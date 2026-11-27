@@ -160,10 +160,10 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 	reason := s.Observed.UnavailableReason()
 	switch {
 	case (s.Unit.Key.HasEnvironmentName() || s.Unit.Key == setting.RulesetResource) && reason == github.UnavailableNameUndetermined:
-		// 作成すれば、GitHub が同じとみなす既存の関連リソースを変え得る。同じリポジトリのほかの宣言では解消しない
+		// 作成すれば、GitHub が同じとみなす既存の関連リソースを変え得る。存在しないことの宣言は、存在するかを確かめられず、存在するなら消える値を承認の前に示せない。同じリポジトリのほかの宣言では解消しない
 		return NotApplicable(NotApplicableNameUndetermined)
 	case s.Unit.Key == setting.RulesetResource && reason == github.UnavailableUninterpretedParts:
-		// 期待値に変える更新は解釈しない部分も置き換え、reco が承認の前に示せない値を変えるか失わせる。同じリポジトリのほかの宣言では解消しない
+		// 期待値に変える更新は解釈しない部分も置き換え、削除は解釈しない部分も消し、reco が承認の前に示せない値を変えるか失わせる。同じリポジトリのほかの宣言では解消しない
 		return NotApplicable(NotApplicableUninterpretedParts)
 	case isMergeMessage(s.Unit.Key) && reason == github.UnavailableUnknownValue:
 		// 置き換えで失われる値の意味を、reco が承認の前に示せない。同じリポジトリのほかの宣言では解消しない
@@ -257,9 +257,10 @@ func enabledAtUpdate(required setting.Key, settings []SettingPlan, observed gith
 	})
 }
 
-// parametersResetBy は、Ruleset の値の変更予定 s が、宣言の省略によって変えるパラメータを返す。作成は変わる値がなく、ほかの設定は当たらないため、どちらも nil を返す。
+// parametersResetBy は、Ruleset の値の変更予定 s が、宣言の省略によって変えるパラメータを返す。
+// 作成は変わる値がなく、削除は値を送らず、ほかの設定は当たらないため、いずれも nil を返す。
 func parametersResetBy(s SettingPlan) []setting.ResetParameter {
-	if s.Unit.Key != setting.RulesetResource || s.IsConfirmedCreation() {
+	if s.Unit.Key != setting.RulesetResource || s.IsConfirmedCreation() || s.Desired.Equal(setting.Absent()) {
 		return nil
 	}
 	observed, _ := s.Observed.Value()
