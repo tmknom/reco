@@ -13,6 +13,8 @@ func TestUnit_String(t *testing.T) {
 		{name: "environment existence is the environment path", unit: Unit{Key: EnvironmentResource, Environment: production}, want: "environments.production"},
 		{name: "setting in an environment follows the environment path", unit: Unit{Key: EnvironmentDeploymentBranchPolicy, Environment: production}, want: "environments.production.deployment_branch_policy"},
 		{name: "required reviewers follow the environment path", unit: Unit{Key: EnvironmentRequiredReviewers, Environment: production}, want: "environments.production.required_reviewers"},
+		{name: "prevent self-review follows the environment path", unit: Unit{Key: EnvironmentPreventSelfReview, Environment: production}, want: "environments.production.prevent_self_review"},
+		{name: "wait timer follows the environment path", unit: Unit{Key: EnvironmentWaitTimer, Environment: production}, want: "environments.production.wait_timer"},
 		{name: "repository variable follows the variables path", unit: Unit{Key: RepositoryVariable, Variable: mustVariableName(t, "GO_VERSION")}, want: "actions.variables.GO_VERSION"},
 		{name: "environment variable follows the environment path", unit: Unit{Key: EnvironmentVariable, Environment: production, Variable: mustVariableName(t, "REGION")}, want: "environments.production.variables.REGION"},
 		{name: "ruleset follows the rulesets path with the declared spelling", unit: Unit{Key: RulesetResource, Ruleset: mustRulesetName(t, "Protect main")}, want: "rulesets.Protect main"},

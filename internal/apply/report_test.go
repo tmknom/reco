@@ -690,7 +690,7 @@ func TestWriteChangeReport_Environments(t *testing.T) {
 				completedRecord(creation),
 				{
 					change: staging, operations: succeeded, confirmation: desiredStateMatches,
-					unexpectedOutsideChanges: []unexpectedOutsideChange{{Setting: "environments.staging.wait_timer", Before: "30", After: "none"}},
+					unexpectedOutsideChanges: []unexpectedOutsideChange{{Setting: "environments.staging.wait_timer", Before: "30 minutes", After: "0 minutes"}},
 				},
 			},
 			want: "  owner/repo\n" +
@@ -698,7 +698,7 @@ func TestWriteChangeReport_Environments(t *testing.T) {
 				"    environments.staging.deployment_branch_policy: failed\n" +
 				"      Update request: succeeded\n" +
 				"      Desired state: matches\n" +
-				"      Other settings: environments.staging.wait_timer changed 30 -> none (cause not determined)\n\n" +
+				"      Other settings: environments.staging.wait_timer changed 30 minutes -> 0 minutes (cause not determined)\n\n" +
 				rollbackNote,
 		},
 		{
@@ -1038,6 +1038,36 @@ func TestUpdateRequestLabel_EnvironmentVariables(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got, want := updateRequestLabel(tc.operation, nil), "environments.production.variables.REGION"; got != want {
 				t.Errorf("updateRequestLabel() = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// TestUpdateRequestLabel_PreventSelfReviewAndWaitTimer は、自己承認の禁止とデプロイの待機時間の更新操作を、その管理設定の宣言の名前で示すことを確かめる。
+//
+//trace:checks FR-013
+func TestUpdateRequestLabel_PreventSelfReviewAndWaitTimer(t *testing.T) {
+	approved := withReviewers(observedEnvironment(7, "Production", setting.DeploymentBranchPolicyAll), false, 1)
+	cases := []struct {
+		name      string
+		operation changeplan.UpdateOperation
+		want      string
+	}{
+		{
+			name:      "prevent_self_review update is named by the setting",
+			operation: preventSelfReviewOrWaitTimerChange(t, "production", approved, setting.EnvironmentPreventSelfReview, setting.BoolValue(true)).Operations[0],
+			want:      "environments.production.prevent_self_review",
+		},
+		{
+			name:      "wait_timer update is named by the setting",
+			operation: preventSelfReviewOrWaitTimerChange(t, "production", approved, setting.EnvironmentWaitTimer, setting.WaitTimerValue(30)).Operations[0],
+			want:      "environments.production.wait_timer",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := updateRequestLabel(tc.operation, nil); got != tc.want {
+				t.Errorf("updateRequestLabel() = %q, want %q", got, tc.want)
 			}
 		})
 	}

@@ -17,6 +17,9 @@ func TestValue_String(t *testing.T) {
 		{value: AccessLevelValue(AccessUser), want: "user"},
 		{value: ForkPullRequestApprovalPolicyValue(ForkPullRequestApprovalAllExternalContributors), want: "all_external_contributors"},
 		{value: RetentionDaysValue(30), want: "30"},
+		{value: WaitTimerValue(0), want: "0 minutes"},
+		{value: WaitTimerValue(1), want: "1 minute"},
+		{value: WaitTimerValue(30), want: "30 minutes"},
 		{value: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesDisabled), want: "false"},
 		{value: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesEnabled), want: "true"},
 		{value: DependabotSecurityUpdatesValue(DependabotSecurityUpdatesPaused), want: "true (paused by GitHub)"},
@@ -67,6 +70,8 @@ func TestValue_Equal(t *testing.T) {
 		{name: "workflow conditions differing only in approval differ", a: PrivateForkPullRequestWorkflowConditionsValue(PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, RequireApprovalForForkPullRequestWorkflows: true}), b: PrivateForkPullRequestWorkflowConditionsValue(PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true}), equal: false},
 		{name: "same retention days are equal", a: RetentionDaysValue(30), b: RetentionDaysValue(30), equal: true},
 		{name: "different retention days differ", a: RetentionDaysValue(30), b: RetentionDaysValue(90), equal: false},
+		{name: "same wait timers are equal", a: WaitTimerValue(30), b: WaitTimerValue(30), equal: true},
+		{name: "different wait timers differ", a: WaitTimerValue(30), b: WaitTimerValue(31), equal: false},
 		{name: "criteria differing only in pattern order are equal", a: criteria("a/*", "b/*"), b: criteria("b/*", "a/*"), equal: true},
 		{name: "criteria with a different pattern differ", a: criteria("a/*"), b: criteria("b/*"), equal: false},
 		{name: "values of different kinds differ", a: BoolValue(false), b: SelectedActionsCriteriaValue(SelectedActionsCriteria{}), equal: false},
@@ -239,6 +244,21 @@ func TestValue_RetentionDaysOfBoolPanics(t *testing.T) {
 		}
 	}()
 	_ = BoolValue(true).RetentionDays()
+}
+
+func TestValue_WaitTimer(t *testing.T) {
+	if got := WaitTimerValue(30).WaitTimer(); got != 30 {
+		t.Errorf("WaitTimerValue(30).WaitTimer() = %d, want 30", got)
+	}
+}
+
+func TestValue_WaitTimerOfRetentionDaysPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("WaitTimer() did not panic for retention days")
+		}
+	}()
+	_ = RetentionDaysValue(30).WaitTimer()
 }
 
 func TestValue_PrivateForkPullRequestWorkflowConditions(t *testing.T) {

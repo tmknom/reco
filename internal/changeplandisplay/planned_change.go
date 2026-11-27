@@ -112,6 +112,8 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 	case changeplan.NotApplicableAboveMaximumAllowed:
 		maximum := s.Applicability.MaximumAllowed()
 		return fmt.Sprintf("%d days exceeds the maximum of %d days that GitHub allows for this repository; declare %s: %d or less", s.Desired.RetentionDays(), maximum, key.DeclaredKeyName(), maximum)
+	case changeplan.NotApplicableNoRequiredReviewers:
+		return "the environment would have no required reviewers, which GitHub requires to set prevent_self_review; declare required_reviewers with at least one reviewer or remove prevent_self_review"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(s.Applicability.Reason())))
 }

@@ -11,7 +11,7 @@ import (
 // SideEffect は、変更予定に添える変更に伴う副作用で、GitHub が変える未管理設定と、起きる変化を表す。
 type SideEffect struct {
 	Kind SideEffectKind
-	// Observed は、Kind が reco の観測する設定に及ぶときと、Environment の自己承認の禁止が失われるときだけ持つ、その設定の計画時の設定の観測結果。
+	// Observed は、Kind が reco の観測する設定に及ぶときだけ持つ、その設定の計画時の設定の観測結果。
 	// 観測値なら変わる前の値を、観測不能なら失われる可能性だけを表す。観測しない設定に及ぶ副作用ではゼロ値。
 	Observed github.SettingObservation[setting.Value]
 }
@@ -36,14 +36,14 @@ const (
 )
 
 // SettingExpectedUnaffected は、副作用を示さなかった設定と、その計画時の設定の観測結果。
+// Key が Environment の名前を含む形なら、変更予定と同じ Environment の中の設定を指す。
 type SettingExpectedUnaffected struct {
 	Key      setting.Key
 	Observed github.SettingObservation[setting.Value]
 }
 
-// ObservedSetting は、副作用が及ぶ設定のうち、reco が観測し、設定の識別だけで引ける設定を返す。
+// ObservedSetting は、副作用が及ぶ設定のうち、reco が観測する設定の形を返す。Environment の名前を含む形は、変更予定と同じ Environment の中の設定を指す。
 // Dependency graph は観測しないため偽を返し、その副作用は変更前提にも更新後の比較にも含めない。
-// Environment の自己承認の禁止は設定の識別を持たず、変更前提は担当者の集合の基準が伴うため偽を返す。
 // 未定義の種類は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func (k SideEffectKind) ObservedSetting() (setting.Key, bool) {
 	switch k {
@@ -53,7 +53,9 @@ func (k SideEffectKind) ObservedSetting() (setting.Key, bool) {
 		return setting.DependabotSecurityUpdates, true
 	case SideEffectPushProtectionDisabled:
 		return setting.RepositoryPushProtection, true
-	case SideEffectDependencyGraphEnabled, SideEffectDependencyGraphDisabled, SideEffectPreventSelfReviewDiscarded:
+	case SideEffectPreventSelfReviewDiscarded:
+		return setting.EnvironmentPreventSelfReview, true
+	case SideEffectDependencyGraphEnabled, SideEffectDependencyGraphDisabled:
 		return "", false
 	}
 	panic(fmt.Sprintf("changeplan: undefined side effect kind %d", int(k)))
@@ -67,7 +69,7 @@ func sideEffects(s SettingPlan, observed github.ObservationResult, settings []Se
 		return selectedActionsSideEffects(s, observed), nil
 	}
 	if s.Unit.Key == setting.EnvironmentRequiredReviewers {
-		return preventSelfReviewSideEffects(s, observed), nil
+		return preventSelfReviewSideEffects(s, observed, settings)
 	}
 	if s.Result != Mismatch {
 		return nil, nil
@@ -92,19 +94,24 @@ func selectedActionsSideEffects(s SettingPlan, observed github.ObservationResult
 	return []SideEffect{{Kind: SideEffectSelectedActionsDiscarded, Observed: observed.Setting(setting.Unit{Key: setting.SelectedActions})}}
 }
 
-// preventSelfReviewSideEffects は、担当者の集合の変更予定 s が担当者をすべて外すとき、GitHub が自己承認の禁止も失わせる副作用を返す。
-// 担当者のいない保護ルールの自己承認の禁止も、同じ保護ルールの値として失われる。
-// 存在しない Environment と保護ルールのない Environment は、失われる値がないため、副作用を添えない。
-// 一致する変更予定は、保護ルールがないことが一致の条件のため、保護ルールの有無の判定で副作用を添えない。
-func preventSelfReviewSideEffects(s SettingPlan, observed github.ObservationResult) []SideEffect {
-	if len(s.Desired.ReviewerSet().Reviewers()) > 0 {
-		return nil
+// preventSelfReviewSideEffects は、担当者の集合の不一致 s が担当者をすべて外すとき、GitHub が同じ Environment の自己承認の禁止を偽にする変化を、
+// 副作用か副作用を示さなかった設定として返す。計画時に真なら値が失われる副作用で、偽なら示さずに変更前提で偽のままであることを確かめる。
+// 承認のあとに外部主体が真にした値を、示さないまま失わせないため。
+// 同じ Environment の自己承認の禁止を宣言していれば、この変化は管理設定の変更か一致で、どちらにも数えない (Environments の設計の適用可能性と副作用)。
+// 不一致でない計画は、存在しない Environment (失われる値がない) か、保護ルールのない一致のため、何も返さない。
+func preventSelfReviewSideEffects(s SettingPlan, observed github.ObservationResult, settings []SettingPlan) ([]SideEffect, []SettingExpectedUnaffected) {
+	if s.Result != Mismatch || !s.Desired.ReviewerSet().HasNoReviewers() {
+		return nil, nil
 	}
-	environment, ok := observed.Environments.Lookup(s.Unit.Environment).Existing()
-	if !ok || environment.Protection.RequiredReviewers == nil || !environment.Protection.RequiredReviewers.PreventSelfReview {
-		return nil
+	unit := setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: s.Unit.Environment}
+	if _, declared := (RepositoryPlan{Settings: settings}).settingPlanOf(unit); declared {
+		return nil, nil
 	}
-	return []SideEffect{{Kind: SideEffectPreventSelfReviewDiscarded, Observed: github.Observed(setting.BoolValue(true))}}
+	current := observed.Setting(unit)
+	if value, ok := current.Value(); ok && value.Bool() {
+		return []SideEffect{{Kind: SideEffectPreventSelfReviewDiscarded, Observed: current}}, nil
+	}
+	return nil, []SettingExpectedUnaffected{{Key: setting.EnvironmentPreventSelfReview, Observed: current}}
 }
 
 // dependencyGraphSideEffect は、Dependabot alerts の不一致 s に伴う Dependency graph の副作用を返す。

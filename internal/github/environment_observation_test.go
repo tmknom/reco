@@ -113,6 +113,62 @@ func TestEnvironmentObservation(t *testing.T) {
 		}
 	})
 
+	t.Run("existing environment observes its prevent_self_review, false without a protection rule", func(t *testing.T) {
+		withProtection := func(protection setting.EnvironmentProtection) EnvironmentObservation {
+			return Environments{Existing: []Environment{{ID: 7, Name: "production", Protection: protection}}}.Lookup(declared)
+		}
+		cases := []struct {
+			name        string
+			observation EnvironmentObservation
+			want        bool
+		}{
+			{name: "no rule is false", observation: withProtection(setting.EnvironmentProtection{}), want: false},
+			{name: "a rule that prevents self review is true", observation: withProtection(setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{PreventSelfReview: true}}), want: true},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				if got, want := tc.observation.PreventSelfReview(), Observed(setting.BoolValue(tc.want)); !reflect.DeepEqual(got, want) {
+					t.Errorf("PreventSelfReview() = %+v, want %+v", got, want)
+				}
+			})
+		}
+	})
+
+	t.Run("absent environment makes its prevent_self_review unavailable as absent", func(t *testing.T) {
+		got, want := absent.PreventSelfReview(), Unavailable[setting.Value](UnavailableEnvironmentAbsent)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("PreventSelfReview() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("unavailable environment makes its prevent_self_review unavailable with the same reason", func(t *testing.T) {
+		got, want := unavailable.PreventSelfReview(), Unavailable[setting.Value](UnavailableNameUndetermined)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("PreventSelfReview() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("existing environment observes its wait_timer in minutes", func(t *testing.T) {
+		observation := Environments{Existing: []Environment{{ID: 7, Name: "production", Protection: setting.EnvironmentProtection{WaitTimer: 30}}}}.Lookup(declared)
+		if got, want := observation.WaitTimer(), Observed(setting.WaitTimerValue(30)); !reflect.DeepEqual(got, want) {
+			t.Errorf("WaitTimer() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("absent environment makes its wait_timer unavailable as absent", func(t *testing.T) {
+		got, want := absent.WaitTimer(), Unavailable[setting.Value](UnavailableEnvironmentAbsent)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("WaitTimer() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("unavailable environment makes its wait_timer unavailable with the same reason", func(t *testing.T) {
+		got, want := unavailable.WaitTimer(), Unavailable[setting.Value](UnavailableNameUndetermined)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("WaitTimer() = %+v, want %+v", got, want)
+		}
+	})
+
 	t.Run("existing environment observes a listed variable's value and an unlisted one as absent", func(t *testing.T) {
 		if got, want := existing.Variable(mustVariableName(t, "REGION")), Observed(setting.VariableValue("eu")); !reflect.DeepEqual(got, want) {
 			t.Errorf("Variable(REGION) = %+v, want %+v", got, want)

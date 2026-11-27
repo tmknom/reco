@@ -43,14 +43,10 @@ func checkPrecondition(approvedID repository.ID, operation changeplan.UpdateOper
 
 // matchesPreconditionBasis は、変更前提の基準 basis の設定が、更新直前の観測 observed で承認時に予定した値と同じかを返す。
 // Environment そのものは、存在に加えて同一性を確かめるため、一覧から一度だけ引いた観測結果で両方を比べる。
-// 担当者の集合は、値に加えて、GitHub が担当者と一緒に失わせる自己承認の禁止を、基準に伴う予定した値と比べる。自己承認の禁止は宣言を受け付けず、設定の識別を持たないため。
 func matchesPreconditionBasis(basis changeplan.PreconditionBasis, observed github.ObservationResult, created github.EnvironmentObservation) bool {
 	switch basis.Unit.Key {
 	case setting.EnvironmentResource:
 		return matchesAnticipatedEnvironment(basis, observed.Environments.Lookup(basis.Unit.Environment), created)
-	case setting.EnvironmentRequiredReviewers:
-		return matchesAnticipatedValue(basis.AnticipatedValue, observed.Setting(basis.Unit)) &&
-			matchesAnticipatedPreventSelfReview(basis.AnticipatedPreventSelfReview, observed.Environments.Lookup(basis.Unit.Environment))
 	case setting.RulesetResource:
 		return matchesAnticipatedRuleset(basis, observed.Rulesets.Lookup(basis.Unit.Ruleset))
 	default:
@@ -122,20 +118,6 @@ func matchesAnticipatedRuleset(basis changeplan.PreconditionBasis, current githu
 	}
 	existing, exists := current.Existing()
 	return !exists || existing.ID == id
-}
-
-// matchesAnticipatedPreventSelfReview は、担当者の集合の基準に伴う自己承認の禁止の予定した値 anticipated が、更新直前に引いた観測結果 current と同じかを返す。
-// 保護ルールのない Environment の自己承認の禁止を偽と読み替えない。担当者と一緒に失われる値がないことになり、承認時に示した副作用と食い違うため。
-// 存在を確かめられない Environment は保護ルールを持たない観測になるため、同じ分岐で偽になる。
-func matchesAnticipatedPreventSelfReview(anticipated *bool, current github.EnvironmentObservation) bool {
-	if anticipated == nil {
-		return true
-	}
-	existing, _ := current.Existing()
-	if existing.Protection.RequiredReviewers == nil {
-		return false
-	}
-	return existing.Protection.RequiredReviewers.PreventSelfReview == *anticipated
 }
 
 // environmentCreatedIn は、change が先頭の更新操作で作成する Environment の ID の基準を、更新直前の観測の並び before から引く。

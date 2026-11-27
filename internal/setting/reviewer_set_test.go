@@ -121,6 +121,26 @@ func TestReviewerSet_WithLoginsFrom(t *testing.T) {
 	}
 }
 
+//trace:checks FR-006
+func TestReviewerSet_HasNoReviewers(t *testing.T) {
+	cases := []struct {
+		name string
+		set  ReviewerSet
+		want bool
+	}{
+		{name: "no rule has no reviewers", set: ReviewerSetOfRule(nil), want: true},
+		{name: "a rule without reviewers has no reviewers", set: ReviewerSetOfRule(&RequiredReviewers{PreventSelfReview: true}), want: true},
+		{name: "one reviewer is a reviewer", set: ReviewerSetOf([]Reviewer{reviewerUser1}), want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.set.HasNoReviewers(); got != tc.want {
+				t.Errorf("HasNoReviewers() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-004
 func TestReviewerSet_IsRuleWithoutReviewers(t *testing.T) {
 	cases := []struct {

@@ -211,6 +211,63 @@ func TestJudgeApplicability(t *testing.T) {
 	}
 }
 
+// TestJudgeApplicability_PreventSelfReview は、自己承認の禁止の変更予定を、更新時点に担当者がいない状態になる見込みで、
+// prevent_self_review を送らずには期待値にならないときに適用不能とすることを確かめる。
+//
+//trace:checks FR-006 INV-001
+func TestJudgeApplicability_PreventSelfReview(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	preventUnit := setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: production}
+	reviewersUnit := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}
+	user1 := setting.Reviewer{Type: setting.ReviewerUser, ID: 1}
+	observedWith := func(rule *setting.RequiredReviewers) github.ObservationResult {
+		return github.ObservationResult{Environments: &github.Environments{Existing: []github.Environment{{ID: 7, Name: "production", Protection: setting.EnvironmentProtection{RequiredReviewers: rule}}}}}
+	}
+	noRule := observedWith(nil)
+	withReviewer := observedWith(&setting.RequiredReviewers{PreventSelfReview: true, Reviewers: []setting.Reviewer{user1}})
+	ruleWithoutReviewers := observedWith(&setting.RequiredReviewers{PreventSelfReview: true, Reviewers: []setting.Reviewer{}})
+	absent := github.ObservationResult{Environments: &github.Environments{}}
+	prevent := func(observed github.ObservationResult, desired bool) SettingPlan {
+		return newSettingPlan(preventUnit, observed.Setting(preventUnit), setting.BoolValue(desired))
+	}
+	reviewers := func(observed github.ObservationResult, desired ...setting.Reviewer) SettingPlan {
+		return newSettingPlan(reviewersUnit, observed.Setting(reviewersUnit), setting.ReviewerSetValue(setting.ReviewerSetOf(desired)))
+	}
+	creation := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch}
+	notApplicable := NotApplicable(NotApplicableNoRequiredReviewers)
+	cases := []struct {
+		name     string
+		observed github.ObservationResult
+		in       SettingPlan
+		// others は、in と同じリポジトリの計画に並ぶ、in のほかの管理設定の計画。
+		others []SettingPlan
+		want   Applicability
+	}{
+		{name: "true without a protection rule and without declared reviewers is not applicable", observed: noRule, in: prevent(noRule, true), want: notApplicable},
+		{name: "false of a rule without reviewers and without declared reviewers is not applicable", observed: ruleWithoutReviewers, in: prevent(ruleWithoutReviewers, false), want: notApplicable},
+		{name: "true without a protection rule is applicable with a declared reviewer", observed: noRule, in: prevent(noRule, true), others: []SettingPlan{reviewers(noRule, user1)}, want: Applicable()},
+		{name: "false with an observed reviewer and without declared reviewers is applicable", observed: withReviewer, in: prevent(withReviewer, false), want: Applicable()},
+		{
+			name: "false with declared no reviewers is applicable because removing every reviewer makes it false", observed: withReviewer, in: prevent(withReviewer, false),
+			others: []SettingPlan{reviewers(withReviewer)}, want: Applicable(),
+		},
+		{name: "true of an environment to create without declared reviewers is not applicable", observed: absent, in: prevent(absent, true), others: []SettingPlan{creation}, want: notApplicable},
+		{name: "false of an environment to create is applicable because a created environment has false", observed: absent, in: prevent(absent, false), others: []SettingPlan{creation}, want: Applicable()},
+		{
+			name: "true of an environment to create is applicable with a declared reviewer", observed: absent, in: prevent(absent, true),
+			others: []SettingPlan{creation, reviewers(absent, user1)}, want: Applicable(),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := append([]SettingPlan{tc.in}, tc.others...)
+			if got := judgeApplicability(tc.in, settings, tc.observed); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("judgeApplicability() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestJudgeApplicability_Rulesets は、Ruleset の不一致を適用可能とし、比較不能を理由ごとの適用不能にすることを確かめる。
 //
 //trace:checks FR-006 INV-001

@@ -14,6 +14,10 @@ import (
 // maxRequiredReviewers は、GitHub が受け付ける担当者の件数の上限。
 const maxRequiredReviewers = 6
 
+// maxWaitTimerMinutes は、デプロイの待機時間として受け付ける分数の上限。
+// GitHub の公式資料は 43200 までとするが、43200 を送ると GitHub は成功を応答して値を変えなかった。
+const maxWaitTimerMinutes = 43199
+
 func (d document) declaration() (Declaration, error) {
 	entries, err := d.mappingEntries(d.root, "root", []string{"repositories"}, nil)
 	if err != nil {
@@ -112,7 +116,7 @@ func (d document) environments(n *yaml.Node, path string) ([]EnvironmentDeclarat
 }
 
 func (d document) environment(n *yaml.Node, path string) (EnvironmentDeclaration, error) {
-	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"deployment_branch_policy", "required_reviewers", "variables"})
+	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"deployment_branch_policy", "required_reviewers", "prevent_self_review", "wait_timer", "variables"})
 	if err != nil {
 		return EnvironmentDeclaration{}, err
 	}
@@ -140,12 +144,42 @@ func (d document) environment(n *yaml.Node, path string) (EnvironmentDeclaration
 		}
 		declaration.RequiredReviewers = &reviewers
 	}
+	if value, ok := entries["prevent_self_review"]; ok {
+		preventSelfReview, err := d.boolValue(value, path+".prevent_self_review")
+		if err != nil {
+			return EnvironmentDeclaration{}, err
+		}
+		declaration.PreventSelfReview = &preventSelfReview
+	}
+	if value, ok := entries["wait_timer"]; ok {
+		waitTimer, err := d.waitTimerValue(value, path+".wait_timer")
+		if err != nil {
+			return EnvironmentDeclaration{}, err
+		}
+		declaration.WaitTimer = &waitTimer
+	}
+	if declaration.RequiredReviewers != nil && declaration.RequiredReviewers.HasNoReviewers() && declaration.PreventSelfReview != nil && *declaration.PreventSelfReview {
+		return EnvironmentDeclaration{}, invalid(entries["prevent_self_review"], path+".prevent_self_review", "must not be true when required_reviewers is []; GitHub keeps prevent_self_review only while the environment has reviewers")
+	}
 	if value, ok := entries["variables"]; ok {
 		if declaration.Variables, err = d.variables(value, path+".variables"); err != nil {
 			return EnvironmentDeclaration{}, err
 		}
 	}
 	return declaration, nil
+}
+
+// waitTimerValue は、デプロイの待機時間の分数を 0 から maxWaitTimerMinutes までの整数として読む。
+// 負の値は、符号付きの表記を受理しない intValue が拒否する。
+func (d document) waitTimerValue(n *yaml.Node, path string) (int, error) {
+	minutes, err := d.intValue(n, path)
+	if err != nil {
+		return 0, err
+	}
+	if minutes > maxWaitTimerMinutes {
+		return 0, invalid(n, path, "must be an integer from 0 to %d; got %d", maxWaitTimerMinutes, minutes)
+	}
+	return minutes, nil
 }
 
 // requiredReviewers は、担当者の宣言の並びを宣言の順のまま、集合として読む。

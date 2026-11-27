@@ -10,7 +10,6 @@ import (
 
 //trace:checks FR-004 QR-002
 func TestWriteEnvironments(t *testing.T) {
-	waitTimer := func(minutes int) *int { return &minutes }
 	unprotected := setting.EnvironmentProtection{CanAdminsBypass: true}
 	allMode := setting.DeploymentBranchPolicyAll
 	// 変数の行の規則は TestWriteEnvironmentVariables が確かめるため、ここでは一つもない Environment にする
@@ -32,8 +31,8 @@ func TestWriteEnvironments(t *testing.T) {
 				{Name: "production", DeploymentBranchPolicyMode: allMode, Protection: unprotected, Variables: noVariables},
 			}},
 			want: "    environments:\n" +
-				"      - name: \"staging\"\n        deployment_branch_policy:\n          mode: all\n        required_reviewers: []\n        # variables: none\n" +
-				"      - name: \"production\"\n        deployment_branch_policy:\n          mode: all\n        required_reviewers: []\n        # variables: none\n",
+				"      - name: \"staging\"\n        deployment_branch_policy:\n          mode: all\n        required_reviewers: []\n        prevent_self_review: false\n        wait_timer: 0 # minutes\n        # variables: none\n" +
+				"      - name: \"production\"\n        deployment_branch_policy:\n          mode: all\n        required_reviewers: []\n        prevent_self_review: false\n        wait_timer: 0 # minutes\n        # variables: none\n",
 		},
 		{
 			name: "protected_branches shows only the mode",
@@ -41,7 +40,7 @@ func TestWriteEnvironments(t *testing.T) {
 				{Name: "staging", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyProtectedBranches, Protection: unprotected, Variables: noVariables},
 			}},
 			want: "    environments:\n" +
-				"      - name: \"staging\"\n        deployment_branch_policy:\n          mode: protected_branches\n        required_reviewers: []\n        # variables: none\n",
+				"      - name: \"staging\"\n        deployment_branch_policy:\n          mode: protected_branches\n        required_reviewers: []\n        prevent_self_review: false\n        wait_timer: 0 # minutes\n        # variables: none\n",
 		},
 		{
 			name: "selected shows each pattern as the type and the quoted name",
@@ -60,7 +59,7 @@ func TestWriteEnvironments(t *testing.T) {
 			want: "    environments:\n" +
 				"      - name: \"production\"\n        deployment_branch_policy:\n          mode: selected\n          patterns:\n" +
 				"            - type: branch\n              name: \"main\"\n" +
-				"            - type: tag\n              name: \"v*\"\n        required_reviewers: []\n        # variables: none\n",
+				"            - type: tag\n              name: \"v*\"\n        required_reviewers: []\n        prevent_self_review: false\n        wait_timer: 0 # minutes\n        # variables: none\n",
 		},
 		{
 			name: "selected without patterns shows the empty sequence",
@@ -68,20 +67,20 @@ func TestWriteEnvironments(t *testing.T) {
 				{Name: "production", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected, DeploymentPatterns: &github.DeploymentPatterns{}, Protection: unprotected, Variables: noVariables},
 			}},
 			want: "    environments:\n" +
-				"      - name: \"production\"\n        deployment_branch_policy:\n          mode: selected\n          patterns: []\n        required_reviewers: []\n        # variables: none\n",
+				"      - name: \"production\"\n        deployment_branch_policy:\n          mode: selected\n          patterns: []\n        required_reviewers: []\n        prevent_self_review: false\n        wait_timer: 0 # minutes\n        # variables: none\n",
 		},
 		{
-			name: "wait_timer and can_admins_bypass are not shown",
+			name: "wait_timer is shown in minutes as a trailing comment and can_admins_bypass is not shown",
 			environments: github.Environments{Existing: []github.Environment{
 				{
 					Name:                       "production",
 					DeploymentBranchPolicyMode: allMode,
-					Protection:                 setting.EnvironmentProtection{WaitTimer: waitTimer(30), CanAdminsBypass: false},
+					Protection:                 setting.EnvironmentProtection{WaitTimer: 30, CanAdminsBypass: false},
 					Variables:                  noVariables,
 				},
 			}},
 			want: "    environments:\n" +
-				"      - name: \"production\"\n        deployment_branch_policy:\n          mode: all\n        required_reviewers: []\n        # variables: none\n",
+				"      - name: \"production\"\n        deployment_branch_policy:\n          mode: all\n        required_reviewers: []\n        prevent_self_review: false\n        wait_timer: 30 # minutes\n        # variables: none\n",
 		},
 		{
 			name: "reviewers are shown in the given order with the login as a trailing comment",
@@ -107,6 +106,30 @@ func TestWriteEnvironments(t *testing.T) {
 				"        required_reviewers:\n" +
 				"          - type: User\n            id: 1234567 # hubot\n" +
 				"          - type: User\n            id: 583231 # octocat\n" +
+				"        prevent_self_review: false\n        wait_timer: 0 # minutes\n" +
+				"        # variables: none\n",
+		},
+		{
+			name: "prevent_self_review follows the reviewers and precedes wait_timer",
+			environments: github.Environments{Existing: []github.Environment{
+				{
+					Name:                       "production",
+					DeploymentBranchPolicyMode: allMode,
+					Protection: setting.EnvironmentProtection{
+						WaitTimer: 5,
+						RequiredReviewers: &setting.RequiredReviewers{
+							PreventSelfReview: true,
+							Reviewers:         []setting.Reviewer{{Type: setting.ReviewerUser, ID: 7}},
+						},
+					},
+					Variables: noVariables,
+				},
+			}},
+			want: "    environments:\n" +
+				"      - name: \"production\"\n        deployment_branch_policy:\n          mode: all\n" +
+				"        required_reviewers:\n" +
+				"          - type: User\n            id: 7\n" +
+				"        prevent_self_review: true\n        wait_timer: 5 # minutes\n" +
 				"        # variables: none\n",
 		},
 		{
@@ -131,21 +154,23 @@ func TestWriteEnvironments(t *testing.T) {
 				"        required_reviewers:\n" +
 				"          - type: User\n            id: 7\n" +
 				"          - type: Team\n            id: 42\n" +
+				"        prevent_self_review: false\n        wait_timer: 0 # minutes\n" +
 				"        # variables: none\n",
 		},
 		{
-			name: "a protection rule without reviewers is shown as a comment instead of an empty sequence",
+			name: "a protection rule without reviewers is shown as a comment and still shows its prevent_self_review",
 			environments: github.Environments{Existing: []github.Environment{
 				{
 					Name:                       "production",
 					DeploymentBranchPolicyMode: allMode,
-					Protection:                 setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{PreventSelfReview: true}},
+					Protection:                 setting.EnvironmentProtection{WaitTimer: 10, RequiredReviewers: &setting.RequiredReviewers{PreventSelfReview: true}},
 					Variables:                  noVariables,
 				},
 			}},
 			want: "    environments:\n" +
 				"      - name: \"production\"\n        deployment_branch_policy:\n          mode: all\n" +
 				"        # required_reviewers: no reviewers (a protection rule without reviewers remains)\n" +
+				"        prevent_self_review: true\n        wait_timer: 10 # minutes\n" +
 				"        # variables: none\n",
 		},
 		{
@@ -154,7 +179,7 @@ func TestWriteEnvironments(t *testing.T) {
 				{Name: "a\nb", DeploymentBranchPolicyMode: allMode, Protection: unprotected, Variables: noVariables},
 			}},
 			want: "    environments:\n" +
-				"      - name: \"a\\nb\"\n        deployment_branch_policy:\n          mode: all\n        required_reviewers: []\n        # variables: none\n",
+				"      - name: \"a\\nb\"\n        deployment_branch_policy:\n          mode: all\n        required_reviewers: []\n        prevent_self_review: false\n        wait_timer: 0 # minutes\n        # variables: none\n",
 		},
 		{
 			name: "a pattern name with a newline is escaped onto one line",
@@ -169,10 +194,10 @@ func TestWriteEnvironments(t *testing.T) {
 			}},
 			want: "    environments:\n" +
 				"      - name: \"production\"\n        deployment_branch_policy:\n          mode: selected\n          patterns:\n" +
-				"            - type: branch\n              name: \"a\\nb\"\n        required_reviewers: []\n        # variables: none\n",
+				"            - type: branch\n              name: \"a\\nb\"\n        required_reviewers: []\n        prevent_self_review: false\n        wait_timer: 0 # minutes\n        # variables: none\n",
 		},
 		{
-			name: "variables follow the reviewers of their environment and precede the next environment",
+			name: "variables follow wait_timer of their environment and precede the next environment",
 			environments: github.Environments{Existing: []github.Environment{
 				{
 					Name:                       "production",
@@ -187,8 +212,9 @@ func TestWriteEnvironments(t *testing.T) {
 				"      - name: \"production\"\n        deployment_branch_policy:\n          mode: selected\n          patterns:\n" +
 				"            - type: branch\n              name: \"main\"\n" +
 				"        required_reviewers: []\n" +
+				"        prevent_self_review: false\n        wait_timer: 0 # minutes\n" +
 				"        variables:\n          - name: \"REGION\"\n            value: \"eu\"\n" +
-				"      - name: \"staging\"\n        deployment_branch_policy:\n          mode: all\n        required_reviewers: []\n        # variables: none\n",
+				"      - name: \"staging\"\n        deployment_branch_policy:\n          mode: all\n        required_reviewers: []\n        prevent_self_review: false\n        wait_timer: 0 # minutes\n        # variables: none\n",
 		},
 	}
 	for _, tc := range cases {

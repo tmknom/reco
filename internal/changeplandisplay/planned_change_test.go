@@ -167,6 +167,23 @@ func TestPlannedChangeText(t *testing.T) {
 				"    Applicability: not applicable (120 days exceeds the maximum of 90 days that GitHub allows for this repository; declare days: 90 or less)\n",
 		},
 		{
+			name: "prevent_self_review without reviewers shows the reason and how to fix it",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: mustEnvironmentName(t, "production")}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
+				Result: changeplan.Mismatch, Applicability: changeplan.NotApplicable(changeplan.NotApplicableNoRequiredReviewers),
+			},
+			want: "  environments.production.prevent_self_review: false -> true\n" +
+				"    Applicability: not applicable (the environment would have no required reviewers, which GitHub requires to set prevent_self_review; declare required_reviewers with at least one reviewer or remove prevent_self_review)\n",
+		},
+		{
+			name: "wait_timer mismatch shows the minutes on one line",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.EnvironmentWaitTimer, Environment: mustEnvironmentName(t, "production")}, Observed: github.Observed(setting.WaitTimerValue(0)), Desired: setting.WaitTimerValue(30),
+				Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
+			},
+			want: "  environments.production.wait_timer: 0 minutes -> 30 minutes\n",
+		},
+		{
 			name: "private fork pull request workflows mismatch shows the values on separate lines and notes each enabled transmission in order",
 			s: changeplan.SettingPlan{
 				Unit:     setting.Unit{Key: setting.PrivateForkPullRequestWorkflows},

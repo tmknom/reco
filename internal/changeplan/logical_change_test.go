@@ -55,6 +55,8 @@ func TestUpdateOperation_Endpoint(t *testing.T) {
 		{name: "environment update has no endpoint of a setting", operation: UpdateOperation{Kind: DeploymentBranchPolicyModeUpdate, Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}}},
 		{name: "ruleset creation has no endpoint of a setting", operation: UpdateOperation{Kind: RulesetCreation, Unit: rulesetUnit(t, "protect")}},
 		{name: "required reviewers update has no endpoint of a setting", operation: UpdateOperation{Kind: RequiredReviewersUpdate, Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}}},
+		{name: "prevent self-review update has no endpoint of a setting", operation: UpdateOperation{Kind: PreventSelfReviewUpdate, Unit: setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: production}}},
+		{name: "wait timer update has no endpoint of a setting", operation: UpdateOperation{Kind: WaitTimerUpdate, Unit: setting.Unit{Key: setting.EnvironmentWaitTimer, Environment: production}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -651,7 +653,8 @@ func TestRepositoryPlan_LogicalChangesOfRequiredReviewers(t *testing.T) {
 	all := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll})
 	protected := setting.DeploymentBranchPolicyValue(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches})
 	absentEnvironment := github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent)
-	selfReviewPrevented, selfReviewAllowed := true, false
+	selfReviewPrevented, selfReviewAllowed := setting.BoolValue(true), setting.BoolValue(false)
+	stagingPrevent := setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: staging}
 	reviewersChange := func(unit setting.Unit, desired setting.Value, bases ...PreconditionBasis) LogicalChange {
 		return LogicalChange{
 			DesiredState: []configuration.ManagedSetting{{Unit: unit, Desired: desired}},
@@ -672,7 +675,7 @@ func TestRepositoryPlan_LogicalChangesOfRequiredReviewers(t *testing.T) {
 			want: []LogicalChange{reviewersChange(stagingReviewers, user2, stagingEnvironment, PreconditionBasis{Unit: stagingReviewers, AnticipatedValue: AnticipateValue(user1)})},
 		},
 		{
-			name: "removing every reviewer adds prevent_self_review that is true to the reviewers basis",
+			name: "removing every reviewer bases the update on prevent_self_review discarded as a side effect, after the reviewers",
 			settings: []SettingPlan{
 				stagingExistence,
 				{
@@ -680,15 +683,58 @@ func TestRepositoryPlan_LogicalChangesOfRequiredReviewers(t *testing.T) {
 					SideEffects: []SideEffect{{Kind: SideEffectPreventSelfReviewDiscarded, Observed: github.Observed(setting.BoolValue(true))}},
 				},
 			},
-			want: []LogicalChange{reviewersChange(stagingReviewers, noReviewers, stagingEnvironment, PreconditionBasis{Unit: stagingReviewers, AnticipatedValue: AnticipateValue(user1), AnticipatedPreventSelfReview: &selfReviewPrevented})},
+			want: []LogicalChange{{
+				DesiredState: []configuration.ManagedSetting{{Unit: stagingReviewers, Desired: noReviewers}},
+				Operations: []UpdateOperation{{
+					Kind: RequiredReviewersUpdate, Unit: stagingReviewers, Value: noReviewers,
+					PreconditionBases: []PreconditionBasis{stagingEnvironment, {Unit: stagingReviewers, AnticipatedValue: AnticipateValue(user1)}, {Unit: stagingPrevent, AnticipatedValue: AnticipateValue(selfReviewPrevented)}},
+				}},
+				SideEffectSettings: []setting.Unit{stagingPrevent},
+			}},
 		},
 		{
-			name: "removing every reviewer adds prevent_self_review that is false to the reviewers basis",
+			name: "removing every reviewer bases the update on prevent_self_review expected to stay false",
+			settings: []SettingPlan{
+				stagingExistence,
+				{
+					Unit: stagingReviewers, Observed: github.Observed(user1), Desired: noReviewers, Result: Mismatch, Applicability: Applicable(),
+					SettingsExpectedUnaffected: []SettingExpectedUnaffected{{Key: setting.EnvironmentPreventSelfReview, Observed: github.Observed(selfReviewAllowed)}},
+				},
+			},
+			want: []LogicalChange{reviewersChange(stagingReviewers, noReviewers, stagingEnvironment, PreconditionBasis{Unit: stagingReviewers, AnticipatedValue: AnticipateValue(user1)}, PreconditionBasis{Unit: stagingPrevent, AnticipatedValue: AnticipateValue(selfReviewAllowed)})},
+		},
+		{
+			name: "removing every reviewer with declared prevent_self_review false that is true is one change of both based on the declared plan",
 			settings: []SettingPlan{
 				stagingExistence,
 				{Unit: stagingReviewers, Observed: github.Observed(user1), Desired: noReviewers, Result: Mismatch, Applicability: Applicable()},
+				{Unit: stagingPrevent, Observed: github.Observed(selfReviewPrevented), Desired: selfReviewAllowed, Result: Mismatch, Applicability: Applicable()},
 			},
-			want: []LogicalChange{reviewersChange(stagingReviewers, noReviewers, stagingEnvironment, PreconditionBasis{Unit: stagingReviewers, AnticipatedValue: AnticipateValue(user1), AnticipatedPreventSelfReview: &selfReviewAllowed})},
+			want: []LogicalChange{{
+				DesiredState: []configuration.ManagedSetting{{Unit: stagingReviewers, Desired: noReviewers}, {Unit: stagingPrevent, Desired: selfReviewAllowed}},
+				Operations: []UpdateOperation{{
+					Kind: RequiredReviewersUpdate, Unit: stagingReviewers, Value: noReviewers,
+					PreconditionBases: []PreconditionBasis{stagingEnvironment, {Unit: stagingReviewers, AnticipatedValue: AnticipateValue(user1)}, {Unit: stagingPrevent, AnticipatedValue: AnticipateValue(selfReviewPrevented)}},
+				}},
+			}},
+		},
+		{
+			name: "removing every reviewer with declared prevent_self_review false that matches is based on it without changing it",
+			settings: []SettingPlan{
+				stagingExistence,
+				{Unit: stagingReviewers, Observed: github.Observed(user1), Desired: noReviewers, Result: Mismatch, Applicability: Applicable()},
+				{Unit: stagingPrevent, Observed: github.Observed(selfReviewAllowed), Desired: selfReviewAllowed, Result: Match},
+			},
+			want: []LogicalChange{reviewersChange(stagingReviewers, noReviewers, stagingEnvironment, PreconditionBasis{Unit: stagingReviewers, AnticipatedValue: AnticipateValue(user1)}, PreconditionBasis{Unit: stagingPrevent, AnticipatedValue: AnticipateValue(selfReviewAllowed)})},
+		},
+		{
+			name: "replacing reviewers is not based on prevent_self_review",
+			settings: []SettingPlan{
+				stagingExistence,
+				{Unit: stagingReviewers, Observed: github.Observed(user1), Desired: user2, Result: Mismatch, Applicability: Applicable()},
+				{Unit: stagingPrevent, Observed: github.Observed(selfReviewPrevented), Desired: selfReviewPrevented, Result: Match},
+			},
+			want: []LogicalChange{reviewersChange(stagingReviewers, user2, stagingEnvironment, PreconditionBasis{Unit: stagingReviewers, AnticipatedValue: AnticipateValue(user1)})},
 		},
 		{
 			name: "reviewers of an environment to create follow its creation as another change based only on no reviewers",
@@ -786,6 +832,163 @@ func TestRepositoryPlan_LogicalChangesOfRequiredReviewers(t *testing.T) {
 			settings: []SettingPlan{
 				productionCreation,
 				{Unit: productionReviewers, Observed: github.Observed(user1), Desired: user2, Result: Mismatch, Applicability: Applicable()},
+			},
+		},
+	}
+	for _, tc := range panics {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Error("LogicalChanges() did not panic")
+				}
+			}()
+			_, _ = RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: tc.settings}.LogicalChanges()
+		})
+	}
+}
+
+// TestRepositoryPlan_LogicalChangesOfPreventSelfReviewAndWaitTimer は、自己承認の禁止とデプロイの待機時間の変更予定から導く論理的な設定変更と、
+// その変更前提の基準を確かめる。
+//
+//trace:checks INV-001 INV-004 FR-010
+func TestRepositoryPlan_LogicalChangesOfPreventSelfReviewAndWaitTimer(t *testing.T) {
+	production, staging := mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging")
+	stagingExistence := SettingPlan{
+		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, Observed: github.Observed(setting.Present()), Desired: setting.Present(),
+		EnvironmentIdentity: ObservedEnvironmentIdentity(7), Result: Match,
+	}
+	stagingEnvironment := PreconditionBasis{Unit: stagingExistence.Unit, AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: ObservedEnvironmentIdentity(7)}
+	productionUnit := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
+	productionCreation := SettingPlan{Unit: productionUnit, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch, Applicability: Applicable()}
+	creation := LogicalChange{
+		DesiredState: []configuration.ManagedSetting{{Unit: productionUnit, Desired: setting.Present()}},
+		Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: productionUnit, PreconditionBases: []PreconditionBasis{{Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Absent())}}}},
+	}
+	stagingReviewers := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: staging}
+	stagingPrevent := setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: staging}
+	stagingWait := setting.Unit{Key: setting.EnvironmentWaitTimer, Environment: staging}
+	productionReviewers := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}
+	productionPrevent := setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: production}
+	productionWait := setting.Unit{Key: setting.EnvironmentWaitTimer, Environment: production}
+	stagingVariable := environmentVariableUnit(staging, mustVariableName(t, "REGION"))
+	user1 := setting.ReviewerSetValue(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}}))
+	noReviewers := setting.ReviewerSetValue(setting.ReviewerSetOf(nil))
+	prevented, allowed := setting.BoolValue(true), setting.BoolValue(false)
+	absentEnvironment := github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent)
+	change := func(kind UpdateOperationKind, unit setting.Unit, desired setting.Value, bases ...PreconditionBasis) LogicalChange {
+		return LogicalChange{
+			DesiredState: []configuration.ManagedSetting{{Unit: unit, Desired: desired}},
+			Operations:   []UpdateOperation{{Kind: kind, Unit: unit, Value: desired, PreconditionBases: bases}},
+		}
+	}
+	cases := []struct {
+		name     string
+		settings []SettingPlan
+		want     []LogicalChange
+	}{
+		{
+			name: "prevent_self_review mismatch of an existing environment is one update based on the environment and then its observed value",
+			settings: []SettingPlan{
+				stagingExistence,
+				{Unit: stagingPrevent, Observed: github.Observed(allowed), Desired: prevented, Result: Mismatch, Applicability: Applicable()},
+			},
+			want: []LogicalChange{change(PreventSelfReviewUpdate, stagingPrevent, prevented, stagingEnvironment, PreconditionBasis{Unit: stagingPrevent, AnticipatedValue: AnticipateValue(allowed)})},
+		},
+		{
+			name: "wait_timer mismatch of an existing environment is one update based on the environment and then its observed value",
+			settings: []SettingPlan{
+				stagingExistence,
+				{Unit: stagingWait, Observed: github.Observed(setting.WaitTimerValue(0)), Desired: setting.WaitTimerValue(30), Result: Mismatch, Applicability: Applicable()},
+			},
+			want: []LogicalChange{change(WaitTimerUpdate, stagingWait, setting.WaitTimerValue(30), stagingEnvironment, PreconditionBasis{Unit: stagingWait, AnticipatedValue: AnticipateValue(setting.WaitTimerValue(0))})},
+		},
+		{
+			// GitHub は担当者のいない Environment への prevent_self_review を拒むため、担当者の変更のあとに別の PUT で送る
+			name: "reviewers, prevent_self_review, and wait_timer of one environment are three changes in this order before its variables",
+			settings: []SettingPlan{
+				stagingExistence,
+				{Unit: stagingReviewers, Observed: github.Observed(noReviewers), Desired: user1, Result: Mismatch, Applicability: Applicable()},
+				{Unit: stagingPrevent, Observed: github.Observed(allowed), Desired: prevented, Result: Mismatch, Applicability: Applicable()},
+				{Unit: stagingWait, Observed: github.Observed(setting.WaitTimerValue(5)), Desired: setting.WaitTimerValue(0), Result: Mismatch, Applicability: Applicable()},
+				{Unit: stagingVariable, Observed: github.Observed(setting.Absent()), Desired: setting.VariableValue("value"), Result: Mismatch, Applicability: Applicable()},
+			},
+			want: []LogicalChange{
+				change(RequiredReviewersUpdate, stagingReviewers, user1, stagingEnvironment, PreconditionBasis{Unit: stagingReviewers, AnticipatedValue: AnticipateValue(noReviewers)}),
+				change(PreventSelfReviewUpdate, stagingPrevent, prevented, stagingEnvironment, PreconditionBasis{Unit: stagingPrevent, AnticipatedValue: AnticipateValue(allowed)}),
+				change(WaitTimerUpdate, stagingWait, setting.WaitTimerValue(0), stagingEnvironment, PreconditionBasis{Unit: stagingWait, AnticipatedValue: AnticipateValue(setting.WaitTimerValue(5))}),
+				{
+					DesiredState: []configuration.ManagedSetting{{Unit: stagingVariable, Desired: setting.VariableValue("value")}},
+					Operations: []UpdateOperation{{
+						Kind: EnvironmentVariableCreation, Unit: stagingVariable, Value: setting.VariableValue("value"),
+						PreconditionBases: []PreconditionBasis{stagingEnvironment, {Unit: stagingVariable, AnticipatedValue: AnticipateValue(setting.Absent())}},
+					}},
+				},
+			},
+		},
+		{
+			// 作られたばかりの Environment は required_reviewers と wait_timer の保護ルールを持たないため、作成直後の値と同じ宣言は送らずに期待状態が成り立つ
+			name: "prevent_self_review false and wait_timer 0 of an environment to create join the desired state of the creation without an update",
+			settings: []SettingPlan{
+				productionCreation,
+				{Unit: productionPrevent, Observed: absentEnvironment, Desired: allowed, Result: NotComparable, Applicability: Applicable()},
+				{Unit: productionWait, Observed: absentEnvironment, Desired: setting.WaitTimerValue(0), Result: NotComparable, Applicability: Applicable()},
+			},
+			want: []LogicalChange{{
+				DesiredState: []configuration.ManagedSetting{{Unit: productionUnit, Desired: setting.Present()}, {Unit: productionPrevent, Desired: allowed}, {Unit: productionWait, Desired: setting.WaitTimerValue(0)}},
+				Operations:   creation.Operations,
+			}},
+		},
+		{
+			name: "reviewers, prevent_self_review true, and wait_timer of an environment to create follow its creation as other changes based only on the values of a created environment",
+			settings: []SettingPlan{
+				productionCreation,
+				{Unit: productionReviewers, Observed: absentEnvironment, Desired: user1, Result: NotComparable, Applicability: Applicable()},
+				{Unit: productionPrevent, Observed: absentEnvironment, Desired: prevented, Result: NotComparable, Applicability: Applicable()},
+				{Unit: productionWait, Observed: absentEnvironment, Desired: setting.WaitTimerValue(30), Result: NotComparable, Applicability: Applicable()},
+			},
+			want: []LogicalChange{
+				creation,
+				change(RequiredReviewersUpdate, productionReviewers, user1, PreconditionBasis{Unit: productionReviewers, AnticipatedValue: AnticipateValue(noReviewers)}),
+				change(PreventSelfReviewUpdate, productionPrevent, prevented, PreconditionBasis{Unit: productionPrevent, AnticipatedValue: AnticipateValue(allowed)}),
+				change(WaitTimerUpdate, productionWait, setting.WaitTimerValue(30), PreconditionBasis{Unit: productionWait, AnticipatedValue: AnticipateValue(setting.WaitTimerValue(0))}),
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: tc.settings}.LogicalChanges()
+			if err != nil {
+				t.Fatalf("LogicalChanges() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("LogicalChanges() =\n%+v\nwant\n%+v", got, tc.want)
+			}
+		})
+	}
+
+	// 対にならない形は、reconcile と judgeApplicability が作らないため、基準のない更新操作を返さずに panic する
+	panics := []struct {
+		name     string
+		settings []SettingPlan
+	}{
+		{
+			name:     "prevent_self_review without the plan of its environment panics",
+			settings: []SettingPlan{{Unit: stagingPrevent, Observed: github.Observed(allowed), Desired: prevented, Result: Mismatch, Applicability: Applicable()}},
+		},
+		{
+			name: "not comparable wait_timer of an existing environment panics",
+			settings: []SettingPlan{
+				stagingExistence,
+				{Unit: stagingWait, Observed: absentEnvironment, Desired: setting.WaitTimerValue(30), Result: NotComparable, Applicability: Applicable()},
+			},
+		},
+		{
+			// 担当者が予定どおりにいない状態から prevent_self_review が変わることは観測から生じず、送れば GitHub が拒むため、黙って落とさない
+			name: "prevent_self_review mismatch with declared no reviewers that match panics",
+			settings: []SettingPlan{
+				stagingExistence,
+				{Unit: stagingReviewers, Observed: github.Observed(noReviewers), Desired: noReviewers, Result: Match},
+				{Unit: stagingPrevent, Observed: github.Observed(prevented), Desired: allowed, Result: Mismatch, Applicability: Applicable()},
 			},
 		},
 	}

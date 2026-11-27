@@ -70,6 +70,37 @@ func TestDesiredState_ManagedSettings(t *testing.T) {
 		}
 	})
 
+	t.Run("self review prevention and wait timer sit between the reviewers and the variables", func(t *testing.T) {
+		reviewers := setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}})
+		desired := DesiredState{
+			Environments: []EnvironmentDeclaration{
+				{Name: staging, RequiredReviewers: &reviewers, PreventSelfReview: new(true), WaitTimer: new(30), Variables: []VariableDeclaration{{Name: region, Desired: setting.VariableValue("us")}}},
+				{Name: production, PreventSelfReview: new(false), WaitTimer: new(0)},
+			},
+		}
+		want := []ManagedSetting{
+			{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, Desired: setting.Present()},
+			{Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: staging}, Desired: setting.ReviewerSetValue(reviewers)},
+			{Unit: setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: staging}, Desired: setting.BoolValue(true)},
+			{Unit: setting.Unit{Key: setting.EnvironmentWaitTimer, Environment: staging}, Desired: setting.WaitTimerValue(30)},
+			{Unit: setting.Unit{Key: setting.EnvironmentVariable, Environment: staging, Variable: region}, Desired: setting.VariableValue("us")},
+			{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Desired: setting.Present()},
+			{Unit: setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: production}, Desired: setting.BoolValue(false)},
+			{Unit: setting.Unit{Key: setting.EnvironmentWaitTimer, Environment: production}, Desired: setting.WaitTimerValue(0)},
+		}
+		if got := desired.ManagedSettings(); !reflect.DeepEqual(got, want) {
+			t.Errorf("ManagedSettings() =\n%+v\nwant\n%+v", got, want)
+		}
+	})
+
+	t.Run("omitted self review prevention and wait timer create no managed setting", func(t *testing.T) {
+		for _, m := range (DesiredState{Environments: []EnvironmentDeclaration{{Name: production}}}).ManagedSettings() {
+			if m.Unit.Key == setting.EnvironmentPreventSelfReview || m.Unit.Key == setting.EnvironmentWaitTimer {
+				t.Errorf("ManagedSettings() contains %+v, want neither setting", m)
+			}
+		}
+	})
+
 	t.Run("rulesets follow the environments in the declared order with their desired values", func(t *testing.T) {
 		zeta, alpha := mustRulesetName(t, "zeta"), mustRulesetName(t, "alpha")
 		desired := DesiredState{
@@ -179,7 +210,7 @@ func TestDesiredState_valueCoversEveryDesiredValue(t *testing.T) {
 
 // 関連リソースに関わる管理の単位は名前との組で識別するため、value では引けない。
 func TestDesiredState_valueOfRelatedResourceSettingPanics(t *testing.T) {
-	for _, key := range []setting.Key{setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentRequiredReviewers, setting.EnvironmentVariable, setting.RulesetResource} {
+	for _, key := range []setting.Key{setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentRequiredReviewers, setting.EnvironmentPreventSelfReview, setting.EnvironmentWaitTimer, setting.EnvironmentVariable, setting.RulesetResource} {
 		t.Run(string(key), func(t *testing.T) {
 			defer func() {
 				if recover() == nil {

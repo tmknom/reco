@@ -22,6 +22,7 @@ type Value struct {
 	approvalPolicy  ForkPullRequestApprovalPolicy
 	conditions      PrivateForkPullRequestWorkflowConditions
 	days            int
+	minutes         int
 	customization   OIDCSubjectCustomization
 	branchPolicy    DeploymentBranchPolicy
 	reviewerSet     ReviewerSet
@@ -42,6 +43,7 @@ const (
 	kindForkPullRequestApprovalPolicy
 	kindPrivateForkPullRequestWorkflowConditions
 	kindRetentionDays
+	kindWaitTimer
 	kindOIDCSubjectCustomization
 	kindDeploymentBranchPolicy
 	kindReviewerSet
@@ -92,6 +94,11 @@ func PrivateForkPullRequestWorkflowConditionsValue(conditions PrivateForkPullReq
 // RetentionDaysValue は、保持日数の値を作る。範囲の外の日数も観測値としてあり得るため、範囲を確かめない。
 func RetentionDaysValue(days int) Value {
 	return Value{kind: kindRetentionDays, days: days}
+}
+
+// WaitTimerValue は、Environment のデプロイの待機時間を分の数で表す値を作る。
+func WaitTimerValue(minutes int) Value {
+	return Value{kind: kindWaitTimer, minutes: minutes}
 }
 
 // OIDCSubjectCustomizationValue は、OIDC トークンの subject クレームのカスタマイズの値を作る。
@@ -161,6 +168,7 @@ func (v Value) Equal(other Value) bool {
 		v.approvalPolicy == other.approvalPolicy &&
 		v.conditions == other.conditions &&
 		v.days == other.days &&
+		v.minutes == other.minutes &&
 		v.customization.equal(other.customization) &&
 		v.branchPolicy.equal(other.branchPolicy) &&
 		v.reviewerSet.equal(other.reviewerSet) &&
@@ -194,6 +202,12 @@ func (v Value) String() string {
 			", require_approval_for_fork_pr_workflows: " + strconv.FormatBool(v.conditions.RequireApprovalForForkPullRequestWorkflows)
 	case kindRetentionDays:
 		return strconv.Itoa(v.days)
+	case kindWaitTimer:
+		// 単位を添えて、分の数だと表示から分かるようにする (CLI 仕様)
+		if v.minutes == 1 {
+			return "1 minute"
+		}
+		return strconv.Itoa(v.minutes) + " minutes"
 	case kindOIDCSubjectCustomization:
 		return v.customization.format()
 	case kindDeploymentBranchPolicy:
@@ -288,6 +302,14 @@ func (v Value) RetentionDays() int {
 		panic("setting: value is not retention days")
 	}
 	return v.days
+}
+
+// WaitTimer は、デプロイの待機時間の分の数を返す。それ以外の値は不変条件の破れのため panic する。
+func (v Value) WaitTimer() int {
+	if v.kind != kindWaitTimer {
+		panic("setting: value is not a wait timer")
+	}
+	return v.minutes
 }
 
 // OIDCSubjectCustomization は、OIDC トークンの subject クレームのカスタマイズの値を返す。それ以外の値は不変条件の破れのため panic する。

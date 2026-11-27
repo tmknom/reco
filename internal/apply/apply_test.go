@@ -806,6 +806,81 @@ func TestRun_RequiredReviewers(t *testing.T) {
 	})
 }
 
+// TestRun_PreventSelfReviewAndWaitTimer は、担当者の集合、自己承認の禁止、デプロイの待機時間の宣言を、計画の生成から実行までつなぐことを確かめる。
+//
+//trace:checks INV-001 INV-004 INV-005 FR-011
+func TestRun_PreventSelfReviewAndWaitTimer(t *testing.T) {
+	reviewers := func(preventSelfReview bool, ids ...int64) *githubtest.RequiredReviewersBody {
+		body := &githubtest.RequiredReviewersBody{PreventSelfReview: preventSelfReview}
+		for _, id := range ids {
+			body.Reviewers = append(body.Reviewers, githubtest.ReviewerBody{Type: "User", ID: id})
+		}
+		return body
+	}
+	reads := []string{"GET /repos/owner/repo", "GET /repos/owner/repo/environments"}
+	const putProduction = "PUT /repos/owner/repo/environments/production"
+
+	// 自己承認の禁止は担当者がいない状態では GitHub が拒むため担当者のあとに送り、どの PUT もその設定だけを送る
+	t.Run("reviewers, prevent_self_review and wait_timer are sent in three update requests in this order each with only its own key", func(t *testing.T) {
+		unprotected := githubtest.EnvironmentBody{ID: 7, Name: "production"}
+		reviewed := githubtest.EnvironmentBody{ID: 7, Name: "production", RequiredReviewers: reviewers(false, 1)}
+		selfReviewPrevented := githubtest.EnvironmentBody{ID: 7, Name: "production", RequiredReviewers: reviewers(true, 1)}
+		waiting := githubtest.EnvironmentBody{ID: 7, Name: "production", RequiredReviewers: reviewers(true, 1), WaitTimer: new(30)}
+		baseURL, server := newSequenceServer(t,
+			okRepository(1, false, false), okEnvironments(unprotected),
+			okRepository(1, false, false), okEnvironments(unprotected), okEnvironment(reviewed),
+			okRepository(1, false, false), okEnvironments(reviewed),
+			okRepository(1, false, false), okEnvironments(reviewed), okEnvironment(selfReviewPrevented),
+			okRepository(1, false, false), okEnvironments(selfReviewPrevented),
+			okRepository(1, false, false), okEnvironments(selfReviewPrevented), okEnvironment(waiting),
+			okRepository(1, false, false), okEnvironments(waiting))
+		var out bytes.Buffer
+
+		err := Run(context.Background(), Config{
+			Token: "test-token",
+			Configuration: configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(`repositories:
+  - name: owner/repo
+    environments:
+      - name: production
+        required_reviewers:
+          - type: User
+            id: 1
+        prevent_self_review: true
+        wait_timer: 30
+`)}}, Name: "reco.yaml", Path: "./reco.yaml"},
+			Out:           &out,
+			Approve:       func(context.Context) error { return nil },
+			After:         elapsedAtOnce,
+			GitHubOptions: []github.Option{github.WithBaseURL(baseURL)},
+		})
+
+		if err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		change := slices.Concat(reads, []string{putProduction}, reads)
+		if want := slices.Concat(reads, change, change, change); !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		var bodies []map[string]any
+		for _, r := range server.Requests() {
+			if r.Method == http.MethodPut {
+				bodies = append(bodies, r.Body)
+			}
+		}
+		wantBodies := []map[string]any{
+			{"reviewers": []any{map[string]any{"type": "User", "id": float64(1)}}},
+			{"prevent_self_review": true},
+			{"wait_timer": float64(30)},
+		}
+		if !reflect.DeepEqual(bodies, wantBodies) {
+			t.Errorf("update request bodies = %v, want %v", bodies, wantBodies)
+		}
+		if !strings.Contains(out.String(), "owner/repo: updated") || !strings.Contains(out.String(), "Apply complete.") {
+			t.Errorf("Out = %q, want the repository updated", out.String())
+		}
+	})
+}
+
 const configSource = `repositories:
   - name: owner/repo
     general:

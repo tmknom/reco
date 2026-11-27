@@ -47,6 +47,8 @@ func TestKeyArea(t *testing.T) {
 		{key: EnvironmentResource, want: AreaEnvironments},
 		{key: EnvironmentDeploymentBranchPolicy, want: AreaEnvironments},
 		{key: EnvironmentRequiredReviewers, want: AreaEnvironments},
+		{key: EnvironmentPreventSelfReview, want: AreaEnvironments},
+		{key: EnvironmentWaitTimer, want: AreaEnvironments},
 		{key: EnvironmentVariable, want: AreaEnvironmentVariables},
 		{key: DependabotAlerts, want: AreaDependabot},
 		{key: DependabotSecurityUpdates, want: AreaDependabot},

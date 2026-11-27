@@ -87,6 +87,12 @@ func TestCreateEnvironmentPanicsOnUnaddressableName(t *testing.T) {
 		{name: "required reviewers", update: func() {
 			_, _ = c.UpdateEnvironmentRequiredReviewers(t.Context(), reference, "..", setting.ReviewerSetOf(nil))
 		}},
+		{name: "prevent self review", update: func() {
+			_, _ = c.UpdateEnvironmentPreventSelfReview(t.Context(), reference, "..", true)
+		}},
+		{name: "wait timer", update: func() {
+			_, _ = c.UpdateEnvironmentWaitTimer(t.Context(), reference, "..", 30)
+		}},
 		{name: "add deployment pattern", update: func() {
 			_, _ = c.AddDeploymentPattern(t.Context(), reference, "..", setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"})
 		}},
@@ -304,6 +310,120 @@ func TestUpdateEnvironmentRequiredReviewersErrorNamesTheOperation(t *testing.T) 
 
 	_, err := c.UpdateEnvironmentRequiredReviewers(t.Context(), mustReference(t, "example/project-a"), "Prod/Eu", setting.ReviewerSetOf(nil))
 	if err == nil || !strings.HasPrefix(err.Error(), `set required reviewers of environment "Prod/Eu" example/project-a: `) {
+		t.Errorf("error = %v, want it to start with the operation, the quoted name and example/project-a", err)
+	}
+}
+
+// TestUpdateEnvironmentPreventSelfReview は、本文が prevent_self_review のキーだけで、false も省略せずに送ることを確かめる。
+//
+//trace:checks INV-001 FR-011
+func TestUpdateEnvironmentPreventSelfReview(t *testing.T) {
+	cases := []struct {
+		name     string
+		prevent  bool
+		wantBody string
+	}{
+		{name: "true sends true", prevent: true, wantBody: `{"prevent_self_review":true}`},
+		{name: "false is sent, not omitted", prevent: false, wantBody: `{"prevent_self_review":false}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var received atomic.Int32
+			var gotMethod, gotPath, gotContentType string
+			var gotBody []byte
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				received.Add(1)
+				gotMethod, gotPath, gotContentType = r.Method, r.URL.EscapedPath(), r.Header.Get("Content-Type")
+				gotBody, _ = io.ReadAll(r.Body)
+				_, _ = w.Write([]byte(githubtest.EnvironmentBody{ID: 7, Name: "Prod/Eu"}.JSON()))
+			})
+
+			outcome, err := c.UpdateEnvironmentPreventSelfReview(t.Context(), mustReference(t, "owner/repo"), "Prod/Eu", tc.prevent)
+			if err != nil || outcome != UpdateSucceeded {
+				t.Fatalf("UpdateEnvironmentPreventSelfReview() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+			}
+
+			if n := received.Load(); n != 1 {
+				t.Errorf("server received %d requests, want 1", n)
+			}
+			if gotMethod != http.MethodPut || gotPath != "/repos/owner/repo/environments/Prod%2FEu" {
+				t.Errorf("request = %s %s, want PUT /repos/owner/repo/environments/Prod%%2FEu", gotMethod, gotPath)
+			}
+			if gotContentType != "application/json" {
+				t.Errorf("Content-Type = %q, want application/json", gotContentType)
+			}
+			if string(gotBody) != tc.wantBody {
+				t.Errorf("request body = %s, want %s", gotBody, tc.wantBody)
+			}
+		})
+	}
+}
+
+// TestUpdateEnvironmentPreventSelfReviewErrorNamesTheOperation は、自己承認の禁止の要求の失敗が、ほかの Environment の要求とは別の操作名と名前を示すことを確かめる。
+//
+//trace:checks FR-013
+func TestUpdateEnvironmentPreventSelfReviewErrorNamesTheOperation(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusUnprocessableEntity) })
+
+	_, err := c.UpdateEnvironmentPreventSelfReview(t.Context(), mustReference(t, "example/project-a"), "Prod/Eu", true)
+	if err == nil || !strings.HasPrefix(err.Error(), `set prevent_self_review of environment "Prod/Eu" example/project-a: `) {
+		t.Errorf("error = %v, want it to start with the operation, the quoted name and example/project-a", err)
+	}
+}
+
+// TestUpdateEnvironmentWaitTimer は、本文が wait_timer のキーだけで、分を JSON の整数にし、0 も省略せずに送ることを確かめる。
+//
+//trace:checks INV-001 FR-011
+func TestUpdateEnvironmentWaitTimer(t *testing.T) {
+	cases := []struct {
+		name     string
+		minutes  int
+		wantBody string
+	}{
+		{name: "30 minutes is sent as an integer", minutes: 30, wantBody: `{"wait_timer":30}`},
+		{name: "0 is sent, not omitted", minutes: 0, wantBody: `{"wait_timer":0}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var received atomic.Int32
+			var gotMethod, gotPath, gotContentType string
+			var gotBody []byte
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				received.Add(1)
+				gotMethod, gotPath, gotContentType = r.Method, r.URL.EscapedPath(), r.Header.Get("Content-Type")
+				gotBody, _ = io.ReadAll(r.Body)
+				_, _ = w.Write([]byte(githubtest.EnvironmentBody{ID: 7, Name: "Prod/Eu"}.JSON()))
+			})
+
+			outcome, err := c.UpdateEnvironmentWaitTimer(t.Context(), mustReference(t, "owner/repo"), "Prod/Eu", tc.minutes)
+			if err != nil || outcome != UpdateSucceeded {
+				t.Fatalf("UpdateEnvironmentWaitTimer() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+			}
+
+			if n := received.Load(); n != 1 {
+				t.Errorf("server received %d requests, want 1", n)
+			}
+			if gotMethod != http.MethodPut || gotPath != "/repos/owner/repo/environments/Prod%2FEu" {
+				t.Errorf("request = %s %s, want PUT /repos/owner/repo/environments/Prod%%2FEu", gotMethod, gotPath)
+			}
+			if gotContentType != "application/json" {
+				t.Errorf("Content-Type = %q, want application/json", gotContentType)
+			}
+			if string(gotBody) != tc.wantBody {
+				t.Errorf("request body = %s, want %s", gotBody, tc.wantBody)
+			}
+		})
+	}
+}
+
+// TestUpdateEnvironmentWaitTimerErrorNamesTheOperation は、待機時間の要求の失敗が、ほかの Environment の要求とは別の操作名と名前を示すことを確かめる。
+//
+//trace:checks FR-013
+func TestUpdateEnvironmentWaitTimerErrorNamesTheOperation(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusUnprocessableEntity) })
+
+	_, err := c.UpdateEnvironmentWaitTimer(t.Context(), mustReference(t, "example/project-a"), "Prod/Eu", 30)
+	if err == nil || !strings.HasPrefix(err.Error(), `set wait_timer of environment "Prod/Eu" example/project-a: `) {
 		t.Errorf("error = %v, want it to start with the operation, the quoted name and example/project-a", err)
 	}
 }

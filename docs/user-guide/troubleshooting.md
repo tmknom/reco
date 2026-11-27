@@ -77,7 +77,7 @@ Plan cannot be applied.
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-a: actions.permissions.sha_pinning_required is not applicable; no changes made"}
 ```
 
-理由は、変更計画の `Applicability:` の行の括弧の中にあります。セミコロンの前が成り立っていないこと、後ろが設定ファイルの直し方です。この例では Actions が無効のため、同じリポジトリに `enabled: true` か `allowed_actions` を書き足します。`Dependabot alerts is disabled` なら、同じリポジトリに `dependabot_alerts: true` を書き足します。`Secret scanning is disabled` なら `secret_scanning: true` を書き足し、`the repository is private` なら、そのリポジトリから、セミコロンの後ろに示されたキー（`secret_scanning` など）を消します。`the repository is public` なら、セミコロンの後ろに示されたキー（`access_level` か `private_repositories`）を消し、`an environment on GitHub has a name reco cannot compare` なら、設定ファイルから、`Applicability:` の行のすぐ上の変更に出た Environment の宣言を消します。`no merge method would remain enabled` なら、セミコロンの後ろに示されたキー（`allow_rebase_merge` など）のどれかを `true` と書き足します。`exceeds the maximum` なら、`days` を、セミコロンの後ろに示された上限の日数以下に直します。`a ruleset on GitHub has a name reco cannot compare` か `the ruleset on GitHub contains parts that reco does not interpret` なら、設定ファイルから、`Applicability:` の行の上の `rulesets.<名前>` に出た Ruleset の宣言を消します。後者では、`Applicability:` の行の下に、reco の解釈しない部分（`rule type: "non_fast_forward"` など）が1行に一つずつ出ます。設定ファイルを直したら、`plan` で `Plan cannot be applied.` が消えたことを確かめ、`apply` を実行し直します。
+理由は、変更計画の `Applicability:` の行の括弧の中にあります。セミコロンの前が成り立っていないこと、後ろが設定ファイルの直し方です。この例では Actions が無効のため、同じリポジトリに `enabled: true` か `allowed_actions` を書き足します。`Dependabot alerts is disabled` なら、同じリポジトリに `dependabot_alerts: true` を書き足します。`Secret scanning is disabled` なら `secret_scanning: true` を書き足し、`the repository is private` なら、そのリポジトリから、セミコロンの後ろに示されたキー（`secret_scanning` など）を消します。`the repository is public` なら、セミコロンの後ろに示されたキー（`access_level` か `private_repositories`）を消し、`an environment on GitHub has a name reco cannot compare` なら、設定ファイルから、`Applicability:` の行のすぐ上の変更に出た Environment の宣言を消します。`no merge method would remain enabled` なら、セミコロンの後ろに示されたキー（`allow_rebase_merge` など）のどれかを `true` と書き足します。`exceeds the maximum` なら、`days` を、セミコロンの後ろに示された上限の日数以下に直します。`the environment would have no required reviewers` なら、その Environment の `required_reviewers` に担当者を1人以上書き足すか、`prevent_self_review` を消します。GitHub が、担当者のいない Environment の「Prevent self-review」の変更を受け付けないためです。`a ruleset on GitHub has a name reco cannot compare` か `the ruleset on GitHub contains parts that reco does not interpret` なら、設定ファイルから、`Applicability:` の行の上の `rulesets.<名前>` に出た Ruleset の宣言を消します。後者では、`Applicability:` の行の下に、reco の解釈しない部分（`rule type: "non_fast_forward"` など）が1行に一つずつ出ます。設定ファイルを直したら、`plan` で `Plan cannot be applied.` が消えたことを確かめ、`apply` を実行し直します。
 
 ## 承認できない
 
@@ -191,6 +191,8 @@ Applying changes...
 | 見えたもの | 次にすること |
 |---|---|
 | `request not processable (HTTP 422)`（`set required reviewers of environment` のエラー） | GitHub が担当者の変更を受け付けなかった。担当者は変わっていない。書いた ID がどれも存在しない利用者の ID だったか、非公開リポジトリで担当者を設定できない料金プラン（公式資料は GitHub Free、Pro、Team を挙げる）だった可能性がある。そのような非公開リポジトリでは、担当者を外す変更（`required_reviewers: []`）も `422` になることがある。ID を直すか、その Environment の `required_reviewers` を設定ファイルから外してから `apply` し直す |
+| `request not processable (HTTP 422)`（`set wait_timer of environment` のエラー） | GitHub が待機時間の変更を受け付けなかった。待機時間は変わっていない。非公開リポジトリで待機時間を設定できない料金プラン（公式資料は GitHub Free、Pro、Team を挙げる）だった可能性がある。GitHub Free の非公開リポジトリでは、`0` にする変更も `422` になる。その Environment の `wait_timer` を設定ファイルから外してから `apply` し直す |
+| `request not processable (HTTP 422)`（`set prevent_self_review of environment` のエラー） | GitHub が「Prevent self-review」の変更を受け付けなかった。承認のあとに担当者が外されたか Environment が削除されたため、更新の時点で担当者がいなかった可能性がある。`plan` で担当者と `prevent_self_review` を確かめてから `apply` し直す |
 | `rate limit exceeded` | GitHub の API の利用回数の上限を超えた。少なくとも1分待ってから実行し直す（上限の種類によっては、GitHub が上限をリセットする時刻まで解除されない）。同じエラーが続くなら、さらに間隔を空ける |
 | `communication failed`、`unexpected response (HTTP 5xx)` | 通信の失敗か、GitHub 側の障害。時間をおいて実行し直す |
 | `redirect not followed`（下の `HTTP 303` の行を除く） | リポジトリの名前が変わったか、移転した可能性がある。設定ファイルの `name` と `--repo` に、今の名前を書く |
@@ -215,4 +217,4 @@ Applying changes...
 - [GitHub リポジトリ API 仕様](../research/repositories.md)：名前を変えたリポジトリへのリダイレクト、GitHub Free の非公開リポジトリでの自動マージ
 - [GitHub Actions 変数 API 仕様](../research/actions-variables.md)：変数の値の大きさと件数の上限、変数の作成、更新、削除の応答
 - [GitHub Rules API 仕様](../research/rules.md)：同じ名前（大文字と小文字だけが違う名前を含む）の Ruleset の作成の拒否、Bypass の主体など書いた値の作成と内容の置き換えの拒否、消された Ruleset の内容の置き換えの `404`
-- [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md)：担当者にできない ID を送ったときの `422` と、黙って除かれる場合、権限を持たない利用者だけのときに残る担当者のいない承認の設定、非公開リポジトリで担当者を設定できる料金プランと、設定できないときの `422`
+- [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md)：担当者にできない ID を送ったときの `422` と、黙って除かれる場合、権限を持たない利用者だけのときに残る担当者のいない承認の設定、非公開リポジトリで担当者と待機時間を設定できる料金プランと、設定できないときの `422`、担当者のいない Environment で「Prevent self-review」を変えたときの `422`

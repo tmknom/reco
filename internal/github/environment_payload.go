@@ -119,8 +119,10 @@ type reviewerPayload struct {
 // wait_timer と required_reviewers は、同じ種類が二つあれば契約外の応答とする。
 // branch_policy はデプロイ元制限として deployment_branch_policy から読むため、読み飛ばす。
 // それ以外の種類も読み飛ばす。GitHub が保護ルールの種類を足しても、reco が値を持たない種類のために観測を失敗させないため。
+// wait_timer の保護ルールがなければ待機時間を 0 とする。GitHub は 0 を保存せず、保護ルールをなくして表すため。
 func decodeEnvironmentProtection(rules []json.RawMessage, canAdminsBypass bool) (setting.EnvironmentProtection, error) {
 	protection := setting.EnvironmentProtection{CanAdminsBypass: canAdminsBypass}
+	var hasWaitTimer bool
 	for _, raw := range rules {
 		var rule protectionRulePayload
 		if err := json.Unmarshal(raw, &rule); err != nil {
@@ -134,10 +136,11 @@ func decodeEnvironmentProtection(rules []json.RawMessage, canAdminsBypass bool) 
 			if rule.WaitTimer == nil {
 				return setting.EnvironmentProtection{}, fmt.Errorf("%w: missing fields: protection_rules.wait_timer", ErrUnexpectedResponse)
 			}
-			if protection.WaitTimer != nil {
+			if hasWaitTimer {
 				return setting.EnvironmentProtection{}, fmt.Errorf("%w: duplicate protection rule: wait_timer", ErrUnexpectedResponse)
 			}
-			protection.WaitTimer = rule.WaitTimer
+			hasWaitTimer = true
+			protection.WaitTimer = *rule.WaitTimer
 		case "required_reviewers":
 			required, err := decodeRequiredReviewers(rule)
 			if err != nil {
