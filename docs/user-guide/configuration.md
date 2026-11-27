@@ -63,7 +63,7 @@ repositories:
 
 ## リポジトリの一般設定
 
-`general` には、Pull Request のマージに関する設定を書きます。
+`general` には、Pull Request のマージに関する設定と、Issues・Projects・Wiki を使うか、Web 画面からのコミットにサインオフを求めるかを書きます。
 
 | キー | 値 | 意味 |
 |---|---|---|
@@ -73,6 +73,10 @@ repositories:
 | `allow_merge_commit` | `true` / `false` | Pull Request を merge commit でマージできるようにするか |
 | `allow_rebase_merge` | `true` / `false` | Pull Request を rebase merge でマージできるようにするか |
 | `allow_update_branch` | `true` / `false` | base ブランチより遅れた Pull Request に、ブランチの更新を常に提案するか |
+| `has_issues` | `true` / `false` | Issues を使えるようにするか |
+| `has_projects` | `true` / `false` | Projects を使えるようにするか |
+| `has_wiki` | `true` / `false` | Wiki を使えるようにするか |
+| `web_commit_signoff_required` | `true` / `false` | GitHub の Web 画面からのコミットに、作成者のサインオフを求めるか |
 
 > [!NOTE]
 > GitHub の仕様上、GitHub Free のアカウントが所有する非公開リポジトリでは、自動マージは使えません。
@@ -116,6 +120,15 @@ GitHub が受け付けるタイトルと本文の組み合わせは次の7つだ
 | `merge_commit` | `MERGE_MESSAGE` | `PR_TITLE` |
 
 GitHub は、squash merge が無効のあいだ `squash_merge_commit` を、merge commit が無効のあいだ `merge_commit` を変えさせません。そのマージ方式が GitHub 上で無効なリポジトリで値を変えようとすると、`plan` が `Plan cannot be applied.` を表示します。reco は、マージ方式を代わりに有効にしません。`allow_squash_merge: true`（または `allow_merge_commit: true`）を書き足すか、`squash_merge_commit`（または `merge_commit`）を外します。同じ設定ファイルでマージ方式を有効にする場合は、reco がマージ方式を有効にしてからコミットメッセージを変えます。
+
+### Issues・Projects・Wiki とコミットのサインオフ
+
+`has_issues`、`has_projects`、`has_wiki` を `false` にすると、その機能が無効になり、既存の Issue、Project、Wiki のページを GitHub の画面から使えなくなります。reco は Issue、Project、Wiki のページを作りも消しもしません。Issues は、`true` に戻すと、無効にする前の Issue をまた使えます。Wiki も、GitHub の公式資料によると、ページは消えず、`true` に戻すと元のページが戻ります。Projects を無効にしたときに既存の Project がどうなるかは、GitHub の公式資料に記載がありません。
+
+> [!NOTE]
+> GitHub の仕様上、GitHub Free のアカウントが所有する非公開リポジトリでは、Wiki は使えません。
+
+`web_commit_signoff_required` は、コミットの署名を求める設定（Ruleset の署名付きコミットを求めるルールなど）とは別の設定で、`true` にしてもコミットの署名は求められません。
 
 ## GitHub Actions の設定
 

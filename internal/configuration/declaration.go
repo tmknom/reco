@@ -734,34 +734,29 @@ func (d document) privateForkPullRequestWorkflows(n *yaml.Node, path string) (se
 	}, nil
 }
 
+// boolField は、general の真偽値のキーと、読んだ値を書き込む先の組。
+type boolField struct {
+	key string
+	dst **bool
+}
+
 // general は general の設定を読む。マージ方式の組み合わせの規則は 3 つの値で決まるため、すべての値の誤りを先に示す。
-// 設定グループ (squash_merge_commit、merge_commit) の誤りも、マージ方式の組み合わせの規則より先に示す。
+// 誤りは YAML 設定仕様の General の表の並びで示すため、真偽値の設定を設定グループ (squash_merge_commit、merge_commit) の前と後に分けて読む。
 func (d document) general(n *yaml.Node, path string) (General, error) {
-	entries, err := d.mappingEntries(n, path, nil, []string{"delete_branch_on_merge", "allow_auto_merge", "allow_squash_merge", "allow_merge_commit", "allow_rebase_merge", "allow_update_branch", "squash_merge_commit", "merge_commit"})
+	entries, err := d.mappingEntries(n, path, nil, []string{"delete_branch_on_merge", "allow_auto_merge", "allow_squash_merge", "allow_merge_commit", "allow_rebase_merge", "allow_update_branch", "squash_merge_commit", "merge_commit", "has_issues", "has_projects", "has_wiki", "web_commit_signoff_required"})
 	if err != nil {
 		return General{}, err
 	}
 	var general General
-	for _, field := range []struct {
-		key string
-		dst **bool
-	}{
+	if err := d.boolFields(entries, path, []boolField{
 		{"delete_branch_on_merge", &general.DeleteBranchOnMerge},
 		{"allow_auto_merge", &general.AllowAutoMerge},
 		{"allow_squash_merge", &general.AllowSquashMerge},
 		{"allow_merge_commit", &general.AllowMergeCommit},
 		{"allow_rebase_merge", &general.AllowRebaseMerge},
 		{"allow_update_branch", &general.AllowUpdateBranch},
-	} {
-		value, ok := entries[field.key]
-		if !ok {
-			continue
-		}
-		v, err := d.boolValue(value, path+"."+field.key)
-		if err != nil {
-			return General{}, err
-		}
-		*field.dst = &v
+	}); err != nil {
+		return General{}, err
 	}
 	if value, ok := entries["squash_merge_commit"]; ok {
 		v, err := d.squashMergeCommit(value, path+".squash_merge_commit")
@@ -777,10 +772,34 @@ func (d document) general(n *yaml.Node, path string) (General, error) {
 		}
 		general.MergeCommit = &v
 	}
+	if err := d.boolFields(entries, path, []boolField{
+		{"has_issues", &general.HasIssues},
+		{"has_projects", &general.HasProjects},
+		{"has_wiki", &general.HasWiki},
+		{"web_commit_signoff_required", &general.WebCommitSignoffRequired},
+	}); err != nil {
+		return General{}, err
+	}
 	if disablesEveryMergeMethod(general) {
 		return General{}, invalid(n, path, "allow_squash_merge, allow_merge_commit, and allow_rebase_merge cannot all be false; GitHub requires at least one merge method")
 	}
 	return general, nil
+}
+
+// boolFields は、entries にある fields のキーを並びの順に真偽値として読み、最初の誤りを返す。
+func (d document) boolFields(entries map[string]*yaml.Node, path string, fields []boolField) error {
+	for _, field := range fields {
+		value, ok := entries[field.key]
+		if !ok {
+			continue
+		}
+		v, err := d.boolValue(value, path+"."+field.key)
+		if err != nil {
+			return err
+		}
+		*field.dst = &v
+	}
+	return nil
 }
 
 // squashMergeCommit は squash merge のコミットメッセージの設定グループを読む。必須のキーと誤りを示す順は YAML 設定仕様の General が定める。

@@ -686,10 +686,11 @@ func TestEnvironmentPutOutsideChanges(t *testing.T) {
 	}
 }
 
-// observedGeneral は、g に GitHub の既定のマージメッセージの観測値を足した観測を返す。
-// 観測は二つのマージメッセージを必ず観測値か観測不能にするため、どちらも持たない General は観測として生じない。
+// observedGeneral は、g に GitHub の既定のマージメッセージと Web コミットのサインオフ必須の観測値を足した観測を返す。
+// 観測はこれらを必ず観測値か観測不能にするため、どれも持たない General は観測として生じない。
 func observedGeneral(g github.General) github.General {
 	g.SquashMergeCommitDefault = github.Observed(setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitleCommitOrPRTitle, Message: setting.SquashMergeCommitMessageCommitMessages})
 	g.MergeCommitDefault = github.Observed(setting.MergeCommitDefault{Title: setting.MergeCommitTitleMergeMessage, Message: setting.MergeCommitMessagePRTitle})
+	g.WebCommitSignoffRequired = github.Observed(false)
 	return g
 }

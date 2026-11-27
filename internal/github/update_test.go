@@ -39,6 +39,22 @@ func TestClientUpdate(t *testing.T) {
 			wantRequest: "PATCH /repos/owner/repo", wantBody: map[string]any{"allow_update_branch": true},
 		},
 		{
+			name: "has_issues sends only has_issues", key: setting.HasIssues, value: setting.BoolValue(false),
+			wantRequest: "PATCH /repos/owner/repo", wantBody: map[string]any{"has_issues": false},
+		},
+		{
+			name: "has_projects sends only has_projects", key: setting.HasProjects, value: setting.BoolValue(true),
+			wantRequest: "PATCH /repos/owner/repo", wantBody: map[string]any{"has_projects": true},
+		},
+		{
+			name: "has_wiki sends only has_wiki", key: setting.HasWiki, value: setting.BoolValue(false),
+			wantRequest: "PATCH /repos/owner/repo", wantBody: map[string]any{"has_wiki": false},
+		},
+		{
+			name: "web_commit_signoff_required sends only web_commit_signoff_required", key: setting.WebCommitSignoffRequired, value: setting.BoolValue(true),
+			wantRequest: "PATCH /repos/owner/repo", wantBody: map[string]any{"web_commit_signoff_required": true},
+		},
+		{
 			name: "squash_merge_commit sends only the squash merge title and message", key: setting.SquashMergeCommit,
 			value:       setting.SquashMergeCommitDefaultValue(setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitleCommitOrPRTitle, Message: setting.SquashMergeCommitMessageCommitMessages}),
 			wantRequest: "PATCH /repos/owner/repo",

@@ -601,6 +601,68 @@ func TestJudgeApplicability_MergeMessages(t *testing.T) {
 	})
 }
 
+// TestJudgeApplicability_RepositoryFeaturesAndWebCommitSignoff は、リポジトリの機能と Web コミットのサインオフ必須の不一致を適用可能とし、
+// 値が返らなかった Web コミットのサインオフ必須を適用不能にすることを確かめる (General の設計の適用可能性と副作用)。
+//
+//trace:checks FR-006 INV-001
+func TestJudgeApplicability_RepositoryFeaturesAndWebCommitSignoff(t *testing.T) {
+	cases := []struct {
+		name string
+		in   SettingPlan
+		want Applicability
+	}{
+		{
+			// GitHub Free の非公開リポジトリでは反映されないが、計画の時点では料金プランを観測できない
+			name: "has_wiki mismatch is applicable",
+			in:   newSettingPlan(setting.Unit{Key: setting.HasWiki}, github.Observed(setting.BoolValue(false)), setting.BoolValue(true)),
+			want: Applicable(),
+		},
+		{
+			name: "web_commit_signoff_required mismatch is applicable",
+			in:   newSettingPlan(setting.Unit{Key: setting.WebCommitSignoffRequired}, github.Observed(setting.BoolValue(false)), setting.BoolValue(true)),
+			want: Applicable(),
+		},
+		{
+			name: "web_commit_signoff_required not comparable because the value was not returned is not applicable",
+			in:   newSettingPlan(setting.Unit{Key: setting.WebCommitSignoffRequired}, github.Unavailable[setting.Value](github.UnavailableNotReturned), setting.BoolValue(false)),
+			want: NotApplicable(NotApplicableNotReturned),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := judgeApplicability(tc.in, []SettingPlan{tc.in}, github.ObservationResult{})
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("judgeApplicability() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+
+	panics := []struct {
+		name string
+		in   SettingPlan
+	}{
+		{
+			name: "web_commit_signoff_required not comparable for another reason panics",
+			in:   newSettingPlan(setting.Unit{Key: setting.WebCommitSignoffRequired}, github.Unavailable[setting.Value](github.UnavailableUnknownValue), setting.BoolValue(true)),
+		},
+		{
+			// リポジトリの機能は必ず値が返り、欠落は観測操作の失敗になる
+			name: "repository feature not comparable because the value was not returned panics",
+			in:   newSettingPlan(setting.Unit{Key: setting.HasIssues}, github.Unavailable[setting.Value](github.UnavailableNotReturned), setting.BoolValue(true)),
+		},
+	}
+	for _, tc := range panics {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Error("judgeApplicability() did not panic")
+				}
+			}()
+			judgeApplicability(tc.in, []SettingPlan{tc.in}, github.ObservationResult{})
+		})
+	}
+}
+
 // TestJudgeApplicability_RetentionDays は、保持日数の期待値を計画時に観測した上限と比べ、上限を超える変更予定を、上限を伴って適用不能にすることを確かめる。
 //
 //trace:checks FR-006

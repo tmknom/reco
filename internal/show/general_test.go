@@ -16,7 +16,7 @@ func TestWriteGeneral(t *testing.T) {
 		want    string
 	}{
 		{
-			name: "declarable settings including the merge messages are shown as values and the repository features as comments",
+			name: "every general setting is shown as a value in the order of the configuration",
 			general: github.General{
 				DeleteBranchOnMerge: true, AllowAutoMerge: false, AllowSquashMerge: true, AllowMergeCommit: false, AllowRebaseMerge: true, AllowUpdateBranch: false,
 				SquashMergeCommitDefault: github.Observed(setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitleCommitOrPRTitle, Message: setting.SquashMergeCommitMessageCommitMessages}),
@@ -36,11 +36,10 @@ func TestWriteGeneral(t *testing.T) {
 				"      merge_commit:\n" +
 				"        title: MERGE_MESSAGE\n" +
 				"        message: PR_TITLE\n" +
-				"      # reco does not accept the repository feature and web commit signoff settings in the configuration file yet\n" +
-				"      # has_issues: true\n" +
-				"      # has_projects: false\n" +
-				"      # has_wiki: true\n" +
-				"      # web_commit_signoff_required: false\n",
+				"      has_issues: true\n" +
+				"      has_projects: false\n" +
+				"      has_wiki: true\n" +
+				"      web_commit_signoff_required: false\n",
 		},
 		{
 			name: "opposite values are shown as observed",
@@ -63,11 +62,10 @@ func TestWriteGeneral(t *testing.T) {
 				"      merge_commit:\n" +
 				"        title: PR_TITLE\n" +
 				"        message: BLANK\n" +
-				"      # reco does not accept the repository feature and web commit signoff settings in the configuration file yet\n" +
-				"      # has_issues: false\n" +
-				"      # has_projects: true\n" +
-				"      # has_wiki: false\n" +
-				"      # web_commit_signoff_required: true\n",
+				"      has_issues: false\n" +
+				"      has_projects: true\n" +
+				"      has_wiki: false\n" +
+				"      web_commit_signoff_required: true\n",
 		},
 		{
 			name: "unknown squash merge message and missing signoff are shown as unavailable on their own lines",
@@ -89,10 +87,9 @@ func TestWriteGeneral(t *testing.T) {
 				"      merge_commit:\n" +
 				"        title: MERGE_MESSAGE\n" +
 				"        message: PR_TITLE\n" +
-				"      # reco does not accept the repository feature and web commit signoff settings in the configuration file yet\n" +
-				"      # has_issues: true\n" +
-				"      # has_projects: true\n" +
-				"      # has_wiki: true\n" +
+				"      has_issues: true\n" +
+				"      has_projects: true\n" +
+				"      has_wiki: true\n" +
 				"      # web_commit_signoff_required: unavailable (GitHub did not return the value)\n",
 		},
 		{
@@ -114,11 +111,10 @@ func TestWriteGeneral(t *testing.T) {
 				"        title: PR_TITLE\n" +
 				"        message: BLANK\n" +
 				"      # merge_commit: unavailable (GitHub returned a value that reco does not know)\n" +
-				"      # reco does not accept the repository feature and web commit signoff settings in the configuration file yet\n" +
-				"      # has_issues: false\n" +
-				"      # has_projects: false\n" +
-				"      # has_wiki: false\n" +
-				"      # web_commit_signoff_required: false\n",
+				"      has_issues: false\n" +
+				"      has_projects: false\n" +
+				"      has_wiki: false\n" +
+				"      web_commit_signoff_required: false\n",
 		},
 	}
 	for _, tc := range cases {

@@ -207,11 +207,18 @@ func changesDeploymentPattern(operation changeplan.UpdateOperation) bool {
 }
 
 // possibleCause は、設定に既知の原因の候補を返す。候補がなければ空文字列を返す。
+// 候補を添える条件は、General の設計の更新方式が定める。
 func possibleCause(record changeRecord) string {
-	if !record.updatesSucceeded() || record.confirmation != desiredStateMismatch || !slices.Equal(record.change.Units(), []setting.Unit{{Key: setting.AllowAutoMerge}}) {
+	if !record.updatesSucceeded() || record.confirmation != desiredStateMismatch {
 		return ""
 	}
-	return "auto-merge is not available for private repositories on GitHub Free, where GitHub may accept the update without applying it"
+	switch units := record.change.Units(); {
+	case slices.Equal(units, []setting.Unit{{Key: setting.AllowAutoMerge}}):
+		return "auto-merge is not available for private repositories on GitHub Free, where GitHub may accept the update without applying it"
+	case slices.Equal(units, []setting.Unit{{Key: setting.HasWiki}}) && record.change.DesiredState[0].Desired.Bool():
+		return "wikis are not available for private repositories on GitHub Free, where GitHub may accept the update without applying it"
+	}
+	return ""
 }
 
 // notAttemptedReason は、未実行の理由を、先行する異常による停止と変更前提の不成立に分けて表示の 1 行で返す。
@@ -337,7 +344,10 @@ func unavailableConfirmationText(u unavailableManagedSetting) string {
 			return "not confirmed (GitHub returned a value that reco does not know)"
 		}
 	case github.UnavailableNotReturned:
-		// この理由を持つのは宣言を受け付けない web_commit_signoff_required だけで、期待値と比べる設定にならない
+		// 値が返らなかったことで観測不能になるのは、web_commit_signoff_required だけである
+		if u.unit.Key == setting.WebCommitSignoffRequired {
+			return "not confirmed (GitHub did not return the value)"
+		}
 	}
 	panic(fmt.Sprintf("apply: no confirmation text for unavailable reason %d of %s", int(u.reason), u.unit.String()))
 }

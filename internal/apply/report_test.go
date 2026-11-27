@@ -33,6 +33,8 @@ func TestUnavailableConfirmationText(t *testing.T) {
 		{name: "uninterpreted parts are not confirmed", unit: ruleset, reason: github.UnavailableUninterpretedParts, want: "not confirmed (the ruleset contains parts that reco does not interpret)"},
 		// 知らない値も、宣言が効いていないのではなく reco が確かめられなかったことを表す
 		{name: "unknown merge message value is not confirmed", unit: setting.Unit{Key: setting.SquashMergeCommit}, reason: github.UnavailableUnknownValue, want: "not confirmed (GitHub returned a value that reco does not know)"},
+		// 返らなかった値も、宣言が効いていないのではなく reco が確かめられなかったことを表す
+		{name: "web_commit_signoff_required not returned is not confirmed", unit: setting.Unit{Key: setting.WebCommitSignoffRequired}, reason: github.UnavailableNotReturned, want: "not confirmed (GitHub did not return the value)"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -51,7 +53,7 @@ func TestUnavailableConfirmationText(t *testing.T) {
 		{name: "undetermined name of a setting without a name panics", u: unavailableManagedSetting{unit: setting.Unit{Key: setting.AllowAutoMerge}, reason: github.UnavailableNameUndetermined}},
 		{name: "uninterpreted parts of a setting other than a ruleset panic", u: unavailableManagedSetting{unit: variable, reason: github.UnavailableUninterpretedParts}},
 		{name: "unknown value of a setting other than a merge message panics", u: unavailableManagedSetting{unit: setting.Unit{Key: setting.AllowAutoMerge}, reason: github.UnavailableUnknownValue}},
-		{name: "value not returned panics", u: unavailableManagedSetting{unit: setting.Unit{Key: setting.SquashMergeCommit}, reason: github.UnavailableNotReturned}},
+		{name: "value not returned of a setting other than web_commit_signoff_required panics", u: unavailableManagedSetting{unit: setting.Unit{Key: setting.SquashMergeCommit}, reason: github.UnavailableNotReturned}},
 	}
 	for _, tc := range panicCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -139,36 +141,57 @@ func TestChangesError(t *testing.T) {
 
 //trace:checks FR-013
 func TestPossibleCause(t *testing.T) {
+	// 期待値は CLI 仕様の Possible cause: の表示例から導く。
+	const autoMerge = "auto-merge is not available for private repositories on GitHub Free, where GitHub may accept the update without applying it"
+	const wiki = "wikis are not available for private repositories on GitHub Free, where GitHub may accept the update without applying it"
+	succeeded := []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}
+	enableWiki := singleUpdate(setting.HasWiki, setting.BoolValue(true), basesOf(setting.HasWiki, setting.BoolValue(false)))
 	cases := []struct {
 		name   string
 		record changeRecord
-		want   bool
+		want   string
 	}{
 		{
-			name:   "allow_auto_merge mismatch after a successful update has a possible cause",
-			record: changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateMismatch},
-			want:   true,
+			name:   "allow_auto_merge mismatch after a successful update has the auto-merge cause",
+			record: changeRecord{change: allowAutoMergeChange(), operations: succeeded, confirmation: desiredStateMismatch},
+			want:   autoMerge,
+		},
+		{
+			name:   "has_wiki true mismatch after a successful update has the wiki cause",
+			record: changeRecord{change: enableWiki, operations: succeeded, confirmation: desiredStateMismatch},
+			want:   wiki,
+		},
+		{
+			// GitHub Free の非公開リポジトリで Wiki を利用できないことでは、false にする更新の不一致を説明できない
+			name:   "has_wiki false mismatch has no possible cause",
+			record: changeRecord{change: singleUpdate(setting.HasWiki, setting.BoolValue(false), basesOf(setting.HasWiki, setting.BoolValue(true))), operations: succeeded, confirmation: desiredStateMismatch},
+			want:   "",
+		},
+		{
+			name:   "has_issues true mismatch has no possible cause",
+			record: changeRecord{change: singleUpdate(setting.HasIssues, setting.BoolValue(true), basesOf(setting.HasIssues, setting.BoolValue(false))), operations: succeeded, confirmation: desiredStateMismatch},
+			want:   "",
 		},
 		{
 			name:   "mismatch of another setting has no possible cause",
-			record: changeRecord{change: deleteBranchOnMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateMismatch},
-			want:   false,
+			record: changeRecord{change: deleteBranchOnMergeChange(), operations: succeeded, confirmation: desiredStateMismatch},
+			want:   "",
 		},
 		{
 			name:   "mismatch after an unknown outcome has no possible cause",
-			record: changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateUnknown}}, confirmation: desiredStateMismatch},
-			want:   false,
+			record: changeRecord{change: enableWiki, operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateUnknown}}, confirmation: desiredStateMismatch},
+			want:   "",
 		},
 		{
 			name:   "unconfirmed state after a successful update has no possible cause",
-			record: changeRecord{change: allowAutoMergeChange(), operations: []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}, confirmation: desiredStateObservationFailed},
-			want:   false,
+			record: changeRecord{change: allowAutoMergeChange(), operations: succeeded, confirmation: desiredStateObservationFailed},
+			want:   "",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := possibleCause(tc.record); (got != "") != tc.want {
-				t.Errorf("possibleCause() = %q, want present = %v", got, tc.want)
+			if got := possibleCause(tc.record); got != tc.want {
+				t.Errorf("possibleCause() = %q, want %q", got, tc.want)
 			}
 		})
 	}

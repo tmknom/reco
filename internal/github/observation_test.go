@@ -385,8 +385,11 @@ func TestObservationResult_SettingOfGeneral(t *testing.T) {
 		{General: General{AllowMergeCommit: true}},
 		{General: General{AllowRebaseMerge: true}},
 		{General: General{AllowUpdateBranch: true}},
+		{General: General{HasIssues: true}},
+		{General: General{HasProjects: true}},
+		{General: General{HasWiki: true}},
 	}
-	keys := []setting.Key{setting.AllowSquashMerge, setting.AllowMergeCommit, setting.AllowRebaseMerge, setting.AllowUpdateBranch}
+	keys := []setting.Key{setting.AllowSquashMerge, setting.AllowMergeCommit, setting.AllowRebaseMerge, setting.AllowUpdateBranch, setting.HasIssues, setting.HasProjects, setting.HasWiki}
 	for k, key := range keys {
 		t.Run(string(key)+" returns its observed value", func(t *testing.T) {
 			for i, observed := range observations {
@@ -394,6 +397,26 @@ func TestObservationResult_SettingOfGeneral(t *testing.T) {
 				if got := observed.Setting(setting.Unit{Key: key}); !reflect.DeepEqual(got, want) {
 					t.Errorf("observations[%d].Setting(%q) = %v, want %v", i, key, got, want)
 				}
+			}
+		})
+	}
+}
+
+//trace:checks FR-004
+func TestObservationResult_SettingOfWebCommitSignoffRequired(t *testing.T) {
+	cases := []struct {
+		name     string
+		observed SettingObservation[bool]
+		want     SettingObservation[setting.Value]
+	}{
+		{name: "observed value is returned", observed: Observed(true), want: Observed(setting.BoolValue(true))},
+		{name: "value not returned stays unavailable", observed: Unavailable[bool](UnavailableNotReturned), want: Unavailable[setting.Value](UnavailableNotReturned)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := ObservationResult{General: General{WebCommitSignoffRequired: tc.observed}}
+			if got := observed.Setting(setting.Unit{Key: setting.WebCommitSignoffRequired}); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Setting() = %v, want %v", got, tc.want)
 			}
 		})
 	}

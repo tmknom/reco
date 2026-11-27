@@ -368,6 +368,7 @@ Repositories checked: 1
 | リポジトリが非公開（Ruleset に当たる） | `(private repository)` | reco は非公開リポジトリの Ruleset を扱わない |
 | Ruleset の値が reco の解釈しない部分を含む（Ruleset に当たる） | `(uninterpreted parts)` | Ruleset は存在するが、reco はその値の全体を読み取れない |
 | GitHub が reco の知らない値を返した（マージメッセージに当たる） | `(unknown value)` | GitHub は値を返したが、reco はその値の意味を知らない |
+| GitHub が値を返さなかった（`web_commit_signoff_required` に当たる） | `(not returned)` | GitHub がこの設定の値を応答に含めず、reco は現在の値を確かめられない |
 
 括弧の状態は、観測したリポジトリの状態から決まり、推測した値ではありません。GitHub が保存している値を示すものでもありません。利用者が知りたいのは承認すると何が起きるかであり、その判断には、いま効いている状態と宣言した値があれば足ります。確認済みの差分とは、現在値が括弧で示されることで区別します。
 
@@ -559,6 +560,12 @@ Repository: example/project-a
     (unknown value)
     -> title: PR_TITLE, message: PR_BODY
     Applicability: not applicable (GitHub returned a value that reco does not know; remove merge_commit from the configuration)
+```
+
+```text
+Repository: example/project-a
+  general.web_commit_signoff_required: (not returned) -> true
+    Applicability: not applicable (GitHub did not return the value; remove web_commit_signoff_required from the configuration)
 ```
 
 `Previous settings:` と `Side effect:` の表示例は次のとおりです。
@@ -771,7 +778,7 @@ Environment の方式の変更、担当者の集合の変更、自己承認の�
 
 Ruleset の作成か値の変更のあとに Ruleset が存在しなかった場合は、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Ruleset が現れ、存在を確かめられなかった場合は `not confirmed (ruleset existence unknown)` と示します。作成か値の変更をした Ruleset が reco の解釈しない部分を含んでいた場合は `not confirmed (the ruleset contains parts that reco does not interpret)` と示します。存在は確かめているものの、値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。解釈しなかったものは変更結果に並べず、`plan` が示します。
 
-マージメッセージの変更のあとに、GitHub がその組に reco の知らない値を返した場合は、`not confirmed (GitHub returned a value that reco does not know)` と示します。値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。
+マージメッセージの変更のあとに、GitHub がその組に reco の知らない値を返した場合は、`not confirmed (GitHub returned a value that reco does not know)` と示します。`web_commit_signoff_required` の変更のあとに、GitHub がその値を返さなかった場合は、`not confirmed (GitHub did not return the value)` と示します。どちらも、値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。
 
 変更対象外の設定は、管理設定と同じ形の名前で示します。マージメッセージは `general.squash_merge_commit` と `general.merge_commit` の名前で、値は4章と同じ `title: <タイトル>, message: <本文>` の形で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.prevent_self_review`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` が4章と同じ表記（`30 minutes`、保護ルールがなければ `0 minutes`）です。`required_reviewers` は担当者の集合で、4章と同じ表記（担当者がいなければ `[]`、担当者のいない保護ルールは `[] (protection rule without reviewers)`）で GitHub が返した順に示し、login は添えません。login だけの変化は予期しない変化に数えないためです。`prevent_self_review` と `can_admins_bypass` は `true` か `false` で、`prevent_self_review` は `required_reviewers` の保護ルールがなければ `false` です。Environment の `PUT` の更新操作（方式、担当者の集合、自己承認の禁止、デプロイの待機時間の変更）のあとは、同じ Environment のデプロイ元制限の方式も `environments.<名前>.deployment_branch_policy` の名前で比べ、値は方式の名前（`all`、`protected_branches`、`selected`）で示します。個別パターンは別の更新エンドポイントの設定のため、比べず、値にも含めません。複数が変わっていれば、`deployment_branch_policy`、`wait_timer`、`required_reviewers`、`prevent_self_review`、`can_admins_bypass` の順に1行ずつ示します。
 
@@ -819,6 +826,16 @@ Applying changes...
     Update request: succeeded
     Desired state: does not match
     Possible cause: auto-merge is not available for private repositories on GitHub Free, where GitHub may accept the update without applying it
+
+Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
+```
+
+```text
+Applying changes...
+  example/project-a: failed
+    Update request: succeeded
+    Desired state: does not match
+    Possible cause: wikis are not available for private repositories on GitHub Free, where GitHub may accept the update without applying it
 
 Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
 ```
@@ -1088,11 +1105,10 @@ repositories:
       merge_commit:
         title: MERGE_MESSAGE
         message: PR_TITLE
-      # reco does not accept the repository feature and web commit signoff settings in the configuration file yet
-      # has_issues: true
-      # has_projects: true
-      # has_wiki: true
-      # web_commit_signoff_required: false
+      has_issues: true
+      has_projects: true
+      has_wiki: true
+      web_commit_signoff_required: false
     actions:
       permissions:
         enabled: true
@@ -1128,26 +1144,23 @@ repositories:
 
 表示するのは、設定宣言に書ける管理設定と関連リソースに限ります。Environment の `can_admins_bypass` のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
 
-`general` のリポジトリの機能（`has_issues`、`has_projects`、`has_wiki`）と `web_commit_signoff_required` は、この規定の例外です。設定宣言はまだこれらを受け付けませんが、受け付けるときに使う予定のキーで、マージメッセージのあとに値を示します。どの行も YAML のコメントとして示し、`has_issues` の前の行で、設定ファイルに書けないことを示します。コメントにするのは、表示を設定宣言として読めるままにし、書けない設定であることを利用者が行を見て分かるようにするためです。
-
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
 - **ほかの行から分かる**：行ごと示さない。上位の設定によってその設定が効いていない状態（Actions が無効、Actions 許可ポリシーが `selected` でない）がこれに当たり、その状態は上位の設定の行で示されるためである
 - **ほかの行から分からない**：行を省かず、YAML のコメントとして、値の位置に `unavailable (<理由>)` と示す。行を省くと、確認できなかった設定と reco が表示しない設定を区別できないためである。コメントにするのは、確認できなかった値を期待値として読ませないためである。公開リポジトリの `access_level` と Fork Pull Request ワークフローの実行条件、非公開リポジトリの Fork Pull Request ワークフローの承認ポリシー、Secret scanning の有効状態、リポジトリの push protection、Private vulnerability reporting の有効状態、Rulesets がこれに当たる
 
-マージメッセージは、squash merge を `squash_merge_commit` に、merge commit を `merge_commit` に、それぞれタイトルを `title`、本文を `message` として、GitHub が返した値で示します。`title` は、squash merge が `PR_TITLE` か `COMMIT_OR_PR_TITLE`、merge commit が `PR_TITLE` か `MERGE_MESSAGE` です。`message` は、squash merge が `PR_BODY`、`COMMIT_MESSAGES`、`BLANK` のいずれか、merge commit が `PR_BODY`、`PR_TITLE`、`BLANK` のいずれかです。`allow_squash_merge` や `allow_merge_commit` が `false` のリポジトリでも、その方式のマージメッセージを示します。`has_issues`、`has_projects`、`has_wiki`、`web_commit_signoff_required` は `true` か `false` で示します。
+マージメッセージは、squash merge を `squash_merge_commit` に、merge commit を `merge_commit` に、それぞれタイトルを `title`、本文を `message` として、GitHub が返した値で示します。`title` は、squash merge が `PR_TITLE` か `COMMIT_OR_PR_TITLE`、merge commit が `PR_TITLE` か `MERGE_MESSAGE` です。`message` は、squash merge が `PR_BODY`、`COMMIT_MESSAGES`、`BLANK` のいずれか、merge commit が `PR_BODY`、`PR_TITLE`、`BLANK` のいずれかです。`allow_squash_merge` や `allow_merge_commit` が `false` のリポジトリでも、その方式のマージメッセージを示します。`has_issues`、`has_projects`、`has_wiki`、`web_commit_signoff_required` は、マージメッセージのあとに、`true` か `false` で示します。
 
-GitHub が、タイトルか本文に reco の知らない値を返したときは、その方式の `title` と `message` の行を示さず、方式のキーの値の位置に `unavailable (GitHub returned a value that reco does not know)` と示します。GitHub が `web_commit_signoff_required` を返さなかったときは、その値の位置に `unavailable (GitHub did not return the value)` と示します。どちらも、ほかの行はいつもどおり示し、エラーにしません。知らない値そのものは示しません。GitHub が返した、reco の検証していない文字列を表示に入れないためです。値は GitHub の設定画面で確かめられます。
+GitHub が、タイトルか本文に reco の知らない値を返したときは、その方式の `title` と `message` の行を示さず、方式のキーの値の位置に `unavailable (GitHub returned a value that reco does not know)` と示します。GitHub が `web_commit_signoff_required` を返さなかったときは、その値の位置に `unavailable (GitHub did not return the value)` と示します。どちらもその行を YAML のコメントとし、ほかの行はいつもどおり示し、エラーにしません。コメントにするのは、確認できなかった値を期待値として読ませないためです。知らない値そのものは示しません。GitHub が返した、reco の検証していない文字列を表示に入れないためです。値は GitHub の設定画面で確かめられます。
 
 ```text
       # squash_merge_commit: unavailable (GitHub returned a value that reco does not know)
       merge_commit:
         title: MERGE_MESSAGE
         message: PR_TITLE
-      # reco does not accept the repository feature and web commit signoff settings in the configuration file yet
-      # has_issues: true
-      # has_projects: true
-      # has_wiki: true
+      has_issues: true
+      has_projects: true
+      has_wiki: true
       # web_commit_signoff_required: unavailable (GitHub did not return the value)
 ```
 
