@@ -12,6 +12,45 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
+// TestDocumentDeclaredAbsence は、state の値が文字列の absent に完全一致したときだけ存在しないことの宣言として受理することを確かめる。
+//
+//trace:checks FR-001
+func TestDocumentDeclaredAbsence(t *testing.T) {
+	cases := []struct {
+		name       string
+		src        string
+		wantReason string
+	}{
+		{name: "absent is accepted", src: "absent\n"},
+		{name: "Absent is rejected case-sensitively", src: "Absent\n", wantReason: `must be absent; got "Absent"`},
+		{name: "present is rejected", src: "present\n", wantReason: `must be absent; got "present"`},
+		{name: "empty string is rejected and not read as an omission", src: `""` + "\n", wantReason: `must be absent; got ""`},
+		{name: "boolean is rejected as not a string", src: "true\n", wantReason: "must be a string"},
+		{name: "null is rejected and not read as an omission", src: "~\n", wantReason: "must not be null or empty"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			err := doc.declaredAbsence(doc.root, "S")
+			if tc.wantReason == "" {
+				if err != nil {
+					t.Fatalf("declaredAbsence() error = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("declaredAbsence() = nil, want error containing %q", tc.wantReason)
+			}
+			if !strings.HasPrefix(err.Error(), "S (") {
+				t.Errorf("declaredAbsence() error = %q, want it to start with %q", err, "S (")
+			}
+			if !strings.HasSuffix(err.Error(), tc.wantReason) {
+				t.Errorf("declaredAbsence() error = %q, want it to end with %q", err, tc.wantReason)
+			}
+		})
+	}
+}
+
 //trace:checks FR-001
 func TestDocumentHasTag(t *testing.T) {
 	cases := []struct {

@@ -54,7 +54,7 @@ export GH_TOKEN=$(gh auth token)
 {"time":"...","level":"ERROR","msg":"command failed","error":"fetch repository example/project-a: not found or not accessible (HTTP 404)"}
 ```
 
-`HTTP 404`、`HTTP 403`、`missing fields` のどれかを含むエラーは、トークンの持ち主（`gh` にログインしたアカウント）がそのリポジトリで十分なロールを持っていないときや、トークンの権限が足りないときに出ます。そのリポジトリで Admin ロールを持つアカウントの、`gh auth token` で取ったトークンを渡します。`HTTP 404` は、リポジトリの名前の綴りを誤ったときにも出ます。`delete repository variable`、`delete environment variable`、`update ruleset` のエラーの `HTTP 404` は、[そのほかのエラーと行](#そのほかのエラーと行) を見ます。
+`HTTP 404`、`HTTP 403`、`missing fields` のどれかを含むエラーは、トークンの持ち主（`gh` にログインしたアカウント）がそのリポジトリで十分なロールを持っていないときや、トークンの権限が足りないときに出ます。そのリポジトリで Admin ロールを持つアカウントの、`gh auth token` で取ったトークンを渡します。`HTTP 404` は、リポジトリの名前の綴りを誤ったときにも出ます。`delete repository variable`、`delete environment variable`、`update ruleset`、`delete ruleset` のエラーの `HTTP 404` は、[そのほかのエラーと行](#そのほかのエラーと行) を見ます。
 
 ## `Plan cannot be applied.` と表示された
 
@@ -118,8 +118,8 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 | `Desired state: does not match (<設定>, ...)` | 複数の設定をまとめた変更（マージ方式など）で、括弧の中の設定の値が設定ファイルのとおりでなかった。ほかの設定が設定ファイルのとおりでも、変更全体は `failed` になる |
 | `Desired state: not confirmed (read failed)` | 更新のあとで値を読み直せず、設定ファイルのとおりになったか確かめられなかった。読み直せなかった原因は、結果のあとに出るエラーの行に出る |
 | `Desired state: not confirmed (environment existence unknown)` | 宣言した名前と同じかどうかを判定できない名前の Environment が現れ、宣言した Environment があるかを確かめられなかった |
-| `Desired state: not confirmed (ruleset existence unknown)` | 宣言した名前と同じかどうかを判定できない名前の Ruleset が現れ、作成したか内容を置き換えた Ruleset があるかを確かめられなかった |
-| `Desired state: not confirmed (the ruleset contains parts that reco does not interpret)` | 作成したか内容を置き換えた Ruleset が、reco の解釈しない部分を含んでいたため、設定ファイルのとおりか確かめられなかった。`plan` が、解釈しなかったものを示す |
+| `Desired state: not confirmed (ruleset existence unknown)` | 宣言した名前と同じかどうかを判定できない名前の Ruleset が現れ、作成したか内容を置き換えた Ruleset があるか、削除した Ruleset がないかを確かめられなかった |
+| `Desired state: not confirmed (the ruleset contains parts that reco does not interpret)` | 作成したか内容を置き換えた Ruleset が、reco の解釈しない部分を含んでいたため、設定ファイルのとおりか確かめられなかった。削除のあとに出たときは、消したはずの名前の Ruleset が reco の解釈しない部分を含んで存在しており、削除は効いていない。`plan` が、解釈しなかったものを示す |
 | `Desired state: not confirmed (GitHub returned a value that reco does not know)` | マージ時のコミットメッセージを変えたあと、GitHub が reco のまだ知らない選び方を返したため、設定ファイルのとおりか確かめられなかった。値は GitHub の設定画面で確かめる |
 | `Desired state: not confirmed (GitHub did not return the value)` | `web_commit_signoff_required` を変えたあと、GitHub がその値を返さなかったため、設定ファイルのとおりか確かめられなかった。値は GitHub の設定画面で確かめる |
 | `Desired state: not confirmed (repository ID changed)` | 読み直したリポジトリが、承認したときとは別のリポジトリだった。同じ名前のリポジトリが、削除して作り直すなどして入れ替わった可能性がある |
@@ -211,7 +211,7 @@ Applying changes...
 | `communication failed`、`unexpected response (HTTP 5xx)` | 通信の失敗か、GitHub 側の障害。時間をおいて実行し直す |
 | `redirect not followed`（下の `HTTP 303` の行を除く） | リポジトリの名前が変わったか、移転した可能性がある。設定ファイルの `name` と `--repo` に、今の名前を書く |
 | `redirect not followed (HTTP 303): GitHub returns this when the pattern already exists` | Environment に加えようとしたパターンが、GitHub 上にすでにあった可能性が高い。`plan` で今のパターンを確かめてから、`apply` し直す |
-| `Precondition: ... changed since approval` | 承認したあとに、その設定の値、Environment そのもの、変数、Ruleset そのもの、Ruleset の内容のどれかが変わった。Environment そのものの変化は、作成する予定の名前の Environment が作られた、変える予定の Environment がなくなった、作り直されたなどの場合に当たる。`actions.variables.<名前>` では、作る予定の名前の変数が作られた、値を変えるか削除する予定の変数の値が変わった、その変数がなくなった場合に当たる。`environments.<Environment の名前>.variables.<名前>` も同じで、同じ `apply` で作った Environment がそのあとでなくなった場合にも当たる。`rulesets.<名前>` では、作る予定の名前（大文字と小文字だけが違う名前を含む）の Ruleset が作られた場合と、内容を置き換える予定の Ruleset の内容が変わった（変える予定のない部分だけが変わった場合や、ルールや迂回できる主体が足されただけの場合を含む）、なくなった、別の名前に変えられた、作り直された場合に当たる。`plan` で今の値を確かめてから、`apply` し直す |
+| `Precondition: ... changed since approval` | 承認したあとに、その設定の値、Environment そのもの、変数、Ruleset そのもの、Ruleset の内容のどれかが変わった。Environment そのものの変化は、作成する予定の名前の Environment が作られた、変える予定の Environment がなくなった、作り直されたなどの場合に当たる。`actions.variables.<名前>` では、作る予定の名前の変数が作られた、値を変えるか削除する予定の変数の値が変わった、その変数がなくなった場合に当たる。`environments.<Environment の名前>.variables.<名前>` も同じで、同じ `apply` で作った Environment がそのあとでなくなった場合にも当たる。`rulesets.<名前>` では、作る予定の名前（大文字と小文字だけが違う名前を含む）の Ruleset が作られた場合と、内容を置き換える予定の Ruleset の内容が変わった（変える予定のない部分だけが変わった場合や、ルールや迂回できる主体が足されただけの場合を含む）、なくなった、別の名前に変えられた、作り直された場合に当たる。削除する予定の Ruleset も同じで、内容が変わった、なくなった、別の名前に変えられた、作り直された場合に当たる。`plan` で今の値を確かめてから、`apply` し直す |
 | そのほかの `Precondition:` | 更新を始める前の確認ができなかったか、一つ前の更新のあとの値が予定した値と違った。エラーの行があれば原因を取り除き、`plan` で確かめてから `apply` し直す |
 | `request conflicts with the current state (HTTP 409)`（`create repository variable` か `create environment variable` のエラー） | 作ろうとした名前（大文字と小文字だけが違う名前を含む）の変数が、GitHub 上にすでにある。更新の直前の確認のあとに作られた可能性がある。`plan` で今の値を確かめてから、`apply` し直す |
 | `not found or not accessible (HTTP 404)`（`delete repository variable` か `delete environment variable` のエラー） | 消そうとした変数が、GitHub 上になかった可能性がある。更新の直前の確認のあとに消されたときに出る。`plan` で今の状態を確かめる。変数がなければ、その変数の行は変更計画に出ない |
@@ -219,7 +219,8 @@ Applying changes...
 | `request not processable (HTTP 422)`（`create ruleset` のエラー） | GitHub が Ruleset の作成を受け付けなかった。`plan` で今の状態を確かめる。その Ruleset の行が作成（`absent -> present`）でなくなっていれば、作ろうとした名前（大文字と小文字だけが違う名前を含む）の Ruleset が、更新の直前の確認のあとに作られた可能性がある。まだ作成として出れば、書いた値（`Integration` の `actor_id` や、リポジトリにインストールされていない App の `integration_id` など）を GitHub が受け付けなかった可能性がある。値を直してから `apply` し直す |
 | `request not processable (HTTP 422)`（`update ruleset` のエラー） | GitHub が Ruleset の内容の置き換えを受け付けなかった。書いた値（`Integration` の `actor_id` や、リポジトリにインストールされていない App の `integration_id` など）を GitHub が受け付けなかった可能性がある。値を直してから `apply` し直す |
 | `not found or not accessible (HTTP 404)`（`update ruleset` のエラー） | 内容を置き換える予定の Ruleset が、更新の直前の確認のあとに消された可能性がある。`plan` で今の状態を確かめる。Ruleset がなければ、その Ruleset は作成（`absent -> present`）として出る |
-| `Update request: unknown`（`rulesets.<名前>` の変更） | GitHub が Ruleset の作成か内容の置き換えを受け付けたか分からない。reco は要求を送り直さない。`plan` を実行し、`Applicability: not applicable` の行が出たら、[`Plan cannot be applied.` と表示された](#plan-cannot-be-applied-と表示された) に従う。出なければ、その Ruleset の行が変更計画にあるかを見る。なければ変更は済んでいる。あれば差分を確かめてから `apply` し直す |
+| `not found or not accessible (HTTP 404)`（`delete ruleset` のエラー） | 削除する予定の Ruleset が、更新の直前の確認のあとに消された可能性がある。`plan` で今の状態を確かめる。`rulesets.<名前>` の行が出なければ、その Ruleset はもうない |
+| `Update request: unknown`（`rulesets.<名前>` の変更） | GitHub が Ruleset の作成、内容の置き換え、削除を受け付けたか分からない。reco は要求を送り直さない。`plan` を実行し、`Applicability: not applicable` の行が出たら、[`Plan cannot be applied.` と表示された](#plan-cannot-be-applied-と表示された) に従う。出なければ、その Ruleset の行が変更計画にあるかを見る。なければ変更は済んでいる。あれば差分を確かめてから `apply` し直す |
 | `unexpected response (HTTP 400)`（`update oidc subject` のエラー） | GitHub が `include_claim_keys` の key を受け付けなかった可能性が高い。reco は key の形式（英数字と `_`）だけを確かめ、GitHub が受け付ける key は確かめない。大文字を含む key（`Repo` など）や、定義にない key がないかを確かめ、直してから `apply` し直す。GitHub 上の値は変わっていない |
 | `Other settings: ... (cause not determined)` | 変えようとしていない設定が、更新の前後で変わっていた。誰かが変えたものかを確かめ、`plan` で今の値を確かめる |
 
@@ -230,5 +231,5 @@ Applying changes...
 - [GitHub REST API 共通仕様](../research/rest-api.md)：`404` だけでは不存在を断定できないこと、レート制限と待つべき時間
 - [GitHub リポジトリ API 仕様](../research/repositories.md)：名前を変えたリポジトリへのリダイレクト、GitHub Free の非公開リポジトリでの自動マージと Wiki
 - [GitHub Actions 変数 API 仕様](../research/actions-variables.md)：変数の値の大きさと件数の上限、変数の作成、更新、削除の応答
-- [GitHub Rules API 仕様](../research/rules.md)：同じ名前（大文字と小文字だけが違う名前を含む）の Ruleset の作成の拒否、Bypass の主体など書いた値の作成と内容の置き換えの拒否、消された Ruleset の内容の置き換えの `404`
+- [GitHub Rules API 仕様](../research/rules.md)：同じ名前（大文字と小文字だけが違う名前を含む）の Ruleset の作成の拒否、Bypass の主体など書いた値の作成と内容の置き換えの拒否、消された Ruleset の内容の置き換えと削除の `404`
 - [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md)：担当者にできない ID を送ったときの `422` と、黙って除かれる場合、権限を持たない利用者だけのときに残る担当者のいない承認の設定、非公開リポジトリで担当者と待機時間を設定できる料金プランと、設定できないときの `422`、担当者のいない Environment で「Prevent self-review」を変えたときの `422`

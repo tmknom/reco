@@ -2224,6 +2224,16 @@ func TestSendUpdate(t *testing.T) {
 			}},
 		},
 		{
+			// 宛先は更新直前の観測から引かず、承認時に予定した ID にする。観測の同じ名前を別の ID にし、観測から引く実装を失敗させる
+			name:      "ruleset deletion is sent to the approved ID without a body",
+			operation: rulesetDeletionChange(t, "protect").Operations[0],
+			observed: github.ObservationResult{Rulesets: &github.Rulesets{Existing: github.Observed([]github.Ruleset{
+				github.InterpretedRuleset(99, "protect", protectRuleset(setting.RulesetEnforcementDisabled)),
+			})}},
+			response: noContent(),
+			want:     githubtest.Request{Method: http.MethodDelete, Path: "/repos/owner/repo/rulesets/42"},
+		},
+		{
 			name:      "variable deletion is sent to the declared name without a body",
 			operation: variableDeletionChange(t, "GO_VERSION", "1.26").Operations[0],
 			observed:  github.ObservationResult{RepositoryVariables: variables(github.Variable{Name: "GO_VERSION", Value: "1.26"})},
@@ -2285,7 +2295,7 @@ func TestSendUpdate(t *testing.T) {
 			name: "undefined kind of an update operation panics",
 			operation: func() changeplan.UpdateOperation {
 				o := toSelectedPatterns.Operations[1]
-				o.Kind = changeplan.RulesetValueUpdate + 1
+				o.Kind = changeplan.RulesetDeletion + 1
 				return o
 			}(),
 			observed: github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", nil))},

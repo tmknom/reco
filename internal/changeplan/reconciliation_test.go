@@ -422,6 +422,24 @@ func TestReconcile_Rulesets(t *testing.T) {
 			desired:  desired,
 			want:     SettingPlan{Unit: unit, Observed: github.Unavailable[setting.Value](github.UnavailablePrivateRepository), Desired: desired, Result: NotComparable},
 		},
+		{
+			name:     "declared absence of a ruleset under a name differing only in letter case is a mismatch with the whole observed value and ID",
+			rulesets: observed(github.InterpretedRuleset(1, "Protect", evaluate)),
+			desired:  setting.Absent(),
+			want:     SettingPlan{Unit: unit, Observed: github.Observed(setting.RulesetValue(evaluate)), RulesetIdentity: ObservedRulesetIdentity(1), Desired: setting.Absent(), Result: Mismatch},
+		},
+		{
+			name:     "declared absence with only another name listed is a match with absence",
+			rulesets: observed(github.InterpretedRuleset(1, "release", protectRuleset())),
+			desired:  setting.Absent(),
+			want:     SettingPlan{Unit: unit, Observed: github.Observed(setting.Absent()), Desired: setting.Absent(), Result: Match},
+		},
+		{
+			name:     "declared absence with only a name that cannot be compared is not comparable",
+			rulesets: observed(github.InterpretedRuleset(1, "Prot\u00e9ct", protectRuleset())),
+			desired:  setting.Absent(),
+			want:     SettingPlan{Unit: unit, Observed: github.Unavailable[setting.Value](github.UnavailableNameUndetermined), Desired: setting.Absent(), Result: NotComparable},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

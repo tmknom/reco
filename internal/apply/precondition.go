@@ -103,7 +103,7 @@ func matchesAnticipatedEnvironment(basis changeplan.PreconditionBasis, current g
 // matchesAnticipatedRuleset は、Ruleset そのものの基準 basis が、更新直前に名前で引いた観測結果 current と同じかを返す。
 // 綴りは比べない。
 // 存在するか存在しないかのどちらでもない基準 (観測不能、ゼロ値) は承認の前に適用不能として止め、値を伴う存在の基準には changeplan が ID の基準を必ず添える。
-// どちらかが破れた形を受け付けると、確かめていない Ruleset を置き換え得るため、更新直前の観測によらず不変条件の破れとして panic する。
+// どちらかが破れた形を受け付けると、確かめていない Ruleset を置き換えるか消し得るため、更新直前の観測によらず不変条件の破れとして panic する。
 func matchesAnticipatedRuleset(basis changeplan.PreconditionBasis, current github.RulesetObservation) bool {
 	anticipated, ok := basis.AnticipatedValue.Value()
 	if !ok {

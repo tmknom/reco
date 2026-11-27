@@ -282,6 +282,15 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			after:  withRulesets(general(func(g *github.General) { g.AllowAutoMerge = true }), statusChecksRulesetObservation(true)),
 			want:   nil,
 		},
+		{
+			// 削除は値を送らず、更新後に比べる値がない。消えた Ruleset の値を比べる実装は panic するか変化を返す
+			name:   "ruleset deletion compares no setting",
+			change: rulesetDeletionChange(t, "protect"),
+			before: []github.ObservationResult{withRulesets(general(func(*github.General) {}), statusChecksRulesetObservation(false))},
+			after: withRulesets(general(func(g *github.General) { g.AllowAutoMerge = true }),
+				github.ObservationResult{Rulesets: &github.Rulesets{Existing: github.Observed([]github.Ruleset{})}}),
+			want: nil,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -298,7 +307,7 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			}
 		}()
 		change := allowAutoMergeChange()
-		change.Operations[0].Kind = changeplan.RulesetValueUpdate + 1
+		change.Operations[0].Kind = changeplan.RulesetDeletion + 1
 		unexpectedOutsideChanges(change, []github.ObservationResult{{}}, github.ObservationResult{})
 	})
 }

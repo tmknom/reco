@@ -61,7 +61,7 @@ const (
 	EnvironmentWaitTimer Key = "environments.wait_timer"
 	// EnvironmentVariable は、Environment に属する Environment Variable そのもの (期待値は存在し、値を伴うこと) の形。
 	EnvironmentVariable Key = "environments.variables"
-	// RulesetResource は、Ruleset そのもの (期待値は存在し、値を伴うこと) の形。
+	// RulesetResource は、Ruleset そのもの (期待値は存在し、値を伴うことか、存在しないこと) の形。
 	RulesetResource Key = "rulesets"
 )
 

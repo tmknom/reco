@@ -67,10 +67,10 @@ type EnvironmentDeclaration struct {
 	Variables []VariableDeclaration
 }
 
-// RulesetDeclaration は、一つの Ruleset の宣言。その名前の Ruleset が存在し、値が宣言と同じであることの期待値を兼ねる。
+// RulesetDeclaration は、一つの Ruleset の宣言。その名前の Ruleset が存在し、値が宣言と同じであること、または存在しないことの期待値を兼ねる。
 type RulesetDeclaration struct {
 	Name setting.RulesetName
-	// Desired は、存在し値を伴うことの期待値 (setting.RulesetValue)。
+	// Desired は、存在し値を伴うことの期待値 (setting.RulesetValue) か、存在しないことの期待値 (setting.Absent())。
 	Desired setting.Value
 }
 

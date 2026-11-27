@@ -517,6 +517,34 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 				"    rules: [deletion]\n" +
 				"    Applicability: not applicable (the repository is private; remove rulesets, which reco manages only on public repositories)\n",
 		},
+		{
+			name: "deletion shows present -> absent and the whole observed value in the returned order with duplicates, conditions {} and defaults",
+			s: changeplan.SettingPlan{
+				Unit: protect,
+				Observed: github.Observed(setting.RulesetValue(setting.Ruleset{
+					Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementEvaluate,
+					Conditions:   setting.RulesetConditions{},
+					BypassActors: []setting.BypassActor{role(1, setting.BypassModeAlways), role(1, setting.BypassModeAlways)},
+					Rules:        []setting.RulesetRule{observedPullRequest(setting.PullRequestParameters{}), deletion},
+				})),
+				Desired: setting.Absent(), Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
+			},
+			want: header[:len(header)-2] + ": present -> absent\n" +
+				"    target: branch\n    enforcement: evaluate\n    conditions: {}\n" +
+				"    bypass_actors: [RepositoryRole 1 always, RepositoryRole 1 always]\n" +
+				"    rules: [" + pullRequestOfDefaultsWithout + observedDefaults + ", deletion]\n",
+		},
+		{
+			name: "declared absence with uninterpreted parts shows the state -> absent without value lines",
+			s: changeplan.SettingPlan{
+				Unit: rulesetUnit(t, "legacy"), Observed: github.Unavailable[setting.Value](github.UnavailableUninterpretedParts),
+				Desired: setting.Absent(), Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable(changeplan.NotApplicableUninterpretedParts),
+				UninterpretedParts: []github.UninterpretedPart{{Kind: github.UninterpretedRuleType, Name: "creation"}},
+			},
+			want: "  rulesets.legacy: (uninterpreted parts) -> absent\n" +
+				"    Applicability: not applicable (the ruleset on GitHub contains parts that reco does not interpret; remove this ruleset from the configuration)\n" +
+				"      rule type: \"creation\"\n",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -569,6 +597,13 @@ func TestPlannedChangeText_RulesetInvariantsPanic(t *testing.T) {
 			},
 		},
 		{
+			name: "not comparable with a declared value without ref_name has no line in the specification",
+			s: changeplan.SettingPlan{
+				Unit: protect, Observed: github.Unavailable[setting.Value](github.UnavailableNameUndetermined), Desired: setting.RulesetValue(withoutRefName),
+				Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable(changeplan.NotApplicableNameUndetermined),
+			},
+		},
+		{
 			name: "creation with an undefined rule type has no format",
 			s: changeplan.SettingPlan{
 				Unit: protect, Observed: github.Observed(setting.Absent()), Desired: setting.RulesetValue(withUndefinedRule),
@@ -611,4 +646,37 @@ func TestRuleParameterChangeLines_PanicsWithoutParameters(t *testing.T) {
 		}
 	}()
 	_ = ruleParameterChangeLines(setting.NonFastForwardRule(), setting.NonFastForwardRule())
+}
+
+// 観測値は ref_name を持たないことがあり、持たない値は include と exclude の代わりに conditions: {} の1行で示す。
+//
+//trace:checks FR-007
+func TestRulesetValueLines(t *testing.T) {
+	cases := []struct {
+		name       string
+		conditions setting.RulesetConditions
+		want       string
+	}{
+		{
+			name:       "value without ref_name shows conditions: {} in place of include and exclude",
+			conditions: setting.RulesetConditions{},
+			want:       "    target: branch\n    enforcement: active\n    conditions: {}\n    bypass_actors: []\n    rules: [deletion]\n",
+		},
+		{
+			name:       "value with empty include and exclude shows both lines",
+			conditions: refName([]string{}, []string{}),
+			want:       "    target: branch\n    enforcement: active\n    include: []\n    exclude: []\n    bypass_actors: []\n    rules: [deletion]\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := setting.Ruleset{
+				Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive,
+				Conditions: tc.conditions, BypassActors: []setting.BypassActor{}, Rules: []setting.RulesetRule{setting.DeletionRule()},
+			}
+			if got := rulesetValueLines(r); got != tc.want {
+				t.Errorf("rulesetValueLines() =\n%q\nwant\n%q", got, tc.want)
+			}
+		})
+	}
 }

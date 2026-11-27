@@ -29,6 +29,7 @@ type UpdateOperation struct {
 	Unit setting.Unit
 	// Value は、SettingUpdate が送る設定の値と、Repository Variable と Environment Variable の作成と値の変更が送る変数の値と、Ruleset の作成と値の変更が送る Ruleset の値と、
 	// RequiredReviewersUpdate が送る担当者の集合と、PreventSelfReviewUpdate と WaitTimerUpdate が送る値。
+	// 変数と Ruleset の削除は値を送らず、ゼロ値である。
 	Value setting.Value
 	// Mode は、EnvironmentCreationWithMode と DeploymentBranchPolicyModeUpdate が送るデプロイ元制限の方式。
 	Mode setting.DeploymentBranchPolicyMode
@@ -82,6 +83,8 @@ const (
 	RulesetCreation
 	// RulesetValueUpdate は、存在する Ruleset の値を置き換える。
 	RulesetValueUpdate
+	// RulesetDeletion は、存在する Ruleset を消す。値を送らない。
+	RulesetDeletion
 )
 
 // PreconditionBasis は、変更前提の基準で、関係する現在値に当たる設定と、その承認時に予定した値の組。
@@ -137,7 +140,7 @@ func (o UpdateOperation) Endpoint() (github.UpdateEndpoint, bool) {
 		DeploymentPatternAddition, DeploymentPatternRemoval, RequiredReviewersUpdate, PreventSelfReviewUpdate, WaitTimerUpdate,
 		RepositoryVariableCreation, RepositoryVariableValueUpdate, RepositoryVariableDeletion,
 		EnvironmentVariableCreation, EnvironmentVariableValueUpdate, EnvironmentVariableDeletion,
-		RulesetCreation, RulesetValueUpdate:
+		RulesetCreation, RulesetValueUpdate, RulesetDeletion:
 		return 0, false
 	}
 	panic(fmt.Sprintf("changeplan: undefined kind %d of an update operation", int(o.Kind)))
@@ -373,7 +376,7 @@ func targetsSelectedPolicy(s SettingPlan) bool {
 
 // checkUpdateEndpoint は、operation の更新要求の宛先を承認の前に決められるかを確かめ、決められなければ panic する。どれも、承認のあと先行する変更を送ってから止まらないようにするため。
 // マージ方式は一つずつ送る更新要求を持たず、まとめた更新操作でだけ送るため、一つの設定の更新操作なら panic する。
-// Ruleset の値の変更は宛先が計画時に観測した ID で決まるため、AnticipatedRulesetID を引けることを確かめる。
+// Ruleset の値の変更と削除は宛先が計画時に観測した ID で決まるため、AnticipatedRulesetID を引けることを確かめる。
 // Endpoint の戻り値を使わないのは、引けることの検査だけを目的とするため。最後に引くのは、マージ方式の破れを宛先の破れより具体的な理由で示すため。
 func checkUpdateEndpoint(operation UpdateOperation) {
 	switch {
@@ -383,7 +386,7 @@ func checkUpdateEndpoint(operation UpdateOperation) {
 		return !slices.Contains(setting.MergeMethods(), s.Unit.Key)
 	})):
 		panic("changeplan: merge methods update of " + operation.Unit.String() + " does not send only merge methods")
-	case operation.Kind == RulesetValueUpdate:
+	case operation.Kind == RulesetValueUpdate || operation.Kind == RulesetDeletion:
 		operation.AnticipatedRulesetID()
 	}
 	operation.Endpoint()

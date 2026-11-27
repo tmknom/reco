@@ -81,8 +81,10 @@ reco で変えた設定を元の値に戻すには、設定ファイルにその
 
 Repository Variables と Environment Variables も、行を消しただけでは GitHub 上に残ります。変数を消すときは、行を消す前に `value` を `state: absent` に書き換えて `apply` します。`plan` が消える値を示すので、戻す可能性があるなら控えておきます。消えたことを確かめたら、その行を消して管理をやめられます（[Configuration](configuration.md) の Repository Variables）。
 
+Ruleset も同じです。`rulesets` から要素を消すと、GitHub 上の Ruleset はそのまま残り、reco が管理しなくなるだけです。Ruleset を消すときは、要素を消す前に `name` と `state: absent` だけに書き換えて `apply` します。`plan` が消える Ruleset の内容の全体を示すので、戻す可能性があるなら控えておきます。消えたことを確かめたら、その要素を消して管理をやめられます（[Configuration](configuration.md) の Ruleset）。
+
 ## References
 
 - [CLI 仕様](../spec/cli.md)：`apply` が今の値から変更計画を作り直すこと（2.1節）、`--repo` で選べるリポジトリと、設定ファイル全体の検証（2.2節、2.3節）、変更計画の表示（4章）、更新の順序と、完了しなかったリポジトリのあとの扱い（5.1節）、`show`（6章）
 - [要求定義](../spec/requirements.md)：設定ファイルに書いたリポジトリだけを対象にすること（FR-002）、異常のあとに更新を続けないこと（INV-005）
-- [YAML 設定仕様](../spec/configuration.md)：未記載の設定を管理しないこと（2章）、空の階層を拒否すること（1章、14.1節）、`allowed_actions` と `selected_actions` の組み合わせ（4.1節）、存在しないことの宣言による変数の削除（10.3節）、Environment を削除しないこと（11章）
+- [YAML 設定仕様](../spec/configuration.md)：未記載の設定を管理しないこと（2章）、空の階層を拒否すること（1章、14.1節）、`allowed_actions` と `selected_actions` の組み合わせ（4.1節）、存在しないことの宣言による変数の削除（10.3節）、Environment を削除しないこと（11章）、存在しないことの宣言による Ruleset の削除（13.6節）
