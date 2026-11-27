@@ -33,6 +33,7 @@ func (e UpdateEndpoint) ObservedSettings() []setting.Key {
 	case RepositoryEndpoint:
 		return []setting.Key{
 			setting.DeleteBranchOnMerge, setting.AllowAutoMerge, setting.AllowSquashMerge, setting.AllowMergeCommit, setting.AllowRebaseMerge, setting.AllowUpdateBranch,
+			setting.SquashMergeCommit, setting.MergeCommit,
 			setting.SecretScanningEnabled, setting.RepositoryPushProtection,
 		}
 	case WorkflowPermissionsEndpoint:

@@ -49,6 +49,7 @@ reco が管理可能な設定は、次のとおりです。具体的な設定方
 | Pull Request を squash merge でマージできるようにするか | 「General」ページの「Pull Requests」の欄の「Allow squash merging」 |
 | Pull Request を merge commit でマージできるようにするか | 「General」ページの「Pull Requests」の欄の「Allow merge commits」 |
 | Pull Request を rebase merge でマージできるようにするか | 「General」ページの「Pull Requests」の欄の「Allow rebase merging」 |
+| squash merge と merge commit でマージするときのコミットメッセージの形（タイトルと本文） | 「General」ページの「Pull Requests」の欄の「Allow squash merging」と「Allow merge commits」の下の選択肢 |
 | base ブランチより遅れた Pull Request に、ブランチの更新を常に提案するか | 「General」ページの「Pull Requests」の欄の「Always suggest updating pull request branches」 |
 | Actions を有効にするか、無効にするか | 「Actions」の「General」ページの「Actions permissions」の欄 |
 | 実行を許可する Actions と再利用可能なワークフローの範囲（すべて、ローカルのものだけ、選んだものだけ） | 「Actions」の「General」ページの「Actions permissions」の欄。選んだものだけを許可する選択肢は「Allow *OWNER*, and select non-*OWNER*, actions and reusable workflows」 |

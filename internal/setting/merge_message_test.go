@@ -1,6 +1,38 @@
 package setting
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
+
+// TestAcceptedSquashMergeCommitDefaults は、GitHub が更新で受け付ける squash merge のタイトルと本文の組が、YAML 設定仕様の表の4つで、その並びであることを確かめる。
+//
+//trace:checks FR-001
+func TestAcceptedSquashMergeCommitDefaults(t *testing.T) {
+	want := []SquashMergeCommitDefault{
+		{Title: SquashMergeCommitTitlePRTitle, Message: SquashMergeCommitMessagePRBody},
+		{Title: SquashMergeCommitTitlePRTitle, Message: SquashMergeCommitMessageBlank},
+		{Title: SquashMergeCommitTitlePRTitle, Message: SquashMergeCommitMessageCommitMessages},
+		{Title: SquashMergeCommitTitleCommitOrPRTitle, Message: SquashMergeCommitMessageCommitMessages},
+	}
+	if got := AcceptedSquashMergeCommitDefaults(); !slices.Equal(got, want) {
+		t.Errorf("AcceptedSquashMergeCommitDefaults() = %v, want %v", got, want)
+	}
+}
+
+// TestAcceptedMergeCommitDefaults は、GitHub が更新で受け付ける merge commit のタイトルと本文の組が、YAML 設定仕様の表の3つで、その並びであることを確かめる。
+//
+//trace:checks FR-001
+func TestAcceptedMergeCommitDefaults(t *testing.T) {
+	want := []MergeCommitDefault{
+		{Title: MergeCommitTitlePRTitle, Message: MergeCommitMessagePRBody},
+		{Title: MergeCommitTitlePRTitle, Message: MergeCommitMessageBlank},
+		{Title: MergeCommitTitleMergeMessage, Message: MergeCommitMessagePRTitle},
+	}
+	if got := AcceptedMergeCommitDefaults(); !slices.Equal(got, want) {
+		t.Errorf("AcceptedMergeCommitDefaults() = %v, want %v", got, want)
+	}
+}
 
 //trace:checks FR-004
 func TestParseSquashMergeCommitTitle(t *testing.T) {

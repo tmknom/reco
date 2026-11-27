@@ -28,6 +28,8 @@ func TestValue_String(t *testing.T) {
 		{value: Absent(), want: "absent"},
 		{value: Present(), want: "present"},
 		{value: ReviewerSetValue(ReviewerSetOf([]Reviewer{{Type: ReviewerUser, ID: 1}})), want: "[User 1]"},
+		{value: SquashMergeCommitDefaultValue(SquashMergeCommitDefault{Title: SquashMergeCommitTitleCommitOrPRTitle, Message: SquashMergeCommitMessageCommitMessages}), want: "title: COMMIT_OR_PR_TITLE, message: COMMIT_MESSAGES"},
+		{value: MergeCommitDefaultValue(MergeCommitDefault{Title: MergeCommitTitleMergeMessage, Message: MergeCommitMessagePRTitle}), want: "title: MERGE_MESSAGE, message: PR_TITLE"},
 		{
 			value: SelectedActionsCriteriaValue(SelectedActionsCriteria{GitHubOwnedAllowed: true, VerifiedAllowed: false, PatternsAllowed: []string{"z/*", "a/*"}}),
 			want:  `github_owned_allowed: true, verified_allowed: false, patterns_allowed: ["z/*", "a/*"]`,
@@ -89,6 +91,13 @@ func TestValue_Equal(t *testing.T) {
 		{name: "reviewer sets differing only in order are equal", a: ReviewerSetValue(ReviewerSetOf([]Reviewer{{Type: ReviewerUser, ID: 1}, {Type: ReviewerUser, ID: 2}})), b: ReviewerSetValue(ReviewerSetOf([]Reviewer{{Type: ReviewerUser, ID: 2}, {Type: ReviewerUser, ID: 1}})), equal: true},
 		{name: "reviewer sets with a different reviewer differ", a: ReviewerSetValue(ReviewerSetOf([]Reviewer{{Type: ReviewerUser, ID: 1}})), b: ReviewerSetValue(ReviewerSetOf([]Reviewer{{Type: ReviewerUser, ID: 2}})), equal: false},
 		{name: "ruleset differs from an absence", a: RulesetValue(newTestRuleset()), b: Absent(), equal: false},
+		{name: "same squash merge commit defaults are equal", a: squashMergeCommitValue(SquashMergeCommitTitlePRTitle, SquashMergeCommitMessagePRBody), b: squashMergeCommitValue(SquashMergeCommitTitlePRTitle, SquashMergeCommitMessagePRBody), equal: true},
+		{name: "squash merge commit defaults differing only in title differ", a: squashMergeCommitValue(SquashMergeCommitTitlePRTitle, SquashMergeCommitMessageCommitMessages), b: squashMergeCommitValue(SquashMergeCommitTitleCommitOrPRTitle, SquashMergeCommitMessageCommitMessages), equal: false},
+		{name: "squash merge commit defaults differing only in message differ", a: squashMergeCommitValue(SquashMergeCommitTitlePRTitle, SquashMergeCommitMessagePRBody), b: squashMergeCommitValue(SquashMergeCommitTitlePRTitle, SquashMergeCommitMessageBlank), equal: false},
+		{name: "same merge commit defaults are equal", a: mergeCommitValue(MergeCommitTitleMergeMessage, MergeCommitMessagePRTitle), b: mergeCommitValue(MergeCommitTitleMergeMessage, MergeCommitMessagePRTitle), equal: true},
+		{name: "merge commit defaults differing only in title differ", a: mergeCommitValue(MergeCommitTitlePRTitle, MergeCommitMessagePRBody), b: mergeCommitValue(MergeCommitTitleMergeMessage, MergeCommitMessagePRBody), equal: false},
+		{name: "merge commit defaults differing only in message differ", a: mergeCommitValue(MergeCommitTitlePRTitle, MergeCommitMessagePRBody), b: mergeCommitValue(MergeCommitTitlePRTitle, MergeCommitMessageBlank), equal: false},
+		{name: "squash merge and merge commit defaults of the same spelling differ", a: squashMergeCommitValue(SquashMergeCommitTitlePRTitle, SquashMergeCommitMessagePRBody), b: mergeCommitValue(MergeCommitTitlePRTitle, MergeCommitMessagePRBody), equal: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -97,6 +106,38 @@ func TestValue_Equal(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValue_SquashMergeCommitDefault(t *testing.T) {
+	want := SquashMergeCommitDefault{Title: SquashMergeCommitTitleCommitOrPRTitle, Message: SquashMergeCommitMessageCommitMessages}
+	if got := SquashMergeCommitDefaultValue(want).SquashMergeCommitDefault(); got != want {
+		t.Errorf("SquashMergeCommitDefault() = %v, want %v", got, want)
+	}
+}
+
+func TestValue_SquashMergeCommitDefaultOfMergeCommitDefaultPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("SquashMergeCommitDefault() did not panic for a merge commit default")
+		}
+	}()
+	_ = mergeCommitValue(MergeCommitTitlePRTitle, MergeCommitMessagePRBody).SquashMergeCommitDefault()
+}
+
+func TestValue_MergeCommitDefault(t *testing.T) {
+	want := MergeCommitDefault{Title: MergeCommitTitleMergeMessage, Message: MergeCommitMessagePRTitle}
+	if got := MergeCommitDefaultValue(want).MergeCommitDefault(); got != want {
+		t.Errorf("MergeCommitDefault() = %v, want %v", got, want)
+	}
+}
+
+func TestValue_MergeCommitDefaultOfSquashMergeCommitDefaultPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("MergeCommitDefault() did not panic for a squash merge commit default")
+		}
+	}()
+	_ = squashMergeCommitValue(SquashMergeCommitTitlePRTitle, SquashMergeCommitMessagePRBody).MergeCommitDefault()
 }
 
 func TestValue_EqualWithZeroValuePanics(t *testing.T) {
@@ -602,4 +643,12 @@ func TestValue_ReviewerSetOfBoolPanics(t *testing.T) {
 		}
 	}()
 	_ = BoolValue(true).ReviewerSet()
+}
+
+func squashMergeCommitValue(title SquashMergeCommitTitle, message SquashMergeCommitMessage) Value {
+	return SquashMergeCommitDefaultValue(SquashMergeCommitDefault{Title: title, Message: message})
+}
+
+func mergeCommitValue(title MergeCommitTitle, message MergeCommitMessage) Value {
+	return MergeCommitDefaultValue(MergeCommitDefault{Title: title, Message: message})
 }

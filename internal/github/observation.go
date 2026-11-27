@@ -44,15 +44,15 @@ type ObservationResult struct {
 
 // General はリポジトリ一般設定のうち、reco が観測する値である。管理範囲を知らないため、未管理設定の値も含む。
 type General struct {
-	AllowAutoMerge      bool
-	DeleteBranchOnMerge bool
-	AllowSquashMerge    bool
-	AllowMergeCommit    bool
-	AllowRebaseMerge    bool
-	AllowUpdateBranch   bool
-	// マージメッセージ、リポジトリの機能、Web コミットのサインオフ必須は、宣言を受け付けないため管理の単位を持たず、Setting の対象にならない。
+	AllowAutoMerge           bool
+	DeleteBranchOnMerge      bool
+	AllowSquashMerge         bool
+	AllowMergeCommit         bool
+	AllowRebaseMerge         bool
+	AllowUpdateBranch        bool
 	SquashMergeCommitDefault SettingObservation[setting.SquashMergeCommitDefault]
 	MergeCommitDefault       SettingObservation[setting.MergeCommitDefault]
+	// リポジトリの機能と Web コミットのサインオフ必須は、宣言を受け付けないため管理の単位を持たず、Setting の対象にならない。
 	HasIssues                bool
 	HasProjects              bool
 	HasWiki                  bool
@@ -85,6 +85,10 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 		return Observed(setting.BoolValue(o.General.AllowRebaseMerge))
 	case setting.AllowUpdateBranch:
 		return Observed(setting.BoolValue(o.General.AllowUpdateBranch))
+	case setting.SquashMergeCommit:
+		return valueObservation(o.General.SquashMergeCommitDefault, setting.SquashMergeCommitDefaultValue)
+	case setting.MergeCommit:
+		return valueObservation(o.General.MergeCommitDefault, setting.MergeCommitDefaultValue)
 	case setting.ActionsEnabled:
 		return Observed(setting.BoolValue(o.ActionsPermissions.Enabled))
 	case setting.AllowedActions:

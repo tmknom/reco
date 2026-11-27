@@ -504,6 +504,103 @@ func TestJudgeApplicability_MergeMethods(t *testing.T) {
 	}
 }
 
+// TestJudgeApplicability_MergeMessages は、不一致のマージメッセージの変更予定を、更新する時点で対応するマージ方式が有効と見込めるときに限り適用可能とし、
+// 知らない値で比較不能なマージメッセージを適用不能にすることを確かめる (General の設計の適用可能性と副作用)。
+//
+//trace:checks FR-006 INV-001
+func TestJudgeApplicability_MergeMessages(t *testing.T) {
+	current := setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitleCommitOrPRTitle, Message: setting.SquashMergeCommitMessageCommitMessages}
+	declared := setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitlePRTitle, Message: setting.SquashMergeCommitMessagePRBody}
+	squashPlan := func(observed, desired setting.SquashMergeCommitDefault) SettingPlan {
+		return newSettingPlan(setting.Unit{Key: setting.SquashMergeCommit}, github.Observed(setting.SquashMergeCommitDefaultValue(observed)), setting.SquashMergeCommitDefaultValue(desired))
+	}
+	mergeCommitPlan := newSettingPlan(setting.Unit{Key: setting.MergeCommit},
+		github.Observed(setting.MergeCommitDefaultValue(setting.MergeCommitDefault{Title: setting.MergeCommitTitleMergeMessage, Message: setting.MergeCommitMessagePRTitle})),
+		setting.MergeCommitDefaultValue(setting.MergeCommitDefault{Title: setting.MergeCommitTitlePRTitle, Message: setting.MergeCommitMessagePRBody}))
+	methodPlan := func(key setting.Key, observed, desired bool) SettingPlan {
+		return newSettingPlan(setting.Unit{Key: key}, github.Observed(setting.BoolValue(observed)), setting.BoolValue(desired))
+	}
+	cases := []struct {
+		name     string
+		in       SettingPlan
+		methods  []SettingPlan
+		observed github.General
+		want     Applicability
+	}{
+		{
+			name:     "match with squash merge disabled has no judgement",
+			in:       squashPlan(declared, declared),
+			observed: github.General{AllowMergeCommit: true},
+			want:     Applicability{},
+		},
+		{
+			name:     "mismatch with squash merge enabled and undeclared is applicable",
+			in:       squashPlan(current, declared),
+			observed: github.General{AllowSquashMerge: true},
+			want:     Applicable(),
+		},
+		{
+			name:     "mismatch with squash merge enabled and to be disabled is applicable",
+			in:       squashPlan(current, declared),
+			methods:  []SettingPlan{methodPlan(setting.AllowSquashMerge, true, false)},
+			observed: github.General{AllowSquashMerge: true, AllowMergeCommit: true},
+			want:     Applicable(),
+		},
+		{
+			name:     "mismatch with squash merge disabled and to be enabled is applicable",
+			in:       squashPlan(current, declared),
+			methods:  []SettingPlan{methodPlan(setting.AllowSquashMerge, false, true)},
+			observed: github.General{AllowMergeCommit: true},
+			want:     Applicable(),
+		},
+		{
+			name:     "mismatch with squash merge disabled and undeclared is not applicable because the merge method remains disabled",
+			in:       squashPlan(current, declared),
+			observed: github.General{AllowMergeCommit: true},
+			want:     NotApplicable(NotApplicableMergeMethodRemainsDisabled),
+		},
+		{
+			name:     "mismatch with squash merge disabled and declared false is not applicable",
+			in:       squashPlan(current, declared),
+			methods:  []SettingPlan{methodPlan(setting.AllowSquashMerge, false, false)},
+			observed: github.General{AllowMergeCommit: true},
+			want:     NotApplicable(NotApplicableMergeMethodRemainsDisabled),
+		},
+		{
+			name:     "merge commit mismatch with merge commit disabled and squash merge enabled is not applicable",
+			in:       mergeCommitPlan,
+			observed: github.General{AllowSquashMerge: true},
+			want:     NotApplicable(NotApplicableMergeMethodRemainsDisabled),
+		},
+		{
+			name:     "not comparable because of an unknown value is not applicable",
+			in:       newSettingPlan(setting.Unit{Key: setting.MergeCommit}, github.Unavailable[setting.Value](github.UnavailableUnknownValue), mergeCommitPlan.Desired),
+			observed: github.General{AllowMergeCommit: true},
+			want:     NotApplicable(NotApplicableUnknownValue),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := slices.Concat(tc.methods, []SettingPlan{tc.in})
+			got := judgeApplicability(tc.in, settings, github.ObservationResult{General: tc.observed})
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("judgeApplicability() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("merge message not comparable for a reason other than an unknown value panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("judgeApplicability() did not panic")
+			}
+		}()
+		in := newSettingPlan(setting.Unit{Key: setting.MergeCommit}, github.Unavailable[setting.Value](github.UnavailablePrivateRepository),
+			setting.MergeCommitDefaultValue(setting.MergeCommitDefault{Title: setting.MergeCommitTitlePRTitle, Message: setting.MergeCommitMessagePRBody}))
+		judgeApplicability(in, []SettingPlan{in}, github.ObservationResult{})
+	})
+}
+
 // TestJudgeApplicability_RetentionDays は、保持日数の期待値を計画時に観測した上限と比べ、上限を超える変更予定を、上限を伴って適用不能にすることを確かめる。
 //
 //trace:checks FR-006

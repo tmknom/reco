@@ -190,6 +190,13 @@ Pull Request の自動マージは、GitHub Free と GitHub Free for organizatio
 > - `200` の応答本文：上のどの `200` の本文も、マージメッセージの4フィールド、リポジトリの機能と `web_commit_signoff_required`、マージ方式の3項目を含み、値は直後の `GET` と一致した。`delete_branch_on_merge` だけ（公開・非公開）、`allow_auto_merge` だけ（公開）、`security_and_analysis.secret_scanning.status` だけ（公開）を、保存されている値と同じ値で送った要求の `200` の本文も、マージメッセージの4フィールド、リポジトリの機能と `web_commit_signoff_required` を含んだ
 > - Wiki のページと Projects の内容が、無効にして有効に戻したあとに残るかは確認していない。ページのない Wiki の Git リポジトリは `404` で、確認用のページを作れなかった。トークンに `read:project` の scope がなく、リポジトリに関連付けた Project を読めなかった
 
+> [!NOTE]
+> 次は、reco の開発者が、トークン所有者が Admin ロールを持つ個人アカウント所有のリポジトリ（GitHub Free）で、マージメッセージの2フィールドとマージ方式を別々の要求で送り、実際の動作で確認した事項です。
+>
+> - 非公開リポジトリのマージメッセージ：merge commit のタイトルと本文の2フィールドだけを送る要求は `200` で、直後の `GET` は送った値を返し、マージ方式の3項目と squash merge のタイトルと本文は変わらなかった。元の値に戻す要求も同じだった
+> - 無効にする前の更新：squash merge が有効のあいだにタイトルと本文の2フィールドを送り、続く別の要求で `allow_squash_merge: false` を送ると、どちらも `200` で、直後の `GET` は squash merge が無効で、タイトルと本文は送った値だった（公開）
+> - 有効にしたあとの更新：squash merge が無効のあいだに `allow_squash_merge: true` を送り、続く別の要求でタイトルと本文の2フィールドを送ると、どちらも `200` で反映された（公開）
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `grounding` | [Update a repository](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#update-a-repository) | External Document |

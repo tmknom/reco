@@ -1444,6 +1444,115 @@ func TestRepositoryPlan_LogicalChangesOfSecretScanning(t *testing.T) {
 	}
 }
 
+// TestRepositoryPlan_LogicalChangesOfMergeMessages は、マージメッセージの変更予定をそれぞれ一つの論理的な設定変更にし、
+// 対応するマージ方式を無効にする変更予定があるときだけ、マージ方式をまとめた変更より先に実行することを確かめる (General の設計の論理的な設定変更と更新操作)。
+//
+//trace:checks FR-010 INV-001
+func TestRepositoryPlan_LogicalChangesOfMergeMessages(t *testing.T) {
+	squashMessage := SettingPlan{
+		Unit:     setting.Unit{Key: setting.SquashMergeCommit},
+		Observed: github.Observed(setting.SquashMergeCommitDefaultValue(setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitleCommitOrPRTitle, Message: setting.SquashMergeCommitMessageCommitMessages})),
+		Desired:  setting.SquashMergeCommitDefaultValue(setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitlePRTitle, Message: setting.SquashMergeCommitMessagePRBody}),
+		Result:   Mismatch, Applicability: Applicable(),
+	}
+	mergeCommitMessage := SettingPlan{
+		Unit:     setting.Unit{Key: setting.MergeCommit},
+		Observed: github.Observed(setting.MergeCommitDefaultValue(setting.MergeCommitDefault{Title: setting.MergeCommitTitleMergeMessage, Message: setting.MergeCommitMessagePRTitle})),
+		Desired:  setting.MergeCommitDefaultValue(setting.MergeCommitDefault{Title: setting.MergeCommitTitlePRTitle, Message: setting.MergeCommitMessagePRBody}),
+		Result:   Mismatch, Applicability: Applicable(),
+	}
+	boolPlan := func(key setting.Key, observed, desired bool) SettingPlan {
+		plan := SettingPlan{Unit: setting.Unit{Key: key}, Observed: github.Observed(setting.BoolValue(observed)), Desired: setting.BoolValue(desired), Result: Match}
+		if observed != desired {
+			plan.Result, plan.Applicability = Mismatch, Applicable()
+		}
+		return plan
+	}
+	// keys は、論理的な設定変更を、それぞれが最初に変える管理設定で表す。マージ方式をまとめた変更は、まとめたうちで最初のマージ方式で表す。
+	keys := func(changes []LogicalChange) []setting.Key {
+		var got []setting.Key
+		for _, c := range changes {
+			got = append(got, c.DesiredState[0].Unit.Key)
+		}
+		return got
+	}
+	cases := []struct {
+		name     string
+		settings []SettingPlan
+		want     []setting.Key
+	}{
+		{
+			name:     "two merge messages are separate logical changes in the table order",
+			settings: []SettingPlan{squashMessage, mergeCommitMessage},
+			want:     []setting.Key{setting.SquashMergeCommit, setting.MergeCommit},
+		},
+		{
+			name:     "enabling squash merge runs the merge methods before the squash merge message",
+			settings: []SettingPlan{boolPlan(setting.AllowSquashMerge, false, true), squashMessage},
+			want:     []setting.Key{setting.AllowSquashMerge, setting.SquashMergeCommit},
+		},
+		{
+			name:     "disabling squash merge runs the squash merge message before the merge methods",
+			settings: []SettingPlan{boolPlan(setting.AllowSquashMerge, true, false), squashMessage},
+			want:     []setting.Key{setting.SquashMergeCommit, setting.AllowSquashMerge},
+		},
+		{
+			name:     "squash merge declared true and matching keeps the table order",
+			settings: []SettingPlan{boolPlan(setting.AllowSquashMerge, true, true), boolPlan(setting.AllowRebaseMerge, true, false), squashMessage},
+			want:     []setting.Key{setting.AllowRebaseMerge, setting.SquashMergeCommit},
+		},
+		{
+			name: "disabling merge commit moves only its message before the merge methods bundled at squash merge",
+			settings: []SettingPlan{
+				boolPlan(setting.AllowSquashMerge, false, true), boolPlan(setting.AllowMergeCommit, true, false), squashMessage, mergeCommitMessage,
+			},
+			want: []setting.Key{setting.MergeCommit, setting.AllowSquashMerge, setting.SquashMergeCommit},
+		},
+		{
+			name: "disabling both merge methods runs both messages in the table order before the merge methods",
+			settings: []SettingPlan{
+				boolPlan(setting.AllowSquashMerge, true, false), boolPlan(setting.AllowMergeCommit, true, false), boolPlan(setting.AllowRebaseMerge, true, true), squashMessage, mergeCommitMessage,
+			},
+			want: []setting.Key{setting.SquashMergeCommit, setting.MergeCommit, setting.AllowSquashMerge},
+		},
+		{
+			name: "disabling squash merge runs its message before the merge methods and allow_update_branch after them",
+			settings: []SettingPlan{
+				boolPlan(setting.AllowSquashMerge, true, false), boolPlan(setting.AllowUpdateBranch, false, true), squashMessage,
+			},
+			want: []setting.Key{setting.SquashMergeCommit, setting.AllowSquashMerge, setting.AllowUpdateBranch},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: tc.settings}.LogicalChanges()
+			if err != nil {
+				t.Fatalf("LogicalChanges() error = %v", err)
+			}
+			if !reflect.DeepEqual(keys(got), tc.want) {
+				t.Errorf("LogicalChanges() order = %v, want %v", keys(got), tc.want)
+			}
+		})
+	}
+
+	t.Run("a merge message change sends its desired value and is based only on its own observation", func(t *testing.T) {
+		got, err := RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: []SettingPlan{squashMessage}}.LogicalChanges()
+		if err != nil {
+			t.Fatalf("LogicalChanges() error = %v", err)
+		}
+		want := []LogicalChange{{
+			DesiredState: []configuration.ManagedSetting{{Unit: squashMessage.Unit, Desired: squashMessage.Desired}},
+			Operations: []UpdateOperation{{
+				Kind: SettingUpdate, Unit: squashMessage.Unit, Value: squashMessage.Desired,
+				PreconditionBases: []PreconditionBasis{{Unit: squashMessage.Unit, AnticipatedValue: AnticipateUnchanged(squashMessage.Observed)}},
+			}},
+		}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
+		}
+	})
+}
+
 //trace:checks FR-011 INV-001 INV-004
 func TestRepositoryPlan_LogicalChangesOfDependabot(t *testing.T) {
 	newRepositoryPlan := func(settings ...SettingPlan) RepositoryPlan {

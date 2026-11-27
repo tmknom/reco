@@ -46,6 +46,28 @@ const (
 	MergeCommitMessageBlank   MergeCommitMessage = "BLANK"
 )
 
+// AcceptedSquashMergeCommitDefaults は、GitHub が更新で受け付ける squash merge のタイトルと本文の組を、YAML 設定仕様の表の並びで返す。
+// 観測値は受け付けない組にもなるため、組の型やコンストラクタはこの制約を確かめない。
+// 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
+func AcceptedSquashMergeCommitDefaults() []SquashMergeCommitDefault {
+	return []SquashMergeCommitDefault{
+		{Title: SquashMergeCommitTitlePRTitle, Message: SquashMergeCommitMessagePRBody},
+		{Title: SquashMergeCommitTitlePRTitle, Message: SquashMergeCommitMessageBlank},
+		{Title: SquashMergeCommitTitlePRTitle, Message: SquashMergeCommitMessageCommitMessages},
+		{Title: SquashMergeCommitTitleCommitOrPRTitle, Message: SquashMergeCommitMessageCommitMessages},
+	}
+}
+
+// AcceptedMergeCommitDefaults は、GitHub が更新で受け付ける merge commit のタイトルと本文の組を、YAML 設定仕様の表の並びで返す。
+// 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
+func AcceptedMergeCommitDefaults() []MergeCommitDefault {
+	return []MergeCommitDefault{
+		{Title: MergeCommitTitlePRTitle, Message: MergeCommitMessagePRBody},
+		{Title: MergeCommitTitlePRTitle, Message: MergeCommitMessageBlank},
+		{Title: MergeCommitTitleMergeMessage, Message: MergeCommitMessagePRTitle},
+	}
+}
+
 // ParseSquashMergeCommitTitle は s が定義された値に完全一致するときだけ、その値と真を返す。
 func ParseSquashMergeCommitTitle(s string) (SquashMergeCommitTitle, bool) {
 	switch title := SquashMergeCommitTitle(s); title {

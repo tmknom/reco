@@ -31,6 +31,8 @@ func TestUnavailableConfirmationText(t *testing.T) {
 		{name: "undetermined environment name is not confirmed as environment existence", unit: variable, reason: github.UnavailableNameUndetermined, want: "not confirmed (environment existence unknown)"},
 		{name: "undetermined ruleset name is not confirmed as ruleset existence", unit: ruleset, reason: github.UnavailableNameUndetermined, want: "not confirmed (ruleset existence unknown)"},
 		{name: "uninterpreted parts are not confirmed", unit: ruleset, reason: github.UnavailableUninterpretedParts, want: "not confirmed (the ruleset contains parts that reco does not interpret)"},
+		// 知らない値も、宣言が効いていないのではなく reco が確かめられなかったことを表す
+		{name: "unknown merge message value is not confirmed", unit: setting.Unit{Key: setting.SquashMergeCommit}, reason: github.UnavailableUnknownValue, want: "not confirmed (GitHub returned a value that reco does not know)"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -48,6 +50,8 @@ func TestUnavailableConfirmationText(t *testing.T) {
 		{name: "undefined reason panics", u: unavailableManagedSetting{unit: ruleset}},
 		{name: "undetermined name of a setting without a name panics", u: unavailableManagedSetting{unit: setting.Unit{Key: setting.AllowAutoMerge}, reason: github.UnavailableNameUndetermined}},
 		{name: "uninterpreted parts of a setting other than a ruleset panic", u: unavailableManagedSetting{unit: variable, reason: github.UnavailableUninterpretedParts}},
+		{name: "unknown value of a setting other than a merge message panics", u: unavailableManagedSetting{unit: setting.Unit{Key: setting.AllowAutoMerge}, reason: github.UnavailableUnknownValue}},
+		{name: "value not returned panics", u: unavailableManagedSetting{unit: setting.Unit{Key: setting.SquashMergeCommit}, reason: github.UnavailableNotReturned}},
 	}
 	for _, tc := range panicCases {
 		t.Run(tc.name, func(t *testing.T) {

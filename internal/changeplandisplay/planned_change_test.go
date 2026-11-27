@@ -324,6 +324,56 @@ func TestPlannedChangeText(t *testing.T) {
 				"declare allow_merge_commit: true or allow_rebase_merge: true to enable one of them)\n",
 		},
 		{
+			name: "squash merge commit mismatch shows the title and message pairs on separate lines",
+			s: changeplan.SettingPlan{
+				Unit:     setting.Unit{Key: setting.SquashMergeCommit},
+				Observed: github.Observed(squashMergeCommitValue(setting.SquashMergeCommitTitleCommitOrPRTitle, setting.SquashMergeCommitMessageCommitMessages)),
+				Desired:  squashMergeCommitValue(setting.SquashMergeCommitTitlePRTitle, setting.SquashMergeCommitMessagePRBody),
+				Result:   changeplan.Mismatch, Applicability: changeplan.Applicable(),
+			},
+			want: "  general.squash_merge_commit:\n" +
+				"    title: COMMIT_OR_PR_TITLE, message: COMMIT_MESSAGES\n" +
+				"    -> title: PR_TITLE, message: PR_BODY\n",
+		},
+		{
+			name: "merge commit mismatch with merge commit disabled names allow_merge_commit and merge_commit in the reason",
+			s: changeplan.SettingPlan{
+				Unit:     setting.Unit{Key: setting.MergeCommit},
+				Observed: github.Observed(setting.MergeCommitDefaultValue(setting.MergeCommitDefault{Title: setting.MergeCommitTitleMergeMessage, Message: setting.MergeCommitMessagePRTitle})),
+				Desired:  setting.MergeCommitDefaultValue(setting.MergeCommitDefault{Title: setting.MergeCommitTitlePRTitle, Message: setting.MergeCommitMessageBlank}),
+				Result:   changeplan.Mismatch, Applicability: changeplan.NotApplicable(changeplan.NotApplicableMergeMethodRemainsDisabled),
+			},
+			want: "  general.merge_commit:\n" +
+				"    title: MERGE_MESSAGE, message: PR_TITLE\n" +
+				"    -> title: PR_TITLE, message: BLANK\n" +
+				"    Applicability: not applicable (allow_merge_commit is disabled, and GitHub does not accept changes to merge_commit while it is disabled; declare allow_merge_commit: true or remove merge_commit)\n",
+		},
+		{
+			name: "squash merge commit mismatch with squash merge disabled names allow_squash_merge and squash_merge_commit in the reason",
+			s: changeplan.SettingPlan{
+				Unit:     setting.Unit{Key: setting.SquashMergeCommit},
+				Observed: github.Observed(squashMergeCommitValue(setting.SquashMergeCommitTitleCommitOrPRTitle, setting.SquashMergeCommitMessageCommitMessages)),
+				Desired:  squashMergeCommitValue(setting.SquashMergeCommitTitlePRTitle, setting.SquashMergeCommitMessagePRBody),
+				Result:   changeplan.Mismatch, Applicability: changeplan.NotApplicable(changeplan.NotApplicableMergeMethodRemainsDisabled),
+			},
+			want: "  general.squash_merge_commit:\n" +
+				"    title: COMMIT_OR_PR_TITLE, message: COMMIT_MESSAGES\n" +
+				"    -> title: PR_TITLE, message: PR_BODY\n" +
+				"    Applicability: not applicable (allow_squash_merge is disabled, and GitHub does not accept changes to squash_merge_commit while it is disabled; declare allow_squash_merge: true or remove squash_merge_commit)\n",
+		},
+		{
+			name: "merge commit with an unknown value shows the unknown value state and the reason to remove merge_commit",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.MergeCommit}, Observed: github.Unavailable[setting.Value](github.UnavailableUnknownValue),
+				Desired: setting.MergeCommitDefaultValue(setting.MergeCommitDefault{Title: setting.MergeCommitTitlePRTitle, Message: setting.MergeCommitMessagePRBody}),
+				Result:  changeplan.NotComparable, Applicability: changeplan.NotApplicable(changeplan.NotApplicableUnknownValue),
+			},
+			want: "  general.merge_commit:\n" +
+				"    (unknown value)\n" +
+				"    -> title: PR_TITLE, message: PR_BODY\n" +
+				"    Applicability: not applicable (GitHub returned a value that reco does not know; remove merge_commit from the configuration)\n",
+		},
+		{
 			name: "match is empty",
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.AllowAutoMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(true),
@@ -389,6 +439,32 @@ func TestRepositoryStateText_UndefinedReasonPanics(t *testing.T) {
 		}
 	}()
 	_ = repositoryStateText(0)
+}
+
+// マージ方式が無効のままという理由はマージメッセージだけが持つため、ほかの設定でこの理由の文言を組み立てない。
+func TestNotApplicableReasonText_MergeMethodRemainsDisabledOfOtherSettingPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("notApplicableReasonText() did not panic for a setting other than a merge message")
+		}
+	}()
+	_ = notApplicableReasonText(changeplan.SettingPlan{
+		Unit: setting.Unit{Key: setting.AllowSquashMerge}, Applicability: changeplan.NotApplicable(changeplan.NotApplicableMergeMethodRemainsDisabled),
+	})
+}
+
+// 値が返らなかったことによる観測不能は、宣言を受け付けない web_commit_signoff_required だけが持ち、比較不能な設定予定にならない。
+func TestRepositoryStateText_NotReturnedPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("repositoryStateText() did not panic for a value GitHub did not return")
+		}
+	}()
+	_ = repositoryStateText(github.UnavailableNotReturned)
+}
+
+func squashMergeCommitValue(title setting.SquashMergeCommitTitle, message setting.SquashMergeCommitMessage) setting.Value {
+	return setting.SquashMergeCommitDefaultValue(setting.SquashMergeCommitDefault{Title: title, Message: message})
 }
 
 // 期待値は CLI 仕様の Repository Variable の表示例から導く。

@@ -53,6 +53,23 @@ func (c *Client) updateAllowUpdateBranch(ctx context.Context, reference reposito
 	return c.updateRepository(ctx, reference, fmt.Appendf(nil, `{"allow_update_branch":%t}`, allow))
 }
 
+// updateSquashMergeCommitDefault は reference のリポジトリの squash merge のマージメッセージを d に更新する。
+// タイトルと本文の両方だけを送り、マージ方式のフィールドは送らない。
+func (c *Client) updateSquashMergeCommitDefault(ctx context.Context, reference repository.Reference, d setting.SquashMergeCommitDefault) (UpdateOutcome, error) {
+	return c.updateRepository(ctx, reference, mustMarshalJSON(map[string]string{
+		"squash_merge_commit_title":   string(d.Title),
+		"squash_merge_commit_message": string(d.Message),
+	}))
+}
+
+// updateMergeCommitDefault は reference のリポジトリの merge commit のマージメッセージを d に更新する。
+func (c *Client) updateMergeCommitDefault(ctx context.Context, reference repository.Reference, d setting.MergeCommitDefault) (UpdateOutcome, error) {
+	return c.updateRepository(ctx, reference, mustMarshalJSON(map[string]string{
+		"merge_commit_title":   string(d.Title),
+		"merge_commit_message": string(d.Message),
+	}))
+}
+
 // updateSecretScanningEnabled は reference のリポジトリの Secret scanning の有効状態を enabled に更新する。
 // security_and_analysis の中のこの項目だけを送り、もう一方の項目とトップレベルの一般設定の保持に依拠する（Security の設計の更新方式）。
 func (c *Client) updateSecretScanningEnabled(ctx context.Context, reference repository.Reference, enabled bool) (UpdateOutcome, error) {
@@ -236,6 +253,14 @@ func updateRequestOf(key setting.Key) updateRequest {
 		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateAllowAutoMerge)}
 	case setting.AllowUpdateBranch:
 		return updateRequest{RepositoryEndpoint, boolUpdate((*Client).updateAllowUpdateBranch)}
+	case setting.SquashMergeCommit:
+		return updateRequest{RepositoryEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+			return c.updateSquashMergeCommitDefault(ctx, reference, value.SquashMergeCommitDefault())
+		}}
+	case setting.MergeCommit:
+		return updateRequest{RepositoryEndpoint, func(c *Client, ctx context.Context, reference repository.Reference, value setting.Value) (UpdateOutcome, error) {
+			return c.updateMergeCommitDefault(ctx, reference, value.MergeCommitDefault())
+		}}
 	case setting.AllowSquashMerge, setting.AllowMergeCommit, setting.AllowRebaseMerge:
 		return updateRequest{endpoint: RepositoryEndpoint}
 	case setting.ActionsEnabled:

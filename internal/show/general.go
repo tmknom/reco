@@ -8,12 +8,11 @@ import (
 )
 
 // writeGeneral は general を書く。
-// マージメッセージ、リポジトリの機能、Web コミットのサインオフ必須は、設定宣言がまだ受け付けないため、すべての行を YAML のコメントにし、その前の行で書けないことを示す。
+// リポジトリの機能と Web コミットのサインオフ必須は、設定宣言がまだ受け付けないため、すべての行を YAML のコメントにし、その前の行で書けないことを示す。
 func writeGeneral(b *strings.Builder, g github.General) {
 	fmt.Fprintf(b, "    general:\n      delete_branch_on_merge: %t\n      allow_auto_merge: %t\n"+
 		"      allow_squash_merge: %t\n      allow_merge_commit: %t\n      allow_rebase_merge: %t\n      allow_update_branch: %t\n",
 		g.DeleteBranchOnMerge, g.AllowAutoMerge, g.AllowSquashMerge, g.AllowMergeCommit, g.AllowRebaseMerge, g.AllowUpdateBranch)
-	b.WriteString("      # reco does not accept the merge commit message settings in the configuration file yet\n")
 	if d, ok := g.SquashMergeCommitDefault.Value(); ok {
 		writeMergeMessage(b, "squash_merge_commit", string(d.Title), string(d.Message))
 	} else {
@@ -31,7 +30,7 @@ func writeGeneral(b *strings.Builder, g github.General) {
 }
 
 func writeMergeMessage(b *strings.Builder, key, title, message string) {
-	fmt.Fprintf(b, "      # %s:\n      #   title: %s\n      #   message: %s\n", key, title, message)
+	fmt.Fprintf(b, "      %s:\n        title: %s\n        message: %s\n", key, title, message)
 }
 
 // writeUnknownMergeMessage は、観測不能なマージメッセージを書く。

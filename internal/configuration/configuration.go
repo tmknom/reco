@@ -82,6 +82,9 @@ type General struct {
 	AllowMergeCommit    *bool
 	AllowRebaseMerge    *bool
 	AllowUpdateBranch   *bool
+	// SquashMergeCommit と MergeCommit は設定グループの期待値で、2項目を一体として持つ。
+	SquashMergeCommit *setting.SquashMergeCommitDefault
+	MergeCommit       *setting.MergeCommitDefault
 }
 
 // ActionsPermissions は Actions の実行許可の期待値。nil は期待値の省略で、その設定は管理範囲に含まれない。
@@ -213,6 +216,16 @@ func (d DesiredState) value(key setting.Key) (value setting.Value, ok bool) {
 		return optionalBoolValue(d.General.AllowRebaseMerge)
 	case setting.AllowUpdateBranch:
 		return optionalBoolValue(d.General.AllowUpdateBranch)
+	case setting.SquashMergeCommit:
+		if v := d.General.SquashMergeCommit; v != nil {
+			return setting.SquashMergeCommitDefaultValue(*v), true
+		}
+		return setting.Value{}, false
+	case setting.MergeCommit:
+		if v := d.General.MergeCommit; v != nil {
+			return setting.MergeCommitDefaultValue(*v), true
+		}
+		return setting.Value{}, false
 	case setting.ActionsEnabled:
 		return optionalBoolValue(d.ActionsPermissions.Enabled)
 	case setting.AllowedActions:

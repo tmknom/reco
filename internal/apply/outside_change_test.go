@@ -33,7 +33,7 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 	stagingProtected := observedEnvironment(7, "staging", setting.DeploymentBranchPolicyProtectedBranches)
 	// general は、merge commit と rebase merge が有効で、ほかの General の設定と Secret scanning の2設定が無効のリポジトリの観測を、change で変えたもの。
 	general := func(change func(*github.General)) github.ObservationResult {
-		g := github.General{AllowMergeCommit: true, AllowRebaseMerge: true}
+		g := observedGeneral(github.General{AllowMergeCommit: true, AllowRebaseMerge: true})
 		change(&g)
 		return github.ObservationResult{General: g, SecretScanning: publicSecretScanning(false, false)}
 	}
@@ -209,15 +209,15 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 				change.SideEffectSettings = []setting.Unit{{Key: setting.RepositoryPushProtection}}
 				return change
 			}(),
-			before: []github.ObservationResult{{SecretScanning: publicSecretScanning(true, true)}},
-			after:  github.ObservationResult{SecretScanning: publicSecretScanning(false, false)},
+			before: []github.ObservationResult{{General: observedGeneral(github.General{}), SecretScanning: publicSecretScanning(true, true)}},
+			after:  github.ObservationResult{General: observedGeneral(github.General{}), SecretScanning: publicSecretScanning(false, false)},
 			want:   nil,
 		},
 		{
 			name:   "push protection not shown as a side effect of disabling secret scanning is compared",
 			change: singleUpdate(setting.SecretScanningEnabled, setting.BoolValue(false), append(basesOf(setting.SecretScanningEnabled, setting.BoolValue(true)), basesOf(setting.RepositoryPushProtection, setting.BoolValue(false))...)),
-			before: []github.ObservationResult{{SecretScanning: publicSecretScanning(true, false)}},
-			after:  github.ObservationResult{SecretScanning: publicSecretScanning(false, true)},
+			before: []github.ObservationResult{{General: observedGeneral(github.General{}), SecretScanning: publicSecretScanning(true, false)}},
+			after:  github.ObservationResult{General: observedGeneral(github.General{}), SecretScanning: publicSecretScanning(false, true)},
 			want:   []unexpectedOutsideChange{{Setting: string(setting.RepositoryPushProtection), Before: "false", After: "true"}},
 		},
 		{
@@ -365,40 +365,40 @@ func TestOutsideChangesAt(t *testing.T) {
 			name:     "same settings have no change",
 			change:   allowAutoMergeChange(),
 			endpoint: github.RepositoryEndpoint,
-			before:   github.ObservationResult{General: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false}, SecretScanning: publicSecretScanning(true, true)},
-			after:    github.ObservationResult{General: github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false}, SecretScanning: publicSecretScanning(true, true)},
+			before:   github.ObservationResult{General: observedGeneral(github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false}), SecretScanning: publicSecretScanning(true, true)},
+			after:    github.ObservationResult{General: observedGeneral(github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false}), SecretScanning: publicSecretScanning(true, true)},
 			want:     nil,
 		},
 		{
 			name:     "allow_auto_merge change reports different delete_branch_on_merge with both values",
 			change:   allowAutoMergeChange(),
 			endpoint: github.RepositoryEndpoint,
-			before:   github.ObservationResult{General: github.General{DeleteBranchOnMerge: false}, SecretScanning: publicSecretScanning(true, true)},
-			after:    github.ObservationResult{General: github.General{DeleteBranchOnMerge: true}, SecretScanning: publicSecretScanning(true, true)},
+			before:   github.ObservationResult{General: observedGeneral(github.General{DeleteBranchOnMerge: false}), SecretScanning: publicSecretScanning(true, true)},
+			after:    github.ObservationResult{General: observedGeneral(github.General{DeleteBranchOnMerge: true}), SecretScanning: publicSecretScanning(true, true)},
 			want:     []unexpectedOutsideChange{{Setting: string(setting.DeleteBranchOnMerge), Before: "false", After: "true"}},
 		},
 		{
 			name:     "allow_auto_merge change does not report its own setting",
 			change:   allowAutoMergeChange(),
 			endpoint: github.RepositoryEndpoint,
-			before:   github.ObservationResult{General: github.General{AllowAutoMerge: false}, SecretScanning: publicSecretScanning(true, true)},
-			after:    github.ObservationResult{General: github.General{AllowAutoMerge: true}, SecretScanning: publicSecretScanning(true, true)},
+			before:   github.ObservationResult{General: observedGeneral(github.General{AllowAutoMerge: false}), SecretScanning: publicSecretScanning(true, true)},
+			after:    github.ObservationResult{General: observedGeneral(github.General{AllowAutoMerge: true}), SecretScanning: publicSecretScanning(true, true)},
 			want:     nil,
 		},
 		{
 			name:     "delete_branch_on_merge change reports different allow_auto_merge with both values",
 			change:   deleteBranchOnMergeChange(),
 			endpoint: github.RepositoryEndpoint,
-			before:   github.ObservationResult{General: github.General{AllowAutoMerge: false}, SecretScanning: publicSecretScanning(true, true)},
-			after:    github.ObservationResult{General: github.General{AllowAutoMerge: true}, SecretScanning: publicSecretScanning(true, true)},
+			before:   github.ObservationResult{General: observedGeneral(github.General{AllowAutoMerge: false}), SecretScanning: publicSecretScanning(true, true)},
+			after:    github.ObservationResult{General: observedGeneral(github.General{AllowAutoMerge: true}), SecretScanning: publicSecretScanning(true, true)},
 			want:     []unexpectedOutsideChange{{Setting: string(setting.AllowAutoMerge), Before: "false", After: "true"}},
 		},
 		{
 			name:     "delete_branch_on_merge change does not report its own setting",
 			change:   deleteBranchOnMergeChange(),
 			endpoint: github.RepositoryEndpoint,
-			before:   github.ObservationResult{General: github.General{DeleteBranchOnMerge: false}, SecretScanning: publicSecretScanning(true, true)},
-			after:    github.ObservationResult{General: github.General{DeleteBranchOnMerge: true}, SecretScanning: publicSecretScanning(true, true)},
+			before:   github.ObservationResult{General: observedGeneral(github.General{DeleteBranchOnMerge: false}), SecretScanning: publicSecretScanning(true, true)},
+			after:    github.ObservationResult{General: observedGeneral(github.General{DeleteBranchOnMerge: true}), SecretScanning: publicSecretScanning(true, true)},
 			want:     nil,
 		},
 		{
@@ -425,8 +425,8 @@ func TestOutsideChangesAt(t *testing.T) {
 			name:     "general change reports different secret scanning settings at the same endpoint",
 			change:   allowAutoMergeChange(),
 			endpoint: github.RepositoryEndpoint,
-			before:   github.ObservationResult{SecretScanning: publicSecretScanning(true, true)},
-			after:    github.ObservationResult{SecretScanning: publicSecretScanning(false, false)},
+			before:   github.ObservationResult{General: observedGeneral(github.General{}), SecretScanning: publicSecretScanning(true, true)},
+			after:    github.ObservationResult{General: observedGeneral(github.General{}), SecretScanning: publicSecretScanning(false, false)},
 			want: []unexpectedOutsideChange{
 				{Setting: string(setting.SecretScanningEnabled), Before: "true", After: "false"},
 				{Setting: string(setting.RepositoryPushProtection), Before: "true", After: "false"},
@@ -436,8 +436,8 @@ func TestOutsideChangesAt(t *testing.T) {
 			name:     "secret scanning change reports different general settings and the other secret scanning setting",
 			change:   singleUpdate(setting.RepositoryPushProtection, setting.BoolValue(false), basesOf(setting.RepositoryPushProtection, setting.BoolValue(true))),
 			endpoint: github.RepositoryEndpoint,
-			before:   github.ObservationResult{General: github.General{AllowAutoMerge: false}, SecretScanning: publicSecretScanning(true, true)},
-			after:    github.ObservationResult{General: github.General{AllowAutoMerge: true}, SecretScanning: publicSecretScanning(false, false)},
+			before:   github.ObservationResult{General: observedGeneral(github.General{AllowAutoMerge: false}), SecretScanning: publicSecretScanning(true, true)},
+			after:    github.ObservationResult{General: observedGeneral(github.General{AllowAutoMerge: true}), SecretScanning: publicSecretScanning(false, false)},
 			want: []unexpectedOutsideChange{
 				{Setting: string(setting.AllowAutoMerge), Before: "false", After: "true"},
 				{Setting: string(setting.SecretScanningEnabled), Before: "true", After: "false"},
@@ -462,12 +462,12 @@ func TestOutsideChangesAt(t *testing.T) {
 			change:   allowAutoMergeChange(),
 			endpoint: github.RepositoryEndpoint,
 			before: github.ObservationResult{
-				General:             github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false},
+				General:             observedGeneral(github.General{AllowAutoMerge: false, DeleteBranchOnMerge: false}),
 				SecretScanning:      publicSecretScanning(true, true),
 				WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: false},
 			},
 			after: github.ObservationResult{
-				General:             github.General{AllowAutoMerge: true, DeleteBranchOnMerge: false},
+				General:             observedGeneral(github.General{AllowAutoMerge: true, DeleteBranchOnMerge: false}),
 				SecretScanning:      publicSecretScanning(true, true),
 				WorkflowPermissions: &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: true},
 			},
@@ -684,4 +684,12 @@ func TestEnvironmentPutOutsideChanges(t *testing.T) {
 			}
 		})
 	}
+}
+
+// observedGeneral は、g に GitHub の既定のマージメッセージの観測値を足した観測を返す。
+// 観測は二つのマージメッセージを必ず観測値か観測不能にするため、どちらも持たない General は観測として生じない。
+func observedGeneral(g github.General) github.General {
+	g.SquashMergeCommitDefault = github.Observed(setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitleCommitOrPRTitle, Message: setting.SquashMergeCommitMessageCommitMessages})
+	g.MergeCommitDefault = github.Observed(setting.MergeCommitDefault{Title: setting.MergeCommitTitleMergeMessage, Message: setting.MergeCommitMessagePRTitle})
+	return g
 }

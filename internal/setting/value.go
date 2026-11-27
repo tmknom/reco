@@ -24,6 +24,8 @@ type Value struct {
 	days            int
 	minutes         int
 	customization   OIDCSubjectCustomization
+	squashDefault   SquashMergeCommitDefault
+	mergeDefault    MergeCommitDefault
 	branchPolicy    DeploymentBranchPolicy
 	reviewerSet     ReviewerSet
 	securityUpdates DependabotSecurityUpdatesState
@@ -45,6 +47,8 @@ const (
 	kindRetentionDays
 	kindWaitTimer
 	kindOIDCSubjectCustomization
+	kindSquashMergeCommitDefault
+	kindMergeCommitDefault
 	kindDeploymentBranchPolicy
 	kindReviewerSet
 	kindDependabotSecurityUpdates
@@ -105,6 +109,16 @@ func WaitTimerValue(minutes int) Value {
 // 呼び出し側があとで書き換えても値が変わらないように、key の並びと UseImmutableSubject の指す先を複製して持つ。並びは整列しない。
 func OIDCSubjectCustomizationValue(c OIDCSubjectCustomization) Value {
 	return Value{kind: kindOIDCSubjectCustomization, customization: c.clone()}
+}
+
+// SquashMergeCommitDefaultValue は、squash merge のマージメッセージの値を作る。観測値は GitHub が更新で受け付けない組にもなるため、組を確かめない。
+func SquashMergeCommitDefaultValue(d SquashMergeCommitDefault) Value {
+	return Value{kind: kindSquashMergeCommitDefault, squashDefault: d}
+}
+
+// MergeCommitDefaultValue は、merge commit のマージメッセージの値を作る。観測値は GitHub が更新で受け付けない組にもなるため、組を確かめない。
+func MergeCommitDefaultValue(d MergeCommitDefault) Value {
+	return Value{kind: kindMergeCommitDefault, mergeDefault: d}
 }
 
 // DeploymentBranchPolicyValue は、Environment のデプロイ元制限の値を作る。
@@ -170,6 +184,8 @@ func (v Value) Equal(other Value) bool {
 		v.days == other.days &&
 		v.minutes == other.minutes &&
 		v.customization.equal(other.customization) &&
+		v.squashDefault == other.squashDefault &&
+		v.mergeDefault == other.mergeDefault &&
 		v.branchPolicy.equal(other.branchPolicy) &&
 		v.reviewerSet.equal(other.reviewerSet) &&
 		v.securityUpdates.Enabled() == other.securityUpdates.Enabled() &&
@@ -210,6 +226,10 @@ func (v Value) String() string {
 		return strconv.Itoa(v.minutes) + " minutes"
 	case kindOIDCSubjectCustomization:
 		return v.customization.format()
+	case kindSquashMergeCommitDefault:
+		return "title: " + string(v.squashDefault.Title) + ", message: " + string(v.squashDefault.Message)
+	case kindMergeCommitDefault:
+		return "title: " + string(v.mergeDefault.Title) + ", message: " + string(v.mergeDefault.Message)
 	case kindDeploymentBranchPolicy:
 		if v.branchPolicy.Mode == DeploymentBranchPolicySelected {
 			return string(v.branchPolicy.Mode) + " " + v.branchPolicy.PatternsString()
@@ -319,6 +339,22 @@ func (v Value) OIDCSubjectCustomization() OIDCSubjectCustomization {
 		panic("setting: value is not an oidc subject customization")
 	}
 	return v.customization.clone()
+}
+
+// SquashMergeCommitDefault は、squash merge のマージメッセージの値を返す。それ以外の値は不変条件の破れのため panic する。
+func (v Value) SquashMergeCommitDefault() SquashMergeCommitDefault {
+	if v.kind != kindSquashMergeCommitDefault {
+		panic("setting: value is not a squash merge commit default")
+	}
+	return v.squashDefault
+}
+
+// MergeCommitDefault は、merge commit のマージメッセージの値を返す。それ以外の値は不変条件の破れのため panic する。
+func (v Value) MergeCommitDefault() MergeCommitDefault {
+	if v.kind != kindMergeCommitDefault {
+		panic("setting: value is not a merge commit default")
+	}
+	return v.mergeDefault
 }
 
 // WithItemsDeclaredIn は、declared が省略した設定グループの項目を v から除いた値を返す。省略した項目を変更計画に示さず、変更前提でも比べないようにするため。

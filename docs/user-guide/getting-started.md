@@ -31,13 +31,12 @@ repositories:
       allow_merge_commit: true
       allow_rebase_merge: true
       allow_update_branch: false
-      # reco does not accept the merge commit message settings in the configuration file yet
-      # squash_merge_commit:
-      #   title: COMMIT_OR_PR_TITLE
-      #   message: COMMIT_MESSAGES
-      # merge_commit:
-      #   title: MERGE_MESSAGE
-      #   message: PR_TITLE
+      squash_merge_commit:
+        title: COMMIT_OR_PR_TITLE
+        message: COMMIT_MESSAGES
+      merge_commit:
+        title: MERGE_MESSAGE
+        message: PR_TITLE
       # reco does not accept the repository feature and web commit signoff settings in the configuration file yet
       # has_issues: true
       # has_projects: true

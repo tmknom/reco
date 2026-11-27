@@ -399,6 +399,39 @@ func TestObservationResult_SettingOfGeneral(t *testing.T) {
 	}
 }
 
+//trace:checks FR-004
+func TestObservationResult_SettingOfMergeMessages(t *testing.T) {
+	squash := setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitlePRTitle, Message: setting.SquashMergeCommitMessagePRBody}
+	merge := setting.MergeCommitDefault{Title: setting.MergeCommitTitleMergeMessage, Message: setting.MergeCommitMessagePRTitle}
+	cases := []struct {
+		name     string
+		observed General
+		key      setting.Key
+		want     SettingObservation[setting.Value]
+	}{
+		{
+			name:     "squash_merge_commit returns the observed pair",
+			observed: General{SquashMergeCommitDefault: Observed(squash), MergeCommitDefault: Observed(merge)},
+			key:      setting.SquashMergeCommit,
+			want:     Observed(setting.SquashMergeCommitDefaultValue(squash)),
+		},
+		{
+			name:     "merge_commit returns the observed pair",
+			observed: General{SquashMergeCommitDefault: Observed(squash), MergeCommitDefault: Observed(merge)},
+			key:      setting.MergeCommit,
+			want:     Observed(setting.MergeCommitDefaultValue(merge)),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := ObservationResult{General: tc.observed}
+			if got := observed.Setting(setting.Unit{Key: tc.key}); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Setting(%q) = %v, want %v", tc.key, got, tc.want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-004 FR-005
 func TestObservationResult_SettingOfDependabot(t *testing.T) {
 	cases := []struct {

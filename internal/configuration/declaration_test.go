@@ -961,6 +961,119 @@ func TestDocumentDeclaration(t *testing.T) {
 	}
 }
 
+// TestDocumentSquashMergeCommit は、title と message の両方が必須であること、値が定義された文字列に完全一致すること、
+// 更新で受け付ける組み合わせだけを受理することと、判定の順序を確かめる。
+// 引用符のない PR_TITLE などが YAML で文字列に解決されることも、ここで確かめる。
+//
+//trace:checks FR-001
+func TestDocumentSquashMergeCommit(t *testing.T) {
+	const accepts = "GitHub accepts PR_TITLE with PR_BODY, PR_TITLE with BLANK, PR_TITLE with COMMIT_MESSAGES, or COMMIT_OR_PR_TITLE with COMMIT_MESSAGES"
+	cases := []struct {
+		name       string
+		src        string
+		want       setting.SquashMergeCommitDefault
+		wantPath   string
+		wantReason string
+	}{
+		{name: "PR_TITLE with PR_BODY is read", src: "title: PR_TITLE\nmessage: PR_BODY\n", want: setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitlePRTitle, Message: setting.SquashMergeCommitMessagePRBody}},
+		{name: "PR_TITLE with BLANK is read", src: "title: PR_TITLE\nmessage: BLANK\n", want: setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitlePRTitle, Message: setting.SquashMergeCommitMessageBlank}},
+		{name: "PR_TITLE with COMMIT_MESSAGES is read", src: "title: PR_TITLE\nmessage: COMMIT_MESSAGES\n", want: setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitlePRTitle, Message: setting.SquashMergeCommitMessageCommitMessages}},
+		{name: "COMMIT_OR_PR_TITLE with COMMIT_MESSAGES is read", src: "title: COMMIT_OR_PR_TITLE\nmessage: COMMIT_MESSAGES\n", want: setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitleCommitOrPRTitle, Message: setting.SquashMergeCommitMessageCommitMessages}},
+		{name: "title alone is rejected naming message", src: "title: PR_TITLE\n", wantPath: "P", wantReason: `missing key "message"`},
+		{name: "message alone is rejected naming title", src: "message: PR_BODY\n", wantPath: "P", wantReason: `missing key "title"`},
+		{name: "unknown key is rejected showing the accepted keys", src: "title: PR_TITLE\nmessage: PR_BODY\nbody: PR_BODY\n", wantPath: "P", wantReason: `unknown key "body"; expected title, message`},
+		{name: "non-string title is rejected at title", src: "title: true\nmessage: PR_BODY\n", wantPath: "P.title", wantReason: "must be a string"},
+		{name: "non-string message is rejected at message", src: "title: PR_TITLE\nmessage: 1\n", wantPath: "P.message", wantReason: "must be a string"},
+		{name: "undefined title is rejected at title showing the accepted values", src: "title: MERGE_MESSAGE\nmessage: PR_BODY\n", wantPath: "P.title", wantReason: `must be PR_TITLE or COMMIT_OR_PR_TITLE; got "MERGE_MESSAGE"`},
+		{name: "undefined message is rejected at message showing the accepted values", src: "title: PR_TITLE\nmessage: PR_TITLE\n", wantPath: "P.message", wantReason: `must be PR_BODY, COMMIT_MESSAGES, or BLANK; got "PR_TITLE"`},
+		{
+			name:       "COMMIT_OR_PR_TITLE with PR_BODY is rejected at the group listing the accepted combinations",
+			src:        "title: COMMIT_OR_PR_TITLE\nmessage: PR_BODY\n",
+			wantPath:   "P",
+			wantReason: "title COMMIT_OR_PR_TITLE cannot be declared with message PR_BODY; " + accepts,
+		},
+		{name: "COMMIT_OR_PR_TITLE with BLANK is rejected at the group", src: "title: COMMIT_OR_PR_TITLE\nmessage: BLANK\n", wantPath: "P", wantReason: "title COMMIT_OR_PR_TITLE cannot be declared with message BLANK; " + accepts},
+		{name: "undefined title with an unaccepted combination reports the title", src: "title: X\nmessage: PR_BODY\n", wantPath: "P.title", wantReason: `got "X"`},
+		{name: "undefined title and undefined message report the title", src: "title: X\nmessage: Y\n", wantPath: "P.title", wantReason: `got "X"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.squashMergeCommit(doc.root, "P")
+			if tc.wantPath != "" {
+				if err == nil {
+					t.Fatalf("squashMergeCommit() = %+v, want error", got)
+				}
+				if !strings.HasPrefix(err.Error(), tc.wantPath+" (") {
+					t.Errorf("squashMergeCommit() error = %q, want it to start with %q", err, tc.wantPath+" (")
+				}
+				if !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("squashMergeCommit() error = %q, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("squashMergeCommit() error = %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("squashMergeCommit() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDocumentMergeCommit は、merge commit の値の列挙と受け付ける組み合わせが squash merge のものと別であることを確かめる。
+//
+//trace:checks FR-001
+func TestDocumentMergeCommit(t *testing.T) {
+	cases := []struct {
+		name       string
+		src        string
+		want       setting.MergeCommitDefault
+		wantPath   string
+		wantReason string
+	}{
+		{name: "PR_TITLE with PR_BODY is read", src: "title: PR_TITLE\nmessage: PR_BODY\n", want: setting.MergeCommitDefault{Title: setting.MergeCommitTitlePRTitle, Message: setting.MergeCommitMessagePRBody}},
+		{name: "PR_TITLE with BLANK is read", src: "title: PR_TITLE\nmessage: BLANK\n", want: setting.MergeCommitDefault{Title: setting.MergeCommitTitlePRTitle, Message: setting.MergeCommitMessageBlank}},
+		{name: "MERGE_MESSAGE with PR_TITLE is read", src: "title: MERGE_MESSAGE\nmessage: PR_TITLE\n", want: setting.MergeCommitDefault{Title: setting.MergeCommitTitleMergeMessage, Message: setting.MergeCommitMessagePRTitle}},
+		{
+			name:       "MERGE_MESSAGE with PR_BODY is rejected at the group listing the three accepted combinations",
+			src:        "title: MERGE_MESSAGE\nmessage: PR_BODY\n",
+			wantPath:   "P",
+			wantReason: "title MERGE_MESSAGE cannot be declared with message PR_BODY; GitHub accepts PR_TITLE with PR_BODY, PR_TITLE with BLANK, or MERGE_MESSAGE with PR_TITLE",
+		},
+		{name: "title alone is rejected naming message", src: "title: PR_TITLE\n", wantPath: "P", wantReason: `missing key "message"`},
+		{name: "non-string title is rejected at title", src: "title: true\nmessage: PR_BODY\n", wantPath: "P.title", wantReason: "must be a string"},
+		{name: "non-string message is rejected at message", src: "title: PR_TITLE\nmessage: 1\n", wantPath: "P.message", wantReason: "must be a string"},
+		{name: "undefined title is rejected at title showing the merge commit values", src: "title: COMMIT_OR_PR_TITLE\nmessage: PR_BODY\n", wantPath: "P.title", wantReason: `must be PR_TITLE or MERGE_MESSAGE; got "COMMIT_OR_PR_TITLE"`},
+		{name: "undefined message is rejected at message showing the merge commit values", src: "title: PR_TITLE\nmessage: COMMIT_MESSAGES\n", wantPath: "P.message", wantReason: `must be PR_BODY, PR_TITLE, or BLANK; got "COMMIT_MESSAGES"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := decodeSnippet(t, tc.src)
+			got, err := doc.mergeCommit(doc.root, "P")
+			if tc.wantPath != "" {
+				if err == nil {
+					t.Fatalf("mergeCommit() = %+v, want error", got)
+				}
+				if !strings.HasPrefix(err.Error(), tc.wantPath+" (") {
+					t.Errorf("mergeCommit() error = %q, want it to start with %q", err, tc.wantPath+" (")
+				}
+				if !strings.Contains(err.Error(), tc.wantReason) {
+					t.Errorf("mergeCommit() error = %q, want it to contain %q", err, tc.wantReason)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("mergeCommit() error = %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("mergeCommit() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestDocumentGeneral は、general の各設定がそれぞれ独立に宣言できることと、3つのマージ方式をすべて無効にする宣言の拒否、判定の順序を確かめる。
 //
 //trace:checks FR-001 FR-002
@@ -1012,6 +1125,45 @@ func TestDocumentGeneral(t *testing.T) {
 			src:        "allow_squash_merge: false\nallow_merge_commit: false\nallow_rebase_merge: \"false\"\n",
 			wantPath:   "P.allow_rebase_merge",
 			wantReason: "must be true or false",
+		},
+		{
+			name: "both setting groups are read into their own fields",
+			src:  "squash_merge_commit:\n  title: PR_TITLE\n  message: BLANK\nmerge_commit:\n  title: MERGE_MESSAGE\n  message: PR_TITLE\n",
+			want: General{
+				SquashMergeCommit: &setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitlePRTitle, Message: setting.SquashMergeCommitMessageBlank},
+				MergeCommit:       &setting.MergeCommitDefault{Title: setting.MergeCommitTitleMergeMessage, Message: setting.MergeCommitMessagePRTitle},
+			},
+		},
+		{
+			name: "a setting group alone is a valid general",
+			src:  "merge_commit:\n  title: PR_TITLE\n  message: PR_BODY\n",
+			want: General{MergeCommit: &setting.MergeCommitDefault{Title: setting.MergeCommitTitlePRTitle, Message: setting.MergeCommitMessagePRBody}},
+		},
+		{
+			name: "allow_squash_merge false with squash_merge_commit is read, leaving the decision to the applicability",
+			src:  "allow_squash_merge: false\nsquash_merge_commit:\n  title: PR_TITLE\n  message: PR_BODY\n",
+			want: General{
+				AllowSquashMerge:  new(false),
+				SquashMergeCommit: &setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitlePRTitle, Message: setting.SquashMergeCommitMessagePRBody},
+			},
+		},
+		{
+			name:       "a bool error is reported before a setting group error",
+			src:        "squash_merge_commit:\n  title: X\n  message: PR_BODY\nallow_auto_merge: yes\n",
+			wantPath:   "P.allow_auto_merge",
+			wantReason: "must be true or false",
+		},
+		{
+			name:       "a setting group error is reported before every merge method false",
+			src:        "allow_squash_merge: false\nallow_merge_commit: false\nallow_rebase_merge: false\nmerge_commit:\n  title: X\n  message: PR_BODY\n",
+			wantPath:   "P.merge_commit.title",
+			wantReason: "must be PR_TITLE or MERGE_MESSAGE",
+		},
+		{
+			name:       "squash_merge_commit error is reported before merge_commit error",
+			src:        "merge_commit:\n  title: X\n  message: PR_BODY\nsquash_merge_commit:\n  title: Y\n  message: PR_BODY\n",
+			wantPath:   "P.squash_merge_commit.title",
+			wantReason: `got "Y"`,
 		},
 	}
 	for _, tc := range cases {

@@ -55,9 +55,8 @@ func TestWriteObservationResult(t *testing.T) {
 		header       = "repositories:\n  - name: owner/repo\n"
 		generalLines = "    general:\n      delete_branch_on_merge: true\n      allow_auto_merge: false\n" +
 			"      allow_squash_merge: true\n      allow_merge_commit: false\n      allow_rebase_merge: false\n      allow_update_branch: false\n" +
-			"      # reco does not accept the merge commit message settings in the configuration file yet\n" +
-			"      # squash_merge_commit:\n      #   title: COMMIT_OR_PR_TITLE\n      #   message: COMMIT_MESSAGES\n" +
-			"      # merge_commit:\n      #   title: MERGE_MESSAGE\n      #   message: PR_TITLE\n" +
+			"      squash_merge_commit:\n        title: COMMIT_OR_PR_TITLE\n        message: COMMIT_MESSAGES\n" +
+			"      merge_commit:\n        title: MERGE_MESSAGE\n        message: PR_TITLE\n" +
 			"      # reco does not accept the repository feature and web commit signoff settings in the configuration file yet\n" +
 			"      # has_issues: false\n      # has_projects: false\n      # has_wiki: false\n      # web_commit_signoff_required: false\n"
 		allPermissions                      = "    actions:\n      permissions:\n        enabled: true\n        allowed_actions: all\n        sha_pinning_required: true\n"
