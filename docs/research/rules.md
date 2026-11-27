@@ -235,7 +235,7 @@ Ruleset は、GitHub が付ける整数の `id` と、作成で必須の `name` 
 | `require_extra_approval_for_unattributed_changes` | boolean | 任意 | 人間の共同作業者のいない Copilot の Pull Request に、承認の数が0でなければ、もう一つの承認を求める |
 | `required_reviewers` | 配列 | 任意 | ファイルのパターンと、そのレビューを求める Team の組 |
 
-任意のフィールドを省略したときの値は、記載がありません。
+Ruleset で使えるルールのドキュメントは、`require_extra_approval_for_unattributed_changes` に当たる設定が、新しい Ruleset でも既存の Ruleset でも既定で有効だと記載しています。ほかの任意のフィールドを省略したときの値は、記載がありません。同じドキュメントは、リポジトリが無効にしたマージの方法と違う方法を Ruleset が求めると、マージが止まると記載しています。その組み合わせを作成・更新で拒否するかは、記載がありません。
 
 > [!NOTE]
 > 次は、reco の開発者が実際の動作で確認した事項です（公開リポジトリで確認）。
@@ -246,11 +246,16 @@ Ruleset は、GitHub が付ける整数の `id` と、作成で必須の `name` 
 > - 必須の項目の欠落：5項目のうち一つを欠くと `422`（`Invalid property /rules/0: data matches no possible input.`）だった。`parameters` そのものを省略すると `200` を返し、5項目と任意のフィールドはどれも上の既定の値（`required_approving_review_count` は `0`）で保存された。`required_approving_review_count: 3` の Ruleset でも `0` に戻った
 > - 未知のキーと `null`：未知のキーを加えると `200` を返し、そのキーは保存されなかった。必須の項目に `null` を送ると `422` だった
 > - `required_approving_review_count` の範囲：`0`、`1`、`6`、`10` は `200` で保存された。`-1`、`11`、`100`、文字列の `"1"` は `422` だった
-> - `allowed_merge_methods`：`[]` は `422`（`Invalid parameter allowed_merge_methods: Expected at least 1 elements, got 0`）だった。`["rebase", "merge"]` は送った順のまま返った
+> - `allowed_merge_methods`：`[]` は `422`（`Invalid parameter allowed_merge_methods: Expected at least 1 elements, got 0`）だった。`["rebase", "merge"]`、`["rebase", "squash"]`、`["squash", "merge", "rebase"]`、`["rebase", "merge", "squash"]` は、送った順のまま返った。`["squash", "squash"]` は `200` を返し、二つのまま保存された。定義にない値（`fast_forward`）と `null` は `422` だった
+> - `require_extra_approval_for_unattributed_changes`：`false` は保存され、取得で返った。`null` は `422` だった
+> - `dismissal_restriction`：個人アカウント所有のリポジトリでは、`enabled` が `false` でも `true` でも、`allowed_actors` が欠けても空でも、`User`（トークンの所有者）、`RepositoryRole`（`2`、`5`）、`Team`（`id: 1`）、`IntegrationInstallation` を含んでも、`200` を返した。値は、どの場合も Ruleset の取得に現れなかった。`User` を送ったあとの、ブランチに適用されるルールの取得（`GET .../rules/branches/{branch}`）と Ruleset の履歴の版の取得（`GET .../rulesets/{ruleset_id}/history/{version_id}`）にも現れなかった。GraphQL API の `PullRequestParameters` の `dismissalRestriction` は、`User` と `RepositoryRole` を送った直後でも `enabled: false`、`allowedActors: []` を返した（確認の前からある Ruleset も同じ）。送った値は、REST API と GraphQL API のどちらでも観測できなかった。`enabled` を欠く値は `422` だった
+> - `required_reviewers`：`Team` の `id: 1` を持つ要素は `422`（`Invalid node ID format, Reviewer 1 not found, Repository must be in an organization`）だった。`[]` は `200` だった
+> - リポジトリのマージ方式との組み合わせ：`allow_squash_merge` が `false` のリポジトリで、`allowed_merge_methods: ["squash"]` の Ruleset の作成と更新は `201` / `200` を返し、送った値で保存された（確認用のブランチを対象にした `active` と `disabled`、`~DEFAULT_BRANCH` を対象にした `active` で確認）。`allow_squash_merge` と `allow_rebase_merge` が `false` のリポジトリで、`["squash", "rebase"]` にする更新も `200` だった。逆に、`allowed_merge_methods: ["squash"]` の `active` の Ruleset があるリポジトリで、`PATCH /repos/{owner}/{repo}` で `allow_squash_merge` を `false` にする更新は `200` で反映され、Ruleset は変わらなかった
 
 | Relationship | Target | Target Type |
 |---|---|---|
 | `grounding` | [Create a repository ruleset](https://docs.github.com/en/rest/repos/rules?apiVersion=2026-03-10#create-a-repository-ruleset) | External Document |
+| `grounding` | [Available rules for rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets) | External Document |
 
 ### 7.2 `deletion`
 
@@ -261,6 +266,59 @@ Bypass の権限を持つ利用者にだけ、対象の ref の削除を許す�
 >
 > - 取得の形：`{"type": "deletion"}` を返し、`parameters` のフィールドはなかった
 > - `parameters` を送ったとき：`parameters` に `{}`、`{"x": 1}`、`null` を送ると、どれも `200` を返し、`parameters` は保存されなかった
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [Create a repository ruleset](https://docs.github.com/en/rest/repos/rules?apiVersion=2026-03-10#create-a-repository-ruleset) | External Document |
+
+### 7.3 `required_status_checks`
+
+対象の ref を更新する前に、指定したステータスチェックが成功していることを求めるルールです。コミットは、先にチェックが成功する別の ref へ Push しておく必要があります。
+
+| `parameters` のフィールド | 型・値 | 指定条件 | 意味 |
+|---|---|---|---|
+| `required_status_checks` | 下の要素の配列 | 必須 | 必須のステータスチェック |
+| `strict_required_status_checks_policy` | boolean | 必須 | 対象のブランチへの Pull Request を最新のコードで検証することを求める。チェックが一つもなければ効かない |
+| `do_not_enforce_on_create` | boolean | 任意 | チェックが禁じる場合でも、リポジトリとブランチの作成を許す |
+
+| `required_status_checks` の要素のフィールド | 型・値 | 指定条件 | 意味 |
+|---|---|---|---|
+| `context` | 文字列 | 必須 | コミットにあるべきステータスチェックの名前 |
+| `integration_id` | integer | 任意 | ステータスチェックの発行元に限る App の ID |
+
+Ruleset で使えるルールのドキュメントは、発行元に指定する App が、`statuses:write` の権限でリポジトリにインストールされ、最近チェックの実行を送っていることを求めると記載しています。発行元を指定しなければ、どの発行元のステータスも受け付けます。任意のフィールドを省略したときの値と、配列の順序と重複の扱いは、記載がありません。
+
+> [!NOTE]
+> 次は、reco の開発者が実際の動作で確認した事項です（公開リポジトリで確認）。
+>
+> - 取得の形：`parameters` は3つのフィールドをすべて返した。`integration_id` を送らなかった要素は、取得でこのフィールドを持たなかった（`null` も返さなかった）
+> - `do_not_enforce_on_create`：省略した作成は `false` で保存された。`true` は保存された。`true` の Ruleset に、このフィールドを省略した `rules` を送ると `false` に戻った。`rules` を省略した更新では `true` が保持された
+> - 往復：取得した `rules` をそのまま送る更新の後、Ruleset の取得の本文は `updated_at` を除いて更新の前と一致した（このルールだけの例と、`deletion`、`non_fast_forward`、既定でない任意のパラメータを持つ `pull_request` と組み合わせた例）
+> - 必須の項目の欠落：`required_status_checks`、`strict_required_status_checks_policy`、要素の `context` のどれかを欠くと `422`（`Invalid property /rules/0: data matches no possible input.`）だった。`parameters` そのものを省略した作成と更新は `201` / `200` を返し、`required_status_checks: []`、`strict_required_status_checks_policy: false`、`do_not_enforce_on_create: false` で保存された
+> - `null` と型違い：`strict_required_status_checks_policy`、`do_not_enforce_on_create`、`integration_id` の `null` と、文字列の `integration_id`（`"15368"`）は `422` だった
+> - 空の配列：`required_status_checks: []` は、`strict_required_status_checks_policy` が `false` でも `true` でも `200` を返し、`[]` で保存された
+> - `context`：空文字列は `422`（`Invalid array contents. Errors at index 0: Expected context to be present`）だった。前後に半角空白を付けた名前は、送ったとおりに保存された。大文字小文字だけが違う `CI/A` と `ci/a` は、別の要素として二つとも保存された
+> - `integration_id`：GitHub Actions の App の ID（`15368`）と Dependabot の App の ID（`29110`）は `200` で保存された。リポジトリにインストールされていない App（Codecov の `254`、Renovate の `2740`）、`0`、存在しない ID は `422`（`Invalid parameter required_status_checks: Invalid integration ids`）だった
+> - 未知のキー：`parameters` の未知のキーは `422`（`Unexpected parameter`）、要素の未知のキーも `422`（`Invalid array contents. Errors at index 0: Unexpected parameter`）だった。`pull_request` と違い、黙って捨てなかった
+> - 要素の重複：同じ `context` の要素を二つ送ると、`integration_id` がどちらにもない場合、同じ場合、違う場合、片方だけにある場合のどれも `200` を返し、二つのまま保存された
+> - 要素の順序：作成と更新の応答と取得は、送った順を保った（5例）
+> - 同じ種類のルール：`required_status_checks` を二つ送ると `422` を返し、`errors` は `["Invalid rule 'required_status_checks': "]` だった
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [Create a repository ruleset](https://docs.github.com/en/rest/repos/rules?apiVersion=2026-03-10#create-a-repository-ruleset) | External Document |
+| `grounding` | [Available rules for rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets) | External Document |
+
+### 7.4 `non_fast_forward`
+
+Push の権限を持つ利用者に、対象の ref への Force push を禁じるルールです。`parameters` を持ちません。
+
+> [!NOTE]
+> 次は、reco の開発者が実際の動作で確認した事項です（公開リポジトリで確認）。
+>
+> - 取得の形：`{"type": "non_fast_forward"}` を返し、`parameters` のフィールドはなかった
+> - `parameters` を送ったとき：`parameters` に `{}`、`{"x": 1}`、`null` を送ると、どれも `200` を返し、`parameters` は保存されなかった
+> - 同じ種類のルール：`non_fast_forward` を二つ送ると `200` を返し、一つにまとめて保存した
 
 | Relationship | Target | Target Type |
 |---|---|---|
