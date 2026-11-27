@@ -270,6 +270,42 @@ func TestConfirmDesiredState_RepositoryVariables(t *testing.T) {
 	}
 }
 
+// TestConfirmDesiredState_RulesetOmittedParameter は、Ruleset の期待状態を、宣言が省略したパラメータを比べずに確かめることを確かめる。
+// 省略したパラメータは管理範囲外で、送らなかったときに GitHub が決める値で返っても、完了を妨げない。
+//
+//trace:checks FR-001 FR-012
+func TestConfirmDesiredState_RulesetOmittedParameter(t *testing.T) {
+	name := mustRulesetName(t, "protect")
+	unit := setting.Unit{Key: setting.RulesetResource, Ruleset: name}
+	value := func(strict bool, doNotEnforceOnCreate *bool) setting.Ruleset {
+		return setting.Ruleset{
+			Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive,
+			Conditions:   setting.RulesetConditions{RefName: &setting.RefNameCondition{Include: []string{"~DEFAULT_BRANCH"}, Exclude: []string{}}},
+			BypassActors: []setting.BypassActor{},
+			Rules: []setting.RulesetRule{setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{
+				RequiredStatusChecks: []setting.StatusCheck{{Context: "test"}}, StrictRequiredStatusChecksPolicy: strict, DoNotEnforceOnCreate: doNotEnforceOnCreate,
+			})},
+		}
+	}
+	change := changeplan.LogicalChange{DesiredState: []configuration.ManagedSetting{{Unit: unit, Desired: setting.RulesetValue(value(true, nil))}}}
+	cases := []struct {
+		name     string
+		observed setting.Ruleset
+		want     desiredStateConfirmation
+	}{
+		{name: "value with the omitted parameter at the value GitHub sets matches", observed: value(true, new(false)), want: desiredStateMatches},
+		{name: "value whose declared parameter differs is a mismatch", observed: value(false, new(false)), want: desiredStateMismatch},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := github.ObservationResult{RepositoryID: 1, Rulesets: &github.Rulesets{Existing: github.Observed([]github.Ruleset{github.InterpretedRuleset(42, "protect", tc.observed)})}}
+			if got, _ := confirmDesiredState(1, change, observed); got != tc.want {
+				t.Errorf("confirmDesiredState() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestConfirmDesiredState_EnvironmentVariables は、Environment Variable の期待状態を、宣言の名前で引いた Environment の変数の値で確かめ、
 // Environment がなければ存在しないことを理由に確認失敗にすることを確かめる。
 //

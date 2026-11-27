@@ -21,8 +21,36 @@ func baseRulesetValue() setting.Ruleset {
 		Rules: []setting.RulesetRule{
 			setting.DeletionRule(),
 			setting.PullRequestRule(setting.PullRequestParameters{RequiredApprovingReviewCount: 1, DismissStaleReviewsOnPush: true, RequireLastPushApproval: true}),
+			setting.NonFastForwardRule(),
+			setting.RequiredStatusChecksRule(baseStatusChecksParameters()),
 		},
 	}
+}
+
+// baseStatusChecksParameters は、rulesetDetail の基準の本文の required_status_checks のルールから読むパラメータである。
+func baseStatusChecksParameters() setting.RequiredStatusChecksParameters {
+	return setting.RequiredStatusChecksParameters{
+		RequiredStatusChecks:             []setting.StatusCheck{{Context: "test"}, {Context: "lint", IntegrationID: 15368}},
+		StrictRequiredStatusChecksPolicy: true,
+		DoNotEnforceOnCreate:             new(false),
+	}
+}
+
+// statusChecksParameters は基準の本文の required_status_checks のルールのパラメータを返す。
+func statusChecksParameters(body map[string]any) map[string]any {
+	return rulesetRule(body, 3)["parameters"].(map[string]any)
+}
+
+// statusCheck は基準の本文の required_status_checks のルールの i 番目のチェックを返す。
+func statusCheck(body map[string]any, i int) map[string]any {
+	return statusChecksParameters(body)["required_status_checks"].([]any)[i].(map[string]any)
+}
+
+// withStatusChecksParameters は、基準の値の required_status_checks のルールのパラメータを edit で変える。
+func withStatusChecksParameters(v *setting.Ruleset, edit func(*setting.RequiredStatusChecksParameters)) {
+	p := baseStatusChecksParameters()
+	edit(&p)
+	v.Rules[3] = setting.RequiredStatusChecksRule(p)
 }
 
 func refName(body map[string]any) map[string]any {
@@ -129,6 +157,38 @@ func TestDecodeRulesetInterpreted(t *testing.T) {
 			},
 		},
 		{
+			name: "status checks keep their order, duplicates, and empty context",
+			change: func(b map[string]any) {
+				statusChecksParameters(b)["required_status_checks"] = []any{
+					map[string]any{"context": "lint"}, map[string]any{"context": ""}, map[string]any{"context": "lint"},
+				}
+			},
+			want: func(v *setting.Ruleset) {
+				withStatusChecksParameters(v, func(p *setting.RequiredStatusChecksParameters) {
+					p.RequiredStatusChecks = []setting.StatusCheck{{Context: "lint"}, {Context: ""}, {Context: "lint"}}
+				})
+			},
+		},
+		{
+			name:   "empty status checks are read as empty",
+			change: func(b map[string]any) { statusChecksParameters(b)["required_status_checks"] = []any{} },
+			want: func(v *setting.Ruleset) {
+				withStatusChecksParameters(v, func(p *setting.RequiredStatusChecksParameters) { p.RequiredStatusChecks = []setting.StatusCheck{} })
+			},
+		},
+		{
+			name: "do_not_enforce_on_create true and strict policy false are read as values",
+			change: func(b map[string]any) {
+				p := statusChecksParameters(b)
+				p["do_not_enforce_on_create"], p["strict_required_status_checks_policy"] = true, false
+			},
+			want: func(v *setting.Ruleset) {
+				withStatusChecksParameters(v, func(p *setting.RequiredStatusChecksParameters) {
+					p.DoNotEnforceOnCreate, p.StrictRequiredStatusChecksPolicy = new(true), false
+				})
+			},
+		},
+		{
 			name: "allowed merge methods in another order with duplicates are the default",
 			change: func(b map[string]any) {
 				pullRequestParameters(b)["allowed_merge_methods"] = []any{"rebase", "merge", "squash", "merge"}
@@ -176,8 +236,12 @@ func TestDecodeRulesetInterpreted(t *testing.T) {
 //trace:checks FR-004 QR-002
 func TestDecodeRulesetUninterpreted(t *testing.T) {
 	pullRequest, deletion := setting.RulesetRulePullRequest, setting.RulesetRuleDeletion
+	nonFastForward, statusChecks := setting.RulesetRuleNonFastForward, setting.RulesetRuleRequiredStatusChecks
 	parameter := func(name string) UninterpretedPart {
 		return UninterpretedPart{Kind: UninterpretedRuleParameter, Rule: pullRequest, Name: name}
+	}
+	statusChecksParameter := func(name string) UninterpretedPart {
+		return UninterpretedPart{Kind: UninterpretedRuleParameter, Rule: statusChecks, Name: name}
 	}
 	cases := []struct {
 		name   string
@@ -219,9 +283,9 @@ func TestDecodeRulesetUninterpreted(t *testing.T) {
 		{
 			name: "unhandled rule type is uninterpreted without checking the other fields of the element",
 			change: func(b map[string]any) {
-				b["rules"] = append(b["rules"].([]any), map[string]any{"type": "non_fast_forward", "parameters": "x"})
+				b["rules"] = append(b["rules"].([]any), map[string]any{"type": "creation", "parameters": "x"})
 			},
-			want: []UninterpretedPart{{Kind: UninterpretedRuleType, Name: "non_fast_forward"}},
+			want: []UninterpretedPart{{Kind: UninterpretedRuleType, Name: "creation"}},
 		},
 		{
 			name:   "unread pull request rule key is uninterpreted with the rule type",
@@ -242,6 +306,78 @@ func TestDecodeRulesetUninterpreted(t *testing.T) {
 			name:   "null parameters of deletion are uninterpreted as a rule key",
 			change: func(b map[string]any) { rulesetRule(b, 0)["parameters"] = nil },
 			want:   []UninterpretedPart{{Kind: UninterpretedRuleKey, Rule: deletion, Name: "parameters"}},
+		},
+		{
+			name:   "empty parameters of non_fast_forward are uninterpreted as a rule key",
+			change: func(b map[string]any) { rulesetRule(b, 2)["parameters"] = map[string]any{} },
+			want:   []UninterpretedPart{{Kind: UninterpretedRuleKey, Rule: nonFastForward, Name: "parameters"}},
+		},
+		{
+			name:   "null parameters of non_fast_forward are uninterpreted as a rule key",
+			change: func(b map[string]any) { rulesetRule(b, 2)["parameters"] = nil },
+			want:   []UninterpretedPart{{Kind: UninterpretedRuleKey, Rule: nonFastForward, Name: "parameters"}},
+		},
+		{
+			name:   "unread required_status_checks rule key is uninterpreted with the rule type",
+			change: func(b map[string]any) { rulesetRule(b, 3)["ruleset_source"] = "x" },
+			want:   []UninterpretedPart{{Kind: UninterpretedRuleKey, Rule: statusChecks, Name: "ruleset_source"}},
+		},
+		{
+			name:   "missing do_not_enforce_on_create is uninterpreted",
+			change: func(b map[string]any) { delete(statusChecksParameters(b), "do_not_enforce_on_create") },
+			want:   []UninterpretedPart{statusChecksParameter("do_not_enforce_on_create")},
+		},
+		{
+			name:   "null do_not_enforce_on_create is uninterpreted",
+			change: func(b map[string]any) { statusChecksParameters(b)["do_not_enforce_on_create"] = nil },
+			want:   []UninterpretedPart{statusChecksParameter("do_not_enforce_on_create")},
+		},
+		{
+			name:   "non-boolean do_not_enforce_on_create is uninterpreted",
+			change: func(b map[string]any) { statusChecksParameters(b)["do_not_enforce_on_create"] = "false" },
+			want:   []UninterpretedPart{statusChecksParameter("do_not_enforce_on_create")},
+		},
+		{
+			name:   "null integration_id is uninterpreted",
+			change: func(b map[string]any) { statusCheck(b, 0)["integration_id"] = nil },
+			want:   []UninterpretedPart{statusChecksParameter("required_status_checks.integration_id")},
+		},
+		{
+			name:   "zero integration_id is uninterpreted",
+			change: func(b map[string]any) { statusCheck(b, 1)["integration_id"] = 0 },
+			want:   []UninterpretedPart{statusChecksParameter("required_status_checks.integration_id")},
+		},
+		{
+			name:   "string integration_id is uninterpreted",
+			change: func(b map[string]any) { statusCheck(b, 1)["integration_id"] = "15368" },
+			want:   []UninterpretedPart{statusChecksParameter("required_status_checks.integration_id")},
+		},
+		{
+			name:   "unread status check key is uninterpreted under required_status_checks",
+			change: func(b map[string]any) { statusCheck(b, 0)["app_slug"] = "x" },
+			want:   []UninterpretedPart{statusChecksParameter("required_status_checks.app_slug")},
+		},
+		{
+			name:   "unread required_status_checks parameter is uninterpreted",
+			change: func(b map[string]any) { statusChecksParameters(b)["enforce_on_merge_queue"] = true },
+			want:   []UninterpretedPart{statusChecksParameter("enforce_on_merge_queue")},
+		},
+		{
+			name: "required_status_checks parts are ordered by checked values before unread keys",
+			change: func(b map[string]any) {
+				p := statusChecksParameters(b)
+				p["z_key"], p["a_key"], p["do_not_enforce_on_create"] = 1, 1, nil
+				statusCheck(b, 1)["integration_id"], statusCheck(b, 1)["b_key"] = nil, 1
+				rulesetRule(b, 3)["x"] = 1
+			},
+			want: []UninterpretedPart{
+				{Kind: UninterpretedRuleKey, Rule: statusChecks, Name: "x"},
+				statusChecksParameter("do_not_enforce_on_create"),
+				statusChecksParameter("required_status_checks.integration_id"),
+				statusChecksParameter("required_status_checks.b_key"),
+				statusChecksParameter("a_key"),
+				statusChecksParameter("z_key"),
+			},
 		},
 		{
 			name:   "allowed merge methods that are a smaller set are uninterpreted",
@@ -355,12 +491,12 @@ func TestDecodeRulesetUninterpreted(t *testing.T) {
 		{
 			name: "array elements are ordered as in the response",
 			change: func(b map[string]any) {
-				b["rules"] = []any{map[string]any{"type": "update"}, map[string]any{"type": "creation"}, map[string]any{"type": "non_fast_forward"}}
+				b["rules"] = []any{map[string]any{"type": "update"}, map[string]any{"type": "creation"}, map[string]any{"type": "required_signatures"}}
 			},
 			want: []UninterpretedPart{
 				{Kind: UninterpretedRuleType, Name: "update"},
 				{Kind: UninterpretedRuleType, Name: "creation"},
-				{Kind: UninterpretedRuleType, Name: "non_fast_forward"},
+				{Kind: UninterpretedRuleType, Name: "required_signatures"},
 			},
 		},
 		{
@@ -478,6 +614,16 @@ func TestDecodeRulesetUnexpectedResponse(t *testing.T) {
 		{name: "null required approving review count", body: rulesetDetail(t, func(b map[string]any) { pullRequestParameters(b)["required_approving_review_count"] = nil }), errContains: "missing fields: rules.parameters.required_approving_review_count"},
 		{name: "fractional required approving review count", body: rulesetDetail(t, func(b map[string]any) { pullRequestParameters(b)["required_approving_review_count"] = 1.5 }), errContains: "rules.parameters.required_approving_review_count"},
 		{name: "string dismiss stale reviews on push", body: rulesetDetail(t, func(b map[string]any) { pullRequestParameters(b)["dismiss_stale_reviews_on_push"] = "true" }), errContains: "rules.parameters.dismiss_stale_reviews_on_push"},
+		{name: "missing status checks parameters", body: rulesetDetail(t, func(b map[string]any) { delete(rulesetRule(b, 3), "parameters") }), errContains: "missing fields: rules.parameters"},
+		{name: "array status checks parameters", body: rulesetDetail(t, func(b map[string]any) { rulesetRule(b, 3)["parameters"] = []any{} }), errContains: "rules.parameters"},
+		{name: "missing status checks", body: rulesetDetail(t, func(b map[string]any) { delete(statusChecksParameters(b), "required_status_checks") }), errContains: "missing fields: rules.parameters.required_status_checks"},
+		{name: "null status checks", body: rulesetDetail(t, func(b map[string]any) { statusChecksParameters(b)["required_status_checks"] = nil }), errContains: "missing fields: rules.parameters.required_status_checks"},
+		{name: "object status checks", body: rulesetDetail(t, func(b map[string]any) { statusChecksParameters(b)["required_status_checks"] = map[string]any{} }), errContains: "rules.parameters.required_status_checks"},
+		{name: "null status check", body: rulesetDetail(t, func(b map[string]any) { statusChecksParameters(b)["required_status_checks"] = []any{nil} }), errContains: "unsupported value: rules.parameters.required_status_checks"},
+		{name: "missing context", body: rulesetDetail(t, func(b map[string]any) { delete(statusCheck(b, 0), "context") }), errContains: "missing fields: rules.parameters.required_status_checks.context"},
+		{name: "non-string context", body: rulesetDetail(t, func(b map[string]any) { statusCheck(b, 0)["context"] = 1 }), errContains: "rules.parameters.required_status_checks.context"},
+		{name: "missing strict policy", body: rulesetDetail(t, func(b map[string]any) { delete(statusChecksParameters(b), "strict_required_status_checks_policy") }), errContains: "missing fields: rules.parameters.strict_required_status_checks_policy"},
+		{name: "string strict policy", body: rulesetDetail(t, func(b map[string]any) { statusChecksParameters(b)["strict_required_status_checks_policy"] = "true" }), errContains: "rules.parameters.strict_required_status_checks_policy"},
 		{name: "contract violation wins over an uninterpreted part in the same response", body: rulesetDetail(t, func(b map[string]any) {
 			b["target"] = "tag"
 			delete(rulesetRule(b, 1), "parameters")
@@ -591,5 +737,5 @@ func TestDecodeHandledRulesetRuleUnknownTypePanics(t *testing.T) {
 			t.Error("decodeHandledRulesetRule() did not panic for an unknown rule type")
 		}
 	}()
-	_, _, _ = decodeHandledRulesetRule(setting.RulesetRuleType("non_fast_forward"), map[string]json.RawMessage{})
+	_, _, _ = decodeHandledRulesetRule(setting.RulesetRuleType("creation"), map[string]json.RawMessage{})
 }

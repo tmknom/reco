@@ -10,7 +10,7 @@ import (
 
 //trace:checks FR-004 FR-005
 func TestRulesetObservation_SettingObservation(t *testing.T) {
-	parts := []UninterpretedPart{{Kind: UninterpretedRuleType, Name: "non_fast_forward"}}
+	parts := []UninterpretedPart{{Kind: UninterpretedRuleType, Name: "creation"}}
 	cases := []struct {
 		name        string
 		observation RulesetObservation
@@ -71,7 +71,7 @@ func TestRulesetObservation_SettingObservation(t *testing.T) {
 
 //trace:checks FR-004
 func TestRulesetObservation_UninterpretedParts(t *testing.T) {
-	parts := []UninterpretedPart{{Kind: UninterpretedTarget, Name: "tag"}, {Kind: UninterpretedRuleType, Name: "non_fast_forward"}}
+	parts := []UninterpretedPart{{Kind: UninterpretedTarget, Name: "tag"}, {Kind: UninterpretedRuleType, Name: "creation"}}
 	cases := []struct {
 		name        string
 		observation RulesetObservation
@@ -102,7 +102,7 @@ func TestRulesetObservation_UninterpretedParts(t *testing.T) {
 
 //trace:checks INV-004
 func TestRulesetObservation_Existing(t *testing.T) {
-	parts := []UninterpretedPart{{Kind: UninterpretedRuleType, Name: "non_fast_forward"}}
+	parts := []UninterpretedPart{{Kind: UninterpretedRuleType, Name: "creation"}}
 	interpreted := InterpretedRuleset(42, "protect", interpretedRulesetValue())
 	uninterpreted := UninterpretedRuleset(43, "protect", parts)
 	cases := []struct {

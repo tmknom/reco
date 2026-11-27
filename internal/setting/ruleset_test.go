@@ -1,6 +1,9 @@
 package setting
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestParseRulesetTarget(t *testing.T) {
 	cases := []struct {
@@ -103,7 +106,9 @@ func TestParseRulesetRuleType(t *testing.T) {
 	}{
 		{name: "pull_request is accepted", input: "pull_request", want: RulesetRulePullRequest, wantOK: true},
 		{name: "deletion is accepted", input: "deletion", want: RulesetRuleDeletion, wantOK: true},
-		{name: "rule type reco does not interpret is rejected", input: "non_fast_forward"},
+		{name: "required_status_checks is accepted", input: "required_status_checks", want: RulesetRuleRequiredStatusChecks, wantOK: true},
+		{name: "non_fast_forward is accepted", input: "non_fast_forward", want: RulesetRuleNonFastForward, wantOK: true},
+		{name: "rule type reco does not interpret is rejected", input: "creation"},
 		{name: "empty string is rejected", input: ""},
 	}
 	for _, tc := range cases {
@@ -114,6 +119,33 @@ func TestParseRulesetRuleType(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRulesetRuleType_HasParameters(t *testing.T) {
+	cases := []struct {
+		ruleType RulesetRuleType
+		want     bool
+	}{
+		{ruleType: RulesetRulePullRequest, want: true},
+		{ruleType: RulesetRuleRequiredStatusChecks, want: true},
+		{ruleType: RulesetRuleDeletion, want: false},
+		{ruleType: RulesetRuleNonFastForward, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.ruleType), func(t *testing.T) {
+			if got := tc.ruleType.HasParameters(); got != tc.want {
+				t.Errorf("HasParameters() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+	t.Run("undefined rule type panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("HasParameters() did not panic")
+			}
+		}()
+		RulesetRuleType("creation").HasParameters()
+	})
 }
 
 func TestRulesetRule(t *testing.T) {
@@ -132,13 +164,47 @@ func TestRulesetRule(t *testing.T) {
 			t.Errorf("Type() = %q, want %q", got, RulesetRuleDeletion)
 		}
 	})
+	t.Run("required_status_checks rule has its type and parameters", func(t *testing.T) {
+		parameters := RequiredStatusChecksParameters{
+			RequiredStatusChecks:             []StatusCheck{{Context: "test"}, {Context: "lint", IntegrationID: 15368}},
+			StrictRequiredStatusChecksPolicy: true,
+			DoNotEnforceOnCreate:             new(true),
+		}
+		rule := RequiredStatusChecksRule(parameters)
+		if got := rule.Type(); got != RulesetRuleRequiredStatusChecks {
+			t.Errorf("Type() = %q, want %q", got, RulesetRuleRequiredStatusChecks)
+		}
+		if got := rule.RequiredStatusChecks(); !reflect.DeepEqual(got, parameters) {
+			t.Errorf("RequiredStatusChecks() = %+v, want %+v", got, parameters)
+		}
+	})
+	t.Run("required_status_checks rule does not share its parameters with the caller", func(t *testing.T) {
+		enforce := true
+		checks := []StatusCheck{{Context: "test"}}
+		rule := RequiredStatusChecksRule(RequiredStatusChecksParameters{RequiredStatusChecks: checks, DoNotEnforceOnCreate: &enforce})
+		checks[0].Context, enforce = "changed", false
+		got := rule.RequiredStatusChecks()
+		got.RequiredStatusChecks[0].Context, *got.DoNotEnforceOnCreate = "changed", false
+		again := rule.RequiredStatusChecks()
+		if again.RequiredStatusChecks[0].Context != "test" || !*again.DoNotEnforceOnCreate {
+			t.Errorf("RequiredStatusChecks() = %+v, want the parameters given at construction", again)
+		}
+	})
 	t.Run("parameters of a rule other than pull_request panic", func(t *testing.T) {
 		defer func() {
 			if recover() == nil {
 				t.Error("PullRequest() did not panic")
 			}
 		}()
-		DeletionRule().PullRequest()
+		RequiredStatusChecksRule(RequiredStatusChecksParameters{}).PullRequest()
+	})
+	t.Run("parameters of a rule other than required_status_checks panic", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("RequiredStatusChecks() did not panic")
+			}
+		}()
+		NonFastForwardRule().RequiredStatusChecks()
 	})
 }
 

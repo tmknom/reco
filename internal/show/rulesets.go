@@ -77,11 +77,37 @@ func writeRulesetRule(b *strings.Builder, rule setting.RulesetRule) {
 			"              require_code_owner_review: %t\n              require_last_push_approval: %t\n              required_review_thread_resolution: %t\n",
 			rule.Type(), p.RequiredApprovingReviewCount, p.DismissStaleReviewsOnPush, p.RequireCodeOwnerReview, p.RequireLastPushApproval, p.RequiredReviewThreadResolution)
 		return
-	case setting.RulesetRuleDeletion:
+	case setting.RulesetRuleDeletion, setting.RulesetRuleNonFastForward:
 		fmt.Fprintf(b, "          - type: %s\n", rule.Type())
+		return
+	case setting.RulesetRuleRequiredStatusChecks:
+		writeRequiredStatusChecksRule(b, rule.RequiredStatusChecks())
 		return
 	}
 	panic(fmt.Sprintf("show: undefined ruleset rule type %q", rule.Type()))
+}
+
+// writeRequiredStatusChecksRule は required_status_checks のルールを書く。チェックは返った順に重複も残して書き、context は名前と同じく引用符で囲む。
+// 観測した値は do_not_enforce_on_create を必ず持つ。持たない値は宣言から作った値で、観測値として示すと省略を値と取り違えるため、不変条件の破れとして panic する。
+func writeRequiredStatusChecksRule(b *strings.Builder, p setting.RequiredStatusChecksParameters) {
+	if p.DoNotEnforceOnCreate == nil {
+		panic("show: observed required_status_checks rule has no do_not_enforce_on_create")
+	}
+	b.WriteString("          - type: required_status_checks\n            parameters:\n")
+	if len(p.RequiredStatusChecks) == 0 {
+		b.WriteString("              required_status_checks: []\n")
+	} else {
+		b.WriteString("              required_status_checks:\n")
+		for _, check := range p.RequiredStatusChecks {
+			fmt.Fprintf(b, "                - context: %s\n", quote(check.Context))
+			// 発行元を限らないチェックは integration_id を持たず、0 を ID として示さない
+			if check.IntegrationID != 0 {
+				fmt.Fprintf(b, "                  integration_id: %d\n", check.IntegrationID)
+			}
+		}
+	}
+	fmt.Fprintf(b, "              strict_required_status_checks_policy: %t\n              do_not_enforce_on_create: %t\n",
+		p.StrictRequiredStatusChecksPolicy, *p.DoNotEnforceOnCreate)
 }
 
 // writeRefNamePatterns は ref_name の include か exclude を、空なら [] で、そうでなければ一行に一つずつ書く。

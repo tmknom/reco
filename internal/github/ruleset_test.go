@@ -14,12 +14,12 @@ import (
 
 func TestRuleset(t *testing.T) {
 	value := setting.Ruleset{Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive, Rules: []setting.RulesetRule{setting.DeletionRule()}}
-	parts := []UninterpretedPart{{Kind: UninterpretedRuleType, Name: "non_fast_forward"}}
+	parts := []UninterpretedPart{{Kind: UninterpretedRuleType, Name: "creation"}}
 
 	t.Run("interpreted ruleset has its value", func(t *testing.T) {
 		r := InterpretedRuleset(1, "protect", value)
 		got, ok := r.Value()
-		if !ok || got.Enforcement != value.Enforcement || !slices.Equal(got.Rules, value.Rules) {
+		if !ok || !reflect.DeepEqual(got, value) {
 			t.Errorf("Value() = (%+v, %t), want (%+v, true)", got, ok, value)
 		}
 		if r.ID != 1 || r.Name != "protect" {
@@ -83,7 +83,7 @@ func TestRulesets_Lookup(t *testing.T) {
 	declared := mustRulesetName(t, "protect")
 	const undetermined = "Protéct"
 	interpreted := InterpretedRuleset(2, "Protect", interpretedRulesetValue())
-	uninterpreted := UninterpretedRuleset(2, "PROTECT", []UninterpretedPart{{Kind: UninterpretedRuleType, Name: "non_fast_forward"}})
+	uninterpreted := UninterpretedRuleset(2, "PROTECT", []UninterpretedPart{{Kind: UninterpretedRuleType, Name: "creation"}})
 	observed := func(rulesets ...Ruleset) Rulesets {
 		return Rulesets{Existing: Observed(rulesets)}
 	}

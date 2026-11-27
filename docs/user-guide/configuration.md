@@ -544,6 +544,14 @@ repositories:
               require_last_push_approval: false
               required_review_thread_resolution: true
           - type: deletion
+          - type: non_fast_forward
+          - type: required_status_checks
+            parameters:
+              required_status_checks:
+                - context: "test"
+                - context: "lint"
+                  integration_id: 15368
+              strict_required_status_checks_policy: true
 ```
 
 | キー | 値 | 意味 |
@@ -554,7 +562,7 @@ repositories:
 | `conditions.ref_name.include` | パターンの一覧（必須。`[]` 可） | 対象にするブランチ。`~DEFAULT_BRANCH`（デフォルトブランチ）、`~ALL`（すべてのブランチ）、`refs/heads/` で始まるパターン（`refs/heads/release/*` など） |
 | `conditions.ref_name.exclude` | パターンの一覧（必須。`[]` 可） | 対象から外すブランチ |
 | `bypass_actors` | 要素の一覧（必須。`[]` 可） | ルールを迂回できる主体。`actor_type`、`actor_id`、`bypass_mode` を書く |
-| `rules` | 要素の一覧（必須。`[]` 可） | 課すルール。`pull_request`（Pull Request を経ることを必須にする）と `deletion`（ブランチの削除の制限）を書ける |
+| `rules` | 要素の一覧（必須。`[]` 可） | 課すルール。`pull_request`（Pull Request を経ることを必須にする）、`deletion`（ブランチの削除の制限）、`non_fast_forward`（Force push の制限）、`required_status_checks`（ステータスチェックの成功を必須にする）を書ける。同じ `type` は一つだけ |
 
 **Ruleset は、書いた内容がその Ruleset の全体になります**。GitHub 上の Ruleset にあって設定ファイルにないルール、迂回できる主体、パターンは、適用するとなくなります。`plan` は、なくなるものを `Rules to remove:` や `Bypass actors to remove:` の行で示します。
 
@@ -564,10 +572,27 @@ repositories:
 - 名前は、半角の英数字、空白、記号だけで書き、前後に空白を置かない。大文字と小文字だけが違う名前は同じ Ruleset とみなすため、同じリポジトリに並べられない
 - `bypass_actors` の `actor_type` は `RepositoryRole`、`User`、`Integration`、`DeployKey` のどれか。`bypass_mode` は `always`、`pull_request`、`exempt` のどれかで、省略できない。`RepositoryRole` の `actor_id` は `2`、`4`、`5` のどれかで、ロール名ではなく数値で書く。どの数値がどのロールかは公開されていないため、`show` の表示から書き写す。`DeployKey` には `actor_id` を書かず、`bypass_mode` は `always` だけ
 - `pull_request` の `parameters` は、例に示したキーをすべて書く。`required_approving_review_count` は `0` から `10` の整数
+- `deletion` と `non_fast_forward` には `parameters` を書かない
 - 一覧の要素の順序は問わない。並びだけが違っても変更にならない
+
+`required_status_checks` の `parameters` には、次のキーを書きます。
+
+| キー | 値 | 意味 |
+|---|---|---|
+| `required_status_checks` | チェックの一覧（必須。`[]` 可） | 成功を必須にするステータスチェック。チェックごとに `context` と、必要なら `integration_id` を書く |
+| `required_status_checks[].context` | 文字列（必須） | ステータスチェックの名前 |
+| `required_status_checks[].integration_id` | 正の整数（省略可） | そのチェックを送ってよい GitHub App の ID。省略すると、どの発行元のチェックでも受け付ける |
+| `strict_required_status_checks_policy` | `true` / `false`（必須） | Pull Request のブランチを、対象のブランチの最新の内容で検証し直すことを求めるか |
+| `do_not_enforce_on_create` | `true` / `false`（省略可） | チェックが成功していなくても、対象のブランチの作成を許すか |
+
+- `context` には、Pull Request のチェックの一覧に出る名前を、大文字と小文字、前後の空白も含めてそのまま書く。名前が違うと別のチェックになる
+- **reco は、書いたチェックが実際にワークフローなどで作られるかを確かめません**。作られないチェックを必須にすると、対象のブランチへの Pull Request をマージできなくなる。チェックの名前は、そのブランチの Pull Request で一度実行されたものから書き写す
+- `integration_id` には、リポジトリにインストールされた App の ID を書く。GitHub Actions は `15368`。インストールされていない App の ID は、`plan` では分からず、`apply` で GitHub が受け付けずに失敗する
+- 同じ `context` と `integration_id` の組を二度書けない。同じ `context` でも、`integration_id` の有無や値が違えば別のチェックとして書ける
+- `do_not_enforce_on_create` を省略すると、reco はこの値を比べず、送らない。ただし、GitHub は送らなかった `do_not_enforce_on_create` を `false` にするため、GitHub 上で `true` の Ruleset のほかの内容を変えようとすると、`plan` に `Applicability: not applicable` と `required_status_checks.do_not_enforce_on_create: true` が出る。今の値を保つなら `do_not_enforce_on_create: true` を、`false` に変えるなら `do_not_enforce_on_create: false` を書き足す
 - 非公開リポジトリには書けない。書くと `plan` に `Applicability: not applicable` と `Plan cannot be applied.` が出る
 - GitHub 上に、半角の英数字、空白、記号以外の文字（`é` など）を含む名前の Ruleset があると、そのリポジトリにまだない名前の Ruleset は作成できない。GitHub がその名前を書いた名前と同じとみなすかを reco が判断できないため、`plan` は `(existence unknown)` と `Applicability: not applicable` を示す。GitHub 上にすでにある Ruleset の名前を書いた場合は、内容を比べられる
-- reco がまだ解釈しないルール（`non_fast_forward` など）や `pull_request` の設定（`allowed_merge_methods` など）を持つ Ruleset の名前を書くと、`plan` に `Applicability: not applicable` と、reco の解釈しない部分の一覧が出る。そうした Ruleset は設定ファイルから外す
+- reco がまだ解釈しないルール（`creation` など）や `pull_request` の設定（`allowed_merge_methods` など）を持つ Ruleset の名前を書くと、`plan` に `Applicability: not applicable` と、reco の解釈しない部分の一覧が出る。そうした Ruleset は設定ファイルから外す
 
 GitHub 上にある Ruleset を管理に取り込むときは、`reco show` の `rulesets` の表示から、その Ruleset の要素を設定ファイルに書き写します。表示は設定ファイルと同じキーと値で示すため、書き写したあとの `plan` は、その Ruleset に差分を示しません。ただし、`unavailable` のコメントが付いた Ruleset は取り込めません。`enforcement: evaluate`、`conditions: {}`、`2`・`4`・`5` 以外の `RepositoryRole` のように設定ファイルに書けない値を持つ Ruleset は、そのまま書き写すと設定ファイルの誤りになります。
 

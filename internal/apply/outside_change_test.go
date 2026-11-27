@@ -261,7 +261,14 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			want:   []unexpectedOutsideChange{{Setting: "actions.oidc_subject.use_immutable_subject", Before: "false", After: "true"}},
 		},
 		{
-			// Ruleset の更新操作は管理の単位である Ruleset の全体を送るため、同じ観測のほかの設定が変わっても比べない
+			name:   "ruleset value update includes the change of the omitted parameter",
+			change: changeplan.LogicalChange{Operations: []changeplan.UpdateOperation{omittingRulesetUpdate(t)}},
+			before: []github.ObservationResult{statusChecksRulesetObservation(false)},
+			after:  statusChecksRulesetObservation(true),
+			want:   []unexpectedOutsideChange{{Setting: "rulesets.protect.required_status_checks.do_not_enforce_on_create", Before: "false", After: "true"}},
+		},
+		{
+			// Ruleset の更新エンドポイントは Ruleset の値だけを受け付けるため、同じ観測のほかの設定が変わっても比べない
 			name:   "ruleset creation compares no setting",
 			change: rulesetCreationChange(t, "protect"),
 			before: []github.ObservationResult{general(func(*github.General) {})},
@@ -269,10 +276,10 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			want:   nil,
 		},
 		{
-			name:   "ruleset value update compares no setting",
+			name:   "ruleset value update without an omitted parameter compares no setting",
 			change: rulesetValueUpdateChange(t, "protect"),
-			before: []github.ObservationResult{general(func(*github.General) {})},
-			after:  general(func(g *github.General) { g.AllowAutoMerge = true }),
+			before: []github.ObservationResult{withRulesets(general(func(*github.General) {}), statusChecksRulesetObservation(false))},
+			after:  withRulesets(general(func(g *github.General) { g.AllowAutoMerge = true }), statusChecksRulesetObservation(true)),
 			want:   nil,
 		},
 	}
@@ -345,6 +352,69 @@ func TestOIDCSubjectOmittedItemChanges(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := oidcSubjectOmittedItemChanges(tc.operation, tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("oidcSubjectOmittedItemChanges() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// omittingRulesetUpdate は、do_not_enforce_on_create を省略した required_status_checks のルールを持つ値へ、ID が 42 の protect を置き換える更新操作。
+func omittingRulesetUpdate(t *testing.T) changeplan.UpdateOperation {
+	t.Helper()
+	return changeplan.UpdateOperation{
+		Kind: changeplan.RulesetValueUpdate, Unit: setting.Unit{Key: setting.RulesetResource, Ruleset: mustRulesetName(t, "protect")},
+		Value: setting.RulesetValue(statusChecksRulesetValue(nil)),
+	}
+}
+
+// statusChecksRulesetValue は、do_not_enforce_on_create が doNotEnforceOnCreate の required_status_checks のルールだけを持つ Ruleset の値。
+func statusChecksRulesetValue(doNotEnforceOnCreate *bool) setting.Ruleset {
+	return setting.Ruleset{
+		Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive,
+		Conditions:   setting.RulesetConditions{RefName: &setting.RefNameCondition{Include: []string{"~DEFAULT_BRANCH"}, Exclude: []string{}}},
+		BypassActors: []setting.BypassActor{},
+		Rules:        []setting.RulesetRule{setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{DoNotEnforceOnCreate: doNotEnforceOnCreate})},
+	}
+}
+
+// statusChecksRulesetObservation は、protect を、do_not_enforce_on_create が doNotEnforceOnCreate の値として読んだ観測。
+func statusChecksRulesetObservation(doNotEnforceOnCreate bool) github.ObservationResult {
+	ruleset := github.InterpretedRuleset(42, "protect", statusChecksRulesetValue(&doNotEnforceOnCreate))
+	return github.ObservationResult{Rulesets: &github.Rulesets{Existing: github.Observed([]github.Ruleset{ruleset})}}
+}
+
+// withRulesets は、observed に、rulesets の Rulesets の観測を加える。
+func withRulesets(observed, rulesets github.ObservationResult) github.ObservationResult {
+	observed.Rulesets = rulesets.Rulesets
+	return observed
+}
+
+// TestRulesetOmittedParameterChanges は、Ruleset の値の変更の更新操作の値が省略したパラメータを、更新直前と更新後の観測値で比べる規則を確かめる。
+// ここでは観測からの引き方、名前の形、更新後に値がないときの扱いを確かめる。
+//
+//trace:checks INV-001 FR-012
+func TestRulesetOmittedParameterChanges(t *testing.T) {
+	omitting := omittingRulesetUpdate(t)
+	absent := github.ObservationResult{Rulesets: &github.Rulesets{Existing: github.Observed([]github.Ruleset{})}}
+	cases := []struct {
+		name          string
+		before, after github.ObservationResult
+		want          []unexpectedOutsideChange
+	}{
+		{
+			name:   "omitted parameter changed is named after the ruleset, the rule type, and the parameter",
+			before: statusChecksRulesetObservation(true),
+			after:  statusChecksRulesetObservation(false),
+			want:   []unexpectedOutsideChange{{Setting: "rulesets.protect.required_status_checks.do_not_enforce_on_create", Before: "true", After: "false"}},
+		},
+		{
+			// 期待状態の確認が、存在しないことを不一致にする
+			name: "ruleset absent after the update has no value to compare", before: statusChecksRulesetObservation(false), after: absent,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := rulesetOmittedParameterChanges(omitting, tc.before, tc.after); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("rulesetOmittedParameterChanges() = %v, want %v", got, tc.want)
 			}
 		})
 	}

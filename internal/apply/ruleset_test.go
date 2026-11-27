@@ -40,7 +40,7 @@ func TestExecuteChange_Rulesets(t *testing.T) {
 	matching, matchingRequests := readAfter(1, created)
 	disabled, disabledRequests := readAfter(1+len(reobservationDelays), protectRulesetBody(42, "protect", setting.RulesetEnforcementDisabled))
 	uninterpretedBody := created
-	uninterpretedBody.Rules = []string{`{"type": "non_fast_forward"}`}
+	uninterpretedBody.Rules = []string{`{"type": "creation"}`}
 	uninterpreted, uninterpretedRequests := readAfter(1+len(reobservationDelays), uninterpretedBody)
 	cases := []struct {
 		name         string

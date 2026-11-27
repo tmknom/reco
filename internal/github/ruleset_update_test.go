@@ -20,6 +20,10 @@ func TestEncodeRulesetCreation(t *testing.T) {
 		RequireLastPushApproval:        true,
 		RequiredReviewThreadResolution: false,
 	})
+	statusChecks := setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{
+		RequiredStatusChecks:             []setting.StatusCheck{{Context: "test"}, {Context: "lint", IntegrationID: 15368}},
+		StrictRequiredStatusChecksPolicy: true,
+	})
 	full := setting.Ruleset{
 		Target:      setting.RulesetTargetBranch,
 		Enforcement: setting.RulesetEnforcementActive,
@@ -28,7 +32,7 @@ func TestEncodeRulesetCreation(t *testing.T) {
 			{ActorType: setting.BypassActorRepositoryRole, ActorID: 5, BypassMode: setting.BypassModeAlways},
 			{ActorType: setting.BypassActorDeployKey, BypassMode: setting.BypassModeAlways},
 		},
-		Rules: []setting.RulesetRule{pullRequest, setting.DeletionRule()},
+		Rules: []setting.RulesetRule{pullRequest, setting.DeletionRule(), setting.NonFastForwardRule(), statusChecks},
 	}
 	cases := []struct {
 		name    string
@@ -44,7 +48,8 @@ func TestEncodeRulesetCreation(t *testing.T) {
 			want: `{"name":"protect","target":"branch","enforcement":"active",` +
 				`"conditions":{"ref_name":{"include":["~DEFAULT_BRANCH","refs/heads/release"],"exclude":["refs/heads/tmp"]}},` +
 				`"bypass_actors":[{"actor_type":"RepositoryRole","actor_id":5,"bypass_mode":"always"},{"actor_type":"DeployKey","actor_id":null,"bypass_mode":"always"}],` +
-				`"rules":[{"type":"pull_request","parameters":{"required_approving_review_count":1,"dismiss_stale_reviews_on_push":true,"require_code_owner_review":false,"require_last_push_approval":true,"required_review_thread_resolution":false}},{"type":"deletion"}]}`,
+				`"rules":[{"type":"pull_request","parameters":{"required_approving_review_count":1,"dismiss_stale_reviews_on_push":true,"require_code_owner_review":false,"require_last_push_approval":true,"required_review_thread_resolution":false}},{"type":"deletion"},{"type":"non_fast_forward"},` +
+				`{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test"},{"context":"lint","integration_id":15368}],"strict_required_status_checks_policy":true}}]}`,
 		},
 		{
 			name:    "nil collections are sent as empty arrays",
@@ -75,6 +80,10 @@ func TestEncodeRulesetValueUpdate(t *testing.T) {
 		RequireLastPushApproval:        true,
 		RequiredReviewThreadResolution: false,
 	})
+	statusChecks := setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{
+		RequiredStatusChecks:             []setting.StatusCheck{{Context: "test"}, {Context: "lint", IntegrationID: 15368}},
+		StrictRequiredStatusChecksPolicy: true,
+	})
 	full := setting.Ruleset{
 		Target:      setting.RulesetTargetBranch,
 		Enforcement: setting.RulesetEnforcementActive,
@@ -83,7 +92,7 @@ func TestEncodeRulesetValueUpdate(t *testing.T) {
 			{ActorType: setting.BypassActorRepositoryRole, ActorID: 5, BypassMode: setting.BypassModeAlways},
 			{ActorType: setting.BypassActorDeployKey, BypassMode: setting.BypassModeAlways},
 		},
-		Rules: []setting.RulesetRule{pullRequest, setting.DeletionRule()},
+		Rules: []setting.RulesetRule{pullRequest, setting.DeletionRule(), setting.NonFastForwardRule(), statusChecks},
 	}
 	cases := []struct {
 		name  string
@@ -97,13 +106,43 @@ func TestEncodeRulesetValueUpdate(t *testing.T) {
 			want: `{"target":"branch","enforcement":"active",` +
 				`"conditions":{"ref_name":{"include":["~DEFAULT_BRANCH","refs/heads/release"],"exclude":["refs/heads/tmp"]}},` +
 				`"bypass_actors":[{"actor_type":"RepositoryRole","actor_id":5,"bypass_mode":"always"},{"actor_type":"DeployKey","actor_id":null,"bypass_mode":"always"}],` +
-				`"rules":[{"type":"pull_request","parameters":{"required_approving_review_count":1,"dismiss_stale_reviews_on_push":true,"require_code_owner_review":false,"require_last_push_approval":true,"required_review_thread_resolution":false}},{"type":"deletion"}]}`,
+				`"rules":[{"type":"pull_request","parameters":{"required_approving_review_count":1,"dismiss_stale_reviews_on_push":true,"require_code_owner_review":false,"require_last_push_approval":true,"required_review_thread_resolution":false}},{"type":"deletion"},{"type":"non_fast_forward"},` +
+				`{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test"},{"context":"lint","integration_id":15368}],"strict_required_status_checks_policy":true}}]}`,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := string(encodeRulesetValueUpdate(mustRulesetName(t, "protect"), tc.value)); got != tc.want {
 				t.Errorf("encodeRulesetValueUpdate() = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestEncodeRulesetRule は、required_status_checks のルールの本文が、宣言した do_not_enforce_on_create と integration_id だけを送ることを確かめる。
+//
+//trace:checks INV-001 FR-011
+func TestEncodeRulesetRule(t *testing.T) {
+	cases := []struct {
+		name       string
+		parameters setting.RequiredStatusChecksParameters
+		want       string
+	}{
+		{
+			name:       "declared do_not_enforce_on_create false is sent",
+			parameters: setting.RequiredStatusChecksParameters{RequiredStatusChecks: []setting.StatusCheck{}, DoNotEnforceOnCreate: new(false)},
+			want:       `{"type":"required_status_checks","parameters":{"required_status_checks":[],"strict_required_status_checks_policy":false,"do_not_enforce_on_create":false}}`,
+		},
+		{
+			name:       "nil checks are sent as an empty array",
+			parameters: setting.RequiredStatusChecksParameters{StrictRequiredStatusChecksPolicy: true},
+			want:       `{"type":"required_status_checks","parameters":{"required_status_checks":[],"strict_required_status_checks_policy":true}}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := string(mustMarshalJSON(encodeRulesetRule(setting.RequiredStatusChecksRule(tc.parameters)))); got != tc.want {
+				t.Errorf("encodeRulesetRule() = %s, want %s", got, tc.want)
 			}
 		})
 	}
@@ -143,7 +182,7 @@ func TestCreateRuleset(t *testing.T) {
 	}{
 		{name: "201 with a body that meets the read contract succeeds", body: rulesetDetail(t, nil)},
 		{name: "201 with a body that has uninterpreted parts succeeds", body: rulesetDetail(t, func(body map[string]any) {
-			body["rules"] = []any{map[string]any{"type": "non_fast_forward"}}
+			body["rules"] = []any{map[string]any{"type": "creation"}}
 		})},
 	}
 	for _, tc := range cases {
@@ -257,7 +296,7 @@ func TestUpdateRulesetValue(t *testing.T) {
 	}{
 		{name: "200 with a body that meets the read contract succeeds", body: rulesetDetail(t, nil)},
 		{name: "200 with a body that has uninterpreted parts succeeds", body: rulesetDetail(t, func(body map[string]any) {
-			body["rules"] = []any{map[string]any{"type": "non_fast_forward"}}
+			body["rules"] = []any{map[string]any{"type": "creation"}}
 		})},
 	}
 	for _, tc := range cases {

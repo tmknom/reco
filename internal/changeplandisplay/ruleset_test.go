@@ -44,6 +44,13 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 		}
 	}
 	const header = "  rulesets.protect:\n"
+	test, lint := setting.StatusCheck{Context: "test"}, setting.StatusCheck{Context: "lint", IntegrationID: 15368}
+	statusChecks := func(strict bool, doNotEnforceOnCreate *bool, checks ...setting.StatusCheck) setting.RulesetRule {
+		return setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{RequiredStatusChecks: checks, StrictRequiredStatusChecksPolicy: strict, DoNotEnforceOnCreate: doNotEnforceOnCreate})
+	}
+	rules := func(rules ...setting.RulesetRule) setting.Ruleset {
+		return with(func(r *setting.Ruleset) { r.Rules = rules })
+	}
 	cases := []struct {
 		name string
 		s    changeplan.SettingPlan
@@ -305,6 +312,77 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 				"require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false)]\n",
 		},
 		{
+			name: "creation shows non_fast_forward and required_status_checks with quoted checks and without an omitted parameter",
+			s: changeplan.SettingPlan{
+				Unit: protect, Observed: github.Observed(setting.Absent()),
+				Desired: setting.RulesetValue(rules(setting.NonFastForwardRule(), statusChecks(true, nil, test, lint, setting.StatusCheck{Context: "a\"b\n"}))),
+				Result:  changeplan.Mismatch, Applicability: changeplan.Applicable(),
+			},
+			want: "  rulesets.protect: absent -> present\n" +
+				"    target: branch\n    enforcement: active\n    include: [\"~DEFAULT_BRANCH\"]\n    exclude: []\n    bypass_actors: [RepositoryRole 5 always]\n" +
+				"    rules: [non_fast_forward, required_status_checks (required_status_checks: [\"test\", \"lint\" (integration_id: 15368), \"a\\\"b\\n\"], " +
+				"strict_required_status_checks_policy: true)]\n",
+		},
+		{
+			name: "creation shows a declared do_not_enforce_on_create and empty checks",
+			s: changeplan.SettingPlan{
+				Unit: protect, Observed: github.Observed(setting.Absent()),
+				Desired: setting.RulesetValue(rules(statusChecks(false, new(false)))),
+				Result:  changeplan.Mismatch, Applicability: changeplan.Applicable(),
+			},
+			want: "  rulesets.protect: absent -> present\n" +
+				"    target: branch\n    enforcement: active\n    include: [\"~DEFAULT_BRANCH\"]\n    exclude: []\n    bypass_actors: [RepositoryRole 5 always]\n" +
+				"    rules: [required_status_checks (required_status_checks: [], strict_required_status_checks_policy: false, do_not_enforce_on_create: false)]\n",
+		},
+		{
+			name: "removed required_status_checks rule is shown with its observed do_not_enforce_on_create",
+			s:    update(rules(deletion, statusChecks(false, new(true), test)), rules(deletion)),
+			want: header + "    Rules to remove: [required_status_checks (required_status_checks: [\"test\"], strict_required_status_checks_policy: false, do_not_enforce_on_create: true)]\n",
+		},
+		{
+			name: "changed checks and strict policy of the same rule are shown as check lines then the rule line",
+			s:    update(rules(statusChecks(false, new(false), test, test)), rules(statusChecks(true, nil, lint))),
+			want: header +
+				"    Required status checks to remove: [\"test\"]\n" +
+				"    Required status checks to add: [\"lint\" (integration_id: 15368)]\n" +
+				"    Rule required_status_checks: strict_required_status_checks_policy: false -> true\n",
+		},
+		{
+			name: "changed checks alone show no rule line",
+			s:    update(rules(statusChecks(true, new(true), test)), rules(statusChecks(true, nil, test, lint))),
+			want: header + "    Required status checks to add: [\"lint\" (integration_id: 15368)]\n",
+		},
+		{
+			name: "declared do_not_enforce_on_create change is shown on the rule line",
+			s:    update(rules(statusChecks(false, new(false), test)), rules(statusChecks(true, new(true), test))),
+			want: header + "    Rule required_status_checks: strict_required_status_checks_policy: false -> true, do_not_enforce_on_create: false -> true\n",
+		},
+		{
+			name: "changes of two paired rules are shown in the declared order of the rules",
+			s: update(
+				rules(statusChecks(false, new(false), test), pullRequest(setting.PullRequestParameters{})),
+				rules(pullRequest(setting.PullRequestParameters{RequiredApprovingReviewCount: 1}), statusChecks(true, nil, test)),
+			),
+			want: header +
+				"    Rule pull_request: required_approving_review_count: 0 -> 1\n" +
+				"    Rule required_status_checks: strict_required_status_checks_policy: false -> true\n",
+		},
+		{
+			name: "value change that resets an omitted parameter shows the applicability and each parameter with its observed value",
+			s: changeplan.SettingPlan{
+				Unit: protect, Observed: github.Observed(setting.RulesetValue(rules(statusChecks(false, new(true), test)))),
+				Desired: setting.RulesetValue(rules(statusChecks(true, nil, test))),
+				Result:  changeplan.Mismatch,
+				Applicability: changeplan.NotApplicableResetParameters([]setting.ResetParameter{
+					{Rule: setting.RulesetRuleRequiredStatusChecks, Name: "do_not_enforce_on_create", Value: "true"},
+				}),
+			},
+			want: header +
+				"    Rule required_status_checks: strict_required_status_checks_policy: false -> true\n" +
+				"    Applicability: not applicable (updating the ruleset would change parameters that the configuration omits to the values GitHub sets; declare them in the configuration)\n" +
+				"      required_status_checks.do_not_enforce_on_create: true\n",
+		},
+		{
 			name: "ruleset with uninterpreted parts shows the state, the whole declared value, the applicability, and each part in the observed order",
 			s: changeplan.SettingPlan{
 				Unit: rulesetUnit(t, "strict-review"), Observed: github.Unavailable[setting.Value](github.UnavailableUninterpretedParts),
@@ -315,7 +393,7 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 				Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable(changeplan.NotApplicableUninterpretedParts),
 				UninterpretedParts: []github.UninterpretedPart{
 					{Kind: github.UninterpretedRuleParameter, Rule: setting.RulesetRulePullRequest, Name: "allowed_merge_methods"},
-					{Kind: github.UninterpretedRuleType, Name: "non_fast_forward"},
+					{Kind: github.UninterpretedRuleType, Name: "creation"},
 				},
 			},
 			want: "  rulesets.strict-review: (uninterpreted parts) -> present\n" +
@@ -327,7 +405,7 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 				"    rules: [deletion]\n" +
 				"    Applicability: not applicable (the ruleset on GitHub contains parts that reco does not interpret; remove this ruleset from the configuration)\n" +
 				"      pull_request parameter: \"allowed_merge_methods\"\n" +
-				"      rule type: \"non_fast_forward\"\n",
+				"      rule type: \"creation\"\n",
 		},
 		{
 			name: "ruleset whose existence is unknown shows the state, the whole declared value, and why it is not applicable",
@@ -392,7 +470,7 @@ func TestPlannedChangeText_RulesetInvariantsPanic(t *testing.T) {
 	withoutRefName.Conditions = setting.RulesetConditions{}
 	withUndefinedRule := value
 	withUndefinedRule.Rules = []setting.RulesetRule{{}}
-	parts := []github.UninterpretedPart{{Kind: github.UninterpretedRuleType, Name: "non_fast_forward"}}
+	parts := []github.UninterpretedPart{{Kind: github.UninterpretedRuleType, Name: "creation"}}
 	cases := []struct {
 		name string
 		s    changeplan.SettingPlan
@@ -451,4 +529,14 @@ func TestPlannedChangeText_RulesetInvariantsPanic(t *testing.T) {
 			_ = PlannedChangeText(tc.s)
 		})
 	}
+}
+
+// パラメータのない型の二つのルールは値が同じで、組になって差を示すことはない。
+func TestRuleParameterChangeLines_PanicsWithoutParameters(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("ruleParameterChangeLines() did not panic")
+		}
+	}()
+	_ = ruleParameterChangeLines(setting.NonFastForwardRule(), setting.NonFastForwardRule())
 }

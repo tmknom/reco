@@ -41,6 +41,10 @@ func rulesetChangeText(s changeplan.SettingPlan) string {
 	for _, part := range s.UninterpretedParts {
 		fmt.Fprintf(&b, "      %s\n", part.String())
 	}
+	// 変更計画は省略したパラメータの値を示さないため、何を宣言すれば解消するかを観測値とともに示す
+	for _, p := range s.Applicability.ResetParameters() {
+		fmt.Fprintf(&b, "      %s.%s: %s\n", p.Rule, p.Name, p.Value)
+	}
 	return b.String()
 }
 
@@ -91,8 +95,41 @@ func rulesetDifferenceLines(observed, desired setting.Ruleset) string {
 	b.WriteString(elementsLine("Rules to remove", rulesRemoved, rulesText))
 	b.WriteString(elementsLine("Rules to add", rulesAdded, rulesText))
 	for _, change := range parameterChanges {
-		// 同じ型で値の違う二つのルールはパラメータを持つ型に限り、パラメータのない型の組は PullRequest の panic で検出する
-		fmt.Fprintf(&b, "    Rule %s: %s\n", change.to.Type(), pullRequestParameterChangesText(change.from.PullRequest(), change.to.PullRequest()))
+		b.WriteString(ruleParameterChangeLines(change.from, change.to))
+	}
+	return b.String()
+}
+
+// ruleParameterChangeLines は、同じ型で値の違う二つのルール from、to のパラメータの差を、CLI 仕様の行で返す。
+// 同じ型で値の違う二つのルールはパラメータを持つ型に限るため、パラメータのない型の組と定義にない型は、不変条件の破れとして panic する。
+// ルール型を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+func ruleParameterChangeLines(from, to setting.RulesetRule) string {
+	switch to.Type() {
+	case setting.RulesetRulePullRequest:
+		return fmt.Sprintf("    Rule %s: %s\n", to.Type(), pullRequestParameterChangesText(from.PullRequest(), to.PullRequest()))
+	case setting.RulesetRuleRequiredStatusChecks:
+		return requiredStatusChecksChangeLines(from.RequiredStatusChecks(), to.RequiredStatusChecks())
+	case setting.RulesetRuleDeletion, setting.RulesetRuleNonFastForward:
+	}
+	panic(fmt.Sprintf("changeplandisplay: rule %q has no parameters to change", to.Type()))
+}
+
+// requiredStatusChecksChangeLines は、required_status_checks のパラメータの差を、なくなるチェック、加わるチェック、変わる真偽値の行の順で返す。
+// do_not_enforce_on_create は、両方が持つときだけ差になるため、宣言が省略したときは示さない。
+func requiredStatusChecksChangeLines(from, to setting.RequiredStatusChecksParameters) string {
+	d := from.DifferenceTo(to)
+	var b strings.Builder
+	b.WriteString(elementsLine("Required status checks to remove", d.ChecksRemoved, statusChecksText))
+	b.WriteString(elementsLine("Required status checks to add", d.ChecksAdded, statusChecksText))
+	var changes []string
+	if d.StrictPolicyChanged {
+		changes = append(changes, fmt.Sprintf("strict_required_status_checks_policy: %t -> %t", from.StrictRequiredStatusChecksPolicy, to.StrictRequiredStatusChecksPolicy))
+	}
+	if d.DoNotEnforceOnCreateChanged {
+		changes = append(changes, fmt.Sprintf("do_not_enforce_on_create: %t -> %t", *from.DoNotEnforceOnCreate, *to.DoNotEnforceOnCreate))
+	}
+	if len(changes) > 0 {
+		fmt.Fprintf(&b, "    Rule %s: %s\n", setting.RulesetRuleRequiredStatusChecks, strings.Join(changes, ", "))
 	}
 	return b.String()
 }
@@ -187,10 +224,30 @@ func ruleText(r setting.RulesetRule) string {
 		return fmt.Sprintf("%s (required_approving_review_count: %d, dismiss_stale_reviews_on_push: %t, require_code_owner_review: %t, "+
 			"require_last_push_approval: %t, required_review_thread_resolution: %t)",
 			r.Type(), p.RequiredApprovingReviewCount, p.DismissStaleReviewsOnPush, p.RequireCodeOwnerReview, p.RequireLastPushApproval, p.RequiredReviewThreadResolution)
-	case setting.RulesetRuleDeletion:
+	case setting.RulesetRuleDeletion, setting.RulesetRuleNonFastForward:
 		return string(r.Type())
+	case setting.RulesetRuleRequiredStatusChecks:
+		p := r.RequiredStatusChecks()
+		text := fmt.Sprintf("%s (required_status_checks: %s, strict_required_status_checks_policy: %t", r.Type(), statusChecksText(p.RequiredStatusChecks), p.StrictRequiredStatusChecksPolicy)
+		if p.DoNotEnforceOnCreate != nil {
+			text += fmt.Sprintf(", do_not_enforce_on_create: %t", *p.DoNotEnforceOnCreate)
+		}
+		return text + ")"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined ruleset rule type %q", r.Type()))
+}
+
+// statusChecksText は、チェックの一覧を、二重引用符で囲んでエスケープした context と、発行元を限るなら integration_id の並びで返す。
+// context は GitHub が返した任意の文字列のため、パターンと同じく変更計画の行を偽装しないようにする。
+func statusChecksText(checks []setting.StatusCheck) string {
+	texts := make([]string, len(checks))
+	for i, c := range checks {
+		texts[i] = strconv.Quote(c.Context)
+		if c.IntegrationID != 0 {
+			texts[i] += " (integration_id: " + strconv.FormatInt(c.IntegrationID, 10) + ")"
+		}
+	}
+	return "[" + strings.Join(texts, ", ") + "]"
 }
 
 // pullRequestParameterChangesText は、pull_request のパラメータのうち変わるものだけを、パラメータの順に現在値 -> 期待値で返す。

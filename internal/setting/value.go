@@ -167,7 +167,7 @@ func Absent() Value {
 // 値のないゼロ値は設定の値ではなく、比べようとするのは不変条件の破れのため panic する。
 // 同じ値として扱うと、確かめていない値が一致や変更前提の成立として黙って通るため。
 // 種別ごとに使わないフィールドはゼロ値のため、種別で分岐せずに全フィールドを比べる。
-// 設定グループの省略できる項目は、両方の値が持つときだけ比べる。期待値が省略した項目の違いで照合、変更前提、期待状態の確認を止めないため。
+// 省略できる項目 (設定グループの項目と、Ruleset のルールのパラメータ) は、両方の値が持つときだけ比べる。期待値が省略した項目の違いで照合、変更前提、期待状態の確認を止めないため。
 // そのため項目を省略した値との比較は推移的でなく、すべての項目を比べるのは、項目を必ず持つ観測値どうしの比較に限る。
 func (v Value) Equal(other Value) bool {
 	if v.kind == kindNone || other.kind == kindNone {
@@ -358,7 +358,8 @@ func (v Value) MergeCommitDefault() MergeCommitDefault {
 }
 
 // WithItemsDeclaredIn は、declared が省略した設定グループの項目を v から除いた値を返す。省略した項目を変更計画に示さず、変更前提でも比べないようにするため。
-// 種別ごとに使わないフィールドはゼロ値のため、種別で分岐しない。省略できる項目を持たない種別の値は、そのまま返る。
+// 種別ごとに使わないフィールドはゼロ値のため、種別で分岐しない。省略しても GitHub が値を保持する項目だけを除き、ほかの種別の値はそのまま返る。
+// Ruleset の省略できるパラメータは除かない。値の全体を置き換える更新が GitHub の決める値に変えるため、変更前提で比べる。
 func (v Value) WithItemsDeclaredIn(declared Value) Value {
 	if declared.customization.UseImmutableSubject == nil {
 		v.customization.UseImmutableSubject = nil

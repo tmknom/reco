@@ -627,6 +627,15 @@ func TestValue_WithItemsDeclaredIn(t *testing.T) {
 			t.Errorf("WithItemsDeclaredIn() = %s, want true", got.String())
 		}
 	})
+
+	// 値の全体を置き換える更新が GitHub の決める値に変えるため、変更前提で比べる
+	t.Run("ruleset parameter omitted by the declaration is kept in the observed value", func(t *testing.T) {
+		observed := RulesetValue(newTestRuleset(withRules(statusChecksRule(false, new(true)))))
+		got := observed.WithItemsDeclaredIn(RulesetValue(newTestRuleset(withRules(statusChecksRule(false, nil)))))
+		if p := got.Ruleset().Rules[0].RequiredStatusChecks().DoNotEnforceOnCreate; p == nil || !*p {
+			t.Errorf("WithItemsDeclaredIn() do_not_enforce_on_create = %v, want true kept", p)
+		}
+	})
 }
 
 func TestValue_ReviewerSet(t *testing.T) {

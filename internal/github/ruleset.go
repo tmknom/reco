@@ -62,7 +62,7 @@ const (
 	UninterpretedRuleType
 	// UninterpretedRuleKey は、reco が扱うルール型の要素の reco が読まないキー。
 	UninterpretedRuleKey
-	// UninterpretedRuleParameter は、reco が扱うルール型の、既定値と異なるか reco が読まないパラメータ。
+	// UninterpretedRuleParameter は、reco が扱うルール型の、値を解釈しないか reco が読まないパラメータ。
 	UninterpretedRuleParameter
 )
 

@@ -3,6 +3,7 @@ package configuration
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -243,7 +244,7 @@ func (d document) rulesetRules(n *yaml.Node, path string) ([]setting.RulesetRule
 	return rules, nil
 }
 
-// rulesetRule は、ルール 1 件を読む。deletion は parameters を持てず、pull_request は parameters を必須とする。
+// rulesetRule は、ルール 1 件を読む。deletion と non_fast_forward は parameters を持てず、pull_request と required_status_checks は parameters を必須とする。
 // 判定は、type、parameters の有無の組み合わせ、parameters の中身の順に行う。
 func (d document) rulesetRule(n *yaml.Node, path string) (setting.RulesetRule, error) {
 	entries, err := d.mappingEntries(n, path, []string{"type"}, []string{"parameters"})
@@ -257,24 +258,42 @@ func (d document) rulesetRule(n *yaml.Node, path string) (setting.RulesetRule, e
 	}
 	ruleType, ok := setting.ParseRulesetRuleType(typeString)
 	if !ok {
-		return setting.RulesetRule{}, invalid(entries["type"], typePath, "must be pull_request or deletion; got %q", typeString)
+		return setting.RulesetRule{}, invalid(entries["type"], typePath, "must be pull_request, deletion, required_status_checks, or non_fast_forward; got %q", typeString)
 	}
 	parametersNode, hasParameters := entries["parameters"]
-	if ruleType == setting.RulesetRuleDeletion {
-		if hasParameters {
-			return setting.RulesetRule{}, invalid(parametersNode, path+".parameters", `parameters is not allowed when type is "deletion"`)
-		}
+	parametersPath := path + ".parameters"
+	takesParameters := ruleType.HasParameters()
+	switch {
+	case hasParameters && !takesParameters:
+		return setting.RulesetRule{}, invalid(parametersNode, parametersPath, "parameters is not allowed when type is %q", ruleType)
+	case !hasParameters && takesParameters:
+		return setting.RulesetRule{}, invalid(n, path, "type %q requires parameters", ruleType)
+	}
+	return d.typedRulesetRule(ruleType, parametersNode, parametersPath)
+}
+
+// typedRulesetRule は、parameters の有無を確かめたルール型 ruleType のルールを、型が持つなら parametersNode を読んで作る。
+// ルール型を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
+func (d document) typedRulesetRule(ruleType setting.RulesetRuleType, parametersNode *yaml.Node, parametersPath string) (setting.RulesetRule, error) {
+	switch ruleType {
+	case setting.RulesetRuleDeletion:
 		return setting.DeletionRule(), nil
+	case setting.RulesetRuleNonFastForward:
+		return setting.NonFastForwardRule(), nil
+	case setting.RulesetRulePullRequest:
+		parameters, err := d.pullRequestParameters(parametersNode, parametersPath)
+		if err != nil {
+			return setting.RulesetRule{}, err
+		}
+		return setting.PullRequestRule(parameters), nil
+	case setting.RulesetRuleRequiredStatusChecks:
+		parameters, err := d.requiredStatusChecksParameters(parametersNode, parametersPath)
+		if err != nil {
+			return setting.RulesetRule{}, err
+		}
+		return setting.RequiredStatusChecksRule(parameters), nil
 	}
-	// ParseRulesetRuleType が返すルール型は deletion と pull_request だけで、残りは pull_request。
-	if !hasParameters {
-		return setting.RulesetRule{}, invalid(n, path, `type "pull_request" requires parameters`)
-	}
-	parameters, err := d.pullRequestParameters(parametersNode, path+".parameters")
-	if err != nil {
-		return setting.RulesetRule{}, err
-	}
-	return setting.PullRequestRule(parameters), nil
+	panic(fmt.Sprintf("configuration: undefined ruleset rule type %q", ruleType))
 }
 
 // pullRequestParameters は、pull_request のルールの 5 項目をすべて読む。
@@ -311,4 +330,89 @@ func (d document) pullRequestParameters(n *yaml.Node, path string) (setting.Pull
 		}
 	}
 	return parameters, nil
+}
+
+// requiredStatusChecksParameters は、required_status_checks のルールのパラメータを読む。do_not_enforce_on_create は省略でき、省略したら nil のまま残す。
+// 判定は、キーの集合、チェック、strict_required_status_checks_policy、do_not_enforce_on_create の順に行う。
+func (d document) requiredStatusChecksParameters(n *yaml.Node, path string) (setting.RequiredStatusChecksParameters, error) {
+	entries, err := d.mappingEntries(n, path, []string{"required_status_checks", "strict_required_status_checks_policy"}, []string{"do_not_enforce_on_create"})
+	if err != nil {
+		return setting.RequiredStatusChecksParameters{}, err
+	}
+	var parameters setting.RequiredStatusChecksParameters
+	if parameters.RequiredStatusChecks, err = d.statusChecks(entries["required_status_checks"], path+".required_status_checks"); err != nil {
+		return setting.RequiredStatusChecksParameters{}, err
+	}
+	strictPath := path + ".strict_required_status_checks_policy"
+	if parameters.StrictRequiredStatusChecksPolicy, err = d.boolValue(entries["strict_required_status_checks_policy"], strictPath); err != nil {
+		return setting.RequiredStatusChecksParameters{}, err
+	}
+	if node, ok := entries["do_not_enforce_on_create"]; ok {
+		enforce, err := d.boolValue(node, path+".do_not_enforce_on_create")
+		if err != nil {
+			return setting.RequiredStatusChecksParameters{}, err
+		}
+		parameters.DoNotEnforceOnCreate = &enforce
+	}
+	return parameters, nil
+}
+
+// statusChecks は、チェックの並びを宣言の順のまま読む。空のシーケンスは「チェックなし」の期待値で、空でも nil にしない。
+// context と integration_id の組が同じチェックは一つに限る。integration_id の省略も一つの値として比べる。
+func (d document) statusChecks(n *yaml.Node, path string) ([]setting.StatusCheck, error) {
+	items, err := d.sequenceContent(n, path)
+	if err != nil {
+		return nil, err
+	}
+	checks := make([]setting.StatusCheck, 0, len(items))
+	for i, item := range items {
+		itemPath := fmt.Sprintf("%s[%d]", path, i)
+		check, err := d.statusCheck(item, itemPath)
+		if err != nil {
+			return nil, err
+		}
+		if j := slices.Index(checks, check); j >= 0 {
+			return nil, invalid(item, itemPath, "duplicate status check %s; same as %s[%d]", statusCheckLabel(check), path, j)
+		}
+		checks = append(checks, check)
+	}
+	return checks, nil
+}
+
+// statusCheck は、チェック 1 件を読む。context は空文字列だけを拒否し、前後の空白も大文字小文字も書いたとおりに持つ。
+// GitHub が送ったとおりに保存するため、正規化すると宣言と観測が食い違う。
+func (d document) statusCheck(n *yaml.Node, path string) (setting.StatusCheck, error) {
+	entries, err := d.mappingEntries(n, path, []string{"context"}, []string{"integration_id"})
+	if err != nil {
+		return setting.StatusCheck{}, err
+	}
+	contextPath := path + ".context"
+	context, err := d.stringValue(entries["context"], contextPath)
+	if err != nil {
+		return setting.StatusCheck{}, err
+	}
+	if context == "" {
+		return setting.StatusCheck{}, invalid(entries["context"], contextPath, "must not be empty")
+	}
+	check := setting.StatusCheck{Context: context}
+	if node, ok := entries["integration_id"]; ok {
+		idPath := path + ".integration_id"
+		id, err := d.intValue(node, idPath)
+		if err != nil {
+			return setting.StatusCheck{}, err
+		}
+		if id < 1 {
+			return setting.StatusCheck{}, invalid(node, idPath, "must be a positive integer; got %d", id)
+		}
+		check.IntegrationID = int64(id)
+	}
+	return check, nil
+}
+
+// statusCheckLabel は、重複の誤りが示すチェックの表記。context は任意の文字を含み得るため、引用符で囲んでエスケープする。
+func statusCheckLabel(check setting.StatusCheck) string {
+	if check.IntegrationID == 0 {
+		return strconv.Quote(check.Context)
+	}
+	return fmt.Sprintf("%q with integration_id %d", check.Context, check.IntegrationID)
 }

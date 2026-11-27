@@ -305,6 +305,10 @@ func decodeHandledRulesetRule(ruleType setting.RulesetRuleType, fields map[strin
 		return decodePullRequestRule(fields)
 	case setting.RulesetRuleDeletion:
 		return setting.DeletionRule(), ruleKeyParts(fields, ruleType, "type"), nil
+	case setting.RulesetRuleNonFastForward:
+		return setting.NonFastForwardRule(), ruleKeyParts(fields, ruleType, "type"), nil
+	case setting.RulesetRuleRequiredStatusChecks:
+		return decodeRequiredStatusChecksRule(fields)
 	}
 	panic(fmt.Sprintf("github: unknown ruleset rule type %q", ruleType))
 }
@@ -361,6 +365,77 @@ func pullRequestParameterParts(parameters map[string]json.RawMessage) []Uninterp
 		parts[i] = UninterpretedPart{Kind: UninterpretedRuleParameter, Rule: setting.RulesetRulePullRequest, Name: name}
 	}
 	return parts
+}
+
+// decodeRequiredStatusChecksRule は required_status_checks のルールを読む。値に含める必須の項目は、欠けると値を作れないため、欠落を契約外の応答とする。
+// 宣言できる do_not_enforce_on_create は、どちらの値も値に含め、読めないときだけ解釈しない部分とする（Rulesets の設計の解釈しない部分）。
+func decodeRequiredStatusChecksRule(fields map[string]json.RawMessage) (setting.RulesetRule, []UninterpretedPart, error) {
+	if isAbsent(fields["parameters"]) {
+		return setting.RulesetRule{}, nil, fmt.Errorf("%w: missing fields: rules.parameters", ErrUnexpectedResponse)
+	}
+	parameters, err := decodeObject(fields["parameters"], "rules.parameters")
+	if err != nil {
+		return setting.RulesetRule{}, nil, err
+	}
+	items, err := decodeRequired[[]json.RawMessage](parameters["required_status_checks"], "rules.parameters.required_status_checks")
+	if err != nil {
+		return setting.RulesetRule{}, nil, err
+	}
+	strict, err := decodeRequired[bool](parameters["strict_required_status_checks_policy"], "rules.parameters.strict_required_status_checks_policy")
+	if err != nil {
+		return setting.RulesetRule{}, nil, err
+	}
+	checks := make([]setting.StatusCheck, len(items))
+	var unread []string
+	enforce, ok := decodeOptional[bool](parameters["do_not_enforce_on_create"])
+	if !ok {
+		unread = append(unread, "do_not_enforce_on_create")
+	}
+	for i, item := range items {
+		check, checkUnread, err := decodeStatusCheck(item)
+		if err != nil {
+			return setting.RulesetRule{}, nil, err
+		}
+		checks[i] = check
+		unread = append(unread, checkUnread...)
+	}
+	unread = append(unread, unreadKeys(parameters, "required_status_checks", "strict_required_status_checks_policy", "do_not_enforce_on_create")...)
+	parts := ruleKeyParts(fields, setting.RulesetRuleRequiredStatusChecks, "type", "parameters")
+	for _, name := range unread {
+		parts = append(parts, UninterpretedPart{Kind: UninterpretedRuleParameter, Rule: setting.RulesetRuleRequiredStatusChecks, Name: name})
+	}
+	return setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{
+		RequiredStatusChecks:             checks,
+		StrictRequiredStatusChecksPolicy: strict,
+		DoNotEnforceOnCreate:             &enforce,
+	}), parts, nil
+}
+
+// decodeStatusCheck は、チェックの一つの要素を読み、解釈しなかったパラメータの名前を、integration_id、読まないキーの名前の順で返す。
+// 解釈しなかったものの名前は、ref_name の中のキーと同じく、required_status_checks の中と分かる名前にする。
+// integration_id は、キーがないことと null を区別する。GitHub は送らなかった integration_id を返さず、null と 0 を拒否したため、null と正の整数でない値の意味を定める根拠がない。
+func decodeStatusCheck(raw json.RawMessage) (setting.StatusCheck, []string, error) {
+	fields, err := decodeObject(raw, "rules.parameters.required_status_checks")
+	if err != nil {
+		return setting.StatusCheck{}, nil, err
+	}
+	checkContext, err := decodeRequired[string](fields["context"], "rules.parameters.required_status_checks.context")
+	if err != nil {
+		return setting.StatusCheck{}, nil, err
+	}
+	check := setting.StatusCheck{Context: checkContext}
+	var unread []string
+	if rawID, ok := fields["integration_id"]; ok {
+		if id, ok := decodeOptional[int64](rawID); ok && id > 0 {
+			check.IntegrationID = id
+		} else {
+			unread = append(unread, "required_status_checks.integration_id")
+		}
+	}
+	for _, key := range unreadKeys(fields, "context", "integration_id") {
+		unread = append(unread, "required_status_checks."+key)
+	}
+	return check, unread, nil
 }
 
 // isDefaultMergeMethods は、allowed_merge_methods が merge、squash、rebase の集合かを返す。順序と重複は問わない。

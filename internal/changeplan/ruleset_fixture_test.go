@@ -31,3 +31,15 @@ func protectRuleset() setting.Ruleset {
 		Rules:        []setting.RulesetRule{setting.DeletionRule()},
 	}
 }
+
+// statusChecksRuleset は、protectRuleset のルールを、厳格な再検証 strict と do_not_enforce_on_create を持つ required_status_checks のルール一つに替えた値を返す。
+// doNotEnforceOnCreate が nil なら、宣言が省略した値になる。
+func statusChecksRuleset(strict bool, doNotEnforceOnCreate *bool) setting.Ruleset {
+	r := protectRuleset()
+	r.Rules = []setting.RulesetRule{setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{
+		RequiredStatusChecks:             []setting.StatusCheck{{Context: "test"}},
+		StrictRequiredStatusChecksPolicy: strict,
+		DoNotEnforceOnCreate:             doNotEnforceOnCreate,
+	})}
+	return r
+}

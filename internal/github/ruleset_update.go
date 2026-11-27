@@ -61,10 +61,11 @@ type bypassActorBody struct {
 	BypassMode string `json:"bypass_mode"`
 }
 
-// rulesetRuleBody の Parameters は、deletion ではキーごと送らないため omitempty のポインタで持つ。
+// rulesetRuleBody の Parameters は、型ごとの本文の struct を持つ。パラメータを持たない型ではキーごと送らないため、omitempty で nil のままにする。
+// nil のポインタを入れると、interface の値が nil でなくなり omitempty が効かないため、代入しない。
 type rulesetRuleBody struct {
-	Type       string                     `json:"type"`
-	Parameters *pullRequestParametersBody `json:"parameters,omitempty"`
+	Type       string `json:"type"`
+	Parameters any    `json:"parameters,omitempty"`
 }
 
 type pullRequestParametersBody struct {
@@ -73,6 +74,19 @@ type pullRequestParametersBody struct {
 	RequireCodeOwnerReview         bool `json:"require_code_owner_review"`
 	RequireLastPushApproval        bool `json:"require_last_push_approval"`
 	RequiredReviewThreadResolution bool `json:"required_review_thread_resolution"`
+}
+
+// requiredStatusChecksParametersBody の DoNotEnforceOnCreate は、宣言したときだけ送るため omitempty のポインタで持つ。false を指すポインタは省かれない。
+type requiredStatusChecksParametersBody struct {
+	RequiredStatusChecks             []statusCheckBody `json:"required_status_checks"`
+	StrictRequiredStatusChecksPolicy bool              `json:"strict_required_status_checks_policy"`
+	DoNotEnforceOnCreate             *bool             `json:"do_not_enforce_on_create,omitempty"`
+}
+
+// statusCheckBody の IntegrationID は、発行元を限らないチェック (0) では送らない。GitHub は 0 を拒否するため。
+type statusCheckBody struct {
+	Context       string `json:"context"`
+	IntegrationID int64  `json:"integration_id,omitempty"`
 }
 
 // encodeRulesetCreation は、名前 name と値 value を作成の POST の本文にする。
@@ -128,8 +142,19 @@ func encodeRulesetRule(rule setting.RulesetRule) rulesetRuleBody {
 			RequireLastPushApproval:        p.RequireLastPushApproval,
 			RequiredReviewThreadResolution: p.RequiredReviewThreadResolution,
 		}}
-	case setting.RulesetRuleDeletion:
+	case setting.RulesetRuleDeletion, setting.RulesetRuleNonFastForward:
 		return rulesetRuleBody{Type: string(rule.Type())}
+	case setting.RulesetRuleRequiredStatusChecks:
+		p := rule.RequiredStatusChecks()
+		checks := make([]statusCheckBody, len(p.RequiredStatusChecks))
+		for i, c := range p.RequiredStatusChecks {
+			checks[i] = statusCheckBody{Context: c.Context, IntegrationID: c.IntegrationID}
+		}
+		return rulesetRuleBody{Type: string(rule.Type()), Parameters: &requiredStatusChecksParametersBody{
+			RequiredStatusChecks:             checks,
+			StrictRequiredStatusChecksPolicy: p.StrictRequiredStatusChecksPolicy,
+			DoNotEnforceOnCreate:             p.DoNotEnforceOnCreate,
+		}}
 	}
 	panic(fmt.Sprintf("github: no request body for ruleset rule type %q", rule.Type()))
 }
