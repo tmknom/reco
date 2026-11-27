@@ -10,8 +10,13 @@
 | マージ方式 | Merge Method | Pull Request をマージする方法の許可。squash merge（`allow_squash_merge`）、merge commit（`allow_merge_commit`）、rebase merge（`allow_rebase_merge`）の3つ |
 | 更新後のマージ方式の値 | Merge Methods After Update | 変更計画を適用したあとの各マージ方式の値。宣言したマージ方式は期待値、宣言していないマージ方式は計画時の観測値 |
 | 無効のまま残るマージ方式 | Merge Method Left Disabled | 宣言されておらず、計画時に無効だったマージ方式。更新後にすべてのマージ方式が無効になる変更予定の、適用不能の理由に添える |
+| マージメッセージ | Commit Message Default | squash merge と merge commit のそれぞれについて、GitHub がコミットメッセージの既定にするタイトル（title）と本文（message）の選び方の組。squash merge は `squash_merge_commit_title` と `squash_merge_commit_message`、merge commit は `merge_commit_title` と `merge_commit_message`。本文は組の一部で、マージメッセージ全体ではない。rebase merge にはない |
+| リポジトリの機能 | Repository Feature | リポジトリの Issues（`has_issues`）、Projects（`has_projects`）、Wiki（`has_wiki`）を有効にするかの3設定 |
+| Web コミットのサインオフ必須 | Web Commit Signoff Requirement | GitHub の Web 画面からのコミットに、作成者のサインオフを求めるかの設定（`web_commit_signoff_required`）。コミットの署名を求める設定とは異なる |
 
 General の6設定は、それぞれ単独の管理の単位です。3つのマージ方式は設定グループではなく、一部だけを宣言できます。`allow_update_branch` はマージ方式に数えません。
+
+マージメッセージ、リポジトリの機能、Web コミットのサインオフ必須は、reco が観測して `show` が示すだけで、宣言はまだ受け付けません。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -20,9 +25,15 @@ General の6設定は、それぞれ単独の管理の単位です。3つのマ�
 
 ## 観測
 
-General は、どの観測も最初に送る `GET /repos/{owner}/{repo}`（[GitHub API 通信の設計](../github-access.md) 2.2節）の応答から読むため、どの観測も General を含みます。取得条件を持たず、照合結果に比較不能は生じません。
+General は、どの観測も最初に送る `GET /repos/{owner}/{repo}`（[GitHub API 通信の設計](../github-access.md) 2.2節）の応答から読むため、どの観測も General を含みます。取得条件を持たず、General の6設定の照合結果に比較不能は生じません。
 
-トークン所有者が Write 以上のロールを持たないリポジトリでは、応答から General の設定がそろって欠けます（[GitHub リポジトリ API 仕様](../../research/repositories.md) 1.1）。この欠落は取得条件による観測不能にせず、観測操作の失敗とします。原因は権限の不足であり、観測不能として `plan` を進めても、同じ権限では更新できないためです。
+トークン所有者が Write 以上のロールを持たないリポジトリでは、応答から General の6設定とマージメッセージの4項目がそろって欠けます（[GitHub リポジトリ API 仕様](../../research/repositories.md) 1.1）。この欠落は取得条件による観測不能にせず、観測操作の失敗とします。原因は権限の不足であり、観測不能として `plan` を進めても、同じ権限では更新できないためです。
+
+`has_issues`、`has_projects`、`has_wiki`、`web_commit_signoff_required` は、Write 以上のロールを持たないリポジトリでも値とともに返ります（同 1.1）。公式の仕様で必須の `has_issues`、`has_projects`、`has_wiki` の欠落は、取得契約に適合しない応答です。省略を許される `web_commit_signoff_required` の欠落は、Web コミットのサインオフ必須だけを、省略を許された値が返らなかったことを理由とする観測不能にします（[GitHub API 通信の設計](../github-access.md) 2.1節）。
+
+マージメッセージの4項目は、GitHub が値を足し得る列挙として読みます（GitHub API 通信の設計 2.1節）。タイトルか本文のどちらかが reco の知らない文字列なら、その方式のマージメッセージだけを、値が知らない値であることを理由とする観測不能にします。もう一方の方式のマージメッセージと、ほかの General の設定は観測値を持ちます。General は設定の領域に分かれず、どの観測も、`PATCH` の応答の確かめも同じ応答を読むため、知らない値を観測操作の失敗にすると、その値と関係のない設定の `plan` と `apply` まで止まるためです。
+
+マージメッセージは、対応するマージ方式が無効のあいだも観測値を持ちます。GitHub は、無効のあいだも値を保持して返すためです（同 4章）。GitHub が更新で受け付けるタイトルと本文の組み合わせは限られますが（同 4章）、タイトルと本文がどちらも reco の知る値なら、観測値は返った組のまま持ちます（[ドメインモデル](../domain.md) の現在状態・観測結果・観測失敗）。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -67,7 +78,7 @@ General の変更予定に、変更に伴う副作用はありません。マー
 
 General は、論理的な設定変更が変える設定だけを `PATCH /repos/{owner}/{repo}` に送り、省略したフィールドの保持に依拠して部分更新します。宣言して期待値と一致したマージ方式も送りません。マージ方式と `allow_update_branch` のどれか一つだけを送る要求と、3方式を一度に送る要求で、送らなかったマージ関連のフィールドが変わらないことを確かめており（[GitHub リポジトリ API 仕様](../../research/repositories.md) 4章）、これを保全の根拠とします。
 
-この更新エンドポイントで reco が観測する設定は、General の6設定と、Secret scanning の2設定（[Security の設計](security.md)）です。そのため、General を変える更新操作の更新直前と更新後の観測は Secret scanning の領域も読み、変えない General の設定と Secret scanning の2設定を更新直前の値と比べます。公開リポジトリで応答が `security_and_analysis` を含まなければ、Secret scanning の領域の取得契約に適合せず、更新要求を送る前に止まります。非公開リポジトリでは Secret scanning の2設定が観測不能で比べられませんが、トップレベルだけを送る `PATCH` が `security_and_analysis` の中の項目を変えなかったことを公開リポジトリで確かめており（GitHub リポジトリ API 仕様 5章）、これを保全の根拠とします。名前や説明など reco が読まないフィールドも、同じ確認結果を根拠に保全されるとみなします。
+この更新エンドポイントで reco が観測する設定のうち、更新の前後で比べるのは、General の6設定と、Secret scanning の2設定（[Security の設計](security.md)）です。マージメッセージ、リポジトリの機能、Web コミットのサインオフ必須は、宣言を受け付けないあいだは比べません。そのため、General を変える更新操作の更新直前と更新後の観測は Secret scanning の領域も読み、変えない General の設定と Secret scanning の2設定を更新直前の値と比べます。公開リポジトリで応答が `security_and_analysis` を含まなければ、Secret scanning の領域の取得契約に適合せず、更新要求を送る前に止まります。非公開リポジトリでは Secret scanning の2設定が観測不能で比べられませんが、トップレベルだけを送る `PATCH` が `security_and_analysis` の中の項目を変えなかったことを公開リポジトリで確かめており（GitHub リポジトリ API 仕様 5章）、これを保全の根拠とします。名前や説明など reco が読まないフィールドも、同じ確認結果を根拠に保全されるとみなします。
 
 GitHub Free のアカウントが所有する非公開リポジトリでは、`allow_auto_merge` を送る `PATCH` が `200` を返しても値が変わりません（GitHub リポジトリ API 仕様 4章）。`allow_auto_merge` を変える論理的な設定変更が、更新操作の成功のあとに期待状態と一致しなかったときは、原因の候補として、GitHub Free の非公開リポジトリでは自動マージを利用できず、GitHub が更新を反映しないまま成功を応答する場合があることを添えます。公式資料が自動マージを利用できない条件として挙げるのはこの場合だけで、ほかの条件で同じ応答が起きないかは確かめていません。
 

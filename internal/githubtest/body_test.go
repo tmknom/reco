@@ -14,11 +14,14 @@ func TestBodies(t *testing.T) {
 		want map[string]any
 	}{
 		{
-			name: "private repository body has id, the six general fields, the visibility, and the admin access, without security_and_analysis",
+			name: "private repository body has id, the six general fields, the merge messages defaulting to the verification repository values, the repository features, the visibility, and the admin access, without security_and_analysis",
 			body: RepositoryBody{ID: 7, AllowAutoMerge: true, AllowSquashMerge: true, AllowUpdateBranch: true, Private: true, Admin: true, SecretScanning: true}.JSON(),
 			want: map[string]any{
 				"id": float64(7), "allow_auto_merge": true, "delete_branch_on_merge": false,
 				"allow_squash_merge": true, "allow_merge_commit": false, "allow_rebase_merge": false, "allow_update_branch": true, "private": true,
+				"squash_merge_commit_title": "COMMIT_OR_PR_TITLE", "squash_merge_commit_message": "COMMIT_MESSAGES",
+				"merge_commit_title": "MERGE_MESSAGE", "merge_commit_message": "PR_TITLE",
+				"has_issues": false, "has_projects": false, "has_wiki": false, "web_commit_signoff_required": false,
 				"permissions": map[string]any{"admin": true},
 			},
 		},
@@ -28,6 +31,9 @@ func TestBodies(t *testing.T) {
 			want: map[string]any{
 				"id": float64(7), "allow_auto_merge": false, "delete_branch_on_merge": false,
 				"allow_squash_merge": false, "allow_merge_commit": true, "allow_rebase_merge": false, "allow_update_branch": false, "private": false,
+				"squash_merge_commit_title": "COMMIT_OR_PR_TITLE", "squash_merge_commit_message": "COMMIT_MESSAGES",
+				"merge_commit_title": "MERGE_MESSAGE", "merge_commit_message": "PR_TITLE",
+				"has_issues": false, "has_projects": false, "has_wiki": false, "web_commit_signoff_required": false,
 				"permissions": map[string]any{"admin": false},
 			},
 		},
@@ -37,11 +43,30 @@ func TestBodies(t *testing.T) {
 			want: map[string]any{
 				"id": float64(7), "allow_auto_merge": false, "delete_branch_on_merge": false,
 				"allow_squash_merge": false, "allow_merge_commit": false, "allow_rebase_merge": true, "allow_update_branch": false, "private": false,
+				"squash_merge_commit_title": "COMMIT_OR_PR_TITLE", "squash_merge_commit_message": "COMMIT_MESSAGES",
+				"merge_commit_title": "MERGE_MESSAGE", "merge_commit_message": "PR_TITLE",
+				"has_issues": false, "has_projects": false, "has_wiki": false, "web_commit_signoff_required": false,
 				"permissions": map[string]any{"admin": true},
 				"security_and_analysis": map[string]any{
 					"secret_scanning":                 map[string]any{"status": "enabled"},
 					"secret_scanning_push_protection": map[string]any{"status": "disabled"},
 				},
+			},
+		},
+		{
+			name: "repository body writes the given merge messages and repository features",
+			body: RepositoryBody{
+				ID: 7, AllowSquashMerge: true,
+				SquashMergeCommitTitle: "PR_TITLE", SquashMergeCommitMessage: "BLANK", MergeCommitTitle: "PR_TITLE", MergeCommitMessage: "PR_BODY",
+				HasIssues: true, HasProjects: false, HasWiki: true, WebCommitSignoffRequired: true,
+			}.JSON(),
+			want: map[string]any{
+				"id": float64(7), "allow_auto_merge": false, "delete_branch_on_merge": false,
+				"allow_squash_merge": true, "allow_merge_commit": false, "allow_rebase_merge": false, "allow_update_branch": false, "private": false,
+				"squash_merge_commit_title": "PR_TITLE", "squash_merge_commit_message": "BLANK",
+				"merge_commit_title": "PR_TITLE", "merge_commit_message": "PR_BODY",
+				"has_issues": true, "has_projects": false, "has_wiki": true, "web_commit_signoff_required": true,
+				"permissions": map[string]any{"admin": false},
 			},
 		},
 		{

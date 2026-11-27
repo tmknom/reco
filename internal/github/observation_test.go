@@ -50,7 +50,7 @@ func TestObserveRepositoryFailure(t *testing.T) {
 		{
 			name: "200 without allow_auto_merge is unexpected response",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write([]byte(`{"id": 1, "full_name": "owner/repo", "delete_branch_on_merge": false, "allow_squash_merge": true, "allow_merge_commit": false, "allow_rebase_merge": true, "allow_update_branch": false, "private": false}`))
+				_, _ = w.Write([]byte(`{"id": 1, "full_name": "owner/repo", "delete_branch_on_merge": false, "allow_squash_merge": true, "allow_merge_commit": false, "allow_rebase_merge": true, "allow_update_branch": false, "squash_merge_commit_title": "COMMIT_OR_PR_TITLE", "squash_merge_commit_message": "COMMIT_MESSAGES", "merge_commit_title": "MERGE_MESSAGE", "merge_commit_message": "PR_TITLE", "has_issues": true, "has_projects": true, "has_wiki": true, "web_commit_signoff_required": false, "private": false}`))
 			},
 			want: ErrUnexpectedResponse,
 		},
@@ -265,7 +265,12 @@ func TestObserveRepositoryAreas(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ObserveRepository() error = %v", err)
 			}
-			wantGeneral := General{AllowAutoMerge: true, DeleteBranchOnMerge: false, AllowSquashMerge: true, AllowMergeCommit: false, AllowRebaseMerge: true, AllowUpdateBranch: false}
+			wantGeneral := General{
+				AllowAutoMerge: true, DeleteBranchOnMerge: false, AllowSquashMerge: true, AllowMergeCommit: false, AllowRebaseMerge: true, AllowUpdateBranch: false,
+				SquashMergeCommitDefault: Observed(setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitleCommitOrPRTitle, Message: setting.SquashMergeCommitMessageCommitMessages}),
+				MergeCommitDefault:       Observed(setting.MergeCommitDefault{Title: setting.MergeCommitTitleMergeMessage, Message: setting.MergeCommitMessagePRTitle}),
+				HasIssues:                true, HasProjects: false, HasWiki: true, WebCommitSignoffRequired: Observed(false),
+			}
 			if observed.RepositoryID != 1296269 || observed.General != wantGeneral {
 				t.Errorf("ObserveRepository() = %+v, want ID 1296269 and General %+v", observed, wantGeneral)
 			}

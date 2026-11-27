@@ -14,6 +14,7 @@ import (
 // RepositoryBody は、リポジトリの取得の応答本文である。
 // Private のゼロ値は公開のリポジトリを、Admin のゼロ値は admin のアクセスを持たないトークンの所有者を表す。
 // 3つのマージ方式のゼロ値はどれも無効で、GitHub が取り得ない組み合わせである。マージ方式の値を読む判定や表示を確かめるテストは、値を明示する。
+// マージメッセージの4項目は、空文字列のとき、検証用リポジトリで観測した組（squash merge は COMMIT_OR_PR_TITLE と COMMIT_MESSAGES、merge commit は MERGE_MESSAGE と PR_TITLE）を書く。空文字列は reco が解釈しない値で、マージメッセージを読まないテストにまで値の準備を求めないためである。
 // SecretScanning と SecretScanningPushProtection は、GitHub と同じく公開で admin のアクセスを持つときだけ security_and_analysis に含め、ゼロ値は disabled を表す。
 type RepositoryBody struct {
 	ID                           int64
@@ -23,6 +24,14 @@ type RepositoryBody struct {
 	AllowMergeCommit             bool
 	AllowRebaseMerge             bool
 	AllowUpdateBranch            bool
+	SquashMergeCommitTitle       string
+	SquashMergeCommitMessage     string
+	MergeCommitTitle             string
+	MergeCommitMessage           string
+	HasIssues                    bool
+	HasProjects                  bool
+	HasWiki                      bool
+	WebCommitSignoffRequired     bool
 	Private                      bool
 	Admin                        bool
 	SecretScanning               bool
@@ -209,8 +218,13 @@ func (b RepositoryBody) JSON() string {
 	}
 	return fmt.Sprintf(`{"id": %d, "allow_auto_merge": %t, "delete_branch_on_merge": %t, `+
 		`"allow_squash_merge": %t, "allow_merge_commit": %t, "allow_rebase_merge": %t, "allow_update_branch": %t, `+
+		`"squash_merge_commit_title": %q, "squash_merge_commit_message": %q, "merge_commit_title": %q, "merge_commit_message": %q, `+
+		`"has_issues": %t, "has_projects": %t, "has_wiki": %t, "web_commit_signoff_required": %t, `+
 		`"private": %t, "permissions": {"admin": %t}%s}`,
 		b.ID, b.AllowAutoMerge, b.DeleteBranchOnMerge, b.AllowSquashMerge, b.AllowMergeCommit, b.AllowRebaseMerge, b.AllowUpdateBranch,
+		orDefault(b.SquashMergeCommitTitle, "COMMIT_OR_PR_TITLE"), orDefault(b.SquashMergeCommitMessage, "COMMIT_MESSAGES"),
+		orDefault(b.MergeCommitTitle, "MERGE_MESSAGE"), orDefault(b.MergeCommitMessage, "PR_TITLE"),
+		b.HasIssues, b.HasProjects, b.HasWiki, b.WebCommitSignoffRequired,
 		b.Private, b.Admin, securityAndAnalysis)
 }
 
@@ -394,4 +408,12 @@ func securityStatus(enabled bool) string {
 		return "enabled"
 	}
 	return "disabled"
+}
+
+// orDefault は s が空文字列なら fallback を、そうでなければ s を返す。
+func orDefault(s, fallback string) string {
+	if s == "" {
+		return fallback
+	}
+	return s
 }

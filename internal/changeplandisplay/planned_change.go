@@ -76,6 +76,8 @@ func repositoryStateText(reason github.UnavailableReason) string {
 		return "(private repository)"
 	case github.UnavailableUninterpretedParts:
 		return "(uninterpreted parts)"
+	case github.UnavailableUnknownValue, github.UnavailableNotReturned:
+		// この理由を持つのは宣言を受け付けない設定だけで、比較不能な設定予定にならない。宣言を受け付けるときに文言を足す
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined unavailable reason %d", int(reason)))
 }

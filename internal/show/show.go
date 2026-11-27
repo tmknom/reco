@@ -35,10 +35,8 @@ func Run(ctx context.Context, cfg Config) error {
 // observed はすべての設定の領域を読み取った観測の結果に限る。読み取っていなければ nil 参照で止まり、値を補って表示しない。
 func writeObservationResult(w io.Writer, target repository.Reference, observed github.ObservationResult) error {
 	var b strings.Builder
-	general := observed.General
-	fmt.Fprintf(&b, "repositories:\n  - name: %s\n    general:\n      delete_branch_on_merge: %t\n      allow_auto_merge: %t\n"+
-		"      allow_squash_merge: %t\n      allow_merge_commit: %t\n      allow_rebase_merge: %t\n      allow_update_branch: %t\n",
-		target, general.DeleteBranchOnMerge, general.AllowAutoMerge, general.AllowSquashMerge, general.AllowMergeCommit, general.AllowRebaseMerge, general.AllowUpdateBranch)
+	fmt.Fprintf(&b, "repositories:\n  - name: %s\n", target)
+	writeGeneral(&b, observed.General)
 	b.WriteString("    actions:\n")
 	writeActionsPermissions(&b, *observed.ActionsPermissions)
 	fmt.Fprintf(&b, "      workflow:\n        default_workflow_permissions: %s\n        can_approve_pull_request_reviews: %t\n",

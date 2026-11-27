@@ -280,7 +280,7 @@ func TestClientUpdateMergeMethods(t *testing.T) {
 //
 //trace:checks FR-011
 func TestClientUpdateSecretScanningIgnoresSecurityAndAnalysisInResponse(t *testing.T) {
-	const withoutSecurityAndAnalysis = `{"id": 1296269, "name": "repo", "owner": {"login": "owner"}, "private": false, "allow_auto_merge": true, "delete_branch_on_merge": false, "allow_squash_merge": true, "allow_merge_commit": false, "allow_rebase_merge": true, "allow_update_branch": false}`
+	const withoutSecurityAndAnalysis = `{"id": 1296269, "name": "repo", "owner": {"login": "owner"}, "private": false, "allow_auto_merge": true, "delete_branch_on_merge": false, "allow_squash_merge": true, "allow_merge_commit": false, "allow_rebase_merge": true, "allow_update_branch": false, "squash_merge_commit_title": "COMMIT_OR_PR_TITLE", "squash_merge_commit_message": "COMMIT_MESSAGES", "merge_commit_title": "MERGE_MESSAGE", "merge_commit_message": "PR_TITLE", "has_issues": true, "has_projects": true, "has_wiki": true, "web_commit_signoff_required": false}`
 	for _, key := range []setting.Key{setting.SecretScanningEnabled, setting.RepositoryPushProtection} {
 		t.Run(string(key), func(t *testing.T) {
 			c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {

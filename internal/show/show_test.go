@@ -43,11 +43,23 @@ func TestWriteObservationResult(t *testing.T) {
 	enabledSecretScanning := &github.SecretScanning{Enabled: github.Observed(true), PushProtection: github.Observed(true)}
 	disabledPrivateVulnerabilityReporting := &github.PrivateVulnerabilityReporting{Enabled: github.Observed(false)}
 	emptyRulesets := &github.Rulesets{Existing: github.Observed([]github.Ruleset{})}
+	// General の値ごとの表示は writeGeneral のテストが確かめる。ここでは、どのケースも GitHub が返し得る同じ値にする
+	general := github.General{
+		DeleteBranchOnMerge: true, AllowSquashMerge: true,
+		SquashMergeCommitDefault: github.Observed(setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitleCommitOrPRTitle, Message: setting.SquashMergeCommitMessageCommitMessages}),
+		MergeCommitDefault:       github.Observed(setting.MergeCommitDefault{Title: setting.MergeCommitTitleMergeMessage, Message: setting.MergeCommitMessagePRTitle}),
+		WebCommitSignoffRequired: github.Observed(false),
+	}
 	const (
-		noRulesets     = "    # rulesets: none\n"
-		header         = "repositories:\n  - name: owner/repo\n"
-		defaultGeneral = "    general:\n      delete_branch_on_merge: false\n      allow_auto_merge: false\n" +
-			"      allow_squash_merge: false\n      allow_merge_commit: false\n      allow_rebase_merge: false\n      allow_update_branch: false\n"
+		noRulesets   = "    # rulesets: none\n"
+		header       = "repositories:\n  - name: owner/repo\n"
+		generalLines = "    general:\n      delete_branch_on_merge: true\n      allow_auto_merge: false\n" +
+			"      allow_squash_merge: true\n      allow_merge_commit: false\n      allow_rebase_merge: false\n      allow_update_branch: false\n" +
+			"      # reco does not accept the merge commit message settings in the configuration file yet\n" +
+			"      # squash_merge_commit:\n      #   title: COMMIT_OR_PR_TITLE\n      #   message: COMMIT_MESSAGES\n" +
+			"      # merge_commit:\n      #   title: MERGE_MESSAGE\n      #   message: PR_TITLE\n" +
+			"      # reco does not accept the repository feature and web commit signoff settings in the configuration file yet\n" +
+			"      # has_issues: false\n      # has_projects: false\n      # has_wiki: false\n      # web_commit_signoff_required: false\n"
 		allPermissions                      = "    actions:\n      permissions:\n        enabled: true\n        allowed_actions: all\n        sha_pinning_required: true\n"
 		readOnlyWorkflow                    = "      workflow:\n        default_workflow_permissions: read\n        can_approve_pull_request_reviews: false\n"
 		notSharedAccess                     = "      access:\n        access_level: none\n"
@@ -70,7 +82,7 @@ func TestWriteObservationResult(t *testing.T) {
 			name: "all areas are shown in the configuration structure and the all policy omits the criteria",
 			observed: github.ObservationResult{
 				RepositoryID:                    1,
-				General:                         github.General{DeleteBranchOnMerge: true, AllowAutoMerge: false, AllowSquashMerge: true, AllowMergeCommit: false, AllowRebaseMerge: true, AllowUpdateBranch: false},
+				General:                         general,
 				ActionsPermissions:              allPolicy,
 				WorkflowPermissions:             readOnly,
 				ActionsAccess:                   notShared,
@@ -86,15 +98,14 @@ func TestWriteObservationResult(t *testing.T) {
 				Rulesets:                        emptyRulesets,
 			},
 			want: header +
-				"    general:\n      delete_branch_on_merge: true\n      allow_auto_merge: false\n" +
-				"      allow_squash_merge: true\n      allow_merge_commit: false\n      allow_rebase_merge: true\n      allow_update_branch: false\n" +
+				generalLines +
 				allPermissions + readOnlyWorkflow + notSharedAccess + privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
-			name: "opposite values are shown as observed",
+			name: "opposite workflow and access values are shown as observed",
 			observed: github.ObservationResult{
 				RepositoryID:                    1,
-				General:                         github.General{DeleteBranchOnMerge: false, AllowAutoMerge: true, AllowSquashMerge: false, AllowMergeCommit: true, AllowRebaseMerge: false, AllowUpdateBranch: true},
+				General:                         general,
 				ActionsPermissions:              allPolicy,
 				WorkflowPermissions:             &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: true},
 				ActionsAccess:                   &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessUser)},
@@ -110,8 +121,7 @@ func TestWriteObservationResult(t *testing.T) {
 				Rulesets:                        emptyRulesets,
 			},
 			want: header +
-				"    general:\n      delete_branch_on_merge: false\n      allow_auto_merge: true\n" +
-				"      allow_squash_merge: false\n      allow_merge_commit: true\n      allow_rebase_merge: false\n      allow_update_branch: true\n" +
+				generalLines +
 				allPermissions +
 				"      workflow:\n        default_workflow_permissions: write\n        can_approve_pull_request_reviews: true\n" +
 				"      access:\n        access_level: user\n" +
@@ -121,6 +131,7 @@ func TestWriteObservationResult(t *testing.T) {
 			name: "selected policy shows the three criteria with one quoted pattern per line",
 			observed: github.ObservationResult{
 				RepositoryID: 1,
+				General:      general,
 				ActionsPermissions: &github.ActionsPermissions{
 					Enabled:            true,
 					AllowedActions:     github.Observed(setting.AllowedActionsSelected),
@@ -144,7 +155,7 @@ func TestWriteObservationResult(t *testing.T) {
 				PrivateVulnerabilityReporting:   disabledPrivateVulnerabilityReporting,
 				Rulesets:                        emptyRulesets,
 			},
-			want: header + defaultGeneral +
+			want: header + generalLines +
 				"    actions:\n      permissions:\n        enabled: true\n        allowed_actions: selected\n        selected_actions:\n" +
 				"          github_owned_allowed: true\n          verified_allowed: false\n          patterns_allowed:\n" +
 				"            - \"actions/checkout@v4\"\n            - \"example/*\"\n        sha_pinning_required: false\n" +
@@ -154,6 +165,7 @@ func TestWriteObservationResult(t *testing.T) {
 			name: "selected policy without patterns shows the empty sequence",
 			observed: github.ObservationResult{
 				RepositoryID: 1,
+				General:      general,
 				ActionsPermissions: &github.ActionsPermissions{
 					Enabled:            true,
 					AllowedActions:     github.Observed(setting.AllowedActionsSelected),
@@ -173,7 +185,7 @@ func TestWriteObservationResult(t *testing.T) {
 				PrivateVulnerabilityReporting:   disabledPrivateVulnerabilityReporting,
 				Rulesets:                        emptyRulesets,
 			},
-			want: header + defaultGeneral +
+			want: header + generalLines +
 				"    actions:\n      permissions:\n        enabled: true\n        allowed_actions: selected\n        selected_actions:\n" +
 				"          github_owned_allowed: true\n          verified_allowed: true\n          patterns_allowed: []\n        sha_pinning_required: false\n" +
 				readOnlyWorkflow + notSharedAccess + privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
@@ -182,6 +194,7 @@ func TestWriteObservationResult(t *testing.T) {
 			name: "disabled actions shows only enabled without the policy, the criteria, and sha_pinning_required",
 			observed: github.ObservationResult{
 				RepositoryID: 1,
+				General:      general,
 				ActionsPermissions: &github.ActionsPermissions{
 					AllowedActions:     github.Unavailable[setting.AllowedActionsPolicy](github.UnavailableActionsDisabled),
 					SHAPinningRequired: github.Unavailable[bool](github.UnavailableActionsDisabled),
@@ -200,7 +213,7 @@ func TestWriteObservationResult(t *testing.T) {
 				PrivateVulnerabilityReporting:   disabledPrivateVulnerabilityReporting,
 				Rulesets:                        emptyRulesets,
 			},
-			want: header + defaultGeneral +
+			want: header + generalLines +
 				"    actions:\n      permissions:\n        enabled: false\n" +
 				readOnlyWorkflow + notSharedAccess + privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
@@ -208,6 +221,7 @@ func TestWriteObservationResult(t *testing.T) {
 			name: "public repository shows access and the unavailable access level as comments",
 			observed: github.ObservationResult{
 				RepositoryID:            1,
+				General:                 general,
 				ActionsPermissions:      allPolicy,
 				WorkflowPermissions:     readOnly,
 				ActionsAccess:           &github.ActionsAccess{AccessLevel: github.Unavailable[setting.AccessLevel](github.UnavailablePublicRepository)},
@@ -224,7 +238,7 @@ func TestWriteObservationResult(t *testing.T) {
 				PrivateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
 				Rulesets:                      emptyRulesets,
 			},
-			want: header + defaultGeneral + allPermissions + readOnlyWorkflow +
+			want: header + generalLines + allPermissions + readOnlyWorkflow +
 				"      # access:\n      #   access_level: unavailable (the repository is public)\n" +
 				"      fork_pull_requests:\n        approval_policy: first_time_contributors\n" +
 				"        # private_repositories: unavailable (the repository is public)\n" +
@@ -235,6 +249,7 @@ func TestWriteObservationResult(t *testing.T) {
 			name: "organization access level is shown as observed",
 			observed: github.ObservationResult{
 				RepositoryID:                    1,
+				General:                         general,
 				ActionsPermissions:              allPolicy,
 				WorkflowPermissions:             readOnly,
 				ActionsAccess:                   &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessOrganization)},
@@ -249,7 +264,7 @@ func TestWriteObservationResult(t *testing.T) {
 				PrivateVulnerabilityReporting:   disabledPrivateVulnerabilityReporting,
 				Rulesets:                        emptyRulesets,
 			},
-			want: header + defaultGeneral + allPermissions + readOnlyWorkflow +
+			want: header + generalLines + allPermissions + readOnlyWorkflow +
 				"      access:\n        access_level: organization\n" +
 				privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
@@ -257,6 +272,7 @@ func TestWriteObservationResult(t *testing.T) {
 			name: "rulesets are shown after security",
 			observed: github.ObservationResult{
 				RepositoryID:                    1,
+				General:                         general,
 				ActionsPermissions:              allPolicy,
 				WorkflowPermissions:             readOnly,
 				ActionsAccess:                   notShared,
@@ -271,7 +287,7 @@ func TestWriteObservationResult(t *testing.T) {
 				PrivateVulnerabilityReporting:   disabledPrivateVulnerabilityReporting,
 				Rulesets:                        &github.Rulesets{Existing: github.Unavailable[[]github.Ruleset](github.UnavailablePrivateRepository)},
 			},
-			want: header + defaultGeneral + allPermissions + readOnlyWorkflow + notSharedAccess +
+			want: header + generalLines + allPermissions + readOnlyWorkflow + notSharedAccess +
 				privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + "    # rulesets: unavailable (the repository is private)\n",
 		},
 	}
@@ -289,6 +305,7 @@ func TestWriteObservationResult(t *testing.T) {
 
 	t.Run("write failure is returned", func(t *testing.T) {
 		observed := github.ObservationResult{
+			General:                         general,
 			ActionsPermissions:              allPolicy,
 			WorkflowPermissions:             readOnly,
 			ActionsAccess:                   notShared,
@@ -310,7 +327,9 @@ func TestWriteObservationResult(t *testing.T) {
 	})
 
 	t.Run("access level unavailable for a reason other than public panics", func(t *testing.T) {
+		// General はほかの panic で止まらないよう、観測し得る値にする
 		observed := github.ObservationResult{
+			General:             general,
 			ActionsPermissions:  allPolicy,
 			WorkflowPermissions: readOnly,
 			ActionsAccess:       &github.ActionsAccess{AccessLevel: github.Unavailable[setting.AccessLevel](github.UnavailableActionsDisabled)},

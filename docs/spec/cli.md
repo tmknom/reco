@@ -1055,6 +1055,18 @@ repositories:
       allow_merge_commit: false
       allow_rebase_merge: false
       allow_update_branch: true
+      # reco does not accept the merge commit message settings in the configuration file yet
+      # squash_merge_commit:
+      #   title: COMMIT_OR_PR_TITLE
+      #   message: COMMIT_MESSAGES
+      # merge_commit:
+      #   title: MERGE_MESSAGE
+      #   message: PR_TITLE
+      # reco does not accept the repository feature and web commit signoff settings in the configuration file yet
+      # has_issues: true
+      # has_projects: true
+      # has_wiki: true
+      # web_commit_signoff_required: false
     actions:
       permissions:
         enabled: true
@@ -1090,10 +1102,29 @@ repositories:
 
 表示するのは、設定宣言に書ける管理設定と関連リソースに限ります。Environment の `can_admins_bypass` のように、reco が観測しても宣言を受け付けない設定は表示しません。表示を設定宣言として読めなくなり、宣言できる設定とできない設定を利用者が見分けなければならなくなるためです。
 
+`general` のマージメッセージ（`squash_merge_commit`、`merge_commit`）と、リポジトリの機能（`has_issues`、`has_projects`、`has_wiki`）、`web_commit_signoff_required` は、この規定の例外です。設定宣言はまだこれらを受け付けませんが、受け付けるときに使う予定のキーで、`allow_update_branch` のあとに値を示します。どの行も YAML のコメントとして示し、`squash_merge_commit` の前の行と `has_issues` の前の行で、設定ファイルに書けないことを示します。コメントにするのは、表示を設定宣言として読めるままにし、書けない設定であることを利用者が行を見て分かるようにするためです。
+
 GitHub の取得条件によって確認できない設定は、その取得条件が `show` のほかの行から分かるかどうかで、示し方を分けます。
 
 - **ほかの行から分かる**：行ごと示さない。上位の設定によってその設定が効いていない状態（Actions が無効、Actions 許可ポリシーが `selected` でない）がこれに当たり、その状態は上位の設定の行で示されるためである
 - **ほかの行から分からない**：行を省かず、YAML のコメントとして、値の位置に `unavailable (<理由>)` と示す。行を省くと、確認できなかった設定と reco が表示しない設定を区別できないためである。コメントにするのは、確認できなかった値を期待値として読ませないためである。公開リポジトリの `access_level` と Fork Pull Request ワークフローの実行条件、非公開リポジトリの Fork Pull Request ワークフローの承認ポリシー、Secret scanning の有効状態、リポジトリの push protection、Private vulnerability reporting の有効状態、Rulesets がこれに当たる
+
+マージメッセージは、squash merge を `squash_merge_commit` に、merge commit を `merge_commit` に、それぞれタイトルを `title`、本文を `message` として、GitHub が返した値で示します。`title` は、squash merge が `PR_TITLE` か `COMMIT_OR_PR_TITLE`、merge commit が `PR_TITLE` か `MERGE_MESSAGE` です。`message` は、squash merge が `PR_BODY`、`COMMIT_MESSAGES`、`BLANK` のいずれか、merge commit が `PR_BODY`、`PR_TITLE`、`BLANK` のいずれかです。`allow_squash_merge` や `allow_merge_commit` が `false` のリポジトリでも、その方式のマージメッセージを示します。`has_issues`、`has_projects`、`has_wiki`、`web_commit_signoff_required` は `true` か `false` で示します。
+
+GitHub が、タイトルか本文に reco の知らない値を返したときは、その方式の `title` と `message` の行を示さず、方式のキーの値の位置に `unavailable (GitHub returned a value that reco does not know)` と示します。GitHub が `web_commit_signoff_required` を返さなかったときは、その値の位置に `unavailable (GitHub did not return the value)` と示します。どちらも、ほかの行はいつもどおり示し、エラーにしません。知らない値そのものは示しません。GitHub が返した、reco の検証していない文字列を表示に入れないためです。値は GitHub の設定画面で確かめられます。
+
+```text
+      # reco does not accept the merge commit message settings in the configuration file yet
+      # squash_merge_commit: unavailable (GitHub returned a value that reco does not know)
+      # merge_commit:
+      #   title: MERGE_MESSAGE
+      #   message: PR_TITLE
+      # reco does not accept the repository feature and web commit signoff settings in the configuration file yet
+      # has_issues: true
+      # has_projects: true
+      # has_wiki: true
+      # web_commit_signoff_required: unavailable (GitHub did not return the value)
+```
 
 `allowed_actions` が `selected` のときは、`selected_actions` の3項目を `sha_pinning_required` の前に示します。`patterns_allowed` は、パターンを関連リソースの名前と同じく二重引用符で囲んでエスケープし、GitHub が返した順に1行に一つずつ並べます。空の集合は `[]` と示します。
 

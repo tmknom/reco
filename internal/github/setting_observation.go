@@ -19,6 +19,10 @@ const (
 	UnavailablePrivateRepository
 	// UnavailableUninterpretedParts は、関連リソースの値が reco の解釈しない部分を含むことを表す。
 	UnavailableUninterpretedParts
+	// UnavailableUnknownValue は、GitHub が値を足し得る列挙の設定に、GitHub が reco の知らない値を返したことを表す。
+	UnavailableUnknownValue
+	// UnavailableNotReturned は、公式の仕様が省略を許す値を、GitHub が応答に含めなかったことを表す。
+	UnavailableNotReturned
 )
 
 // SettingObservation は、一つの設定の観測結果で、観測値か、理由を伴う観測不能のどちらか一方を持つ。
