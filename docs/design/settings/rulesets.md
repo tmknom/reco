@@ -116,7 +116,7 @@ GitHub Pro 以上のアカウントや Organization が所有する非公開リ�
 ### 確かめていない条件
 
 - GitHub が Ruleset の名前を同じとみなす範囲が、Unicode の単純な大文字小文字の畳み込みより広いか。広ければ、同じとみなされる名前が一覧に二つあることは起きない。狭ければ、別々の Ruleset の名前を重複と誤り、状態確認が観測操作の失敗で止まる
-- `dismissal_restriction` を設定した Ruleset で、取得がそれを返すか
+- Organization が所有するリポジトリで、`dismissal_restriction` を設定した Ruleset の取得がそれを返すか。返さないまま保存されるなら、reco はそれを観測できず、`pull_request` の5項目だけを送る更新が外し得る。個人アカウントが所有するリポジトリでは、GitHub は送った値を `200` のまま保存しないと見られ、外す値はない（GitHub Rules API 仕様 7.1）
 - Admin 以外の書き込みのアクセス（Write、Maintain）を持つ利用者のトークンで、取得が `bypass_actors` を返すか
 
 | Relationship | Target | Target Type |
