@@ -54,6 +54,8 @@
 >
 > - トークン所有者が Admin ロールを持つ個人アカウント所有のリポジトリでは、`allow_auto_merge`、`delete_branch_on_merge`、`allow_squash_merge`、`allow_merge_commit`、`allow_rebase_merge`、`allow_update_branch` が値とともに返る（後の4つは公開・非公開の両方で確認）
 > - トークン所有者が Write 以上のロールを持たない第三者の公開リポジトリ（応答の `permissions` は `pull` だけが `true`）では、`allow_auto_merge`、`delete_branch_on_merge`、`allow_merge_commit`、`allow_rebase_merge`、`allow_squash_merge`、`allow_update_branch`、`merge_commit_message`、`merge_commit_title`、`squash_merge_commit_message`、`squash_merge_commit_title` の各フィールドが応答から欠け、`false` などの値では返らない。応答は `200` で、`id` は返る
+> - Admin ロールのリポジトリでは、マージメッセージの4フィールドも値とともに返る（公開・非公開）
+> - `has_issues`、`has_projects`、`has_wiki`、`web_commit_signoff_required` は、マージ関連設定に当たらず、Admin ロールの公開・非公開リポジトリでも、上の第三者の公開リポジトリでも値とともに返る
 > - Write・Maintain ロールでの応答は確認していない
 
 | Relationship | Target | Target Type |
@@ -83,7 +85,7 @@
 ## 3. `GET /repos/{owner}/{repo}`
 
 - 用途：リポジトリの情報と一般設定の取得
-- 主な応答フィールド：`id`（整数、必須）、`name`（文字列、必須）、`full_name`（文字列、必須）、`owner`（必須）、`updated_at`（日時の文字列、必須）、`delete_branch_on_merge`（boolean、必須ではない）、`allow_auto_merge`（boolean、必須ではない）、`allow_squash_merge`、`allow_merge_commit`、`allow_rebase_merge`、`allow_update_branch`（いずれも boolean、必須ではない）、`private`（boolean、必須）、`visibility`（文字列、必須ではない）、`permissions`（オブジェクト、必須ではない。中の `admin`、`push`、`pull` は boolean で必須）
+- 主な応答フィールド：`id`（整数、必須）、`name`（文字列、必須）、`full_name`（文字列、必須）、`owner`（必須）、`updated_at`（日時の文字列、必須）、`delete_branch_on_merge`（boolean、必須ではない）、`allow_auto_merge`（boolean、必須ではない）、`allow_squash_merge`、`allow_merge_commit`、`allow_rebase_merge`、`allow_update_branch`（いずれも boolean、必須ではない）、`squash_merge_commit_title`、`squash_merge_commit_message`、`merge_commit_title`、`merge_commit_message`（いずれも列挙値の文字列、必須ではない。値は4章）、`has_issues`、`has_projects`、`has_wiki`（いずれも boolean、必須）、`web_commit_signoff_required`（boolean、必須ではない）、`private`（boolean、必須）、`visibility`（文字列、必須ではない）、`permissions`（オブジェクト、必須ではない。中の `admin`、`push`、`pull` は boolean で必須）
 
 `permissions` の各値が、認証したユーザーのリポジトリでのロールを表すのか、トークンに与えた権限を表すのかは、スキーマに記載がありません。
 
@@ -116,6 +118,14 @@
 | `allow_merge_commit` | boolean | 任意 | `true` |
 | `allow_rebase_merge` | boolean | 任意 | `true` |
 | `allow_update_branch` | boolean | 任意 | `false` |
+| `squash_merge_commit_title` | string（`PR_TITLE`、`COMMIT_OR_PR_TITLE`） | `squash_merge_commit_message` を指定するときは必須 | 記載なし |
+| `squash_merge_commit_message` | string（`PR_BODY`、`COMMIT_MESSAGES`、`BLANK`） | 任意 | 記載なし |
+| `merge_commit_title` | string（`PR_TITLE`、`MERGE_MESSAGE`） | `merge_commit_message` を指定するときは必須 | 記載なし |
+| `merge_commit_message` | string（`PR_BODY`、`PR_TITLE`、`BLANK`） | 任意 | 記載なし |
+| `has_issues` | boolean | 任意 | `true` |
+| `has_projects` | boolean | 任意 | `true` |
+| `has_wiki` | boolean | 任意 | `true` |
+| `web_commit_signoff_required` | boolean | 任意 | `false` |
 
 `delete_branch_on_merge` は Pull Request のマージ時に head ブランチを自動で削除するか、`allow_auto_merge` は Pull Request の自動マージを許可するかの設定です。リポジトリ設定のドキュメントは、同じ二つの機能を、設定画面の「General」ページの「Pull Requests」の欄にある「Automatically delete head branches」と「Allow auto-merge」という項目で設定できると記載しています。たとえば、`allow_auto_merge` だけを指定するリクエスト本文は次のとおりです。
 
@@ -129,7 +139,13 @@ Pull Request の自動マージは、GitHub Free と GitHub Free for organizatio
 
 `allow_squash_merge`、`allow_merge_commit`、`allow_rebase_merge` は、Pull Request を squash merge、merge commit、rebase merge でマージすることを許可するかの設定です。リポジトリ設定のドキュメントは、同じ機能を「Pull Requests」の欄の「Allow squash merging」「Allow merge commits」「Allow rebase merging」という項目で設定できると記載しています。`allow_update_branch` は、マージの前に最新であることを求められていなくても、base ブランチより遅れた head ブランチを常に更新できるようにするかの設定です。ドキュメントは、同じ機能を「Pull Requests」の欄の「Always suggest updating pull request branches」という項目で設定できると記載しています。3つのマージ方式をすべて `false` にする要求の応答と、マージ方式の無効化がマージメッセージの設定（`squash_merge_commit_title` など）に及ぼす影響は、記載がありません。
 
-本文フィールドはいずれも任意ですが、省略したフィールドの既存値が保持されるかは記載がありません。上の表の既定値が省略時に適用される値なのかも記載がありません。`200` の応答はリポジトリの表現を返しますが、それが更新後の状態を反映しているかは記載がありません。条件付きリクエストに対応する旨の記載もありません。
+`squash_merge_commit_title` と `squash_merge_commit_message` は、squash merge のコミットメッセージの既定のタイトルと本文です。`PR_TITLE` は Pull Request のタイトル、`COMMIT_OR_PR_TITLE` はコミットが1つならそのコミットのタイトル、2つ以上なら Pull Request のタイトル、`PR_BODY` は Pull Request の本文、`COMMIT_MESSAGES` はブランチのコミットメッセージ、`BLANK` は空の本文を既定にします。`merge_commit_title` と `merge_commit_message` は、merge commit の既定のタイトルと本文で、`MERGE_MESSAGE` は従来のタイトル（`Merge pull request #123 from branch-name` など）、`PR_TITLE` は Pull Request のタイトルを既定にします。設定画面では、「Allow squash merging」と「Allow merge commits」の下の選択肢で既定のメッセージの形を選び、squash merge には既定のメッセージ、Pull Request のタイトルだけ、Pull Request のタイトルとコミットの詳細、Pull Request のタイトルと本文の4つ、merge commit には既定のメッセージ、Pull Request のタイトルだけ、Pull Request のタイトルと本文の3つがあると記載されています。タイトルと本文のどの組み合わせを受け付けるか、対応するマージ方式が無効のときに更新できるかは、記載がありません。
+
+`has_issues`、`has_projects`、`has_wiki` は、リポジトリの Issues、Projects、Wiki を有効にするかの設定です。設定画面では「Features」の欄の「Issues」「Projects」「Wikis」で設定します。ドキュメントは、Issues を無効にしたあと再び有効にすると以前の Issue を利用できること、Wiki を無効にすると内容は隠れるが消えず、再び有効にすると以前のページが戻ることを記載しています。Projects を無効にしたときの扱いは記載がありません。Wiki は、GitHub Free と GitHub Free for organizations では公開リポジトリだけで、GitHub Pro・GitHub Team・GitHub Enterprise Cloud・GitHub Enterprise Server では公開・非公開の両方のリポジトリで利用できると記載されています。利用できないリポジトリで `has_wiki: true` を送ったときの応答は記載がありません。
+
+`web_commit_signoff_required` は、GitHub の Web 画面からのコミットに、作成者のサインオフを自動で付けることを求めるかの設定です。設定画面では「Commits」の欄の「Require contributors to sign off on web-based commits」で設定します。ドキュメントは、この設定が Web 画面からのコミットだけに適用され、コミットのサインオフはコミットの署名とは別のものだと記載しています。
+
+本文フィールドは、マージメッセージのタイトルの条件を除いて任意ですが、省略したフィールドの既存値が保持されるかは記載がありません。上の表の既定値が省略時に適用される値なのかも記載がありません。`200` の応答はリポジトリの表現を返しますが、それが更新後の状態を反映しているかは記載がありません。条件付きリクエストに対応する旨の記載もありません。
 
 > [!NOTE]
 > 次は、reco の開発者が `Content-Type: application/json` の本文で送り、実際の動作で確認した事項です。
@@ -155,6 +171,25 @@ Pull Request の自動マージは、GitHub Free と GitHub Free for organizatio
 > - `use_squash_pr_title_as_default`：`GET` の応答にも `PATCH` の応答本文にも含まれない
 > - Organization 所有のリポジトリと、Rulesets や Branch protection がマージ方式を求めるリポジトリでの応答は確認していない
 
+> [!NOTE]
+> 次は、reco の開発者が、トークン所有者が Admin ロールを持つ個人アカウント所有のリポジトリ（GitHub Free）で、実際の動作を確認した事項です。マージメッセージの設定は公開リポジトリで、リポジトリの機能と `web_commit_signoff_required` は公開・非公開の両方で確かめました。
+>
+> - タイトルと本文の組み合わせ：タイトルと本文を一つの要求で送ると、squash merge は (`PR_TITLE`, `PR_BODY`)、(`PR_TITLE`, `BLANK`)、(`PR_TITLE`, `COMMIT_MESSAGES`)、(`COMMIT_OR_PR_TITLE`, `COMMIT_MESSAGES`) の4つ、merge commit は (`PR_TITLE`, `PR_BODY`)、(`PR_TITLE`, `BLANK`)、(`MERGE_MESSAGE`, `PR_TITLE`) の3つだけを受け付け、`200` で反映する。ほかの組み合わせ（squash merge の2つ、merge commit の3つ）は `422` で、タイトルも本文も変わらない。`errors[0].message` は受け付ける組み合わせを列挙し、末尾の括弧の識別子は squash merge が `invalid_squash_commit_setting_combo`、merge commit が `invalid_merge_commit_setting_combo` で、`field` は `merge_commit_allowed` だった
+>
+>     ```json
+>     {"message":"Validation Failed","errors":[{"message":"Sorry, invalid setting combination. The following are valid combinations for the merge commit title and message: PR_TITLE and PR_BODY, PR_TITLE and BLANK, MERGE_MESSAGE and PR_TITLE. (invalid_merge_commit_setting_combo)","resource":"Repository","field":"merge_commit_allowed","code":"invalid"}],"documentation_url":"https://docs.github.com/rest/repos/repos#update-a-repository","status":"422"}
+>     ```
+>
+> - 片方だけを送る要求：merge commit では、タイトルだけ、本文だけのどちらの要求も、保存されている値と同じ値を送っても、保存されているもう一方と受け付ける組み合わせになる値を送っても、`422`（`invalid_merge_commit_setting_combo`）だった。squash merge では、タイトルだけの要求は、保存されている本文との組み合わせが受け付けるものなら `200` で反映され、そうでなければ `422` だった。本文だけの要求は、`COMMIT_MESSAGES` だけが `200` で、保存されているタイトルとの組み合わせが受け付けるものでも `PR_BODY` と `BLANK` は `422` だった。どの場合も、`200` の要求は送らなかった側の値を変えなかった
+> - ほかの設定の保持：squash merge のタイトルと本文を送る要求は merge commit のタイトルと本文を変えず、逆も同じだった。どちらも、マージ方式の3項目、`allow_auto_merge`、`delete_branch_on_merge`、`allow_update_branch`、リポジトリの機能の4項目を変えなかった。マージメッセージの4フィールドを一つの要求で送っても、`200` で4つとも反映された
+> - マージ方式が無効のとき：squash merge が無効のあいだ、`GET` は squash merge のタイトルと本文を値とともに返すが、それらを送る要求は、受け付ける組み合わせでも `422`（`Sorry, you need to allow the squash merge strategy in order to set the default squash commit message title or message. (no_squash_merge_strategy)`）で、値は変わらない。merge commit が無効のときも同じで、`errors[0].message` は `Sorry, you need to allow the merge commit strategy in order to set the default merge commit message title and message. (no_merge_strategy)` だった。どちらも、無効にして有効に戻したあと、タイトルと本文は無効にする前の値だった
+> - マージ方式の変更と同じ要求：無効のマージ方式を `true` にするフィールドと、その方式のタイトルと本文を一つの要求で送ると、`200` で3つとも反映された。有効のマージ方式を `false` にするフィールドと、その方式のタイトルと本文を一つの要求で送ると、`no_squash_merge_strategy` の `422` で、マージ方式も含めて何も変わらなかった（squash merge で確認）。GitHub は、要求を反映したあとの状態で検証していると見られる
+> - リポジトリの機能と `web_commit_signoff_required`：`has_issues`、`has_projects`、`has_wiki`、`web_commit_signoff_required` のどれか一つだけを `true` か `false` で送ると、`200` が返り、直後の `GET` は送った値を返した。ほかの3つと、マージ関連の10フィールドは変わらなかった（公開・非公開。非公開の `has_wiki` は次の項目）
+> - 非公開リポジトリの `has_wiki`：GitHub Free のアカウントが所有する非公開リポジトリで `has_wiki: true` だけを送ると、`200` が返るが、値は `false` のまま変わらない。応答本文と直後の `GET` も `false` を示す。`allow_auto_merge`（上の注釈）と同じ動作である
+> - Issues の無効化：`has_issues: false` のあいだ、`GET /repos/{owner}/{repo}/issues/{issue_number}` は `410`（`Issues are disabled for this repo`）を返した。`true` に戻すと、無効にする前の Issue（公開リポジトリで確認用に作ったもの、非公開リポジトリの既存のもの）が同じ状態とタイトルで返った
+> - `200` の応答本文：上のどの `200` の本文も、マージメッセージの4フィールド、リポジトリの機能の4項目、マージ方式の3項目を含み、値は直後の `GET` と一致した
+> - Wiki のページと Projects の内容が、無効にして有効に戻したあとに残るかは確認していない。ページのない Wiki の Git リポジトリは `404` で、確認用のページを作れなかった。トークンに `read:project` の scope がなく、リポジトリに関連付けた Project を読めなかった
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `grounding` | [Update a repository](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#update-a-repository) | External Document |
@@ -165,6 +200,10 @@ Pull Request の自動マージは、GitHub Free と GitHub Free for organizatio
 | `grounding` | [Configuring commit merging for pull requests](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/configuring-commit-merging-for-pull-requests) | External Document |
 | `grounding` | [Configuring commit rebasing for pull requests](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/configuring-commit-rebasing-for-pull-requests) | External Document |
 | `grounding` | [Managing suggestions to update pull request branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-suggestions-to-update-pull-request-branches) | External Document |
+| `grounding` | [Disabling issues](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/disabling-issues) | External Document |
+| `grounding` | [About wikis](https://docs.github.com/en/communities/documenting-your-project-with-wikis/about-wikis) | External Document |
+| `grounding` | [Disabling wikis](https://docs.github.com/en/communities/documenting-your-project-with-wikis/disabling-wikis) | External Document |
+| `grounding` | [Managing the commit signoff policy for your repository](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/managing-the-commit-signoff-policy-for-your-repository) | External Document |
 
 ## 5. `security_and_analysis`
 
