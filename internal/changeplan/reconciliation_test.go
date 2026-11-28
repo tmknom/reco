@@ -13,7 +13,7 @@ import (
 //trace:checks FR-001 FR-005
 func TestReconcile(t *testing.T) {
 	workflow := func(level setting.PermissionLevel, canApprove bool) *github.WorkflowPermissions {
-		return &github.WorkflowPermissions{DefaultWorkflowPermissions: level, CanApprovePullRequestReviews: canApprove}
+		return &github.WorkflowPermissions{DefaultWorkflowPermissions: github.Observed(level), CanApprovePullRequestReviews: canApprove}
 	}
 	cases := []struct {
 		name     string
@@ -622,7 +622,7 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 	protected := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}
 	all := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}
 	existing := func(name string, mode setting.DeploymentBranchPolicyMode) github.Environment {
-		return github.Environment{ID: 7, Name: name, DeploymentBranchPolicyMode: mode}
+		return github.Environment{ID: 7, Name: name, DeploymentBranchPolicyMode: mode, Protection: unprotected()}
 	}
 	region, debug, level := mustVariableName(t, "REGION"), mustVariableName(t, "DEBUG"), mustVariableName(t, "LEVEL")
 	existence := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
@@ -637,7 +637,7 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 	noReviewers := setting.ReviewerSetOf(nil)
 	observedRule := setting.RequiredReviewers{Reviewers: []setting.Reviewer{user2, user1}, Logins: map[setting.Reviewer]string{user1: "octocat"}}
 	withProtection := func(e github.Environment, rule setting.RequiredReviewers) github.Environment {
-		e.Protection.RequiredReviewers = &rule
+		e.Protection = protectedByRule(rule, false)
 		return e
 	}
 	cases := []struct {

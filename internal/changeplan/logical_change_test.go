@@ -1445,6 +1445,28 @@ func TestRepositoryPlan_LogicalChangesOfSecretScanning(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("disabling secret scanning anticipates push protection of an unknown value to stay unavailable for the same reason", func(t *testing.T) {
+		unknown := github.Unavailable[setting.Value](github.UnavailableUnknownValue)
+		plan := mismatch(setting.SecretScanningEnabled, true, false)
+		plan.SideEffects = []SideEffect{{Kind: SideEffectPushProtectionDisabled, Observed: unknown}}
+		got, err := newRepositoryPlan(plan).LogicalChanges()
+		if err != nil {
+			t.Fatalf("LogicalChanges() error = %v", err)
+		}
+		pushProtection := setting.Unit{Key: setting.RepositoryPushProtection}
+		want := []LogicalChange{{
+			DesiredState: []configuration.ManagedSetting{{Unit: plan.Unit, Desired: plan.Desired}},
+			Operations: []UpdateOperation{{
+				Kind: SettingUpdate, Unit: plan.Unit, Value: plan.Desired,
+				PreconditionBases: []PreconditionBasis{self(plan), {Unit: pushProtection, AnticipatedValue: AnticipateUnchanged(unknown)}},
+			}},
+			SideEffectSettings: []setting.Unit{pushProtection},
+		}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("LogicalChanges() = %+v, want %+v", got, want)
+		}
+	})
 }
 
 // TestRepositoryPlan_LogicalChangesOfMergeMessages は、マージメッセージの変更予定をそれぞれ一つの論理的な設定変更にし、

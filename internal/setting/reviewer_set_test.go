@@ -16,6 +16,30 @@ func observedReviewerSet(logins map[Reviewer]string, rs ...Reviewer) ReviewerSet
 	return ReviewerSetOfRule(&RequiredReviewers{Reviewers: rs, Logins: logins})
 }
 
+//trace:checks FR-004
+func TestParseReviewerType(t *testing.T) {
+	cases := []struct {
+		name   string
+		input  string
+		want   ReviewerType
+		wantOK bool
+	}{
+		{name: "User is accepted", input: "User", want: ReviewerUser, wantOK: true},
+		{name: "Team is accepted", input: "Team", want: ReviewerTeam, wantOK: true},
+		{name: "undefined value is rejected", input: "Bot"},
+		{name: "different case is rejected", input: "user"},
+		{name: "empty string is rejected", input: ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := ParseReviewerType(tc.input)
+			if got != tc.want || ok != tc.wantOK {
+				t.Errorf("ParseReviewerType(%q) = (%q, %t), want (%q, %t)", tc.input, got, ok, tc.want, tc.wantOK)
+			}
+		})
+	}
+}
+
 //trace:checks FR-005
 func TestReviewerSet_equal(t *testing.T) {
 	cases := []struct {
@@ -121,6 +145,30 @@ func TestReviewerSet_WithLoginsFrom(t *testing.T) {
 	}
 }
 
+//trace:checks FR-012 INV-001
+func TestReviewerSet_WithoutLogins(t *testing.T) {
+	cases := []struct {
+		name string
+		set  ReviewerSet
+		want string
+	}{
+		{
+			name: "logins are dropped while the reviewers and their order are kept",
+			set:  observedReviewerSet(map[Reviewer]string{reviewerUser2: "hubot", reviewerUser1: "octocat"}, reviewerUser2, reviewerTeam1, reviewerUser1),
+			want: "[User 2, Team 1, User 1]",
+		},
+		{name: "a rule without reviewers keeps its mark", set: ReviewerSetOfRule(&RequiredReviewers{}), want: "[] (protection rule without reviewers)"},
+		{name: "no rule stays the empty set", set: ReviewerSetOfRule(nil), want: "[]"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.set.WithoutLogins().String(); got != tc.want {
+				t.Errorf("WithoutLogins().String() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 //trace:checks FR-006
 func TestReviewerSet_HasNoReviewers(t *testing.T) {
 	cases := []struct {
@@ -129,7 +177,7 @@ func TestReviewerSet_HasNoReviewers(t *testing.T) {
 		want bool
 	}{
 		{name: "no rule has no reviewers", set: ReviewerSetOfRule(nil), want: true},
-		{name: "a rule without reviewers has no reviewers", set: ReviewerSetOfRule(&RequiredReviewers{PreventSelfReview: true}), want: true},
+		{name: "a rule without reviewers has no reviewers", set: ReviewerSetOfRule(&RequiredReviewers{}), want: true},
 		{name: "one reviewer is a reviewer", set: ReviewerSetOf([]Reviewer{reviewerUser1}), want: false},
 	}
 	for _, tc := range cases {

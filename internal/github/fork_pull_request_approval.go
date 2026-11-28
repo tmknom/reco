@@ -29,7 +29,7 @@ func (c *Client) observeForkPullRequestApproval(ctx context.Context, reference r
 	if err != nil {
 		return ForkPullRequestApproval{}, err
 	}
-	return ForkPullRequestApproval{ApprovalPolicy: Observed(policy)}, nil
+	return ForkPullRequestApproval{ApprovalPolicy: policy}, nil
 }
 
 // forkPullRequestApprovalUnavailability は、観測した公開範囲から、承認ポリシーが取得条件により観測不能になる理由を返す。
@@ -46,19 +46,19 @@ type forkPullRequestApprovalPayload struct {
 	ApprovalPolicy *string `json:"approval_policy"`
 }
 
-// decodeForkPullRequestApproval は承認ポリシーの応答本文を観測値に変換する。
-// 定義外の値は応答本文の一部のため、文言に入れない。
-func decodeForkPullRequestApproval(data []byte) (setting.ForkPullRequestApprovalPolicy, error) {
+// decodeForkPullRequestApproval は承認ポリシーの応答本文を観測結果に変換する。
+// approval_policy は GitHub が値を足し得る列挙として読み、知らない値なら観測不能にする。
+func decodeForkPullRequestApproval(data []byte) (SettingObservation[setting.ForkPullRequestApprovalPolicy], error) {
 	var p forkPullRequestApprovalPayload
 	if err := json.Unmarshal(data, &p); err != nil {
-		return "", fmt.Errorf("%w: %w", ErrUnexpectedResponse, err)
+		return SettingObservation[setting.ForkPullRequestApprovalPolicy]{}, fmt.Errorf("%w: %w", ErrUnexpectedResponse, err)
 	}
 	if p.ApprovalPolicy == nil {
-		return "", fmt.Errorf("%w: missing fields: approval_policy", ErrUnexpectedResponse)
+		return SettingObservation[setting.ForkPullRequestApprovalPolicy]{}, fmt.Errorf("%w: missing fields: approval_policy", ErrUnexpectedResponse)
 	}
 	policy, ok := setting.ParseForkPullRequestApprovalPolicy(*p.ApprovalPolicy)
 	if !ok {
-		return "", fmt.Errorf("%w: unsupported value: approval_policy", ErrUnexpectedResponse)
+		return Unavailable[setting.ForkPullRequestApprovalPolicy](UnavailableUnknownValue), nil
 	}
-	return policy, nil
+	return Observed(policy), nil
 }

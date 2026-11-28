@@ -21,6 +21,38 @@ type ReviewerSet struct {
 	ruleWithoutReviewers bool
 }
 
+// RequiredReviewers は、required_reviewers の保護ルールのうち、担当者の集合を作る入力。
+type RequiredReviewers struct {
+	// Reviewers は受け取った順のまま持つ。
+	Reviewers []Reviewer
+	// Logins は、観測した担当者の login。login を読めなかった担当者とチームは持たない。表示にだけ使い、同じ値かの判定には使わない。
+	Logins map[Reviewer]string
+}
+
+// Reviewer は、担当者。GitHub の利用者かチームの ID で指す。
+type Reviewer struct {
+	Type ReviewerType
+	ID   int64
+}
+
+// ReviewerType は、担当者の種類。値は GitHub REST API の文字列で、表示にもそのまま使う。
+type ReviewerType string
+
+const (
+	ReviewerUser ReviewerType = "User"
+	ReviewerTeam ReviewerType = "Team"
+)
+
+// ParseReviewerType は s が定義された値に完全一致するときだけ、その値と真を返す。
+func ParseReviewerType(s string) (ReviewerType, bool) {
+	switch t := ReviewerType(s); t {
+	case ReviewerUser, ReviewerTeam:
+		return t, true
+	default:
+		return "", false
+	}
+}
+
 // ReviewerSetOf は、担当者 reviewers の集合を並びのまま持つ値を作る。空なら、保護ルールがないことを表す。
 // 呼び出し側があとで書き換えても値が変わらないように、複製して持つ。
 func ReviewerSetOf(reviewers []Reviewer) ReviewerSet {
@@ -83,6 +115,13 @@ func (s ReviewerSet) WithLoginsFrom(other ReviewerSet) ReviewerSet {
 		}
 	}
 	s.logins = logins
+	return s
+}
+
+// WithoutLogins は、s から login を除いた値を返す。担当者、並び、担当者のいない保護ルールの印は s のまま変えない。
+// CLI 仕様が変更対象外の設定の担当者に login を示さないため、その表示に使う。
+func (s ReviewerSet) WithoutLogins() ReviewerSet {
+	s.logins = nil
 	return s
 }
 

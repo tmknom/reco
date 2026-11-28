@@ -55,6 +55,9 @@ const (
 	NotApplicableNotReturned
 	// NotApplicableOmittedParametersReset は、値の全体を置き換える更新が、宣言の省略したパラメータを GitHub の決める値に変えること。そのパラメータを伴う。
 	NotApplicableOmittedParametersReset
+	// NotApplicableSecretScanningUnknown は、Secret scanning の有効状態が reco の知らない値で、同じリポジトリの期待状態が Secret scanning の有効を含まず、有効と確かめられないこと。
+	// 無効であるとは確かめていないため、NotApplicableSecretScanningRemainsDisabled と分ける。
+	NotApplicableSecretScanningUnknown
 )
 
 // Applicable は、適用可能の判断を返す。
@@ -121,7 +124,7 @@ func (a Applicability) ResetParameters() []setting.ResetParameter {
 // judgeApplicability は、管理設定の計画 s の観測結果と、同じリポジトリの管理設定の計画 settings の期待値と、
 // 計画時の観測結果 observed (同じ設定の領域の未管理設定の値) から、変更予定を安全に適用できるかを判断する。
 // 不一致は、設定ごとの設計の更新方式で、前提の設定を持つ依存する設定を除いて追加の条件なしに適用できる。
-// 比較不能は、設定ごとの設計の遷移表に挙がる観測不能に限って判断する。
+// 比較不能は、知らない値の観測不能を設定によらず適用不能とし (ドメインモデルの照合結果と適用可能性)、ほかは設定ごとの設計の遷移表に挙がる観測不能に限って判断する。
 // 遷移表にない観測不能を適用可能として黙って通さないよう、不変条件の破れとして panic する。
 func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.ObservationResult) Applicability {
 	switch s.Result {
@@ -134,6 +137,9 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 		}
 		// GitHub は Secret scanning が無効のあいだ、push protection を有効にする更新に成功を応答して値を変えない
 		if s.Unit.Key == setting.RepositoryPushProtection && s.Desired.Bool() && !enabledAtUpdate(setting.SecretScanningEnabled, settings, observed) {
+			if observed.Setting(setting.Unit{Key: setting.SecretScanningEnabled}).HasUnknownValue() {
+				return NotApplicable(NotApplicableSecretScanningUnknown)
+			}
 			return NotApplicable(NotApplicableSecretScanningRemainsDisabled)
 		}
 		// GitHub は対応するマージ方式が無効のあいだ、マージメッセージの更新を拒否する。reco はマージ方式を宣言なしに有効にしない
@@ -165,8 +171,8 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 	case s.Unit.Key == setting.RulesetResource && reason == github.UnavailableUninterpretedParts:
 		// 期待値に変える更新は解釈しない部分も置き換え、削除は解釈しない部分も消し、reco が承認の前に示せない値を変えるか失わせる。同じリポジトリのほかの宣言では解消しない
 		return NotApplicable(NotApplicableUninterpretedParts)
-	case isMergeMessage(s.Unit.Key) && reason == github.UnavailableUnknownValue:
-		// 置き換えで失われる値の意味を、reco が承認の前に示せない。同じリポジトリのほかの宣言では解消しない
+	case reason == github.UnavailableUnknownValue:
+		// 置き換えで失われる値の意味を、reco が承認の前に示せない。設定によらず、同じリポジトリのほかの宣言では解消しない
 		return NotApplicable(NotApplicableUnknownValue)
 	case s.Unit.Key == setting.WebCommitSignoffRequired && reason == github.UnavailableNotReturned:
 		// 更新のあとの観測でも値が返らなければ、期待状態に一致したかを確かめられない。同じリポジトリのほかの宣言では解消しない
@@ -214,13 +220,18 @@ func expectsActionsEnabled(settings []SettingPlan) bool {
 // いなければ、担当者をすべて外す変更か作成が送らずに偽にする場合に限って到達できる (Environments の設計の適用可能性と副作用)。
 // 更新時点の担当者は、担当者の集合を宣言していればその期待値、宣言していなければ計画時の観測値で決める。宣言していない担当者の集合は reco が変えないため。
 // 呼び出し元は、s を存在する Environment の不一致か、同じ変更計画が作成する Environment の比較不能に限る。
-// 担当者の集合を観測できないのは後者だけで、そのときの担当者は作成直後の値 (担当者がいない) とする。
+// 宣言していない担当者の集合が知らない値で観測不能なら、担当者がいる。観測不能になるのは、知らない種類の担当者が一人以上いるときに限るため。
+// ほかに担当者の集合を観測できないのは作成する Environment だけで、そのときの担当者は作成直後の値 (担当者がいない) とする。
 func preventSelfReviewReachable(s SettingPlan, settings []SettingPlan, observed github.ObservationResult) bool {
 	reviewersUnit := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: s.Unit.Environment}
 	reviewers, declared := RepositoryPlan{Settings: settings}.settingPlanOf(reviewersUnit)
 	atUpdate := reviewers.Desired
 	if !declared {
-		current, ok := observed.Setting(reviewersUnit).Value()
+		observedReviewers := observed.Setting(reviewersUnit)
+		if observedReviewers.HasUnknownValue() {
+			return true
+		}
+		current, ok := observedReviewers.Value()
 		if !ok {
 			current = createdValueOf(setting.EnvironmentRequiredReviewers)
 		}
@@ -237,12 +248,6 @@ func createsEnvironment(settings []SettingPlan, name setting.EnvironmentName) bo
 	return slices.ContainsFunc(settings, func(s SettingPlan) bool {
 		return s.IsEnvironmentCreation() && s.Unit.Environment.EqualFold(name)
 	})
-}
-
-// isMergeMessage は、key がマージメッセージかを返す。マージメッセージは、対応するマージ方式を持つ設定として setting が一か所で定める。
-func isMergeMessage(key setting.Key) bool {
-	_, ok := key.CorrespondingMergeMethod()
-	return ok
 }
 
 // enabledAtUpdate は、ある設定を更新する時点で、その更新に有効でなければならない設定 required (前提の設定か、対応するマージ方式) が有効と見込めるかを返す。

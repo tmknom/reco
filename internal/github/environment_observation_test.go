@@ -11,11 +11,13 @@ import (
 //trace:checks FR-004
 func TestEnvironmentObservation(t *testing.T) {
 	declared := mustEnvironmentName(t, "production")
+	noPatterns := Observed(DeploymentPatterns{})
 	existing := Environments{Existing: []Environment{{
 		ID:                         7,
 		Name:                       "production",
 		DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
-		DeploymentPatterns:         &DeploymentPatterns{},
+		DeploymentPatterns:         &noPatterns,
+		Protection:                 unprotectedEnvironment(),
 		Variables:                  &Variables{Existing: []Variable{{Name: "REGION", Value: "eu"}}},
 	}}}.Lookup(declared)
 	absent := Environments{}.Lookup(declared)
@@ -52,6 +54,16 @@ func TestEnvironmentObservation(t *testing.T) {
 		}
 	})
 
+	t.Run("existing environment with unavailable deployment patterns makes its deployment branch policy unavailable with the same reason", func(t *testing.T) {
+		unknownPatterns := Unavailable[DeploymentPatterns](UnavailableUnknownValue)
+		observation := Environments{Existing: []Environment{{
+			ID: 7, Name: "production", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected, DeploymentPatterns: &unknownPatterns, Protection: unprotectedEnvironment(),
+		}}}.Lookup(declared)
+		if got, want := observation.DeploymentBranchPolicy(), Unavailable[setting.Value](UnavailableUnknownValue); !reflect.DeepEqual(got, want) {
+			t.Errorf("DeploymentBranchPolicy() = %+v, want %+v", got, want)
+		}
+	})
+
 	t.Run("absent environment makes its setting unavailable as absent", func(t *testing.T) {
 		o := absent.DeploymentBranchPolicy()
 		if _, ok := o.Value(); ok {
@@ -72,28 +84,36 @@ func TestEnvironmentObservation(t *testing.T) {
 		}
 	})
 
-	t.Run("existing environment observes its required reviewers", func(t *testing.T) {
-		reviewers := []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}, {Type: setting.ReviewerTeam, ID: 2}}
-		withRule := func(rule *setting.RequiredReviewers) EnvironmentObservation {
-			return Environments{Existing: []Environment{{ID: 7, Name: "production", Protection: setting.EnvironmentProtection{RequiredReviewers: rule}}}}.Lookup(declared)
+	t.Run("existing environment observes its required reviewers with the same observation", func(t *testing.T) {
+		reviewers := setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}, {Type: setting.ReviewerTeam, ID: 2}})
+		withReviewerSet := func(reviewerSet SettingObservation[setting.ReviewerSet]) EnvironmentObservation {
+			return Environments{Existing: []Environment{{
+				ID: 7, Name: "production", Protection: EnvironmentProtection{ReviewerSet: reviewerSet, WaitTimer: 30, PreventSelfReview: true},
+			}}}.Lookup(declared)
 		}
 		cases := []struct {
 			name        string
 			observation EnvironmentObservation
-			want        setting.ReviewerSet
+			want        SettingObservation[setting.Value]
 		}{
-			{name: "no rule is an empty set", observation: withRule(nil), want: setting.ReviewerSetOf(nil)},
-			{name: "a rule without reviewers is a rule without reviewers", observation: withRule(&setting.RequiredReviewers{Reviewers: []setting.Reviewer{}}), want: setting.ReviewerSetOfRule(&setting.RequiredReviewers{})},
-			{name: "a rule with reviewers keeps them", observation: withRule(&setting.RequiredReviewers{Reviewers: reviewers}), want: setting.ReviewerSetOf(reviewers)},
+			{name: "observed reviewers are the value", observation: withReviewerSet(Observed(reviewers)), want: Observed(setting.ReviewerSetValue(reviewers))},
+			{
+				name:        "unavailable reviewers are unavailable with the same reason",
+				observation: withReviewerSet(Unavailable[setting.ReviewerSet](UnavailableUnknownValue)),
+				want:        Unavailable[setting.Value](UnavailableUnknownValue),
+			},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				v, ok := tc.observation.RequiredReviewers().Value()
-				if !ok {
-					t.Fatal("RequiredReviewers().Value() ok = false, want true")
+				if got := tc.observation.RequiredReviewers(); !reflect.DeepEqual(got, tc.want) {
+					t.Errorf("RequiredReviewers() = %+v, want %+v", got, tc.want)
 				}
-				if want := setting.ReviewerSetValue(tc.want); !v.Equal(want) {
-					t.Errorf("RequiredReviewers() value = %v, want %v", v, want)
+				// 担当者の集合だけが観測不能になり、同じ保護設定のほかの項目は観測値を持つ
+				if got, want := tc.observation.PreventSelfReview(), Observed(setting.BoolValue(true)); !reflect.DeepEqual(got, want) {
+					t.Errorf("PreventSelfReview() = %+v, want %+v", got, want)
+				}
+				if got, want := tc.observation.WaitTimer(), Observed(setting.WaitTimerValue(30)); !reflect.DeepEqual(got, want) {
+					t.Errorf("WaitTimer() = %+v, want %+v", got, want)
 				}
 			})
 		}
@@ -113,8 +133,8 @@ func TestEnvironmentObservation(t *testing.T) {
 		}
 	})
 
-	t.Run("existing environment observes its prevent_self_review, false without a protection rule", func(t *testing.T) {
-		withProtection := func(protection setting.EnvironmentProtection) EnvironmentObservation {
+	t.Run("existing environment observes its prevent_self_review", func(t *testing.T) {
+		withProtection := func(protection EnvironmentProtection) EnvironmentObservation {
 			return Environments{Existing: []Environment{{ID: 7, Name: "production", Protection: protection}}}.Lookup(declared)
 		}
 		cases := []struct {
@@ -122,8 +142,8 @@ func TestEnvironmentObservation(t *testing.T) {
 			observation EnvironmentObservation
 			want        bool
 		}{
-			{name: "no rule is false", observation: withProtection(setting.EnvironmentProtection{}), want: false},
-			{name: "a rule that prevents self review is true", observation: withProtection(setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{PreventSelfReview: true}}), want: true},
+			{name: "false is false", observation: withProtection(unprotectedEnvironment()), want: false},
+			{name: "true is true", observation: withProtection(EnvironmentProtection{ReviewerSet: Observed(setting.ReviewerSetOfRule(&setting.RequiredReviewers{})), PreventSelfReview: true}), want: true},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -149,7 +169,7 @@ func TestEnvironmentObservation(t *testing.T) {
 	})
 
 	t.Run("existing environment observes its wait_timer in minutes", func(t *testing.T) {
-		observation := Environments{Existing: []Environment{{ID: 7, Name: "production", Protection: setting.EnvironmentProtection{WaitTimer: 30}}}}.Lookup(declared)
+		observation := Environments{Existing: []Environment{{ID: 7, Name: "production", Protection: EnvironmentProtection{WaitTimer: 30, ReviewerSet: Observed(setting.ReviewerSetOfRule(nil))}}}}.Lookup(declared)
 		if got, want := observation.WaitTimer(), Observed(setting.WaitTimerValue(30)); !reflect.DeepEqual(got, want) {
 			t.Errorf("WaitTimer() = %+v, want %+v", got, want)
 		}

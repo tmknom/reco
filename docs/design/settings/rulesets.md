@@ -77,7 +77,7 @@ Rulesets は、`GET /repos/{owner}/{repo}` の応答の `private` が偽のと�
 
 - `id`（整数）と `name`（文字列）
 - `target`（文字列）
-- `enforcement`（`disabled`、`active`、`evaluate` のどれか）
+- `enforcement`（文字列）
 - `conditions`（オブジェクト）。`ref_name` があれば、オブジェクトで、`include` と `exclude` がどちらも文字列の配列
 - `bypass_actors`（配列）。要素はオブジェクトで、`actor_type` が文字列。`actor_type` が `RepositoryRole`、`User`、`Integration`、`DeployKey` のどれかなら、`bypass_mode` が文字列で、`DeployKey` 以外は `actor_id` が整数、`DeployKey` は `actor_id` が欠けるか `null`。ほかの `actor_type` の要素は、ほかの項目の形が主体の種類ごとに違い得るため、契約に含めない（下の解釈しない部分）
 - `rules`（配列）。要素はオブジェクトで、`type` が文字列。`type` が `pull_request` なら、`parameters` がオブジェクトで、`required_approving_review_count`（整数）、`dismiss_stale_reviews_on_push`、`require_code_owner_review`、`require_last_push_approval`、`required_review_thread_resolution`（boolean）がそろう。`type` が `required_status_checks` なら、`parameters` がオブジェクトで、`required_status_checks` が配列、その要素がオブジェクトで `context` が文字列、`strict_required_status_checks_policy` が boolean
@@ -87,7 +87,7 @@ Rulesets は、`GET /repos/{owner}/{repo}` の応答の `private` が偽のと�
 - **`bypass_actors` の欠落と `null`**：GitHub は、Ruleset への書き込みのアクセスを持たない利用者には `bypass_actors` を返さない（GitHub Rules API 仕様 3.2）。権限の不足による欠落のため、空集合と読まず、観測操作の失敗とする（ドメインモデルの現在状態・観測結果・観測失敗）
 - **`rules` の欠落と `null`**：作成で `rules` を省いても `[]` で返った（GitHub Rules API 仕様 4.1）。欠けた応答の意味を根拠づけられない
 - **`conditions` の `null`**：公式のスキーマは `null` を取り得るとするが、`conditions` を送らずに作った Ruleset は `{}` を返した（GitHub Rules API 仕様 5章）。`null` を `{}` と同じと読む根拠がない
-- **`enforcement`、`bypass_mode`、`DeployKey` の `actor_id`**：`enforcement` の値は公式資料が三つに限る。`bypass_mode` は、欠けたときに GitHub の既定値（`always`）で補うと、Bypass の方式を推測で示すことになる。`DeployKey` の `actor_id` は、公式資料が `null` とし、整数を送っても `null` で保存された（GitHub Rules API 仕様 6章）
+- **`bypass_mode`、`DeployKey` の `actor_id`**：`bypass_mode` は、欠けたときに GitHub の既定値（`always`）で補うと、Bypass の方式を推測で示すことになる。`DeployKey` の `actor_id` は、公式資料が `null` とし、整数を送っても `null` で保存された（GitHub Rules API 仕様 6章）
 - **`pull_request` の必須の5項目と、`required_status_checks` の必須の項目**：値に含める項目で、欠けると値を作れない。省略できるパラメータの欠落は、下の解釈しない部分とする
 
 `id`、`name`、`target`、`enforcement`、`conditions`、`bypass_actors`、`rules` のほかのトップレベルのフィールド（`source_type`、`source`、`current_user_can_bypass`、`node_id`、`_links`、`created_at`、`updated_at`、reco の知らないフィールド）は読まず、値にも、解釈しない部分にもしません。Ruleset の値を変える更新で送らないフィールドで、省いても既存の値が残るためです（ドメインモデルの現在状態・観測結果・観測失敗、GitHub Rules API 仕様 4.2）。
@@ -99,6 +99,7 @@ Rulesets は、`GET /repos/{owner}/{repo}` の応答の `private` が偽のと�
 | 解釈しなかったもの | 当たる形 |
 |---|---|
 | `target` | `branch` 以外の値。Tag と Push の Ruleset は、対象の条件とルールの意味が違うため |
+| `enforcement` | `disabled`、`active`、`evaluate` 以外の値。GitHub が値を足し得る列挙で（公式の OpenAPI 記述は3値）、足された値の意味を reco は知らないため |
 | 対象の条件のキー | `conditions` の `ref_name` 以外のキー、`ref_name` の `include`・`exclude` 以外のキー |
 | Bypass の主体の種類 | `actor_type` が `RepositoryRole`、`User`、`Integration`、`DeployKey` 以外。この要素のほかの項目は確かめない |
 | Bypass の方式 | `bypass_mode` が `always`、`pull_request`、`exempt` 以外 |
@@ -107,7 +108,7 @@ Rulesets は、`GET /repos/{owner}/{repo}` の応答の `private` が偽のと�
 | ルールのキー | 解釈するルール型の要素の、`type`・`parameters` 以外のキー。`deletion` と `non_fast_forward` の `parameters`（`{}` と `null` を含む） |
 | ルールのパラメータ | 下の `pull_request` と `required_status_checks` の表で、解釈しないとするもの |
 
-解釈しなかったものは、`target`、`conditions`、`bypass_actors`、`rules` の順に、配列は応答の順に並べ、同じものは最初の一つだけを持ちます。一つの要素の中では、値を確かめる項目（`bypass_mode`、`pull_request` の `allowed_merge_methods`・`require_extra_approval_for_unattributed_changes`・`required_reviewers`、`required_status_checks` の `do_not_enforce_on_create` と `integration_id`）を先に、reco が読まないキーを名前の順にあとに並べ、ルールの要素のキーを `parameters` の中より先に並べます。JSON のオブジェクトのキーの並びは意味を持たず、応答の並びに合わせる根拠がないためです。`target` が `branch` 以外でも、ほかの部分も同じように確かめます。利用者が、その Ruleset のどこを reco が解釈しないかを一度に知るためです。
+解釈しなかったものは、`target`、`enforcement`、`conditions`、`bypass_actors`、`rules` の順に、配列は応答の順に並べ、同じものは最初の一つだけを持ちます。一つの要素の中では、値を確かめる項目（`bypass_mode`、`pull_request` の `allowed_merge_methods`・`require_extra_approval_for_unattributed_changes`・`required_reviewers`、`required_status_checks` の `do_not_enforce_on_create` と `integration_id`）を先に、reco が読まないキーを名前の順にあとに並べ、ルールの要素のキーを `parameters` の中より先に並べます。JSON のオブジェクトのキーの並びは意味を持たず、応答の並びに合わせる根拠がないためです。`target` が `branch` 以外でも、ほかの部分も同じように確かめます。利用者が、その Ruleset のどこを reco が解釈しないかを一度に知るためです。
 
 `enforcement` の `evaluate`、`conditions: {}`（`ref_name` がない）、`2`・`4`・`5` 以外の `RepositoryRole` の `actor_id`、`include` の重複、同じ主体の Bypass と同じ型のルールの重複は、解釈する値として受け取ったまま読みます。宣言では書けない値ですが、どれも Ruleset の値として意味が定まるためです（ドメインモデルの概念が属する文脈）。
 

@@ -31,12 +31,9 @@ func writeMergeMessage(b *strings.Builder, key, title, message string) {
 }
 
 // writeUnknownMergeMessage は、観測不能なマージメッセージを書く。
-// 観測は知らない値だけをマージメッセージの観測不能にするため、ほかの理由を知らない値の文言で示さないよう、不変条件の破れとして panic する。
 func writeUnknownMergeMessage(b *strings.Builder, key string, reason github.UnavailableReason) {
-	if reason != github.UnavailableUnknownValue {
-		panic(fmt.Sprintf("show: undefined unavailable reason %d for %s", int(reason), key))
-	}
-	fmt.Fprintf(b, "      # %s: unavailable (GitHub returned a value that reco does not know)\n", key)
+	requireUnknownValue(key, reason)
+	fmt.Fprintf(b, "      # %s: %s\n", key, unknownValueText)
 }
 
 // writeWebCommitSignoffRequired は web_commit_signoff_required を書く。

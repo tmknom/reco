@@ -22,12 +22,24 @@ type Environment struct {
 	// DeploymentBranchPolicyMode は一覧の要素から読むため、読む範囲によらず持つ。個別パターンを含む値は DeploymentBranchPolicy で読む。
 	DeploymentBranchPolicyMode setting.DeploymentBranchPolicyMode
 	// DeploymentPatterns は、方式が selected で、個別パターンを読んだ Environment でだけ持つ。
-	// 方式が selected で nil なのは読む範囲に含めなかった Environment で、個別パターンが一つもないこととは異なる。
-	DeploymentPatterns *DeploymentPatterns
-	Protection         setting.EnvironmentProtection
+	// 方式が selected で nil なのは読む範囲に含めなかった Environment で、個別パターンが一つもないことや、個別パターンの観測不能とは異なる。
+	DeploymentPatterns *SettingObservation[DeploymentPatterns]
+	Protection         EnvironmentProtection
 	// Variables は、Environment Variables の領域を選ばなかった観測と、読む範囲に含めなかった Environment では nil になる。
 	// Variable が一つもないことと取り違えさせないため、値型にしない。
 	Variables *Variables
+}
+
+// EnvironmentProtection は、Environment の保護設定の観測結果。reco は観測し、can_admins_bypass のほかは宣言を受け付ける。
+// 担当者の集合だけを観測結果で持つ。同じ保護ルールのほかの項目と別に、観測不能になり得るため。
+type EnvironmentProtection struct {
+	// WaitTimer はデプロイを待たせる分数。wait_timer の保護ルールがなければ 0。
+	WaitTimer int
+	// ReviewerSet は、required_reviewers の保護ルールがなければ空集合の観測値。
+	ReviewerSet SettingObservation[setting.ReviewerSet]
+	// PreventSelfReview は、required_reviewers の保護ルールがなければ偽。
+	PreventSelfReview bool
+	CanAdminsBypass   bool
 }
 
 // DeploymentPatterns は、方式が selected の一つの Environment について、個別パターンの一覧の全ページを読めた観測で確認できた、すべての個別パターンである。
@@ -44,26 +56,34 @@ type EnvironmentID int64
 // DeploymentPatternID は、GitHub が個別パターンに付ける ID。値の一部ではなく、個別パターンを取り除く要求の宛先に使う。
 type DeploymentPatternID int64
 
-// DeploymentBranchPolicy は、デプロイ元制限の観測値を返す。方式が selected なら、読んだ個別パターンを読んだ順で含む。
-func (e Environment) DeploymentBranchPolicy() setting.DeploymentBranchPolicy {
+// DeploymentBranchPolicy は、デプロイ元制限の観測結果を返す。方式が selected なら、読んだ個別パターンを読んだ順で含む。
+// 方式が selected で個別パターンが観測不能なら、方式と個別パターンの組を同じ理由の観測不能にする。方式だけの値は、個別パターンのない宣言と同じ値に読めるため。
+func (e Environment) DeploymentBranchPolicy() SettingObservation[setting.DeploymentBranchPolicy] {
 	if e.DeploymentBranchPolicyMode != setting.DeploymentBranchPolicySelected {
-		return setting.DeploymentBranchPolicy{Mode: e.DeploymentBranchPolicyMode}
+		return Observed(setting.DeploymentBranchPolicy{Mode: e.DeploymentBranchPolicyMode})
 	}
-	return setting.DeploymentBranchPolicy{Mode: e.DeploymentBranchPolicyMode, Patterns: e.readDeploymentPatterns().Existing}
+	observation := e.readDeploymentPatterns()
+	patterns, ok := observation.Value()
+	if !ok {
+		return Unavailable[setting.DeploymentBranchPolicy](observation.UnavailableReason())
+	}
+	return Observed(setting.DeploymentBranchPolicy{Mode: e.DeploymentBranchPolicyMode, Patterns: patterns.Existing})
 }
 
-// DeploymentPatternID は、読んだ個別パターン pattern の ID を返す。方式が selected でないか、pattern を読んでいなければ偽を返す。
+// DeploymentPatternID は、読んだ個別パターン pattern の ID を返す。方式が selected でないか、個別パターンが観測不能か、pattern を読んでいなければ偽を返す。
 func (e Environment) DeploymentPatternID(pattern setting.DeploymentPattern) (DeploymentPatternID, bool) {
 	if e.DeploymentBranchPolicyMode != setting.DeploymentBranchPolicySelected {
 		return 0, false
 	}
-	id, ok := e.readDeploymentPatterns().IDs[pattern]
+	// 観測不能なら Value はゼロ値を返し、ID を持たないため偽になる。取り除く更新操作は、変更前提が先に不成立になり到達しない
+	patterns, _ := e.readDeploymentPatterns().Value()
+	id, ok := patterns.IDs[pattern]
 	return id, ok
 }
 
-// readDeploymentPatterns は、方式が selected の Environment の読んだ個別パターンを返す。
-// 読む範囲に含めなかった Environment は、個別パターンが一つもないことと取り違えないよう、不変条件の破れとして panic する（ドメインモデルの存在の観測）。
-func (e Environment) readDeploymentPatterns() DeploymentPatterns {
+// readDeploymentPatterns は、方式が selected の Environment の個別パターンの観測結果を返す。
+// 読む範囲に含めなかった Environment は、個別パターンが一つもないことや観測不能と取り違えないよう、不変条件の破れとして panic する（ドメインモデルの存在の観測）。
+func (e Environment) readDeploymentPatterns() SettingObservation[DeploymentPatterns] {
 	if e.DeploymentPatterns == nil {
 		panic(fmt.Sprintf("github: deployment patterns of environment %q were not read in this observation", e.Name))
 	}
@@ -129,29 +149,19 @@ func (c *Client) observeEnvironments(ctx context.Context, reference repository.R
 // observeDeploymentPatterns は、方式が selected の Environment の個別パターンを一覧の並びのまま読む。
 // selected と観測したあとの失敗は、二つの要求のあいだに方式が変わった可能性があっても、404 を含めて観測不能にせず error として返す。
 // パスに組み込めない名前の Environment は、要求を送らずに失敗する。
-// 同じ種類と名前の個別パターンが二つ以上返ったら失敗する。ID の対応が黙って上書きされ、取り除く要求の宛先を誤らせるため。
 // 失敗の文言に Environment の名前を入れるのは、どの Environment で失敗したかを示す対象の識別子で、秘密情報ではないため。%q で制御文字をエスケープする。
-func (c *Client) observeDeploymentPatterns(ctx context.Context, reference repository.Reference, name string) (DeploymentPatterns, error) {
+func (c *Client) observeDeploymentPatterns(ctx context.Context, reference repository.Reference, name string) (SettingObservation[DeploymentPatterns], error) {
 	u, ok := c.deploymentBranchPoliciesURL(reference, name)
 	if !ok {
-		return DeploymentPatterns{}, fmt.Errorf("deployment branch policies of environment %q: %w: the name cannot be sent as a path element", name, ErrUnexpectedResponse)
+		return SettingObservation[DeploymentPatterns]{}, fmt.Errorf("deployment branch policies of environment %q: %w: the name cannot be sent as a path element", name, ErrUnexpectedResponse)
 	}
 	items, err := c.listAll(ctx, u, listPaging{itemsField: "branch_policies", perPage: listPerPage, maxPageBytes: maxResponseBytes, maxPages: maxListPages})
 	if err != nil {
-		return DeploymentPatterns{}, fmt.Errorf("deployment branch policies of environment %q: %w", name, err)
+		return SettingObservation[DeploymentPatterns]{}, fmt.Errorf("deployment branch policies of environment %q: %w", name, err)
 	}
-	patterns := make([]setting.DeploymentPattern, len(items))
-	ids := make(map[setting.DeploymentPattern]DeploymentPatternID, len(items))
-	for i, item := range items {
-		pattern, id, err := decodeDeploymentPattern(item)
-		if err != nil {
-			return DeploymentPatterns{}, fmt.Errorf("deployment branch policies of environment %q: %w", name, err)
-		}
-		if _, duplicate := ids[pattern]; duplicate {
-			return DeploymentPatterns{}, fmt.Errorf("deployment branch policies of environment %q: %w: duplicate deployment pattern", name, ErrUnexpectedResponse)
-		}
-		patterns[i] = pattern
-		ids[pattern] = id
+	patterns, err := decodeDeploymentPatterns(items)
+	if err != nil {
+		return SettingObservation[DeploymentPatterns]{}, fmt.Errorf("deployment branch policies of environment %q: %w", name, err)
 	}
-	return DeploymentPatterns{Existing: patterns, IDs: ids}, nil
+	return patterns, nil
 }

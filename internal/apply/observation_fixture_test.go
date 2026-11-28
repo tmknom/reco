@@ -27,6 +27,17 @@ func actionsSelected(criteria setting.SelectedActionsCriteria) *github.ActionsPe
 	}
 }
 
+// actionsWithUnknownPolicy は、Actions が有効で、Actions 許可ポリシーに GitHub が reco の知らない値を返した Actions の実行許可の観測結果。
+// 取得条件を判断できない選択方式の Actions 許可条件も、ポリシーと同じ理由で観測不能になる。
+func actionsWithUnknownPolicy(shaPinningRequired bool) *github.ActionsPermissions {
+	return &github.ActionsPermissions{
+		Enabled:            true,
+		AllowedActions:     github.Unavailable[setting.AllowedActionsPolicy](github.UnavailableUnknownValue),
+		SHAPinningRequired: github.Observed(shaPinningRequired),
+		SelectedActions:    github.Unavailable[setting.SelectedActionsCriteria](github.UnavailableUnknownValue),
+	}
+}
+
 // actionsDisabled は、Actions が無効のリポジトリの Actions の実行許可の観測結果。
 func actionsDisabled() *github.ActionsPermissions {
 	return &github.ActionsPermissions{
@@ -48,7 +59,12 @@ func environments(existing ...github.Environment) *github.Environments {
 
 // observedEnvironment は、ID id、GitHub の綴り name、方式 mode で、保護ルールのない Environment の観測結果。
 func observedEnvironment(id github.EnvironmentID, name string, mode setting.DeploymentBranchPolicyMode) github.Environment {
-	return github.Environment{ID: id, Name: name, DeploymentBranchPolicyMode: mode}
+	return github.Environment{ID: id, Name: name, DeploymentBranchPolicyMode: mode, Protection: unprotected()}
+}
+
+// unprotected は、保護ルールのない Environment の保護設定の観測結果。観測は保護ルールがなければ担当者の集合を空集合の観測値にする。
+func unprotected() github.EnvironmentProtection {
+	return github.EnvironmentProtection{ReviewerSet: github.Observed(setting.ReviewerSetOfRule(nil))}
 }
 
 // modeValue は、方式 mode のデプロイ元制限の値。
@@ -63,10 +79,12 @@ func selectedEnvironment(id github.EnvironmentID, name string, patterns []settin
 	for i, pattern := range patterns {
 		identified[pattern] = ids[i]
 	}
+	observedPatterns := github.Observed(github.DeploymentPatterns{Existing: slices.Clone(patterns), IDs: identified})
 	return github.Environment{
 		ID: id, Name: name,
 		DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
-		DeploymentPatterns:         &github.DeploymentPatterns{Existing: slices.Clone(patterns), IDs: identified},
+		DeploymentPatterns:         &observedPatterns,
+		Protection:                 unprotected(),
 	}
 }
 
@@ -88,12 +106,18 @@ func selectedPolicy(patterns ...setting.DeploymentPattern) setting.DeploymentBra
 // withReviewers は、e に、自己承認の禁止が preventSelfReview で、種類が利用者で ID が ids の担当者を並べた required_reviewers の保護ルールを持たせた Environment の観測結果。
 // ids が空なら、担当者のいない保護ルールになる。
 func withReviewers(e github.Environment, preventSelfReview bool, ids ...int64) github.Environment {
-	rule := &setting.RequiredReviewers{PreventSelfReview: preventSelfReview}
+	e.Protection.ReviewerSet = github.Observed(reviewerRule(ids...))
+	e.Protection.PreventSelfReview = preventSelfReview
+	return e
+}
+
+// reviewerRule は、種類が利用者で ID が ids の担当者を並べた required_reviewers の保護ルールの担当者の集合。ids が空なら、担当者のいない保護ルールになる。
+func reviewerRule(ids ...int64) setting.ReviewerSet {
+	rule := &setting.RequiredReviewers{Reviewers: []setting.Reviewer{}}
 	for _, id := range ids {
 		rule.Reviewers = append(rule.Reviewers, setting.Reviewer{Type: setting.ReviewerUser, ID: id})
 	}
-	e.Protection.RequiredReviewers = rule
-	return e
+	return setting.ReviewerSetOfRule(rule)
 }
 
 // variables は、existing を一覧の全体とする変数の一覧の観測結果。Repository Variables と Environment Variables で同じ形である。

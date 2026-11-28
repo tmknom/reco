@@ -44,7 +44,7 @@ Secret scanning の2設定は、`GET /repos/{owner}/{repo}` の応答の `securi
 
 応答の `private` が真のときは、`security_and_analysis` を読まずに、二つの設定をリポジトリが非公開であることを理由とする観測不能とします。応答が値を含んでいても読みません。非公開リポジトリへの push protection の更新は `200` のまま値を変えず（[GitHub リポジトリ API 仕様](../../research/repositories.md) 5章）、そこで返る値は比べられる値として扱えないためです。
 
-`private` が偽のときは、二つの `status` がそろい、どちらも `enabled` か `disabled` であることを取得契約とします。`security_and_analysis` が欠けるか `null` の応答、`status` が欠けるか定義にない値の応答は、取得契約に適合しない応答です。公開リポジトリで `security_and_analysis` が欠けるのは権限の不足であり（第三者の公開リポジトリで確かめた。同 5章）、取得条件として根拠づけられないためです。この判定は、ほかの設定の領域の読み取り要求を送る前に行い、失敗が決まった観測のために要求を送りません。Secret scanning の領域を読まない観測は `security_and_analysis` を解釈せず、その形で失敗しません。General だけを宣言したリポジトリの `plan` を、宣言していない設定の応答の形で失敗させないためです。
+`private` が偽のときは、二つの `status` がそろうことを取得契約とします。`status` は GitHub が値を足し得る列挙として読み（公式の OpenAPI 記述は `enabled` と `disabled`）、reco の知らない文字列なら、その設定だけを、値が知らない値であることを理由とする観測不能にします（[GitHub API 通信の設計](../github-access.md) 2.1節）。二つは別々に判定し、片方が知らない値でも、もう片方は観測値を持ちます。依存する設定と前提の設定は、もう一方の状態によらず観測できるためです（[ドメインモデル](../domain.md) の GitHub が提供する対象と設定）。`security_and_analysis` が欠けるか `null` の応答と、`status` が欠けた応答は、取得契約に適合しない応答です。公開リポジトリで `security_and_analysis` が欠けるのは権限の不足であり（第三者の公開リポジトリで確かめた。同 5章）、取得条件として根拠づけられないためです。この判定は、ほかの設定の領域の読み取り要求を送る前に行い、失敗が決まった観測のために要求を送りません。Secret scanning の領域を読まない観測は `security_and_analysis` を解釈せず、その形で失敗しません。General だけを宣言したリポジトリの `plan` を、宣言していない設定の応答の形で失敗させないためです。
 
 ### Private vulnerability reporting
 
@@ -108,6 +108,8 @@ Dependabot security updates の変更の変更前提に、Dependabot alerts が�
 | 有効 | 問わない | 適用可能 | 適用可能 |
 | 無効 | `true` | 適用可能。Secret scanning を有効にする変更のあとに更新する | 適用可能 |
 | 無効 | 省略 | 適用不能。理由は Secret scanning が無効であること | 適用可能 |
+| 知らない値 | `true` | 適用可能。ただし Secret scanning の変更予定が比較不能で適用不能のため、変更計画の全体は承認の対象にならない | 適用可能 |
+| 知らない値 | 省略 | 適用不能。理由は Secret scanning の値を reco が知らないこと | 適用可能 |
 
 push protection を有効にする向きを適用不能にする根拠は、Dependabot security updates と異なり、GitHub が拒否せず `200` を返して値を変えないことです。送っても期待状態に至る手段がありません。無効にする向きは、Secret scanning が無効のときに反映されない動作を確かめておらず、確かめていない条件で止めないため適用可能とし、反映されなければ更新後の観測が不一致として検出します。
 
@@ -116,6 +118,7 @@ push protection を有効にする向きを適用不能にする根拠は、Depe
 | 有効にする | 問わない | 問わない | なし | 含めない |
 | 無効にする | 省略 | 有効 | push protection が計画時の観測値から無効になる | 計画時の観測値 |
 | 無効にする | 省略 | 無効 | なし | 計画時の観測値（副作用を示さなかった設定） |
+| 無効にする | 省略 | 知らない値 | push protection が無効になり得る（計画時の値は示せない） | 計画時の観測結果（同じ理由の観測不能のままであること） |
 | 無効にする | 宣言する | 問わない | なし | 含めない。先行する push protection の変更が無効にする |
 
 push protection を有効にする変更の変更前提には、Secret scanning が有効であることを含め、承認時に予定した値は有効です。GitHub が `200` を返して値を変えず、更新操作の結果からは反映されなかったことが分からないためです（[ドメインモデル](../domain.md) の承認と変更前提）。計画時に無効だった場合は、先行する Secret scanning の変更が有効にすることが予定どおりの変化です。push protection を無効にする変更の変更前提には含めません。
@@ -154,7 +157,7 @@ Security の5設定の変更予定は、それぞれ一つの更新操作から�
 
 ## 更新方式
 
-Secret scanning の2設定は、General と同じ `PATCH /repos/{owner}/{repo}` に、`security_and_analysis` の中の変える1項目の `status`（`enabled` か `disabled`）だけを送ります。正常応答は `200` で、本文が取得契約を満たせば成功です。`200` の本文が `security_and_analysis` を含まない場合があるため、本文でこの項目の値を確かめません（[GitHub API 通信の設計](../github-access.md) 3.2節）。1項目だけを送る `PATCH` が、もう一方の項目、`security_and_analysis` のほかの項目、トップレベルの一般設定を変えなかったことを公開リポジトリで確かめており（[GitHub リポジトリ API 仕様](../../research/repositories.md) 5章）、これを部分更新の根拠とします。更新後に更新直前の値と比べるのは、[General の設計](general.md) の更新方式が比べると定める General の設定と、Secret scanning の2設定のうちもう一方（副作用として示した場合を除く）です。
+Secret scanning の2設定は、General と同じ `PATCH /repos/{owner}/{repo}` に、`security_and_analysis` の中の変える1項目の `status`（`enabled` か `disabled`）だけを送ります。正常応答は `200` で、本文が取得契約を満たせば成功です。`200` の本文が `security_and_analysis` を含まない場合があるため、本文でこの項目の値を確かめません（[GitHub API 通信の設計](../github-access.md) 3.2節）。1項目だけを送る `PATCH` が、もう一方の項目、`security_and_analysis` のほかの項目、トップレベルの一般設定を変えなかったことを公開リポジトリで確かめており（[GitHub リポジトリ API 仕様](../../research/repositories.md) 5章）、これを部分更新の根拠とします。更新後に更新直前の値と比べるのは、[General の設計](general.md) の更新方式が比べると定める General の設定と、Secret scanning の2設定のうちもう一方（副作用として示した場合を除く）です。もう一方が更新直前と更新後の両方で知らない値なら比べられず、上の部分更新の確認結果を保全の根拠とします。片方が知らない値で、もう片方が観測値なら、予期しない変化とします（[ドメインモデル](../domain.md) の変更計画・論理的な設定変更・変更結果）。
 
 Dependabot alerts（`/repos/{owner}/{repo}/vulnerability-alerts`）、Dependabot security updates（`/repos/{owner}/{repo}/automated-security-fixes`）、Private vulnerability reporting（`/repos/{owner}/{repo}/private-vulnerability-reporting`）は、期待値が `true` なら本文のない `PUT`、`false` なら本文のない `DELETE` を送り、本文のない `204` を正常応答とします。すでに同じ状態でも `204` が返り、直後の取得が更新後の値を返すことを確かめています（GitHub リポジトリ API 仕様 6〜8章）。それぞれの更新エンドポイントで reco が観測する設定はその設定だけのため、更新後に比べる変更対象外の設定はありません。保全の根拠は次の確認結果です。
 

@@ -61,7 +61,7 @@ func decodeRulesetSummaries(items []json.RawMessage) ([]rulesetSummary, error) {
 
 // decodeRuleset は Ruleset の詳細の応答本文を、値か、解釈しなかったもののどちらかを持つ観測結果に変換する。
 // どの形を取得契約に適合しない応答とし、何を解釈しない部分とし、どの順に集めるかは、Rulesets の設計の取得契約と解釈しない部分に従う。
-// rulesetFields にないトップレベルのフィールドは読まない。定義外の値は応答本文の一部のため、文言に入れない。
+// rulesetFields にないトップレベルのフィールドは読まない。取得契約に適合しない値は応答本文の一部のため、文言に入れない。
 func decodeRuleset(data []byte) (Ruleset, error) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil {
@@ -92,14 +92,14 @@ func decodeRuleset(data []byte) (Ruleset, error) {
 	if err != nil {
 		return Ruleset{}, err
 	}
-	enforcement, ok := setting.ParseRulesetEnforcement(rawEnforcement)
-	if !ok {
-		return Ruleset{}, fmt.Errorf("%w: unsupported value: enforcement", ErrUnexpectedResponse)
-	}
 	var parts []UninterpretedPart
 	target, ok := setting.ParseRulesetTarget(rawTarget)
 	if !ok {
 		parts = append(parts, UninterpretedPart{Kind: UninterpretedTarget, Name: rawTarget})
+	}
+	enforcement, ok := setting.ParseRulesetEnforcement(rawEnforcement)
+	if !ok {
+		parts = append(parts, UninterpretedPart{Kind: UninterpretedEnforcement, Name: rawEnforcement})
 	}
 	conditions, conditionsParts, err := decodeRulesetConditions(fields["conditions"])
 	if err != nil {

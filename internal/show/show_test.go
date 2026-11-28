@@ -30,7 +30,7 @@ func TestWriteObservationResult(t *testing.T) {
 		SHAPinningRequired: github.Observed(true),
 		SelectedActions:    github.Unavailable[setting.SelectedActionsCriteria](github.UnavailableNotSelected),
 	}
-	readOnly := &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: false}
+	readOnly := &github.WorkflowPermissions{DefaultWorkflowPermissions: github.Observed(setting.PermissionRead), CanApprovePullRequestReviews: false}
 	notShared := &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessNone)}
 	privateApproval := &github.ForkPullRequestApproval{ApprovalPolicy: github.Unavailable[setting.ForkPullRequestApprovalPolicy](github.UnavailablePrivateRepository)}
 	noForkWorkflows := &github.PrivateForkPullRequestWorkflows{Conditions: github.Observed(setting.PrivateForkPullRequestWorkflowConditions{})}
@@ -105,7 +105,7 @@ func TestWriteObservationResult(t *testing.T) {
 				RepositoryID:                    1,
 				General:                         general,
 				ActionsPermissions:              allPolicy,
-				WorkflowPermissions:             &github.WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: true},
+				WorkflowPermissions:             &github.WorkflowPermissions{DefaultWorkflowPermissions: github.Observed(setting.PermissionWrite), CanApprovePullRequestReviews: true},
 				ActionsAccess:                   &github.ActionsAccess{AccessLevel: github.Observed(setting.AccessUser)},
 				ForkPullRequestApproval:         privateApproval,
 				PrivateForkPullRequestWorkflows: noForkWorkflows,
@@ -267,6 +267,85 @@ func TestWriteObservationResult(t *testing.T) {
 				privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
+			name: "an unknown allowed_actions value is a comment, selected_actions is omitted, and sha_pinning_required is shown",
+			observed: github.ObservationResult{
+				RepositoryID: 1,
+				General:      general,
+				ActionsPermissions: &github.ActionsPermissions{
+					Enabled:            true,
+					AllowedActions:     github.Unavailable[setting.AllowedActionsPolicy](github.UnavailableUnknownValue),
+					SHAPinningRequired: github.Observed(true),
+					SelectedActions:    github.Unavailable[setting.SelectedActionsCriteria](github.UnavailableUnknownValue),
+				},
+				WorkflowPermissions:             readOnly,
+				ActionsAccess:                   notShared,
+				ForkPullRequestApproval:         privateApproval,
+				PrivateForkPullRequestWorkflows: noForkWorkflows,
+				Retention:                       retention,
+				OIDCSubject:                     defaultOIDCSubject,
+				RepositoryVariables:             noVariables,
+				Environments:                    noEnvironments,
+				Dependabot:                      enabledDependabot,
+				SecretScanning:                  enabledSecretScanning,
+				PrivateVulnerabilityReporting:   disabledPrivateVulnerabilityReporting,
+				Rulesets:                        emptyRulesets,
+			},
+			want: header + generalLines +
+				"    actions:\n      permissions:\n        enabled: true\n" +
+				"        # allowed_actions: unavailable (GitHub returned a value that reco does not know)\n" +
+				"        sha_pinning_required: true\n" +
+				readOnlyWorkflow + notSharedAccess + privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
+		},
+		{
+			name: "an unknown default_workflow_permissions value is a comment and can_approve_pull_request_reviews is shown",
+			observed: github.ObservationResult{
+				RepositoryID:       1,
+				General:            general,
+				ActionsPermissions: allPolicy,
+				WorkflowPermissions: &github.WorkflowPermissions{
+					DefaultWorkflowPermissions:   github.Unavailable[setting.PermissionLevel](github.UnavailableUnknownValue),
+					CanApprovePullRequestReviews: true,
+				},
+				ActionsAccess:                   notShared,
+				ForkPullRequestApproval:         privateApproval,
+				PrivateForkPullRequestWorkflows: noForkWorkflows,
+				Retention:                       retention,
+				OIDCSubject:                     defaultOIDCSubject,
+				RepositoryVariables:             noVariables,
+				Environments:                    noEnvironments,
+				Dependabot:                      enabledDependabot,
+				SecretScanning:                  enabledSecretScanning,
+				PrivateVulnerabilityReporting:   disabledPrivateVulnerabilityReporting,
+				Rulesets:                        emptyRulesets,
+			},
+			want: header + generalLines + allPermissions +
+				"      workflow:\n        # default_workflow_permissions: unavailable (GitHub returned a value that reco does not know)\n        can_approve_pull_request_reviews: true\n" +
+				notSharedAccess + privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
+		},
+		{
+			name: "an unknown access_level value comments out the whole access key",
+			observed: github.ObservationResult{
+				RepositoryID:                    1,
+				General:                         general,
+				ActionsPermissions:              allPolicy,
+				WorkflowPermissions:             readOnly,
+				ActionsAccess:                   &github.ActionsAccess{AccessLevel: github.Unavailable[setting.AccessLevel](github.UnavailableUnknownValue)},
+				ForkPullRequestApproval:         privateApproval,
+				PrivateForkPullRequestWorkflows: noForkWorkflows,
+				Retention:                       retention,
+				OIDCSubject:                     defaultOIDCSubject,
+				RepositoryVariables:             noVariables,
+				Environments:                    noEnvironments,
+				Dependabot:                      enabledDependabot,
+				SecretScanning:                  enabledSecretScanning,
+				PrivateVulnerabilityReporting:   disabledPrivateVulnerabilityReporting,
+				Rulesets:                        emptyRulesets,
+			},
+			want: header + generalLines + allPermissions + readOnlyWorkflow +
+				"      # access:\n      #   access_level: unavailable (GitHub returned a value that reco does not know)\n" +
+				privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
+		},
+		{
 			name: "rulesets are shown after security",
 			observed: github.ObservationResult{
 				RepositoryID:                    1,
@@ -323,22 +402,40 @@ func TestWriteObservationResult(t *testing.T) {
 			t.Errorf("writeObservationResult() error = %v, want %v", err, errWrite)
 		}
 	})
+}
 
-	t.Run("access level unavailable for a reason other than public panics", func(t *testing.T) {
-		// General はほかの panic で止まらないよう、観測し得る値にする
-		observed := github.ObservationResult{
-			General:             general,
-			ActionsPermissions:  allPolicy,
-			WorkflowPermissions: readOnly,
-			ActionsAccess:       &github.ActionsAccess{AccessLevel: github.Unavailable[setting.AccessLevel](github.UnavailableActionsDisabled)},
-		}
-		defer func() {
-			if recover() == nil {
-				t.Error("writeObservationResult() did not panic for an access level unavailable while GitHub Actions is disabled")
-			}
-		}()
-		_ = writeObservationResult(&bytes.Buffer{}, target, observed)
-	})
+// TestWriteActionsSettings_UndefinedReasonPanics は、観測が作らない理由の観測不能を、ほかの理由の文言で示さず、行を黙って省きもしないことを確かめる。
+// 対象の関数を直接呼び、ほかの行の書き込みが起こす panic と区別する。
+func TestWriteActionsSettings_UndefinedReasonPanics(t *testing.T) {
+	cases := []struct {
+		name  string
+		write func(b *strings.Builder)
+	}{
+		{name: "allowed_actions unavailable for a reason other than disabled actions or an unknown value panics", write: func(b *strings.Builder) {
+			writeActionsPermissions(b, github.ActionsPermissions{
+				Enabled:            true,
+				AllowedActions:     github.Unavailable[setting.AllowedActionsPolicy](github.UnavailablePublicRepository),
+				SHAPinningRequired: github.Observed(false),
+				SelectedActions:    github.Unavailable[setting.SelectedActionsCriteria](github.UnavailablePublicRepository),
+			})
+		}},
+		{name: "default_workflow_permissions unavailable for a reason other than an unknown value panics", write: func(b *strings.Builder) {
+			writeWorkflowPermissions(b, github.WorkflowPermissions{DefaultWorkflowPermissions: github.Unavailable[setting.PermissionLevel](github.UnavailableActionsDisabled)})
+		}},
+		{name: "access level unavailable for a reason other than public or an unknown value panics", write: func(b *strings.Builder) {
+			writeActionsAccess(b, github.ActionsAccess{AccessLevel: github.Unavailable[setting.AccessLevel](github.UnavailableActionsDisabled)})
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Error("did not panic")
+				}
+			}()
+			tc.write(&strings.Builder{})
+		})
+	}
 }
 
 const (

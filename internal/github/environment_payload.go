@@ -19,7 +19,7 @@ type environmentPayload struct {
 }
 
 // decodeEnvironment は Environment の一覧の要素を観測値に変換する。個別パターンは別の要求で読むため、持たない状態で返す。
-// 必須の項目が一つでも欠ければ、既定値で補わず契約外の応答とする。定義外の値は応答本文の一部のため、文言に入れない。
+// 必須の項目が一つでも欠ければ、既定値で補わず契約外の応答とする。
 func decodeEnvironment(data json.RawMessage) (Environment, error) {
 	var p environmentPayload
 	if err := json.Unmarshal(data, &p); err != nil {
@@ -120,43 +120,52 @@ type reviewerPayload struct {
 // branch_policy はデプロイ元制限として deployment_branch_policy から読むため、読み飛ばす。
 // それ以外の種類も読み飛ばす。GitHub が保護ルールの種類を足しても、reco が値を持たない種類のために観測を失敗させないため。
 // wait_timer の保護ルールがなければ待機時間を 0 とする。GitHub は 0 を保存せず、保護ルールをなくして表すため。
-func decodeEnvironmentProtection(rules []json.RawMessage, canAdminsBypass bool) (setting.EnvironmentProtection, error) {
-	protection := setting.EnvironmentProtection{CanAdminsBypass: canAdminsBypass}
-	var hasWaitTimer bool
+// required_reviewers の保護ルールがなければ、担当者の集合を空集合の観測値、自己承認の禁止を偽とする。
+// GitHub は担当者をすべて外すと保護ルールごと値をなくし、担当者だけを設定し直すと自己承認の禁止を偽で作るため。
+// 担当者のいない保護ルールは、自己承認の禁止を偽とみなさず保護ルールが持つ値にする。GitHub はこの保護ルールに真を残し、担当者を戻すと真のまま戻すため。
+func decodeEnvironmentProtection(rules []json.RawMessage, canAdminsBypass bool) (EnvironmentProtection, error) {
+	protection := EnvironmentProtection{ReviewerSet: Observed(setting.ReviewerSetOfRule(nil)), CanAdminsBypass: canAdminsBypass}
+	var hasWaitTimer, hasRequiredReviewers bool
 	for _, raw := range rules {
 		var rule protectionRulePayload
 		if err := json.Unmarshal(raw, &rule); err != nil {
-			return setting.EnvironmentProtection{}, fmt.Errorf("%w: protection_rules: %w", ErrUnexpectedResponse, err)
+			return EnvironmentProtection{}, fmt.Errorf("%w: protection_rules: %w", ErrUnexpectedResponse, err)
 		}
 		if rule.Type == nil {
-			return setting.EnvironmentProtection{}, fmt.Errorf("%w: missing fields: protection_rules.type", ErrUnexpectedResponse)
+			return EnvironmentProtection{}, fmt.Errorf("%w: missing fields: protection_rules.type", ErrUnexpectedResponse)
 		}
 		switch *rule.Type {
 		case "wait_timer":
 			if rule.WaitTimer == nil {
-				return setting.EnvironmentProtection{}, fmt.Errorf("%w: missing fields: protection_rules.wait_timer", ErrUnexpectedResponse)
+				return EnvironmentProtection{}, fmt.Errorf("%w: missing fields: protection_rules.wait_timer", ErrUnexpectedResponse)
 			}
 			if hasWaitTimer {
-				return setting.EnvironmentProtection{}, fmt.Errorf("%w: duplicate protection rule: wait_timer", ErrUnexpectedResponse)
+				return EnvironmentProtection{}, fmt.Errorf("%w: duplicate protection rule: wait_timer", ErrUnexpectedResponse)
 			}
 			hasWaitTimer = true
 			protection.WaitTimer = *rule.WaitTimer
 		case "required_reviewers":
-			required, err := decodeRequiredReviewers(rule)
+			reviewerSet, preventSelfReview, err := decodeRequiredReviewers(rule)
 			if err != nil {
-				return setting.EnvironmentProtection{}, err
+				return EnvironmentProtection{}, err
 			}
-			if protection.RequiredReviewers != nil {
-				return setting.EnvironmentProtection{}, fmt.Errorf("%w: duplicate protection rule: required_reviewers", ErrUnexpectedResponse)
+			if hasRequiredReviewers {
+				return EnvironmentProtection{}, fmt.Errorf("%w: duplicate protection rule: required_reviewers", ErrUnexpectedResponse)
 			}
-			protection.RequiredReviewers = &required
+			hasRequiredReviewers = true
+			protection.ReviewerSet = reviewerSet
+			protection.PreventSelfReview = preventSelfReview
 		}
 	}
 	return protection, nil
 }
 
-// decodeRequiredReviewers は required_reviewers の保護ルールを読む。
-func decodeRequiredReviewers(rule protectionRulePayload) (setting.RequiredReviewers, error) {
+// decodeRequiredReviewers は required_reviewers の保護ルールを、担当者の集合の観測結果と自己承認の禁止の値に変換する。
+// 担当者の type は GitHub が値を足し得る列挙として読み、すべての担当者を取得契約と照らしたうえで、知らない種類の担当者が一人でもいれば担当者の集合を観測不能にする。
+// reviewer の形は担当者の種類ごとに違い得るため、知らない種類の担当者の取得契約は type だけとする。
+// 知らない種類の担当者を除いた残りを観測値にすると、照合と変更前提がその担当者を見落とすため。
+// 自己承認の禁止は同じ保護ルールの boolean で、担当者の種類によらず観測値にする。
+func decodeRequiredReviewers(rule protectionRulePayload) (SettingObservation[setting.ReviewerSet], bool, error) {
 	var missing []string
 	if rule.Reviewers == nil {
 		missing = append(missing, "protection_rules.reviewers")
@@ -165,27 +174,32 @@ func decodeRequiredReviewers(rule protectionRulePayload) (setting.RequiredReview
 		missing = append(missing, "protection_rules.prevent_self_review")
 	}
 	if len(missing) > 0 {
-		return setting.RequiredReviewers{}, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missing, ", "))
+		return SettingObservation[setting.ReviewerSet]{}, false, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missing, ", "))
 	}
 	reviewers := make([]setting.Reviewer, len(*rule.Reviewers))
 	var logins map[setting.Reviewer]string
+	var unknownType bool
 	for i, r := range *rule.Reviewers {
 		if r == nil {
-			return setting.RequiredReviewers{}, fmt.Errorf("%w: unsupported value: protection_rules.reviewers", ErrUnexpectedResponse)
+			return SettingObservation[setting.ReviewerSet]{}, false, fmt.Errorf("%w: unsupported value: protection_rules.reviewers", ErrUnexpectedResponse)
 		}
 		var missingReviewer []string
+		var reviewerType setting.ReviewerType
 		if r.Type == nil {
 			missingReviewer = append(missingReviewer, "protection_rules.reviewers.type")
+		} else {
+			known, ok := setting.ParseReviewerType(*r.Type)
+			if !ok {
+				unknownType = true
+				continue
+			}
+			reviewerType = known
 		}
 		if r.Reviewer == nil || r.Reviewer.ID == nil {
 			missingReviewer = append(missingReviewer, "protection_rules.reviewers.reviewer.id")
 		}
 		if len(missingReviewer) > 0 {
-			return setting.RequiredReviewers{}, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missingReviewer, ", "))
-		}
-		reviewerType, ok := setting.ParseReviewerType(*r.Type)
-		if !ok {
-			return setting.RequiredReviewers{}, fmt.Errorf("%w: unsupported value: protection_rules.reviewers.type", ErrUnexpectedResponse)
+			return SettingObservation[setting.ReviewerSet]{}, false, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missingReviewer, ", "))
 		}
 		reviewers[i] = setting.Reviewer{Type: reviewerType, ID: *r.Reviewer.ID}
 		// login は表示にだけ使うため、欠落や形の不一致は失敗にせず持たない
@@ -196,7 +210,10 @@ func decodeRequiredReviewers(rule protectionRulePayload) (setting.RequiredReview
 			logins[reviewers[i]] = *r.Reviewer.Login
 		}
 	}
-	return setting.RequiredReviewers{PreventSelfReview: *rule.PreventSelfReview, Reviewers: reviewers, Logins: logins}, nil
+	if unknownType {
+		return Unavailable[setting.ReviewerSet](UnavailableUnknownValue), *rule.PreventSelfReview, nil
+	}
+	return Observed(setting.ReviewerSetOfRule(&setting.RequiredReviewers{Reviewers: reviewers, Logins: logins})), *rule.PreventSelfReview, nil
 }
 
 // isLogin は s が、表示の行にそのまま書ける login の形かを返す。
@@ -214,6 +231,35 @@ func isLogin(s string) bool {
 	return true
 }
 
+// decodeDeploymentPatterns は個別パターンの一覧の全要素を、一覧の並びのまま個別パターンの観測結果に変換する。
+// 同じ種類と名前の個別パターンが二つ以上あれば失敗する。ID の対応が黙って上書きされ、取り除く要求の宛先を誤らせるため。
+// すべての要素を取得契約と照らしたうえで、知らない種類の個別パターンが一つでもあれば観測不能にする。
+// 知らない種類の個別パターンを除いた残りを観測値にすると、照合と変更前提がその個別パターンを見落とすため。
+func decodeDeploymentPatterns(items []json.RawMessage) (SettingObservation[DeploymentPatterns], error) {
+	patterns := make([]setting.DeploymentPattern, 0, len(items))
+	ids := make(map[setting.DeploymentPattern]DeploymentPatternID, len(items))
+	var unknownType bool
+	for _, item := range items {
+		pattern, id, known, err := decodeDeploymentPattern(item)
+		if err != nil {
+			return SettingObservation[DeploymentPatterns]{}, err
+		}
+		if !known {
+			unknownType = true
+			continue
+		}
+		if _, duplicate := ids[pattern]; duplicate {
+			return SettingObservation[DeploymentPatterns]{}, fmt.Errorf("%w: duplicate deployment pattern", ErrUnexpectedResponse)
+		}
+		patterns = append(patterns, pattern)
+		ids[pattern] = id
+	}
+	if unknownType {
+		return Unavailable[DeploymentPatterns](UnavailableUnknownValue), nil
+	}
+	return Observed(DeploymentPatterns{Existing: patterns, IDs: ids}), nil
+}
+
 // deploymentPatternPayload は欠落と null を検出するため、各フィールドをポインタで受ける。
 type deploymentPatternPayload struct {
 	ID   *int64  `json:"id"`
@@ -221,12 +267,12 @@ type deploymentPatternPayload struct {
 	Type *string `json:"type"`
 }
 
-// decodeDeploymentPattern は個別パターンの一覧の要素を、値と GitHub の ID に変換する。
-// name は空文字列でもそのまま値にする。定義外の type は応答本文の一部のため、文言に入れない。
-func decodeDeploymentPattern(data json.RawMessage) (setting.DeploymentPattern, DeploymentPatternID, error) {
+// decodeDeploymentPattern は個別パターンの一覧の要素を、値と GitHub の ID と、type が reco の知る値かに変換する。
+// name は空文字列でもそのまま値にする。type は GitHub が値を足し得る列挙として読み、知らない値なら失敗にせず、値をゼロ値にして偽を返す。
+func decodeDeploymentPattern(data json.RawMessage) (setting.DeploymentPattern, DeploymentPatternID, bool, error) {
 	var p deploymentPatternPayload
 	if err := json.Unmarshal(data, &p); err != nil {
-		return setting.DeploymentPattern{}, 0, fmt.Errorf("%w: %w", ErrUnexpectedResponse, err)
+		return setting.DeploymentPattern{}, 0, false, fmt.Errorf("%w: %w", ErrUnexpectedResponse, err)
 	}
 	var missing []string
 	if p.ID == nil {
@@ -239,11 +285,11 @@ func decodeDeploymentPattern(data json.RawMessage) (setting.DeploymentPattern, D
 		missing = append(missing, "type")
 	}
 	if len(missing) > 0 {
-		return setting.DeploymentPattern{}, 0, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missing, ", "))
+		return setting.DeploymentPattern{}, 0, false, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missing, ", "))
 	}
 	patternType, ok := setting.ParseDeploymentPatternType(*p.Type)
 	if !ok {
-		return setting.DeploymentPattern{}, 0, fmt.Errorf("%w: unsupported value: type", ErrUnexpectedResponse)
+		return setting.DeploymentPattern{}, DeploymentPatternID(*p.ID), false, nil
 	}
-	return setting.DeploymentPattern{Type: patternType, Name: *p.Name}, DeploymentPatternID(*p.ID), nil
+	return setting.DeploymentPattern{Type: patternType, Name: *p.Name}, DeploymentPatternID(*p.ID), true, nil
 }

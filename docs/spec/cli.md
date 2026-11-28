@@ -393,7 +393,7 @@ Repositories checked: 1
 | 宣言した名前と同じかどうかを判定できない名前の Ruleset があり、同じ名前の Ruleset はない（Ruleset に当たる） | `(existence unknown)` | その名前の Ruleset が存在するかを確かめられない |
 | リポジトリが非公開（Ruleset に当たる） | `(private repository)` | reco は非公開リポジトリの Ruleset を扱わない |
 | Ruleset の値が reco の解釈しない部分を含む（Ruleset に当たる） | `(uninterpreted parts)` | Ruleset は存在するが、reco はその値の全体を読み取れない |
-| GitHub が reco の知らない値を返した（マージメッセージに当たる） | `(unknown value)` | GitHub は値を返したが、reco はその値の意味を知らない |
+| GitHub が reco の知らない値を返した（マージメッセージ、Actions 許可ポリシー、選択方式の Actions 許可条件、`default_workflow_permissions`、`access_level`、Fork Pull Request ワークフローの承認ポリシー、Secret scanning の有効状態、リポジトリの push protection、Environment のデプロイ元制限と担当者の集合に当たる） | `(unknown value)` | GitHub は値を返したが、reco はその値の意味を知らない |
 | GitHub が値を返さなかった（`web_commit_signoff_required` に当たる） | `(not returned)` | GitHub がこの設定の値を応答に含めず、reco は現在の値を確かめられない |
 
 括弧の状態は、観測したリポジトリの状態から決まり、推測した値ではありません。GitHub が保存している値を示すものでもありません。利用者が知りたいのは承認すると何が起きるかであり、その判断には、いま効いている状態と宣言した値があれば足ります。確認済みの差分とは、現在値が括弧で示されることで区別します。
@@ -589,6 +589,14 @@ Repository: example/project-b
     Applicability: not applicable (Secret scanning is disabled; declare secret_scanning: true to enable it)
 ```
 
+Secret scanning の有効状態に GitHub が reco の知らない値を返したときは、有効と確かめられないため、次のとおり示します。
+
+```text
+Repository: example/project-b
+  security.secret_scanning_push_protection: false -> true
+    Applicability: not applicable (GitHub returned a value of secret_scanning that reco does not know; remove secret_scanning_push_protection from the configuration)
+```
+
 ```text
 Repository: example/project-a
   general.allow_squash_merge: true -> false
@@ -654,6 +662,14 @@ Repository: example/project-a
 Repository: example/project-a
   security.secret_scanning: true -> false
     Side effect: GitHub also disables secret_scanning_push_protection, which is currently true
+```
+
+push protection に GitHub が reco の知らない値を返したときは、現在値を示さず、無効になり得ることを示します。
+
+```text
+Repository: example/project-a
+  security.secret_scanning: true -> false
+    Side effect: GitHub may also disable secret_scanning_push_protection (reco does not know its current value)
 ```
 
 ```text
@@ -822,7 +838,7 @@ Repositories updated: 1
 
 更新を一度も開始していない変更は `not attempted` とし、変更前提の不成立と、先行する異常による停止のどちらに当たるかを区別して理由を示します。先行する異常による停止は、同じリポジトリの先行する論理的な設定変更が完了しなかった場合（`Stopped: a preceding change did not complete`）と、先行するリポジトリが完了しなかった場合（`Stopped: a preceding repository did not complete`）を文言で区別します。
 
-変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を `Precondition: <設定> changed since approval` と示します。`<設定>` は、関連リソースそのものの変化なら `environments.<名前>`、`actions.variables.<名前>`、`rulesets.<名前>` のように関連リソースの名前で示します。変更前提で比べる設定（変える設定のほか、`Side effect:` で示した設定、副作用として示さなかったが計画時の値のままであることを確かめる設定、更新が値を変える前提として必要な設定）は、設定ごとの設計の各文書の「論理的な設定変更と更新操作」が定めます。GitHub の取得条件により確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。承認した先行する変更による予定どおりの変化は示しません。複数の設定が変わっていた場合は、一つだけ示します。関連リソースそのものと、その中の設定やそれに属する関連リソースが両方変わっていれば、関連リソースそのものを示します。それ以外では、論理的な設定変更が変える設定を優先します。
+変更前提が、承認したあとに現在値が変わったことで成立しなかった場合は、変わった設定を `Precondition: <設定> changed since approval` と示します。`<設定>` は、関連リソースそのものの変化なら `environments.<名前>`、`actions.variables.<名前>`、`rulesets.<名前>` のように関連リソースの名前で示します。変更前提で比べる設定（変える設定のほか、`Side effect:` で示した設定、副作用として示さなかったが計画時の値のままであることを確かめる設定、更新が値を変える前提として必要な設定）は、設定ごとの設計の各文書の「論理的な設定変更と更新操作」が定めます。GitHub の取得条件や、GitHub が返した reco の知らない値のために確認できなかった値を確認できるようになった場合と、その逆も、変化として示します。承認した先行する変更による予定どおりの変化は示しません。複数の設定が変わっていた場合は、一つだけ示します。関連リソースそのものと、その中の設定やそれに属する関連リソースが両方変わっていれば、関連リソースそのものを示します。それ以外では、論理的な設定変更が変える設定を優先します。
 
 `failed` には、更新操作の失敗、更新操作の成否不明、成功応答後の期待状態の確認失敗、成功応答後の期待状態との不一致、成功応答後の変更対象外の設定の予期しない変化のいずれに当たるかを添えて示します。先行操作の成功後に後続操作を開始できなかった場合は、その旨を示します。変更対象外の設定の予期しない変化では、観測した変化を示しますが、reco に起因するとは断定しません。変更対象外の設定には、同じリポジトリのほかの管理設定も含みます。更新要求の応答を確認できない場合は成否不明とし、その後の再観測で期待状態が一致しても、更新操作の成否が判明したことにはならず、`updated` に変更しません。この再観測で変更対象外の設定の変化を観測した場合も、更新操作の結果と分けて示します。成否不明になった原因は、理由の行では区別せず、エラーとして示します。
 
@@ -836,9 +852,11 @@ Environment の方式の変更、担当者の集合の変更、自己承認の�
 
 Ruleset の作成か値の変更のあとに Ruleset が存在しなかった場合は、`does not match` と示します。宣言した名前と同じかどうかを判定できない名前の Ruleset が現れ、存在を確かめられなかった場合は `not confirmed (ruleset existence unknown)` と示します。作成か値の変更をした Ruleset が reco の解釈しない部分を含んでいた場合は `not confirmed (the ruleset contains parts that reco does not interpret)` と示します。存在は確かめているものの、値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。解釈しなかったものは変更結果に並べず、`plan` が示します。Ruleset の削除のあとにその名前の Ruleset がまだ存在した場合は `does not match` と示します。存在を確かめられなかった場合と、その名前の Ruleset が reco の解釈しない部分を含んで存在した場合は、作成と値の変更と同じ `not confirmed` の表示です。後者は、計画時に同じ状態の Ruleset を比較不能にするのと同じ判定を使うためで、消したはずの名前の Ruleset が存在しており、削除が効いていないことは確定しています。
 
-マージメッセージの変更のあとに、GitHub がその組に reco の知らない値を返した場合は、`not confirmed (GitHub returned a value that reco does not know)` と示します。`web_commit_signoff_required` の変更のあとに、GitHub がその値を返さなかった場合は、`not confirmed (GitHub did not return the value)` と示します。どちらも、値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。
+設定の変更のあとに、GitHub がその設定に reco の知らない値を返した場合は、`not confirmed (GitHub returned a value that reco does not know)` と示します。`web_commit_signoff_required` の変更のあとに、GitHub がその値を返さなかった場合は、`not confirmed (GitHub did not return the value)` と示します。どちらも、値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。
 
 変更対象外の設定は、管理設定と同じ形の名前で示します。マージメッセージは `general.squash_merge_commit` と `general.merge_commit` の名前で、値は4章と同じ `title: <タイトル>, message: <本文>` の形で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.prevent_self_review`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` が4章と同じ表記（`30 minutes`、保護ルールがなければ `0 minutes`）です。`required_reviewers` は担当者の集合で、4章と同じ表記（担当者がいなければ `[]`、担当者のいない保護ルールは `[] (protection rule without reviewers)`）で GitHub が返した順に示し、login は添えません。login だけの変化は予期しない変化に数えないためです。`prevent_self_review` と `can_admins_bypass` は `true` か `false` で、`prevent_self_review` は `required_reviewers` の保護ルールがなければ `false` です。Environment の `PUT` の更新操作（方式、担当者の集合、自己承認の禁止、デプロイの待機時間の変更）のあとは、同じ Environment のデプロイ元制限の方式も `environments.<名前>.deployment_branch_policy` の名前で比べ、値は方式の名前（`all`、`protected_branches`、`selected`）で示します。個別パターンは別の更新エンドポイントの設定のため、比べず、値にも含めません。複数が変わっていれば、`deployment_branch_policy`、`wait_timer`、`required_reviewers`、`prevent_self_review`、`can_admins_bypass` の順に1行ずつ示します。
+
+更新直前か更新後の片方で GitHub が reco の知らない値を返し、もう片方で値を返した変更対象外の設定は、変化として示し、知らない値の側を4章と同じ `(unknown value)` と示します。知らない値は reco の知るどの値とも異なるためです。
 
 設定グループの省略できる項目を省略した宣言で、その項目が更新の前後で変わった場合は、`<管理設定の名前>.<項目のキー>` の名前で示します。OIDC トークンの subject のカスタマイズの `use_immutable_subject` は、`actions.oidc_subject.use_immutable_subject` と示し、値は `true` か `false` です。Ruleset のルールの省略できるパラメータは、`<管理設定の名前>.<ルール型>.<パラメータ>` の名前で示します。`required_status_checks` の `do_not_enforce_on_create` は、`rulesets.<名前>.required_status_checks.do_not_enforce_on_create` と示し、値は `true` か `false` です。`pull_request` の `allowed_merge_methods` と `require_extra_approval_for_unattributed_changes` は、`rulesets.<名前>.pull_request.allowed_merge_methods` などと示し、値は4章と同じ表記です。`allowed_merge_methods` は集合として比べ、並びだけの変化は示しません。
 
@@ -1222,6 +1240,37 @@ GitHub が、タイトルか本文に reco の知らない値を返したとき�
       # web_commit_signoff_required: unavailable (GitHub did not return the value)
 ```
 
+マージメッセージのほかの列挙の設定でも、GitHub が reco の知らない値を返したときは、その設定の行を YAML のコメントとし、値の位置に `unavailable (GitHub returned a value that reco does not know)` と示します。ほかの行はいつもどおり示し、エラーにしません。知らない値そのものは示しません。当たるのは、`allowed_actions`、`default_workflow_permissions`、`access_level`、`approval_policy`、`secret_scanning`、`secret_scanning_push_protection`、Environment の `deployment_branch_policy` と `required_reviewers` です。設定ごとの形は次のとおりです。
+
+- `allowed_actions`：その行だけをコメントにする。`selected_actions` の行は示さない。確認できない理由が `allowed_actions` の行から分かるため。`sha_pinning_required` はいつもどおり示す
+- `default_workflow_permissions`、`secret_scanning`、`secret_scanning_push_protection`：その行だけをコメントにする
+- `access_level`：公開リポジトリと同じく、`access` とその下の行をコメントにする
+- `approval_policy`：`fork_pull_requests` とその下の2行をコメントにする。値を持つ行が残らず、設定のない空のマッピングは設定宣言として読めないため
+- Environment の `deployment_branch_policy`：`mode` と `patterns` の行を示さず、`deployment_branch_policy` の値の位置に示す。方式だけを示すと、個別パターンのない宣言として読めるため
+- Environment の `required_reviewers`：その行だけをコメントにする。`prevent_self_review` と `wait_timer` はいつもどおり示す
+
+```text
+      permissions:
+        enabled: true
+        # allowed_actions: unavailable (GitHub returned a value that reco does not know)
+        sha_pinning_required: false
+```
+
+```text
+      # fork_pull_requests:
+      #   approval_policy: unavailable (GitHub returned a value that reco does not know)
+      #   private_repositories: unavailable (the repository is public)
+```
+
+```text
+      - name: "production"
+        # deployment_branch_policy: unavailable (GitHub returned a value that reco does not know)
+        # required_reviewers: unavailable (GitHub returned a value that reco does not know)
+        prevent_self_review: true
+        wait_timer: 0 # minutes
+        # variables: none
+```
+
 `allowed_actions` が `selected` のときは、`selected_actions` の3項目を `sha_pinning_required` の前に示します。`patterns_allowed` は、パターンを関連リソースの名前と同じく二重引用符で囲んでエスケープし、GitHub が返した順に1行に一つずつ並べます。空の集合は `[]` と示します。
 
 ```text
@@ -1458,6 +1507,7 @@ Ruleset が reco の解釈しない部分を含むときは、`name` だけを�
 | 行の形 | 解釈しなかったもの |
 |---|---|
 | `target: "<値>"` | `branch` 以外の `target` |
+| `enforcement: "<値>"` | `disabled`、`active`、`evaluate` 以外の `enforcement` |
 | `conditions key: "<キー>"` | `conditions` か `ref_name` の、reco が読まないキー（`ref_name` の中のキーは `ref_name.<キー>`） |
 | `bypass actor type: "<値>"` | reco が扱わない `actor_type` |
 | `bypass mode: "<値>"` | reco が扱わない `bypass_mode` |

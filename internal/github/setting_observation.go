@@ -18,8 +18,11 @@ const (
 	// UnavailablePrivateRepository は、リポジトリが非公開であることを表す。
 	UnavailablePrivateRepository
 	// UnavailableUninterpretedParts は、関連リソースの値が reco の解釈しない部分を含むことを表す。
+	// 値の中の列挙の項目に GitHub が reco の知らない値を返したことも、解釈しない部分に数えてこの理由にする。
 	UnavailableUninterpretedParts
 	// UnavailableUnknownValue は、GitHub が値を足し得る列挙の設定に、GitHub が reco の知らない値を返したことを表す。
+	// 値が要素の集合なら、どれか一つの要素の列挙の項目が知らない値であることを含む。
+	// 上位の設定が知らない値のために取得条件を判断できない設定も、上位の設定と同じくこの理由にする。
 	UnavailableUnknownValue
 	// UnavailableNotReturned は、公式の仕様が省略を許す値を、GitHub が応答に含めなかったことを表す。
 	UnavailableNotReturned
@@ -56,4 +59,13 @@ func (o SettingObservation[T]) UnavailableReason() UnavailableReason {
 		panic("github: setting observation is not unavailable")
 	}
 	return o.reason
+}
+
+// HasUnknownValue は、GitHub が reco の知らない値を返したことを理由とする観測不能かを返す。観測値なら偽を返す。
+// 値を読む前に Value で確かめる手順を利用者に負わせず、ゼロ値は UnavailableReason と同じく panic で検出する。
+func (o SettingObservation[T]) HasUnknownValue() bool {
+	if o.observed {
+		return false
+	}
+	return o.UnavailableReason() == UnavailableUnknownValue
 }

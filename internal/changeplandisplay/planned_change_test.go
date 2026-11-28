@@ -305,6 +305,25 @@ func TestPlannedChangeText(t *testing.T) {
 				"    Side effect: GitHub also disables secret_scanning_push_protection, which is currently true\n",
 		},
 		{
+			name: "push protection with secret scanning of an unknown value shows the reason to remove push protection",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.RepositoryPushProtection}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
+				Result: changeplan.Mismatch, Applicability: changeplan.NotApplicable(changeplan.NotApplicableSecretScanningUnknown),
+			},
+			want: "  security.secret_scanning_push_protection: false -> true\n" +
+				"    Applicability: not applicable (GitHub returned a value of secret_scanning that reco does not know; remove secret_scanning_push_protection from the configuration)\n",
+		},
+		{
+			name: "disabling secret scanning shows that push protection of an unknown value may be disabled without its current value",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.SecretScanningEnabled}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false),
+				Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
+				SideEffects: []changeplan.SideEffect{{Kind: changeplan.SideEffectPushProtectionDisabled, Observed: github.Unavailable[setting.Value](github.UnavailableUnknownValue)}},
+			},
+			want: "  security.secret_scanning: true -> false\n" +
+				"    Side effect: GitHub may also disable secret_scanning_push_protection (reco does not know its current value)\n",
+		},
+		{
 			name: "disabling a merge method with one merge method left disabled names it and the declaration to enable it",
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.AllowSquashMerge}, Observed: github.Observed(setting.BoolValue(true)), Desired: setting.BoolValue(false),

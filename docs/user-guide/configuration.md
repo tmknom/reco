@@ -584,6 +584,10 @@ repositories:
 - `pull_request` の `parameters` は、例に示した5つのキーをすべて書く。`required_approving_review_count` は `0` から `10` の整数。省略できるキーは下の表のとおり
 - `deletion` と `non_fast_forward` には `parameters` を書かない
 - 一覧の要素の順序は問わない。並びだけが違っても変更にならない
+- 非公開リポジトリには書けない。書くと `plan` に `Applicability: not applicable` と `Plan cannot be applied.` が出る
+- GitHub 上に、半角の英数字、空白、記号以外の文字（`é` など）を含む名前の Ruleset があると、そのリポジトリにまだない名前の Ruleset は作成できない。GitHub がその名前を書いた名前と同じとみなすかを reco が判断できないため、`plan` は `(existence unknown)` と `Applicability: not applicable` を示す。GitHub 上にすでにある Ruleset の名前を書いた場合は、内容を比べられる
+- reco がまだ解釈しないルール（`creation` など）や `pull_request` の設定（空でない `required_reviewers` など）を持つ Ruleset の名前を書くと、`plan` に `Applicability: not applicable` と、reco の解釈しない部分の一覧が出る。そうした Ruleset は設定ファイルから外す。`state: absent` を書いた場合も同じで、消える内容の全体を示せないため、reco は消さない
+- `é` などを含む名前の Ruleset があるリポジトリで、GitHub 上にない名前に `state: absent` を書くと、その名前の Ruleset がないことを reco が確かめられないため、`plan` は `(existence unknown) -> absent` と `Applicability: not applicable` を示す
 
 `pull_request` の `parameters` には、5つのキーのほかに、次のキーを書けます。
 
@@ -611,10 +615,6 @@ repositories:
 - `integration_id` には、リポジトリにインストールされた App の ID を書く。GitHub Actions は `15368`。インストールされていない App の ID は、`plan` では分からず、`apply` で GitHub が受け付けずに失敗する
 - 同じ `context` と `integration_id` の組を二度書けない。同じ `context` でも、`integration_id` の有無や値が違えば別のチェックとして書ける
 - `do_not_enforce_on_create` を省略すると、reco はこの値を比べず、送らない。ただし、GitHub は送らなかった `do_not_enforce_on_create` を `false` にするため、GitHub 上で `true` の Ruleset のほかの内容を変えようとすると、`plan` に `Applicability: not applicable` と `required_status_checks.do_not_enforce_on_create: true` が出る。今の値を保つなら `do_not_enforce_on_create: true` を、`false` に変えるなら `do_not_enforce_on_create: false` を書き足す
-- 非公開リポジトリには書けない。書くと `plan` に `Applicability: not applicable` と `Plan cannot be applied.` が出る
-- GitHub 上に、半角の英数字、空白、記号以外の文字（`é` など）を含む名前の Ruleset があると、そのリポジトリにまだない名前の Ruleset は作成できない。GitHub がその名前を書いた名前と同じとみなすかを reco が判断できないため、`plan` は `(existence unknown)` と `Applicability: not applicable` を示す。GitHub 上にすでにある Ruleset の名前を書いた場合は、内容を比べられる
-- reco がまだ解釈しないルール（`creation` など）や `pull_request` の設定（空でない `required_reviewers` など）を持つ Ruleset の名前を書くと、`plan` に `Applicability: not applicable` と、reco の解釈しない部分の一覧が出る。そうした Ruleset は設定ファイルから外す。`state: absent` を書いた場合も同じで、消える内容の全体を示せないため、reco は消さない
-- `é` などを含む名前の Ruleset があるリポジトリで、GitHub 上にない名前に `state: absent` を書くと、その名前の Ruleset がないことを reco が確かめられないため、`plan` は `(existence unknown) -> absent` と `Applicability: not applicable` を示す
 
 GitHub 上にある Ruleset を管理に取り込むときは、`reco show` の `rulesets` の表示から、その Ruleset の要素を設定ファイルに書き写します。表示は設定ファイルと同じキーと値で示すため、書き写したあとの `plan` は、その Ruleset に差分を示しません。ただし、`unavailable` のコメントが付いた Ruleset は取り込めません。`enforcement: evaluate`、`conditions: {}`、`2`・`4`・`5` 以外の `RepositoryRole` のように設定ファイルに書けない値を持つ Ruleset は、そのまま書き写すと設定ファイルの誤りになります。
 

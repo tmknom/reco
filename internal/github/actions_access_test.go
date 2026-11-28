@@ -35,29 +35,34 @@ func TestAccessLevelUnavailability(t *testing.T) {
 //trace:checks FR-004 QR-002
 func TestDecodeActionsAccess(t *testing.T) {
 	// 受け付ける値の規則は setting.ParseAccessLevel が持つため、ここでは読み取りの経路を1つの値で確かめる
-	t.Run("defined access_level is read", func(t *testing.T) {
-		got, err := decodeActionsAccess([]byte(`{"access_level": "user"}`))
-		if err != nil {
-			t.Fatalf("decodeActionsAccess() error = %v", err)
-		}
-		if got != setting.AccessUser {
-			t.Errorf("decodeActionsAccess() = %q, want %q", got, setting.AccessUser)
-		}
-	})
+	successes := []struct {
+		name string
+		body string
+		want SettingObservation[setting.AccessLevel]
+	}{
+		{name: "defined access_level is read", body: `{"access_level": "user"}`, want: Observed(setting.AccessUser)},
+		// GitHub が列挙に値を足しても、観測操作を失敗させず、この設定だけを観測不能にする
+		{name: "unknown access_level is unavailable as an unknown value", body: `{"access_level": "enterprise"}`, want: Unavailable[setting.AccessLevel](UnavailableUnknownValue)},
+	}
+	for _, tc := range successes {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := decodeActionsAccess([]byte(tc.body))
+			if err != nil {
+				t.Fatalf("decodeActionsAccess() error = %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("decodeActionsAccess() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
 
 	failures := []struct {
-		name           string
-		body           string
-		errContains    string
-		errNotContains string
+		name        string
+		body        string
+		errContains string
 	}{
 		{name: "missing access_level is unexpected response", body: `{}`, errContains: "access_level"},
-		{
-			name:           "undefined access_level is unexpected response without the value",
-			body:           `{"access_level": "enterprise"}`,
-			errContains:    "access_level",
-			errNotContains: "enterprise",
-		},
+		{name: "non-string access_level is unexpected response", body: `{"access_level": 1}`, errContains: "access_level"},
 		{name: "non-JSON body is unexpected response", body: `<html>`},
 	}
 	for _, tc := range failures {
@@ -68,9 +73,6 @@ func TestDecodeActionsAccess(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.errContains) {
 				t.Errorf("decodeActionsAccess() error = %q, want it to contain %q", err, tc.errContains)
-			}
-			if tc.errNotContains != "" && strings.Contains(err.Error(), tc.errNotContains) {
-				t.Errorf("decodeActionsAccess() error = %q, must not contain %q", err, tc.errNotContains)
 			}
 		})
 	}
@@ -109,9 +111,9 @@ func TestObserveActionsAccessFailure(t *testing.T) {
 			want: ErrRedirect,
 		},
 		{
-			name: "200 with an undefined access_level is unexpected response",
+			name: "200 without access_level is unexpected response",
 			access: func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write([]byte(`{"access_level": "enterprise"}`))
+				_, _ = w.Write([]byte(`{}`))
 			},
 			want: ErrUnexpectedResponse,
 		},

@@ -71,7 +71,8 @@ func (c *Client) AddDeploymentPattern(ctx context.Context, reference repository.
 	}
 	status, data, err := c.send(ctx, http.MethodPost, u, encodeDeploymentPattern(pattern), http.StatusOK)
 	if err == nil {
-		_, _, err = decodeDeploymentPattern(data)
+		// 応答の type が知らない値でも取得契約に適合し、更新は成功とする。加えた値は更新後の観測で確かめる
+		_, _, _, err = decodeDeploymentPattern(data)
 	}
 	if status == http.StatusSeeOther {
 		// classifyFailure のリポジトリの名前の変更の案内は、この応答の原因と異なり、利用者を誤らせる

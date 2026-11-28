@@ -13,7 +13,7 @@ import (
 
 // WorkflowPermissions はワークフロー権限のうち、reco が観測する値である。
 type WorkflowPermissions struct {
-	DefaultWorkflowPermissions   setting.PermissionLevel
+	DefaultWorkflowPermissions   SettingObservation[setting.PermissionLevel]
 	CanApprovePullRequestReviews bool
 }
 
@@ -31,8 +31,8 @@ type workflowPermissionsPayload struct {
 	CanApprovePullRequestReviews *bool   `json:"can_approve_pull_request_reviews"`
 }
 
-// decodeWorkflowPermissions は Workflow permissions の応答本文を観測値に変換する。
-// 定義外の値は応答本文の一部のため、文言に入れない。
+// decodeWorkflowPermissions は Workflow permissions の応答本文を観測結果に変換する。
+// default_workflow_permissions は GitHub が値を足し得る列挙として読み、知らない値ならその設定だけを観測不能にする。
 func decodeWorkflowPermissions(data []byte) (WorkflowPermissions, error) {
 	var p workflowPermissionsPayload
 	if err := json.Unmarshal(data, &p); err != nil {
@@ -48,9 +48,9 @@ func decodeWorkflowPermissions(data []byte) (WorkflowPermissions, error) {
 	if len(missing) > 0 {
 		return WorkflowPermissions{}, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missing, ", "))
 	}
-	level, ok := setting.ParsePermissionLevel(*p.DefaultWorkflowPermissions)
-	if !ok {
-		return WorkflowPermissions{}, fmt.Errorf("%w: unsupported value: default_workflow_permissions", ErrUnexpectedResponse)
+	level := Unavailable[setting.PermissionLevel](UnavailableUnknownValue)
+	if parsed, ok := setting.ParsePermissionLevel(*p.DefaultWorkflowPermissions); ok {
+		level = Observed(parsed)
 	}
 	return WorkflowPermissions{
 		DefaultWorkflowPermissions:   level,

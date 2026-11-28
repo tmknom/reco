@@ -13,6 +13,9 @@ import (
 
 const unreadWhileDisabled = "reco cannot read them while GitHub Actions is disabled"
 
+// UnknownValueText は、GitHub が reco の知らない値を返した設定の値の表記。CLI 仕様は、変更予定の現在値と、変更対象外の設定の予期しない変化の値に同じ表記を使う。
+const UnknownValueText = "(unknown value)"
+
 // PlannedChangeText は、変更予定を CLI 仕様の現在 -> 期待値の形で返し、適用不能の理由、変更予定の注記、再開する設定、副作用をその下に添える。
 // 末尾に改行を含む複数行になりうる。一致は空文字列を返す。
 func PlannedChangeText(s changeplan.SettingPlan) string {
@@ -78,7 +81,7 @@ func repositoryStateText(reason github.UnavailableReason) string {
 	case github.UnavailableUninterpretedParts:
 		return "(uninterpreted parts)"
 	case github.UnavailableUnknownValue:
-		return "(unknown value)"
+		return UnknownValueText
 	case github.UnavailableNotReturned:
 		return "(not returned)"
 	}
@@ -110,6 +113,8 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 		return "the repository is private; remove " + key.DeclaredKeyName() + ", which reco manages only on public repositories"
 	case changeplan.NotApplicableSecretScanningRemainsDisabled:
 		return "Secret scanning is disabled; declare secret_scanning: true to enable it"
+	case changeplan.NotApplicableSecretScanningUnknown:
+		return "GitHub returned a value of secret_scanning that reco does not know; remove secret_scanning_push_protection from the configuration"
 	case changeplan.NotApplicableNoMergeMethodEnabled:
 		return noMergeMethodEnabledText(s.Applicability.UnmanagedSettings())
 	case changeplan.NotApplicableUninterpretedParts:
@@ -194,9 +199,11 @@ func sideEffectText(effect changeplan.SideEffect) string {
 		current, _ := effect.Observed.Value()
 		return "GitHub also disables dependabot_security_updates, which is currently " + current.String()
 	case changeplan.SideEffectPushProtectionDisabled:
-		// 計画時に有効と観測した値だけを副作用にするため、観測値は必ずある
-		current, _ := effect.Observed.Value()
-		return "GitHub also disables secret_scanning_push_protection, which is currently " + current.String()
+		// 観測値は計画時に有効と観測した値で、観測不能は push protection が知らない値だったことを表す
+		if current, ok := effect.Observed.Value(); ok {
+			return "GitHub also disables secret_scanning_push_protection, which is currently " + current.String()
+		}
+		return "GitHub may also disable secret_scanning_push_protection (reco does not know its current value)"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined side effect kind %d", int(effect.Kind)))
 }

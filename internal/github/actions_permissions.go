@@ -12,7 +12,7 @@ import (
 )
 
 // ActionsPermissions は Actions の実行許可のうち、reco が観測する設定である。
-// Actions の有効状態は常に観測値を持ち、ほかの設定は取得条件により観測不能になり得る。
+// Actions の有効状態は常に観測値を持ち、ほかの設定は取得条件か、Actions 許可ポリシーの知らない値により観測不能になり得る。
 type ActionsPermissions struct {
 	Enabled            bool
 	AllowedActions     SettingObservation[setting.AllowedActionsPolicy]
@@ -55,7 +55,8 @@ type actionsPermissionsPayload struct {
 
 // decodeActionsPermissions は Actions permissions の応答本文を、Actions の有効状態、Actions 許可ポリシー、sha_pinning_required の観測結果に変換する。
 // Actions が無効のときは、応答に値があっても設定の状態を示さないため読まない。有効のときの欠落は既定値で補わない。
-// 定義外の値は応答本文の一部のため、文言に入れない。
+// allowed_actions は GitHub が値を足し得る列挙として読み、知らない値なら Actions 許可ポリシーだけを観測不能にする。
+// sha_pinning_required は Actions の有効状態だけを取得条件とするため、ポリシーによらず観測値にする。
 func decodeActionsPermissions(data []byte) (ActionsPermissions, error) {
 	var p actionsPermissionsPayload
 	if err := json.Unmarshal(data, &p); err != nil {
@@ -80,18 +81,20 @@ func decodeActionsPermissions(data []byte) (ActionsPermissions, error) {
 	if len(missing) > 0 {
 		return ActionsPermissions{}, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missing, ", "))
 	}
-	policy, ok := setting.ParseAllowedActionsPolicy(*p.AllowedActions)
-	if !ok {
-		return ActionsPermissions{}, fmt.Errorf("%w: unsupported value: allowed_actions", ErrUnexpectedResponse)
+	policy := Unavailable[setting.AllowedActionsPolicy](UnavailableUnknownValue)
+	if parsed, ok := setting.ParseAllowedActionsPolicy(*p.AllowedActions); ok {
+		policy = Observed(parsed)
 	}
 	return ActionsPermissions{
 		Enabled:            true,
-		AllowedActions:     Observed(policy),
+		AllowedActions:     policy,
 		SHAPinningRequired: Observed(*p.SHAPinningRequired),
 	}, nil
 }
 
-// selectedActionsUnavailability は、観測した Actions 許可ポリシーから、Selected actions が取得条件により観測不能になる理由を返す。
+// selectedActionsUnavailability は、観測した Actions 許可ポリシーから、Selected actions が観測不能になる理由を返す。
+// ポリシーが観測不能なら、取得条件が成り立つかを判断できないため、Actions が無効のときも知らない値のときも、ポリシーと同じ理由にする。
+// selected でないときの取得は 409 で拒まれ、送れば観測操作の失敗になり得るため、selected と確かめたときだけ送る。
 // 読み取り要求を送るかもこの戻り値で決め、表す理由と送る条件を食い違わせない。
 func selectedActionsUnavailability(allowed SettingObservation[setting.AllowedActionsPolicy]) (reason UnavailableReason, unavailable bool) {
 	policy, ok := allowed.Value()

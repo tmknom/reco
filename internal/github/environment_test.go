@@ -109,32 +109,75 @@ func TestObserveRepositoryEnvironments(t *testing.T) {
 		mainBranch := setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"}
 		mainTag := setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: "main"}
 		versionTag := setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: "v*"}
+		mainOnlyPatterns := Observed(DeploymentPatterns{
+			Existing: []setting.DeploymentPattern{mainBranch, mainTag, versionTag},
+			IDs:      map[setting.DeploymentPattern]DeploymentPatternID{mainBranch: 10, mainTag: 11, versionTag: 12},
+		})
+		noPatterns := Observed(DeploymentPatterns{Existing: []setting.DeploymentPattern{}, IDs: map[setting.DeploymentPattern]DeploymentPatternID{}})
 		want := &Environments{Existing: []Environment{
-			{ID: 1, Name: "open", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyAll},
+			{ID: 1, Name: "open", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyAll, Protection: unprotectedEnvironment()},
 			{
 				ID:                         2,
 				Name:                       "main-only",
 				DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
-				DeploymentPatterns: &DeploymentPatterns{
-					Existing: []setting.DeploymentPattern{mainBranch, mainTag, versionTag},
-					IDs:      map[setting.DeploymentPattern]DeploymentPatternID{mainBranch: 10, mainTag: 11, versionTag: 12},
-				},
-				Protection: setting.EnvironmentProtection{
+				DeploymentPatterns:         &mainOnlyPatterns,
+				Protection: EnvironmentProtection{
 					WaitTimer:         15,
-					RequiredReviewers: &setting.RequiredReviewers{PreventSelfReview: true, Reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 7}}},
+					ReviewerSet:       Observed(setting.ReviewerSetOfRule(&setting.RequiredReviewers{Reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 7}}})),
+					PreventSelfReview: true,
 					CanAdminsBypass:   true,
 				},
 			},
-			{ID: 3, Name: "guarded", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyProtectedBranches},
+			{ID: 3, Name: "guarded", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyProtectedBranches, Protection: unprotectedEnvironment()},
 			{
 				ID:                         4,
 				Name:                       "Prod/Eu 100%",
 				DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
-				DeploymentPatterns: &DeploymentPatterns{
-					Existing: []setting.DeploymentPattern{},
-					IDs:      map[setting.DeploymentPattern]DeploymentPatternID{},
-				},
+				DeploymentPatterns:         &noPatterns,
+				Protection:                 unprotectedEnvironment(),
 			},
+		}}
+		if !reflect.DeepEqual(observed.Environments, want) {
+			t.Errorf("ObserveRepository().Environments = %+v, want %+v", observed.Environments, want)
+		}
+	})
+
+	t.Run("an unknown pattern type of one environment does not stop reading the next environment's patterns", func(t *testing.T) {
+		list := githubtest.EnvironmentsBody{TotalCount: 2, Environments: []githubtest.EnvironmentBody{
+			{ID: 1, Name: "a", DeploymentBranchPolicy: selected},
+			{ID: 2, Name: "b", DeploymentBranchPolicy: selected},
+		}}
+		routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{
+			repositoryPath:   githubtest.OK(repositoryBody),
+			environmentsPath: githubtest.OK(list.JSON()),
+			environmentsPath + "/a/deployment-branch-policies": githubtest.OK(githubtest.DeploymentBranchPoliciesBody{TotalCount: 1, Patterns: []githubtest.DeploymentPatternBody{
+				{ID: 10, Name: "abc", Type: "commit"},
+			}}.JSON()),
+			environmentsPath + "/b/deployment-branch-policies": githubtest.OK(githubtest.DeploymentBranchPoliciesBody{TotalCount: 1, Patterns: []githubtest.DeploymentPatternBody{
+				{ID: 20, Name: "main", Type: branch},
+			}}.JSON()),
+		}}
+		c := newTestClient(t, routes.ServeHTTP)
+
+		observed, err := c.ObserveRepository(t.Context(), mustReference(t, "owner/repo"), setting.AreaEnvironments)
+		if err != nil {
+			t.Fatalf("ObserveRepository() error = %v", err)
+		}
+		wantRequests := []string{
+			repositoryPath + "?",
+			environmentsPath + firstPage,
+			environmentsPath + "/a/deployment-branch-policies" + firstPage,
+			environmentsPath + "/b/deployment-branch-policies" + firstPage,
+		}
+		if got := routes.Requests(); !reflect.DeepEqual(got, wantRequests) {
+			t.Errorf("requests = %q, want %q", got, wantRequests)
+		}
+		mainBranch := setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"}
+		unknownPatterns := Unavailable[DeploymentPatterns](UnavailableUnknownValue)
+		readPatterns := Observed(DeploymentPatterns{Existing: []setting.DeploymentPattern{mainBranch}, IDs: map[setting.DeploymentPattern]DeploymentPatternID{mainBranch: 20}})
+		want := &Environments{Existing: []Environment{
+			{ID: 1, Name: "a", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected, DeploymentPatterns: &unknownPatterns, Protection: unprotectedEnvironment()},
+			{ID: 2, Name: "b", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected, DeploymentPatterns: &readPatterns, Protection: unprotectedEnvironment()},
 		}}
 		if !reflect.DeepEqual(observed.Environments, want) {
 			t.Errorf("ObserveRepository().Environments = %+v, want %+v", observed.Environments, want)
@@ -194,17 +237,11 @@ func TestObserveRepositoryEnvironmentsFailure(t *testing.T) {
 			wantRequests: []string{repositoryPath + "?", environmentsPath + firstPage},
 		},
 		{
+			// 個別パターンの規則は TestDecodeDeploymentPatterns が確かめるため、ここでは失敗に Environment の名前を添えることだけを確かめる
 			name:         "invalid pattern is unexpected response",
-			routes:       map[string]githubtest.Response{environmentsPath: list("a"), policiesPath("a"): githubtest.OK(`{"total_count": 1, "branch_policies": [{"id": 1, "name": "x", "type": "commit"}]}`)},
+			routes:       map[string]githubtest.Response{environmentsPath: list("a"), policiesPath("a"): githubtest.OK(`{"total_count": 1, "branch_policies": [{"name": "x", "type": "branch"}]}`)},
 			want:         ErrUnexpectedResponse,
 			wantContains: `deployment branch policies of environment "a"`,
-			wantRequests: []string{repositoryPath + "?", environmentsPath + firstPage, policiesPath("a") + firstPage},
-		},
-		{
-			name:         "two patterns of the same type and name are unexpected response",
-			routes:       map[string]githubtest.Response{environmentsPath: list("a"), policiesPath("a"): githubtest.OK(`{"total_count": 2, "branch_policies": [{"id": 1, "name": "main", "type": "branch"}, {"id": 2, "name": "main", "type": "branch"}]}`)},
-			want:         ErrUnexpectedResponse,
-			wantContains: "duplicate deployment pattern",
 			wantRequests: []string{repositoryPath + "?", environmentsPath + firstPage, policiesPath("a") + firstPage},
 		},
 		{
@@ -341,23 +378,27 @@ func TestEnvironment_DeploymentBranchPolicy(t *testing.T) {
 	mainBranch := setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"}
 	versionTag := setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: "v*"}
 
+	readPatterns := Observed(DeploymentPatterns{Existing: []setting.DeploymentPattern{versionTag, mainBranch}})
+	unknownPatterns := Unavailable[DeploymentPatterns](UnavailableUnknownValue)
 	tests := []struct {
 		name        string
 		environment Environment
-		want        setting.DeploymentBranchPolicy
+		want        SettingObservation[setting.DeploymentBranchPolicy]
 	}{
 		{
 			name:        "mode other than selected has the mode only",
 			environment: Environment{DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyProtectedBranches},
-			want:        setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches},
+			want:        Observed(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyProtectedBranches}),
 		},
 		{
-			name: "selected with read patterns has the patterns in the read order",
-			environment: Environment{
-				DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
-				DeploymentPatterns:         &DeploymentPatterns{Existing: []setting.DeploymentPattern{versionTag, mainBranch}},
-			},
-			want: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{versionTag, mainBranch}},
+			name:        "selected with read patterns has the patterns in the read order",
+			environment: Environment{DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected, DeploymentPatterns: &readPatterns},
+			want:        Observed(setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{versionTag, mainBranch}}),
+		},
+		{
+			name:        "selected with unavailable patterns is unavailable with the same reason",
+			environment: Environment{DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected, DeploymentPatterns: &unknownPatterns},
+			want:        Unavailable[setting.DeploymentBranchPolicy](UnavailableUnknownValue),
 		},
 	}
 	for _, tt := range tests {
@@ -382,10 +423,10 @@ func TestEnvironment_DeploymentBranchPolicy(t *testing.T) {
 func TestEnvironment_DeploymentPatternID(t *testing.T) {
 	mainBranch := setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"}
 	mainTag := setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: "main"}
-	read := Environment{
-		DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
-		DeploymentPatterns:         &DeploymentPatterns{Existing: []setting.DeploymentPattern{mainBranch}, IDs: map[setting.DeploymentPattern]DeploymentPatternID{mainBranch: 10}},
-	}
+	readPatterns := Observed(DeploymentPatterns{Existing: []setting.DeploymentPattern{mainBranch}, IDs: map[setting.DeploymentPattern]DeploymentPatternID{mainBranch: 10}})
+	read := Environment{DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected, DeploymentPatterns: &readPatterns}
+	unknownPatterns := Unavailable[DeploymentPatterns](UnavailableUnknownValue)
+	unknown := Environment{DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected, DeploymentPatterns: &unknownPatterns}
 
 	tests := []struct {
 		name        string
@@ -397,6 +438,7 @@ func TestEnvironment_DeploymentPatternID(t *testing.T) {
 		{name: "read pattern has its ID", environment: read, pattern: mainBranch, wantID: 10, wantOK: true},
 		{name: "pattern not in the read patterns has no ID", environment: read, pattern: mainTag},
 		{name: "mode other than selected has no ID", environment: Environment{DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyAll}, pattern: mainBranch},
+		{name: "unavailable patterns have no ID", environment: unknown, pattern: mainBranch},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -158,6 +158,10 @@ func modeChange(t *testing.T, name string, approved github.Environment, desired 
 	t.Helper()
 	environment := mustEnvironmentName(t, name)
 	policy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: environment}
+	approvedPolicy, ok := approved.DeploymentBranchPolicy().Value()
+	if !ok {
+		t.Fatalf("deployment branch policy of %q is unavailable, want an observed value", approved.Name)
+	}
 	return changeplan.LogicalChange{DesiredState: []configuration.ManagedSetting{{Unit: policy, Desired: modeValue(desired)}}, Operations: []changeplan.UpdateOperation{{
 		Kind: changeplan.DeploymentBranchPolicyModeUpdate, Unit: policy, Mode: desired,
 		PreconditionBases: []changeplan.PreconditionBasis{
@@ -165,7 +169,7 @@ func modeChange(t *testing.T, name string, approved github.Environment, desired 
 				Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: environment}, AnticipatedValue: changeplan.AnticipateValue(setting.Present()),
 				AnticipatedEnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID),
 			},
-			{Unit: policy, AnticipatedValue: changeplan.AnticipateValue(setting.DeploymentBranchPolicyValue(approved.DeploymentBranchPolicy()))},
+			{Unit: policy, AnticipatedValue: changeplan.AnticipateValue(setting.DeploymentBranchPolicyValue(approvedPolicy))},
 		},
 	}}}
 }

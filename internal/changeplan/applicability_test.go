@@ -153,6 +153,11 @@ func TestJudgeApplicability(t *testing.T) {
 			settings: []SettingPlan{undeterminedEnvironment, environmentVariable(production, github.UnavailableNameUndetermined)},
 			want:     NotApplicable(NotApplicableNameUndetermined),
 		},
+		{
+			name: "allowed_actions not comparable because of an unknown value is not applicable",
+			in:   notComparable(setting.AllowedActions, github.UnavailableUnknownValue),
+			want: NotApplicable(NotApplicableUnknownValue),
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -220,12 +225,13 @@ func TestJudgeApplicability_PreventSelfReview(t *testing.T) {
 	preventUnit := setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: production}
 	reviewersUnit := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}
 	user1 := setting.Reviewer{Type: setting.ReviewerUser, ID: 1}
-	observedWith := func(rule *setting.RequiredReviewers) github.ObservationResult {
-		return github.ObservationResult{Environments: &github.Environments{Existing: []github.Environment{{ID: 7, Name: "production", Protection: setting.EnvironmentProtection{RequiredReviewers: rule}}}}}
+	observedWith := func(protection github.EnvironmentProtection) github.ObservationResult {
+		return github.ObservationResult{Environments: &github.Environments{Existing: []github.Environment{{ID: 7, Name: "production", Protection: protection}}}}
 	}
-	noRule := observedWith(nil)
-	withReviewer := observedWith(&setting.RequiredReviewers{PreventSelfReview: true, Reviewers: []setting.Reviewer{user1}})
-	ruleWithoutReviewers := observedWith(&setting.RequiredReviewers{PreventSelfReview: true, Reviewers: []setting.Reviewer{}})
+	noRule := observedWith(unprotected())
+	withReviewer := observedWith(protectedByRule(setting.RequiredReviewers{Reviewers: []setting.Reviewer{user1}}, true))
+	ruleWithoutReviewers := observedWith(protectedByRule(setting.RequiredReviewers{Reviewers: []setting.Reviewer{}}, true))
+	unknownReviewers := observedWith(github.EnvironmentProtection{ReviewerSet: github.Unavailable[setting.ReviewerSet](github.UnavailableUnknownValue)})
 	absent := github.ObservationResult{Environments: &github.Environments{}}
 	prevent := func(observed github.ObservationResult, desired bool) SettingPlan {
 		return newSettingPlan(preventUnit, observed.Setting(preventUnit), setting.BoolValue(desired))
@@ -250,6 +256,11 @@ func TestJudgeApplicability_PreventSelfReview(t *testing.T) {
 		{
 			name: "false with declared no reviewers is applicable because removing every reviewer makes it false", observed: withReviewer, in: prevent(withReviewer, false),
 			others: []SettingPlan{reviewers(withReviewer)}, want: Applicable(),
+		},
+		{
+			// 担当者の集合が知らない値で観測不能になるのは、知らない種類の担当者が一人以上いるときに限る
+			name: "true with reviewers of an unknown type and without declared reviewers is applicable", observed: unknownReviewers, in: prevent(unknownReviewers, true),
+			want: Applicable(),
 		},
 		{name: "true of an environment to create without declared reviewers is not applicable", observed: absent, in: prevent(absent, true), others: []SettingPlan{creation}, want: notApplicable},
 		{name: "false of an environment to create is applicable because a created environment has false", observed: absent, in: prevent(absent, false), others: []SettingPlan{creation}, want: Applicable()},
@@ -418,6 +429,14 @@ func TestJudgeApplicability_RepositoryPushProtection(t *testing.T) {
 	observation := func(enabled, pushProtection bool) github.ObservationResult {
 		return github.ObservationResult{SecretScanning: &github.SecretScanning{Enabled: github.Observed(enabled), PushProtection: github.Observed(pushProtection)}}
 	}
+	secretScanningUnknown := func(pushProtection bool) github.ObservationResult {
+		return github.ObservationResult{SecretScanning: &github.SecretScanning{
+			Enabled: github.Unavailable[bool](github.UnavailableUnknownValue), PushProtection: github.Observed(pushProtection),
+		}}
+	}
+	unknownSecretScanningPlan := func(desired bool) SettingPlan {
+		return newSettingPlan(setting.Unit{Key: setting.SecretScanningEnabled}, github.Unavailable[setting.Value](github.UnavailableUnknownValue), setting.BoolValue(desired))
+	}
 	cases := []struct {
 		name           string
 		in             SettingPlan
@@ -455,6 +474,33 @@ func TestJudgeApplicability_RepositoryPushProtection(t *testing.T) {
 			in:       boolPlan(setting.SecretScanningEnabled, true, false),
 			observed: observation(true, true),
 			want:     Applicable(),
+		},
+		{
+			name:     "enabling with secret scanning of an unknown value and undeclared is not applicable because reco cannot confirm it is enabled",
+			in:       boolPlan(setting.RepositoryPushProtection, false, true),
+			observed: secretScanningUnknown(false),
+			want:     NotApplicable(NotApplicableSecretScanningUnknown),
+		},
+		{
+			name:           "enabling with secret scanning of an unknown value and declared true is applicable",
+			in:             boolPlan(setting.RepositoryPushProtection, false, true),
+			secretScanning: []SettingPlan{unknownSecretScanningPlan(true)},
+			observed:       secretScanningUnknown(false),
+			want:           Applicable(),
+		},
+		{
+			name:     "disabling with secret scanning of an unknown value is applicable because only enabling is not applied",
+			in:       boolPlan(setting.RepositoryPushProtection, true, false),
+			observed: secretScanningUnknown(true),
+			want:     Applicable(),
+		},
+		{
+			name: "disabling secret scanning with push protection of an unknown value is applicable",
+			in:   boolPlan(setting.SecretScanningEnabled, true, false),
+			observed: github.ObservationResult{SecretScanning: &github.SecretScanning{
+				Enabled: github.Observed(true), PushProtection: github.Unavailable[bool](github.UnavailableUnknownValue),
+			}},
+			want: Applicable(),
 		},
 	}
 	for _, tc := range cases {
@@ -659,7 +705,7 @@ func TestJudgeApplicability_RepositoryFeaturesAndWebCommitSignoff(t *testing.T) 
 	}{
 		{
 			name: "web_commit_signoff_required not comparable for another reason panics",
-			in:   newSettingPlan(setting.Unit{Key: setting.WebCommitSignoffRequired}, github.Unavailable[setting.Value](github.UnavailableUnknownValue), setting.BoolValue(true)),
+			in:   newSettingPlan(setting.Unit{Key: setting.WebCommitSignoffRequired}, github.Unavailable[setting.Value](github.UnavailablePublicRepository), setting.BoolValue(true)),
 		},
 		{
 			// リポジトリの機能は必ず値が返り、欠落は観測操作の失敗になる
