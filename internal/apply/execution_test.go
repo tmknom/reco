@@ -300,7 +300,7 @@ func TestObservationAreas(t *testing.T) {
 }
 
 //trace:checks INV-004 FR-012
-func TestObservationResources(t *testing.T) {
+func TestObservationResourcesBeforeUpdate(t *testing.T) {
 	production, staging := mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging")
 	stagingPolicy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}
 	protect, strict := mustRulesetName(t, "protect"), mustRulesetName(t, "strict")
@@ -342,6 +342,12 @@ func TestObservationResources(t *testing.T) {
 			want: github.NamedResources{Rulesets: []setting.RulesetName{protect, strict}},
 		},
 		{
+			// 削除の変更前提が比べる変数と Secret の一覧は、削除で失われるものまで読む Environment にしか読まれない
+			name:   "environment deletion names the environment to read with what its deletion loses",
+			change: environmentDeletionChange(t, "production", deletableEnvironment(7, "production")),
+			want:   github.NamedResources{Environments: []setting.EnvironmentName{production}, EnvironmentsReadForDeletion: []setting.EnvironmentName{production}},
+		},
+		{
 			// どの変更予定にも生じない組。更新操作の宛先の Environment を、期待状態に頼らずに読むことを確かめる
 			name: "environment of an update destination is named without its precondition bases and desired state",
 			change: func() changeplan.LogicalChange {
@@ -371,8 +377,52 @@ func TestObservationResources(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := observationResources(tc.change); !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("observationResources() = %+v, want %+v", got, tc.want)
+			if got := observationResourcesBeforeUpdate(tc.change); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("observationResourcesBeforeUpdate() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestObservationResourcesAfterUpdate は、更新後の観測で、Environment の削除の宛先をリポジトリリソースごとの読み取りの範囲から外し、
+// ほかは更新直前の観測と同じ範囲を読むことを確かめる。
+// 削除の期待状態は一覧での存在だけで確かめるため、一覧の反映が遅れて残った Environment の中を読み、404 を観測の失敗にしないため。
+//
+//trace:checks INV-004 FR-012
+func TestObservationResourcesAfterUpdate(t *testing.T) {
+	production, staging := mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging")
+	cases := []struct {
+		name   string
+		change changeplan.LogicalChange
+		want   github.NamedResources
+	}{
+		{
+			name:   "environment deletion names neither the destination nor what its deletion loses",
+			change: environmentDeletionChange(t, "production", deletableEnvironment(7, "production")),
+			want:   github.NamedResources{},
+		},
+		{
+			// どの変更予定にも生じない組。削除の宛先と別の Environment は、更新直前と同じく読むことを確かめる
+			name: "environment other than the deletion destination is still named",
+			change: func() changeplan.LogicalChange {
+				change := environmentDeletionChange(t, "production", deletableEnvironment(7, "production"))
+				change.DesiredState = append(change.DesiredState, configuration.ManagedSetting{
+					Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}, Desired: modeValue(setting.DeploymentBranchPolicyAll),
+				})
+				return change
+			}(),
+			want: github.NamedResources{Environments: []setting.EnvironmentName{staging}},
+		},
+		{
+			name:   "change other than an environment deletion names the same as before the update",
+			change: creationWithPatternsChange(t, "production", selectedPolicy(branchPattern("main"))),
+			want:   github.NamedResources{Environments: []setting.EnvironmentName{production}},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := observationResourcesAfterUpdate(tc.change); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("observationResourcesAfterUpdate() = %+v, want %+v", got, tc.want)
 			}
 		})
 	}
@@ -2247,6 +2297,14 @@ func TestSendUpdate(t *testing.T) {
 			response:  noContent(),
 			want:      githubtest.Request{Method: http.MethodDelete, Path: "/repos/owner/repo/environments/Production/variables/REGION"},
 		},
+		{
+			// 宣言の production と綴りを変え、宣言の綴りへ送る実装を失敗させる
+			name:      "environment deletion is sent to the observed spelling without a body",
+			operation: environmentDeletionChange(t, "production", deletableEnvironment(7, "production")).Operations[0],
+			observed:  github.ObservationResult{Environments: environments(deletableEnvironment(7, "Production"))},
+			response:  noContent(),
+			want:      githubtest.Request{Method: http.MethodDelete, Path: "/repos/owner/repo/environments/Production"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -2295,7 +2353,7 @@ func TestSendUpdate(t *testing.T) {
 			name: "undefined kind of an update operation panics",
 			operation: func() changeplan.UpdateOperation {
 				o := toSelectedPatterns.Operations[1]
-				o.Kind = changeplan.RulesetDeletion + 1
+				o.Kind = changeplan.EnvironmentDeletion + 1
 				return o
 			}(),
 			observed: github.ObservationResult{Environments: environments(selectedEnvironment(7, "Staging", nil))},

@@ -382,9 +382,10 @@ repositories:
 | `deployment_branch_policy.patterns` | 下の2つのキーを持つ要素の一覧（`mode: selected` のときだけ必須） | デプロイを許可するブランチとタグのパターンの一覧の全体 |
 | `patterns[].type` | `branch` / `tag`（必須） | パターンがブランチとタグのどちらに一致するか |
 | `patterns[].name` | 文字列（必須） | ブランチ名またはタグ名のパターン（`release/*` など） |
+| `state` | `absent` | その名前の Environment がないこと。`name` 以外のキーと同時に書けない（[Environment の削除](#environment-の削除)） |
 
 - 書いた名前の Environment がなければ、reco は作成する。`deployment_branch_policy`、`reviewers`、`prevent_self_review`、`wait_timer`、`variables` のどれも省いた Environment は、あるかどうかだけを管理する
-- 書かなかった Environment は、変更も削除もしない。設定ファイルから名前を消しても、GitHub 上の Environment は残る
+- 書かなかった Environment は、変更も削除もしない。設定ファイルから名前を消しても、GitHub 上の Environment は残る。消すには `state: absent` を書く
 - 名前は、半角の英数字、空白、記号だけで書く。大文字と小文字だけが違う名前は同じ Environment とみなすため、同じリポジトリに並べられない
 - 保護ルールのあるブランチが一つもなければ、`protected_branches` でもすべてのブランチからデプロイできる（GitHub の仕様）。ブランチの保護ルールは reco では作れない
 - `patterns` には、デプロイを許可するパターンをすべて、順不同で書く。一つも許可しないときは `patterns: []` と書く。`all` と `protected_branches` では `patterns` を書けない
@@ -477,6 +478,24 @@ repositories:
 - GitHub 上にない Environment の中に `state: absent` の変数を書くと、reco は Environment を作成し、作成のあとにその変数がないことを確かめる。作られたばかりの Environment には変数がないため、`plan` は `(environment absent) -> absent` と示し、削除はしない
 - 同じ Environment の `variables` には、同じ名前を二度書けない。別の Environment と `actions.variables` には、同じ名前を書ける
 - `actions.variables` と同じ名前の変数を書いても、別の変数として扱う。片方の値に合わせてもう一方を変えることはない
+
+### Environment の削除
+
+Environment を消すには、要素を消すのではなく、`name` と `state: absent` だけを書きます。
+
+```yaml
+    environments:
+      - name: legacy
+        state: absent
+```
+
+- `state: absent` の要素には、`deployment_branch_policy`、`reviewers`、`prevent_self_review`、`wait_timer`、`variables` のどれも書けない。`variables` の中が `state: absent` の変数だけでも、設定ファイルの誤りになる
+- `name` だけの要素は、Environment があることの宣言のままで、削除にはならない
+- 同じ名前を、`state: absent` の要素とそうでない要素に分けて書けない
+- Environment があれば、`plan` は `present -> absent` と、消える保護設定（`deployment_branch_policy`、`reviewers`、`prevent_self_review`、`wait_timer`、`can_admins_bypass`）を示し、`apply` が消す。Environment がなければ、変更はない。消えたあとは、その要素を設定ファイルから消してよい
+- GitHub は、Environment と一緒に、その Environment Variables と Environment Secrets も消す。設定ファイルに書いていない変数と Secret も消える。`plan` は、消える変数の名前と値と、消える Secret の名前を `Side effect:` の行で示す。Secret の値は reco も読めず、消えたあとは取り戻せない
+- 消す前に、その Environment を参照するワークフローを直す（[Operations](operations.md#管理をやめる)）
+- GitHub App による保護ルールなど、reco が解釈しない保護ルールを持つ Environment は、消える内容の全体を示せないため、reco は消さない。`plan` に `Applicability: not applicable` と `Plan cannot be applied.` が出る。その要素を設定ファイルから外し、消すなら GitHub の「Environments」ページで消す
 
 ## セキュリティの設定
 
@@ -655,7 +674,7 @@ repositories:
 
 | 一覧 | 一覧から要素を消したとき |
 |---|---|
-| `environments`、`actions.variables`、`environments[].variables`、`rulesets` | 消した要素の Environment、変数、Ruleset は GitHub 上に残る。変数と Ruleset を消すには、要素を消すのではなく `state: absent` を書く。Environment は reco では消せない |
+| `environments`、`actions.variables`、`environments[].variables`、`rulesets` | 消した要素の Environment、変数、Ruleset は GitHub 上に残る。消すには、要素を消すのではなく `state: absent` を書く |
 | `selected_actions.patterns_allowed`、`deployment_branch_policy.patterns`、`reviewers`、`oidc_subject.include_claim_keys`、Ruleset の中の一覧（`include`、`exclude`、`bypass_actors`、`rules`、`allowed_merge_methods`、`required_status_checks`） | 書いた一覧が GitHub 上の一覧の全体になるため、消した要素は `apply` で GitHub 上からもなくなる |
 
 ## 複数のリポジトリを並べる
@@ -708,13 +727,14 @@ repositories:
 
 ## References
 
-- [YAML 設定仕様](../spec/configuration.md)：キーと値、組み合わせの規則、一覧の読み方（2.1節）、Ruleset のパラメータを省略できないこと（13.5節）
+- [YAML 設定仕様](../spec/configuration.md)：キーと値、組み合わせの規則、一覧の読み方（2.1節）、Environment の `state: absent` と一緒に書けないキー（11.6節）、Ruleset のパラメータを省略できないこと（13.5節）
 - [Overview](overview.md)：GitHub の設定画面の項目と、設定ファイルのキーの対応
 - [Update a repository](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#update-a-repository)：`general` と、`security` の `secret_scanning`、`secret_scanning_push_protection` の値の意味
 - [REST API endpoints for GitHub Actions permissions](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10)：`actions` の `permissions`、`workflow_permissions`、`access`、`fork_pr_contributor_approval`、`fork_pr_workflows_private_repos`、`artifact_and_log_retention` の値の意味
 - [Set the customization template for an OIDC subject claim for a repository](https://docs.github.com/en/rest/actions/oidc?apiVersion=2026-03-10#set-the-customization-template-for-an-oidc-subject-claim-for-a-repository)：`actions.oidc_subject` の値の意味
 - [REST API endpoints for GitHub Actions variables](https://docs.github.com/en/rest/actions/variables?apiVersion=2026-03-10)：`actions.variables` と `environments[].variables` の名前と値の規則
 - [Create or update an environment](https://docs.github.com/en/rest/deployments/environments?apiVersion=2026-03-10#create-or-update-an-environment)：`environments` の値の意味
+- [Delete an environment](https://docs.github.com/en/rest/deployments/environments?apiVersion=2026-03-10#delete-an-environment)：Environment の削除に当たる操作
 - [Create a deployment branch policy](https://docs.github.com/en/rest/deployments/branch-policies?apiVersion=2026-03-10#create-a-deployment-branch-policy)：`deployment_branch_policy.patterns` の要素の `name` と `type`
 - [Enable vulnerability alerts](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#enable-vulnerability-alerts)：`security.dependabot_alerts` に当たる操作。キーは機能名の「Dependabot alerts」から取っており、API の名前（`vulnerability-alerts`）とは違う
 - [Enable Dependabot security updates](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#enable-dependabot-security-updates)：`security.dependabot_security_updates` に当たる操作

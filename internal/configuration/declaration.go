@@ -116,7 +116,10 @@ func (d document) environments(n *yaml.Node, path string) ([]EnvironmentDeclarat
 }
 
 func (d document) environment(n *yaml.Node, path string) (EnvironmentDeclaration, error) {
-	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"deployment_branch_policy", "reviewers", "prevent_self_review", "wait_timer", "variables"})
+	// settingKeys は、Environment の中の設定のキー。任意のキーと、存在しないことの宣言と並べられないキーを、どちらもこの一覧から読む。
+	// キーを足したときに拒否の側だけ足し忘れると、存在しないことの宣言に並べた宣言を黙って捨てるため
+	settingKeys := []string{"deployment_branch_policy", "reviewers", "prevent_self_review", "wait_timer", "variables"}
+	entries, err := d.mappingEntries(n, path, []string{"name"}, slices.Concat(settingKeys, []string{"state"}))
 	if err != nil {
 		return EnvironmentDeclaration{}, err
 	}
@@ -128,6 +131,18 @@ func (d document) environment(n *yaml.Node, path string) (EnvironmentDeclaration
 	environmentName, err := setting.ParseEnvironmentName(name)
 	if err != nil {
 		return EnvironmentDeclaration{}, invalid(entries["name"], namePath, "%v; got %q", err, name)
+	}
+	if stateNode, ok := entries["state"]; ok {
+		if err := d.declaredAbsence(stateNode, path+".state"); err != nil {
+			return EnvironmentDeclaration{}, err
+		}
+		// 存在しない Environment には期待値を定められるものがないため、キーの中身を読む前に、表の並びで最初のキーを拒否する
+		for _, key := range settingKeys {
+			if value, ok := entries[key]; ok {
+				return EnvironmentDeclaration{}, invalid(value, path+"."+key, `%s is not allowed when state is "absent"`, key)
+			}
+		}
+		return EnvironmentDeclaration{Name: environmentName, DeclaredAbsent: true}, nil
 	}
 	declaration := EnvironmentDeclaration{Name: environmentName}
 	if value, ok := entries["deployment_branch_policy"]; ok {

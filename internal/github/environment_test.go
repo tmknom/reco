@@ -458,3 +458,95 @@ func TestEnvironment_DeploymentPatternID(t *testing.T) {
 		Environment{Name: "unread", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected}.DeploymentPatternID(mainBranch)
 	})
 }
+
+// TestEnvironment_DeletedValue は、削除で失われる値の全体を、示せるときだけ値にし、示せない理由を解釈しない部分、知らない値の順で選ぶことを確かめる。
+//
+//trace:checks FR-004 INV-001
+func TestEnvironment_DeletedValue(t *testing.T) {
+	mainBranch := setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"}
+	octocat := setting.Reviewer{Type: setting.ReviewerUser, ID: 583231}
+	reviewers := setting.ReviewerSetOfRule(&setting.RequiredReviewers{Reviewers: []setting.Reviewer{octocat}, Logins: map[setting.Reviewer]string{octocat: "octocat"}})
+	readPatterns := Observed(DeploymentPatterns{Existing: []setting.DeploymentPattern{mainBranch}})
+	unknownPatterns := Unavailable[DeploymentPatterns](UnavailableUnknownValue)
+	customRule := []UninterpretedPart{{Kind: UninterpretedProtectionRuleType, Name: "custom_rule"}}
+	// protected は、5項目のどれもゼロ値でない、方式が selected の Environment。
+	protected := Environment{
+		ID: 1, Name: "legacy",
+		DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
+		DeploymentPatterns:         &readPatterns,
+		Protection:                 EnvironmentProtection{WaitTimer: 30, ReviewerSet: Observed(reviewers), PreventSelfReview: true, CanAdminsBypass: true},
+	}
+	with := func(change func(*Environment)) Environment {
+		e := protected
+		change(&e)
+		return e
+	}
+
+	tests := []struct {
+		name        string
+		environment Environment
+		want        SettingObservation[setting.EnvironmentDeletedValue]
+	}{
+		{
+			name:        "an interpreted environment has all five items with the patterns and the reviewer logins",
+			environment: protected,
+			want: Observed(setting.EnvironmentDeletedValue{
+				DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: []setting.DeploymentPattern{mainBranch}},
+				ReviewerSet:            reviewers,
+				PreventSelfReview:      true,
+				WaitTimer:              30,
+				CanAdminsBypass:        true,
+			}),
+		},
+		{
+			name:        "an environment without protection rules has the default items",
+			environment: Environment{ID: 2, Name: "open", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyAll, Protection: unprotectedEnvironment()},
+			want: Observed(setting.EnvironmentDeletedValue{
+				DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll},
+				ReviewerSet:            setting.ReviewerSetOfRule(nil),
+			}),
+		},
+		{
+			name:        "a protection rule of an unknown type is unavailable as uninterpreted parts",
+			environment: with(func(e *Environment) { e.UninterpretedProtectionRules = customRule }),
+			want:        Unavailable[setting.EnvironmentDeletedValue](UnavailableUninterpretedParts),
+		},
+		{
+			name: "an unknown reviewer set is unavailable as an unknown value instead of an empty set",
+			environment: with(func(e *Environment) {
+				e.Protection.ReviewerSet = Unavailable[setting.ReviewerSet](UnavailableUnknownValue)
+			}),
+			want: Unavailable[setting.EnvironmentDeletedValue](UnavailableUnknownValue),
+		},
+		{
+			name:        "unknown deployment patterns are unavailable as an unknown value instead of the mode only",
+			environment: with(func(e *Environment) { e.DeploymentPatterns = &unknownPatterns }),
+			want:        Unavailable[setting.EnvironmentDeletedValue](UnavailableUnknownValue),
+		},
+		{
+			name: "uninterpreted parts take precedence over an unknown value",
+			environment: with(func(e *Environment) {
+				e.UninterpretedProtectionRules = customRule
+				e.Protection.ReviewerSet = Unavailable[setting.ReviewerSet](UnavailableUnknownValue)
+				e.DeploymentPatterns = &unknownPatterns
+			}),
+			want: Unavailable[setting.EnvironmentDeletedValue](UnavailableUninterpretedParts),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.environment.DeletedValue(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("DeletedValue() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+
+	t.Run("selected without read patterns panics instead of reading the mode only", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("DeletedValue() did not panic")
+			}
+		}()
+		with(func(e *Environment) { e.DeploymentPatterns = nil }).DeletedValue()
+	})
+}

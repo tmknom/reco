@@ -72,12 +72,16 @@ $ GH_TOKEN=$(gh auth token) reco plan
 
 このトークンの scope は利用者の権限を超えないため、操作できるかはトークン所有者の対象リポジトリでのロールで決まります。reco が動作を確認した条件は、トークン所有者が対象リポジトリの Admin ロールを持つことです。Write 以上のロールを持たないリポジトリでは、`show`・`plan`・`apply` は観測操作の失敗としてエラー終了します（[GitHub リポジトリ API 仕様](../research/repositories.md) 1章）。Write・Maintain ロールでの動作は確認していません。
 
+Environment に存在しないことを宣言した `plan` と `apply` は、その Environment が存在すれば、宣言を受け付けない種類である Environment Secret の一覧も読みます。`apply` は、承認を得てその Environment を削除します。Secret の一覧の読み取りには、リポジトリの collaborator であることと、personal access token (classic) なら `repo` scope、fine-grained personal access token なら Environments の read の権限が要ります。Environment の削除には、personal access token (classic) なら `repo` scope、fine-grained personal access token なら Administration の write の権限が要ります（[GitHub Actions シークレット API 仕様](../research/actions-secrets.md) 1章、[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 1章）。Secret の一覧を読めないトークンでは、Environment の削除を宣言した `plan` と `apply` は観測操作の失敗でエラー終了し、Secret がないとは読みません。fine-grained personal access token での動作は確認していません。
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-003` | Functional Requirement |
 | `alignment` | `QR-001` | Quality Requirement |
 | `grounding` | [GitHub REST API 共通仕様](../research/rest-api.md) | Repository File |
 | `grounding` | [GitHub リポジトリ API 仕様](../research/repositories.md) | Repository File |
+| `grounding` | [GitHub Actions シークレット API 仕様](../research/actions-secrets.md) | Repository File |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
 
 ## 4. `apply` の承認と実行
 

@@ -120,6 +120,22 @@ func TestDesiredState_ManagedSettings(t *testing.T) {
 		}
 	})
 
+	t.Run("an environment declared absent has only the absent environment resource, in the declared order", func(t *testing.T) {
+		desired := DesiredState{
+			Environments: []EnvironmentDeclaration{
+				{Name: staging, DeclaredAbsent: true, WaitTimer: new(30), Variables: []VariableDeclaration{{Name: region, Desired: setting.VariableValue("us")}}},
+				{Name: production},
+			},
+		}
+		want := []ManagedSetting{
+			{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, Desired: setting.Absent()},
+			{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Desired: setting.Present()},
+		}
+		if got := desired.ManagedSettings(); !reflect.DeepEqual(got, want) {
+			t.Errorf("ManagedSettings() =\n%+v\nwant\n%+v", got, want)
+		}
+	})
+
 	t.Run("a setting group is one managed setting per key, after allow_update_branch", func(t *testing.T) {
 		squash := setting.SquashMergeCommitDefault{Title: setting.SquashMergeCommitTitlePRTitle, Message: setting.SquashMergeCommitMessageBlank}
 		merge := setting.MergeCommitDefault{Title: setting.MergeCommitTitleMergeMessage, Message: setting.MergeCommitMessagePRTitle}

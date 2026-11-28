@@ -77,7 +77,11 @@ reco で変えた設定を元の値に戻すには、設定ファイルにその
 
 消しても、GitHub の値はその時点のまま変わりません。値を戻してから管理をやめたいときは、先に元の値を書いて `apply` し、そのあとで消します。
 
-`environments` から名前を消しても、GitHub 上の Environment は残ります。reco が作成した Environment も同じです。不要な Environment は、`environments` からその Environment を（変数の行も含めて）消してから、GitHub の「Environments」ページで消します。`environments` に名前が残っていると、次の `apply` で作成し直されます。
+`environments` から要素を消しても、GitHub 上の Environment はそのまま残り、reco が管理しなくなるだけです。reco が作成した Environment も同じです。
+
+Environment を消すときは、要素を消す前に `name` と `state: absent` だけに書き換えて `apply` します。`plan` が、消える保護設定と、一緒に消える変数の名前と値、Secret の名前を示すので、戻す可能性があるなら控えておきます。Secret の値は控えられず、消えたあとは取り戻せません。消えたことを確かめたら、その要素を消して管理をやめられます（[Configuration](configuration.md) の Environment の削除）。
+
+消す前に、その Environment を参照するワークフローを直します。参照が残ったままワークフローが動くと、GitHub は保護ルールも Secret もない Environment を同じ名前で作り、ジョブはその Environment で動きます。
 
 Repository Variables と Environment Variables も、行を消しただけでは GitHub 上に残ります。変数を消すときは、行を消す前に `value` を `state: absent` に書き換えて `apply` します。`plan` が消える値を示すので、戻す可能性があるなら控えておきます。消えたことを確かめたら、その行を消して管理をやめられます（[Configuration](configuration.md) の Repository Variables）。
 
@@ -88,4 +92,5 @@ Ruleset も同じです。`rulesets` から要素を消すと、GitHub 上の Ru
 - [CLI 仕様](../spec/cli.md)：`apply` が今の値から変更計画を作り直すこと（2.1節）、`--repo` で選べるリポジトリと、設定ファイル全体の検証（2.2節、2.3節）、更新の順序と、完了しなかったリポジトリのあとの扱い（4章）
 - [表示仕様](../spec/output.md)：変更計画の表示（3章）、`show` の表示（5章）
 - [要求定義](../spec/requirements.md)：設定ファイルに書いたリポジトリだけを対象にすること（FR-002）、異常のあとに更新を続けないこと（INV-005）
-- [YAML 設定仕様](../spec/configuration.md)：未記載の設定を管理しないこと（2章）、空の階層を拒否すること（1章、14.1節）、`allowed_actions` と `selected_actions` の組み合わせ（4.1節）、存在しないことの宣言による変数の削除（10.3節）、Environment を削除しないこと（11章）、存在しないことの宣言による Ruleset の削除（13.6節）
+- [YAML 設定仕様](../spec/configuration.md)：未記載の設定を管理しないこと（2章）、空の階層を拒否すること（1章、14.1節）、`allowed_actions` と `selected_actions` の組み合わせ（4.1節）、存在しないことの宣言による変数の削除（10.3節）、存在しないことの宣言による Environment の削除（11.6節）、存在しないことの宣言による Ruleset の削除（13.6節）
+- [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md)：存在しない Environment を参照するワークフローを実行すると、GitHub が保護ルールもシークレットもない Environment を作ること（1.1）、削除で変数とシークレットも消えること（5.1）

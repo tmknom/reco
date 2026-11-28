@@ -37,6 +37,7 @@ GitHub は REST API の OpenAPI 3.0 記述を [github/rest-api-description](http
 | [GitHub Actions 権限 API 仕様](actions-permissions.md) | Actions permissions・Selected actions・Workflow permissions・リポジトリ外のワークフローからのアクセス・Fork からの Pull Request のワークフローの承認と実行の条件・保持期間の取得・更新、それぞれを利用できる公開範囲 |
 | [GitHub Actions OIDC API 仕様](actions-oidc.md) | リポジトリの OIDC トークンの subject クレームのカスタマイズの取得・設定、subject の形の決まり方、受け付けるクレームの key、immutable subject |
 | [GitHub Actions 変数 API 仕様](actions-variables.md) | Repository Variables と Environment Variables の一覧・取得・作成・更新・削除、名前と値の規則、利用できるリポジトリ |
-| [GitHub デプロイ環境 API 仕様](deployment-environments.md) | Environment の一覧・取得・作成と更新、名前の扱い、利用できる料金プラン |
+| [GitHub Actions シークレット API 仕様](actions-secrets.md) | Environment Secrets の一覧、名前の規則と件数の上限 |
+| [GitHub デプロイ環境 API 仕様](deployment-environments.md) | Environment の一覧・取得・作成と更新・削除、名前の扱い、利用できる料金プラン、削除で失われるもの |
 | [GitHub デプロイ元パターン API 仕様](deployment-branch-policies.md) | Environment のデプロイ元パターンの一覧・取得・作成・削除 |
 | [GitHub Rules API 仕様](rules.md) | リポジトリの Ruleset の一覧・取得・作成・更新、名前と ID、対象の条件、Bypass、ルール（`pull_request`、`deletion`、`required_status_checks`、`non_fast_forward`）、利用できるリポジトリ |

@@ -94,6 +94,27 @@ func TestEnvironmentVariablesURL(t *testing.T) {
 	}
 }
 
+// TestEnvironmentSecretsURL は、Environment の URL に接尾を足し、組めない名前を伝えることだけを確かめる。名前のエスケープは TestEnvironmentURL が確かめる。
+//
+//trace:checks FR-004
+func TestEnvironmentSecretsURL(t *testing.T) {
+	c := New(testToken)
+	u, ok := c.environmentSecretsURL(mustReference(t, "owner/repo"), "a/b")
+	if !ok {
+		t.Fatal("environmentSecretsURL(\"a/b\") ok = false, want true")
+	}
+	if got, want := u.EscapedPath(), "/repos/owner/repo/environments/a%2Fb/secrets"; got != want {
+		t.Errorf("escaped path = %q, want %q", got, want)
+	}
+	if got, want := u.Path, "/repos/owner/repo/environments/a/b/secrets"; got != want {
+		t.Errorf("path = %q, want %q", got, want)
+	}
+
+	if u, ok := c.environmentSecretsURL(mustReference(t, "owner/repo"), ".."); ok {
+		t.Errorf("environmentSecretsURL(\"..\") = %q, true, want false", u)
+	}
+}
+
 // TestEnvironmentVariableURL は、Environment の変数の一覧の URL に変数の名前を1つのパス要素として足し、Path と RawPath の両方が同じ要素を指すことと、組めない名前を伝えることを確かめる。
 //
 //trace:checks FR-011

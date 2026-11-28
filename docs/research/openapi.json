@@ -1904,6 +1904,40 @@
           "category": "deployments",
           "subcategory": "environments"
         }
+      },
+      "delete": {
+        "summary": "Delete an environment",
+        "description": "OAuth app tokens and personal access tokens (classic) need the `repo` scope to use this endpoint.",
+        "tags": [
+          "repos"
+        ],
+        "operationId": "repos/delete-an-environment",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/deployments/environments#delete-an-environment"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          },
+          {
+            "$ref": "#/components/parameters/environment-name"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Default response"
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "deployments",
+          "subcategory": "environments"
+        }
       }
     },
     "/repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies": {
@@ -2152,6 +2186,80 @@
           "enabledForGitHubApps": true,
           "category": "deployments",
           "subcategory": "branch-policies"
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/environments/{environment_name}/secrets": {
+      "get": {
+        "summary": "List environment secrets",
+        "description": "Lists all secrets available in an environment without revealing their\nencrypted values.\n\nAuthenticated users must have collaborator access to a repository to create, update, or read secrets.\n\nOAuth app tokens and personal access tokens (classic) need the `repo` scope to use this endpoint.",
+        "tags": [
+          "actions"
+        ],
+        "operationId": "actions/list-environment-secrets",
+        "externalDocs": {
+          "description": "API method documentation",
+          "url": "https://docs.github.com/rest/actions/secrets#list-environment-secrets"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/owner"
+          },
+          {
+            "$ref": "#/components/parameters/repo"
+          },
+          {
+            "$ref": "#/components/parameters/environment-name"
+          },
+          {
+            "$ref": "#/components/parameters/per-page"
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "total_count",
+                    "secrets"
+                  ],
+                  "properties": {
+                    "total_count": {
+                      "type": "integer"
+                    },
+                    "secrets": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/actions-secret"
+                      }
+                    }
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "$ref": "#/components/examples/actions-secret-paginated"
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/link"
+              }
+            }
+          }
+        },
+        "x-github": {
+          "githubCloudOnly": false,
+          "enabledForGitHubApps": true,
+          "category": "actions",
+          "subcategory": "secrets"
         }
       }
     },
@@ -3139,6 +3247,23 @@
           "allowed_actions": "selected",
           "selected_actions_url": "https://api.github.com/repositories/42/actions/permissions/selected-actions",
           "sha_pinning_required": true
+        }
+      },
+      "actions-secret-paginated": {
+        "value": {
+          "total_count": 2,
+          "secrets": [
+            {
+              "name": "GH_TOKEN",
+              "created_at": "2019-08-10T14:59:22Z",
+              "updated_at": "2020-01-10T14:59:22Z"
+            },
+            {
+              "name": "GIST_ID",
+              "created_at": "2020-01-10T10:59:22Z",
+              "updated_at": "2020-01-11T11:59:22Z"
+            }
+          ]
         }
       },
       "actions-variable": {
@@ -4848,6 +4973,31 @@
         },
         "required": [
           "enabled"
+        ]
+      },
+      "actions-secret": {
+        "title": "Actions Secret",
+        "description": "Set secrets for GitHub Actions.",
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "The name of the secret.",
+            "example": "SECRET_TOKEN",
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "name",
+          "created_at",
+          "updated_at"
         ]
       },
       "actions-set-default-workflow-permissions": {

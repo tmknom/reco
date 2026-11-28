@@ -143,8 +143,10 @@ func TestPossibleCause(t *testing.T) {
 	// 原因の候補を添える設定と条件を確かめる。更新操作の成否が不明なときに添えないことは表示仕様に従う。
 	const autoMerge = "auto-merge is not available for private repositories on GitHub Free, where GitHub may accept the update without applying it"
 	const wiki = "wikis are not available for private repositories on GitHub Free, where GitHub may accept the update without applying it"
+	const recreated = "a workflow that references the environment may have run after the deletion, where GitHub creates an environment of the same name"
 	succeeded := []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}
 	enableWiki := singleUpdate(setting.HasWiki, setting.BoolValue(true), basesOf(setting.HasWiki, setting.BoolValue(false)))
+	deletion := environmentDeletionChange(t, "production", deletableEnvironment(7, "production"))
 	cases := []struct {
 		name   string
 		record changeRecord
@@ -174,6 +176,28 @@ func TestPossibleCause(t *testing.T) {
 		{
 			name:   "mismatch of another setting has no possible cause",
 			record: changeRecord{change: deleteBranchOnMergeChange(), operations: succeeded, confirmation: desiredStateMismatch},
+			want:   "",
+		},
+		{
+			name:   "environment found after a successful deletion has the recreation cause",
+			record: changeRecord{change: deletion, operations: succeeded, confirmation: desiredStateMismatch},
+			want:   recreated,
+		},
+		{
+			// ワークフローが作るのは Environment だけで、ほかのリポジトリリソースの削除の不一致は説明できない
+			name:   "ruleset found after a successful deletion has no possible cause",
+			record: changeRecord{change: rulesetDeletionChange(t, "protect"), operations: succeeded, confirmation: desiredStateMismatch},
+			want:   "",
+		},
+		{
+			// 作成のあとに存在しないことは、ワークフローが Environment を作ることでは説明できない
+			name:   "environment creation mismatch has no possible cause",
+			record: changeRecord{change: creationChange(t, "production"), operations: succeeded, confirmation: desiredStateMismatch},
+			want:   "",
+		},
+		{
+			name:   "environment deletion not confirmed after a successful update has no possible cause",
+			record: changeRecord{change: deletion, operations: succeeded, confirmation: desiredStateUnavailable},
 			want:   "",
 		},
 		{
@@ -884,7 +908,7 @@ func TestWriteChangeReport_DeploymentPatterns(t *testing.T) {
 
 	t.Run("undefined kind of an update operation panics", func(t *testing.T) {
 		change := deploymentPatternsChange(t, "production", selectedEnvironment(7, "production", []setting.DeploymentPattern{main}, 10), selectedPolicy(main, release, version))
-		change.Operations[0].Kind = changeplan.RulesetDeletion + 1
+		change.Operations[0].Kind = changeplan.EnvironmentDeletion + 1
 		defer func() {
 			if recover() == nil {
 				t.Error("updateRequestLines() did not panic")
@@ -1094,6 +1118,17 @@ func TestUpdateRequestLabel_PreventSelfReviewAndWaitTimer(t *testing.T) {
 				t.Errorf("updateRequestLabel() = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestUpdateRequestLabel_EnvironmentDeletion は、Environment の削除の更新操作を、Environment の宣言の名前で示すことを確かめる。
+// 宣言の綴りと観測の綴りを変え、観測の綴りで示す実装を失敗させる。
+//
+//trace:checks FR-013
+func TestUpdateRequestLabel_EnvironmentDeletion(t *testing.T) {
+	operation := environmentDeletionChange(t, "production", deletableEnvironment(7, "Production")).Operations[0]
+	if got, want := updateRequestLabel(operation, nil), "environments.production"; got != want {
+		t.Errorf("updateRequestLabel() = %q, want %q", got, want)
 	}
 }
 

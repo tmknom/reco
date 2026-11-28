@@ -189,7 +189,7 @@ func updateRequestLabel(operation changeplan.UpdateOperation, patterns []setting
 		changeplan.ReviewerSetUpdate, changeplan.PreventSelfReviewUpdate, changeplan.WaitTimerUpdate,
 		changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate, changeplan.RepositoryVariableDeletion,
 		changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate, changeplan.EnvironmentVariableDeletion,
-		changeplan.RulesetCreation, changeplan.RulesetValueUpdate, changeplan.RulesetDeletion:
+		changeplan.RulesetCreation, changeplan.RulesetValueUpdate, changeplan.RulesetDeletion, changeplan.EnvironmentDeletion:
 		return operation.Unit.String()
 	case changeplan.MergeMethodsUpdate:
 		// マージ方式をまとめた論理的な設定変更は更新操作が一つで、Update request の行に対象を示さないため、ここに届かない
@@ -207,7 +207,7 @@ func changesDeploymentPattern(operation changeplan.UpdateOperation) bool {
 }
 
 // possibleCause は、設定に既知の原因の候補を返す。候補がなければ空文字列を返す。
-// 候補を添える条件は、General の設計の更新方式が定める。
+// 候補を添える条件は、General の設計と Environments の設計の更新方式が定める。
 func possibleCause(record changeRecord) string {
 	if !record.updatesSucceeded() || record.confirmation != desiredStateMismatch {
 		return ""
@@ -217,6 +217,8 @@ func possibleCause(record changeRecord) string {
 		return "auto-merge is not available for private repositories on GitHub Free, where GitHub may accept the update without applying it"
 	case slices.Equal(units, []setting.Unit{{Key: setting.HasWiki}}) && record.change.DesiredState[0].Desired.Bool():
 		return "wikis are not available for private repositories on GitHub Free, where GitHub may accept the update without applying it"
+	case record.change.Operations[0].Kind == changeplan.EnvironmentDeletion:
+		return "a workflow that references the environment may have run after the deletion, where GitHub creates an environment of the same name"
 	}
 	return ""
 }

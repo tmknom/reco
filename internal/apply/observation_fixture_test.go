@@ -130,3 +130,21 @@ func withVariables(e github.Environment, existing ...github.Variable) github.Env
 	e.Variables = variables(existing...)
 	return e
 }
+
+// withSecrets は、e に Environment Secret の一覧の観測結果 existing を一覧の全体として持たせた Environment の観測結果。
+// 削除で失われるものまで読んだ Environment は、変数の一覧も持つため、withVariables と組み合わせて使う。
+func withSecrets(e github.Environment, existing ...github.EnvironmentSecret) github.Environment {
+	e.Secrets = &github.EnvironmentSecrets{Existing: existing}
+	return e
+}
+
+// deletableEnvironment は、ID id、GitHub の綴り name で、削除で失われる値の項目をどれも保護ルールのない値と異なる値で持ち、
+// 変数 REGION と TIER、Secret DEPLOY_KEY と TOKEN を持つ、削除で失われるものまで読んだ Environment の観測結果。
+// 項目ごとに一つだけ変えた観測を作れるよう、どの項目も既定値にしない。
+func deletableEnvironment(id github.EnvironmentID, name string) github.Environment {
+	e := withReviewers(selectedEnvironment(id, name, []setting.DeploymentPattern{branchPattern("main")}, 10), true, 1)
+	e.Protection.WaitTimer = 30
+	e.Protection.CanAdminsBypass = true
+	e = withVariables(e, github.Variable{Name: "REGION", Value: "ap-northeast-1"}, github.Variable{Name: "TIER", Value: "1"})
+	return withSecrets(e, github.EnvironmentSecret{Name: "DEPLOY_KEY", UpdatedAt: "2026-01-01T00:00:00Z"}, github.EnvironmentSecret{Name: "TOKEN", UpdatedAt: "2026-01-02T00:00:00Z"})
+}

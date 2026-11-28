@@ -71,7 +71,7 @@ reco が管理可能な設定は、次のとおりです。具体的な設定方
 | チェック、ワークフローの実行、コミットのステータス、Artifact、Log を保持する日数 | 「Actions」の「General」ページの「Check, workflow run, status, artifact and log retention」の欄 | `actions.artifact_and_log_retention.days` |
 | ワークフローが外部のクラウドなどへの認証に使う OIDC トークンの subject の形 | 設定画面の項目はない。GitHub の REST API の「Set the customization template for an OIDC subject claim for a repository」で設定する値 | `actions.oidc_subject` |
 | ワークフローから読む Repository Variables の名前と値 | 「Secrets and variables」の「Actions」ページの「Variables」タブ | `actions.variables` |
-| デプロイ先の Environment があるか（なければ作成する） | 「Environments」ページの Environment の一覧 | `environments[].name` |
+| デプロイ先の Environment があるか（なければ作成し、`state: absent` と書けば削除する） | 「Environments」ページの Environment の一覧 | `environments[].name`、`environments[].state` |
 | Environment へデプロイできるブランチとタグを、制限しないか、保護ルールのあるブランチに限るか、選んだパターンに限るか | 「Environments」ページの Environment の「Deployment branches」の選択肢の「No restriction」、「Protected branches only」、「Selected branches and tags」 | `environments[].deployment_branch_policy.mode` |
 | 選んだパターンに限るときに、デプロイを許可するブランチとタグのパターン | 「Selected branches and tags」で追加するパターンの一覧 | `environments[].deployment_branch_policy.patterns` |
 | その Environment を使うデプロイジョブの実行を承認できる担当者 | 「Environments」ページの Environment の「Required reviewers」 | `environments[].reviewers` |

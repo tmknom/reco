@@ -137,6 +137,32 @@ func TestSettingPlan_IsEnvironmentCreation(t *testing.T) {
 	}
 }
 
+//trace:checks FR-007 INV-001
+func TestSettingPlan_IsEnvironmentDeletion(t *testing.T) {
+	environment := setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "production")}
+	present, absent := github.Observed(setting.Present()), github.Observed(setting.Absent())
+	cases := []struct {
+		name string
+		plan SettingPlan
+		want bool
+	}{
+		{name: "mismatch of an existing environment declared absent is an environment deletion", plan: SettingPlan{Unit: environment, Observed: present, Desired: setting.Absent(), Result: Mismatch}, want: true},
+		{name: "creation of an environment is not an environment deletion", plan: SettingPlan{Unit: environment, Observed: absent, Desired: setting.Present(), Result: Mismatch}},
+		{name: "absent environment declared absent is a match, not an environment deletion", plan: SettingPlan{Unit: environment, Observed: absent, Desired: setting.Absent(), Result: Match}},
+		{
+			name: "deletion of a ruleset is not an environment deletion",
+			plan: SettingPlan{Unit: rulesetUnit(t, "protect"), Observed: github.Observed(setting.RulesetValue(protectRuleset())), Desired: setting.Absent(), Result: Mismatch},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.plan.IsEnvironmentDeletion(); got != tc.want {
+				t.Errorf("IsEnvironmentDeletion() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRepositoryPlan_Count(t *testing.T) {
 	r := RepositoryPlan{Settings: []SettingPlan{{Result: Mismatch}, {Result: Match}, {Result: Mismatch}, {Result: NotComparable}}}
 	if got := r.Count(Mismatch); got != 2 {
@@ -582,6 +608,54 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 		}
 		if !reflect.DeepEqual(plans, wantPlans) {
 			t.Errorf("plans = %+v, want %+v", plans, wantPlans)
+		}
+	})
+
+	t.Run("environment declared absent is read with its variables and secrets and planned as a deletion with what it loses", func(t *testing.T) {
+		const src = "repositories:\n  - name: owner/repo\n    environments:\n" +
+			"      - name: legacy\n        state: absent\n" +
+			"      - name: staging\n"
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo": githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/environments": githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 2, Environments: []githubtest.EnvironmentBody{
+				{ID: 3, Name: "Legacy"}, {ID: 2, Name: "staging"},
+			}}.JSON()),
+			"GET /repos/owner/repo/environments/Legacy/variables": githubtest.OK(githubtest.VariablesBody{TotalCount: 1, Variables: []githubtest.VariableBody{
+				{Name: "REGION", Value: "eu"},
+			}}.JSON()),
+			"GET /repos/owner/repo/environments/Legacy/secrets": githubtest.OK(
+				`{"total_count": 1, "secrets": [{"name": "TOKEN", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-02T03:04:05Z"}]}`,
+			),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+		got, err := Generate(context.Background(), client, file(src), nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		// 存在を宣言した staging には変数と Secret の一覧を送らない
+		want := []string{
+			"GET /repos/owner/repo", "GET /repos/owner/repo/environments",
+			"GET /repos/owner/repo/environments/Legacy/variables", "GET /repos/owner/repo/environments/Legacy/secrets",
+		}
+		if !slices.Equal(server.RequestLines(), want) {
+			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
+		}
+		settings := got.Repositories[0].Settings
+		if len(settings) != 2 || !settings[0].IsEnvironmentDeletion() || !settings[0].Applicability.IsApplicable() || settings[1].Result != Match {
+			t.Fatalf("Settings = %+v, want an applicable deletion of legacy and a match of staging", settings)
+		}
+		wantLoss := &EnvironmentLoss{
+			DeletedValue: setting.EnvironmentDeletedValue{DeploymentBranchPolicy: setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicyAll}, ReviewerSet: setting.ReviewerSetOfRule(nil)},
+			Variables:    []github.Variable{{Name: "REGION", Value: "eu"}},
+			Secrets:      []github.EnvironmentSecret{{Name: "TOKEN", UpdatedAt: "2026-01-02T03:04:05Z"}},
+		}
+		if !reflect.DeepEqual(settings[0].EnvironmentLoss, wantLoss) {
+			t.Errorf("EnvironmentLoss = %+v, want %+v", settings[0].EnvironmentLoss, wantLoss)
+		}
+		wantEffects := []SideEffect{{Kind: SideEffectEnvironmentVariablesDeleted}, {Kind: SideEffectEnvironmentSecretsDeleted}}
+		if !reflect.DeepEqual(settings[0].SideEffects, wantEffects) {
+			t.Errorf("SideEffects = %+v, want %+v", settings[0].SideEffects, wantEffects)
 		}
 	})
 

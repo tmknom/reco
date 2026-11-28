@@ -1,7 +1,11 @@
 package github
 
 import (
+	"errors"
+	"net/http"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/tmknom/reco/internal/githubtest"
@@ -227,6 +231,13 @@ func TestResourceScope_IncludesEnvironment(t *testing.T) {
 		{name: "a name whose identity cannot be determined is not included", scope: named("cafe"), observed: "café"},
 		{name: "no named environment includes no name", scope: named(), observed: "production"},
 		{
+			// 削除で失われる値は個別パターンを含むため、使う側が Environments に名指さなくても読む
+			name:     "an environment named only for reading what its deletion loses is included",
+			scope:    scopeOfNamed(NamedResources{EnvironmentsReadForDeletion: []setting.EnvironmentName{mustEnvironmentName(t, "production")}}),
+			observed: "Production",
+			want:     true,
+		},
+		{
 			name:     "a named ruleset does not include an environment of the same name",
 			scope:    scopeOfNamed(NamedResources{Rulesets: []setting.RulesetName{mustRulesetName(t, "production")}}),
 			observed: "production",
@@ -238,6 +249,241 @@ func TestResourceScope_IncludesEnvironment(t *testing.T) {
 				t.Errorf("includesEnvironment(%q) = %v, want %v", tc.observed, got, tc.want)
 			}
 		})
+	}
+}
+
+//trace:checks FR-004 INV-001
+func TestResourceScope_IncludesEnvironmentDeletion(t *testing.T) {
+	readForDeletion := func(names ...string) resourceScope {
+		environments := make([]setting.EnvironmentName, len(names))
+		for i, name := range names {
+			environments[i] = mustEnvironmentName(t, name)
+		}
+		return scopeOfNamed(NamedResources{EnvironmentsReadForDeletion: environments})
+	}
+	cases := []struct {
+		name     string
+		scope    resourceScope
+		observed string
+		want     bool
+	}{
+		{name: "a name that differs only in ASCII case is included", scope: readForDeletion("qa", "legacy"), observed: "Legacy", want: true},
+		{name: "a different name is not included", scope: readForDeletion("legacy"), observed: "staging"},
+		{name: "a name whose identity cannot be determined is not included", scope: readForDeletion("cafe"), observed: "café"},
+		// show は allResources で全 Environment を読むが、Secret の要求は送らない
+		{name: "all resources include no name", scope: allResources(), observed: "legacy"},
+		{
+			name:     "an environment named only for reading its settings is not included",
+			scope:    scopeOfNamed(NamedResources{Environments: []setting.EnvironmentName{mustEnvironmentName(t, "legacy")}}),
+			observed: "legacy",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.scope.includesEnvironmentDeletion(tc.observed); got != tc.want {
+				t.Errorf("includesEnvironmentDeletion(%q) = %v, want %v", tc.observed, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestObserveRepositoryForNamedResources_EnvironmentDeletions は、削除で失われるものまで読む範囲の Environment にだけ、
+// 個別パターンのあとに変数と Secret を読み、変数を二度読まないつなぎ目を確かめる。
+//
+//trace:checks FR-004 INV-001
+func TestObserveRepositoryForNamedResources_EnvironmentDeletions(t *testing.T) {
+	selected := &githubtest.DeploymentBranchPolicyBody{CustomBranchPolicies: true}
+	noPatterns := githubtest.OK(githubtest.DeploymentBranchPoliciesBody{}.JSON())
+	noVariables := githubtest.OK(githubtest.VariablesBody{}.JSON())
+	noSecrets := githubtest.OK(environmentSecretsBody(0))
+	policiesPath := func(name string) string { return environmentsPath + "/" + name + "/deployment-branch-policies" }
+	variablesPath := func(name string) string { return environmentsPath + "/" + name + "/variables" }
+	secretsPath := func(name string) string { return environmentsPath + "/" + name + "/secrets" }
+	list := func(environments ...githubtest.EnvironmentBody) githubtest.Response {
+		return githubtest.OK(githubtest.EnvironmentsBody{TotalCount: len(environments), Environments: environments}.JSON())
+	}
+	twoEnvironments := list(githubtest.EnvironmentBody{ID: 1, Name: "Legacy", DeploymentBranchPolicy: selected}, githubtest.EnvironmentBody{ID: 2, Name: "staging"})
+
+	cases := []struct {
+		name string
+		// environments は Environments に名指す名前で、readForDeletion は EnvironmentsReadForDeletion に名指す名前。
+		environments    []string
+		readForDeletion []string
+		areas           []setting.Area
+		// routes は、送ってよい要求の応答。範囲の外の Environment の応答も置き、送れば要求の並びの比較で検出する。
+		routes       map[string]githubtest.Response
+		wantRequests []string
+		// wantRead は、変数と Secret の両方を読んだはずの Environment の名前。ほかの Environment は Secret を読んでいないはずである。
+		wantRead []string
+	}{
+		{
+			// legacy を Environments に名指さず、削除で失われるものまで読む範囲から個別パターンも読むことを確かめる
+			name:            "variables and secrets of the environment read for deletion follow its deployment patterns",
+			environments:    []string{"staging"},
+			readForDeletion: []string{"legacy"},
+			areas:           []setting.Area{setting.AreaEnvironments},
+			routes: map[string]githubtest.Response{
+				environmentsPath:         twoEnvironments,
+				policiesPath("Legacy"):   noPatterns,
+				variablesPath("Legacy"):  noVariables,
+				secretsPath("Legacy"):    noSecrets,
+				variablesPath("staging"): noVariables,
+				secretsPath("staging"):   noSecrets,
+			},
+			wantRequests: []string{
+				repositoryPath + "?", environmentsPath + firstPage, policiesPath("Legacy") + firstPage,
+				variablesPath("Legacy") + variablesFirstPage, secretsPath("Legacy") + firstPage,
+			},
+			wantRead: []string{"Legacy"},
+		},
+		{
+			name:            "an environment read for deletion that is not in the list gets no request",
+			readForDeletion: []string{"legacy"},
+			areas:           []setting.Area{setting.AreaEnvironments},
+			routes: map[string]githubtest.Response{
+				environmentsPath:         list(githubtest.EnvironmentBody{ID: 2, Name: "staging"}),
+				variablesPath("staging"): noVariables,
+				secretsPath("staging"):   noSecrets,
+			},
+			wantRequests: []string{repositoryPath + "?", environmentsPath + firstPage},
+		},
+		{
+			name:            "variables already read for the environment variables area are not read again",
+			environments:    []string{"staging"},
+			readForDeletion: []string{"legacy"},
+			areas:           []setting.Area{setting.AreaEnvironments, setting.AreaEnvironmentVariables},
+			routes: map[string]githubtest.Response{
+				environmentsPath:         twoEnvironments,
+				policiesPath("Legacy"):   noPatterns,
+				variablesPath("Legacy"):  noVariables,
+				variablesPath("staging"): noVariables,
+				secretsPath("Legacy"):    noSecrets,
+				secretsPath("staging"):   noSecrets,
+			},
+			wantRequests: []string{
+				repositoryPath + "?", environmentsPath + firstPage, policiesPath("Legacy") + firstPage,
+				variablesPath("Legacy") + variablesFirstPage, variablesPath("staging") + variablesFirstPage,
+				secretsPath("Legacy") + firstPage,
+			},
+			wantRead: []string{"Legacy"},
+		},
+		{
+			name:            "no area of environments reads no secrets",
+			readForDeletion: []string{"legacy"},
+			areas:           nil,
+			routes:          map[string]githubtest.Response{},
+			wantRequests:    []string{repositoryPath + "?"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.routes[repositoryPath] = githubtest.OK(repositoryBody)
+			routes := &escapedPathRoutes{t: t, routes: tc.routes}
+			c := newTestClient(t, routes.ServeHTTP)
+			names := func(ss []string) []setting.EnvironmentName {
+				parsed := make([]setting.EnvironmentName, len(ss))
+				for i, s := range ss {
+					parsed[i] = mustEnvironmentName(t, s)
+				}
+				return parsed
+			}
+			named := NamedResources{Environments: names(tc.environments), EnvironmentsReadForDeletion: names(tc.readForDeletion)}
+
+			observed, err := c.ObserveRepositoryForNamedResources(t.Context(), mustReference(t, "owner/repo"), named, tc.areas...)
+			if err != nil {
+				t.Fatalf("ObserveRepositoryForNamedResources() error = %v", err)
+			}
+			if got := routes.Requests(); !reflect.DeepEqual(got, tc.wantRequests) {
+				t.Errorf("requests = %q, want %q", got, tc.wantRequests)
+			}
+			if observed.Environments == nil {
+				return
+			}
+			for _, e := range observed.Environments.Existing {
+				read := slices.Contains(tc.wantRead, e.Name)
+				if read && (e.Variables == nil || !reflect.DeepEqual(e.Secrets, &EnvironmentSecrets{Existing: []EnvironmentSecret{}})) {
+					t.Errorf("environment %q = %+v, want its variables and no secrets read", e.Name, e)
+				}
+				if !read && e.Secrets != nil {
+					t.Errorf("environment %q secrets = %+v, want nil", e.Name, e.Secrets)
+				}
+			}
+		})
+	}
+}
+
+// TestObserveRepositoryForNamedResources_EnvironmentDeletionFailure は、削除で失われるものの読み取りの失敗が観測の失敗になり、
+// どの読み取りかを示すことを確かめる。
+//
+//trace:checks FR-003 FR-004
+func TestObserveRepositoryForNamedResources_EnvironmentDeletionFailure(t *testing.T) {
+	environments := githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 1, Environments: []githubtest.EnvironmentBody{{ID: 1, Name: "legacy"}}}.JSON())
+	cases := []struct {
+		name     string
+		routes   map[string]githubtest.Response
+		wantErr  error
+		contains string
+	}{
+		{
+			name: "404 of the secrets is not found naming the environment",
+			routes: map[string]githubtest.Response{
+				environmentsPath + "/legacy/variables": githubtest.OK(githubtest.VariablesBody{}.JSON()),
+				environmentsPath + "/legacy/secrets":   {Status: http.StatusNotFound},
+			},
+			wantErr:  ErrNotFound,
+			contains: `fetch environments owner/repo: secrets of environment "legacy"`,
+		},
+		{
+			name: "403 of the variables is forbidden naming the environment and reads no secrets",
+			routes: map[string]githubtest.Response{
+				environmentsPath + "/legacy/variables": {Status: http.StatusForbidden},
+			},
+			wantErr:  ErrForbidden,
+			contains: `fetch environments owner/repo: variables of environment "legacy"`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.routes[repositoryPath] = githubtest.OK(repositoryBody)
+			tc.routes[environmentsPath] = environments
+			routes := &escapedPathRoutes{t: t, routes: tc.routes}
+			c := newTestClient(t, routes.ServeHTTP)
+			legacy := []setting.EnvironmentName{mustEnvironmentName(t, "legacy")}
+
+			_, err := c.ObserveRepositoryForNamedResources(t.Context(), mustReference(t, "owner/repo"),
+				NamedResources{EnvironmentsReadForDeletion: legacy}, setting.AreaEnvironments)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("ObserveRepositoryForNamedResources() error = %v, want %v", err, tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), tc.contains) {
+				t.Errorf("ObserveRepositoryForNamedResources() error = %q, want it to contain %q", err, tc.contains)
+			}
+		})
+	}
+}
+
+// TestObserveRepository_ReadsNoEnvironmentSecrets は、状態確認（show）の経路が、全 Environment を読んでも Secret の要求を送らないことを確かめる。
+//
+//trace:checks FR-004
+func TestObserveRepository_ReadsNoEnvironmentSecrets(t *testing.T) {
+	routes := &escapedPathRoutes{t: t, routes: map[string]githubtest.Response{
+		repositoryPath:                         githubtest.OK(repositoryBody),
+		environmentsPath:                       githubtest.OK(githubtest.EnvironmentsBody{TotalCount: 1, Environments: []githubtest.EnvironmentBody{{ID: 1, Name: "legacy"}}}.JSON()),
+		environmentsPath + "/legacy/variables": githubtest.OK(githubtest.VariablesBody{}.JSON()),
+		environmentsPath + "/legacy/secrets":   githubtest.OK(environmentSecretsBody(0)),
+	}}
+	c := newTestClient(t, routes.ServeHTTP)
+
+	observed, err := c.ObserveRepository(t.Context(), mustReference(t, "owner/repo"), setting.AreaEnvironments, setting.AreaEnvironmentVariables)
+	if err != nil {
+		t.Fatalf("ObserveRepository() error = %v", err)
+	}
+	want := []string{repositoryPath + "?", environmentsPath + firstPage, environmentsPath + "/legacy/variables" + variablesFirstPage}
+	if got := routes.Requests(); !reflect.DeepEqual(got, want) {
+		t.Errorf("requests = %q, want %q", got, want)
+	}
+	if secrets := observed.Environments.Existing[0].Secrets; secrets != nil {
+		t.Errorf("Secrets = %+v, want nil", secrets)
 	}
 }
 

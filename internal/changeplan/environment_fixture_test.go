@@ -32,3 +32,11 @@ func withVariables(e github.Environment, variables ...github.Variable) github.En
 	e.Variables = &github.Variables{Existing: variables}
 	return e
 }
+
+// readForDeletion は、削除で失われるものまで読んだ観測の Environment として、e に変数の一覧 variables と Secret の一覧 secrets を持たせて返す。
+// withVariables と分けるのは、Secret を読んだ状態が、削除で失われるものを読む範囲に含めた Environment にだけ生じる別の状態だからである。
+func readForDeletion(e github.Environment, variables []github.Variable, secrets ...github.EnvironmentSecret) github.Environment {
+	e.Variables = &github.Variables{Existing: variables}
+	e.Secrets = &github.EnvironmentSecrets{Existing: secrets}
+	return e
+}

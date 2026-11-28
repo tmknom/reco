@@ -1,8 +1,10 @@
 package changeplan
 
 import (
+	"reflect"
 	"testing"
 
+	"github.com/tmknom/reco/internal/configuration"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -62,6 +64,44 @@ func TestDeploymentBranchPolicyOperationsIgnoresPatternsOfAnotherMode(t *testing
 	if len(got) != 1 || got[0].Kind != DeploymentBranchPolicyModeUpdate || got[0].Mode != setting.DeploymentBranchPolicyProtectedBranches {
 		t.Errorf("deploymentBranchPolicyOperations() = %+v, want one mode update sending protected_branches", got)
 	}
+}
+
+// TestEnvironmentDeletionOf は、Environment の削除の変更予定を、存在しないことを期待状態にし、値を送らない削除の更新操作一つにして、
+// 計画時の存在、ID、削除で失われるものを一つの基準に載せることを確かめる。承認のあとに作り直されたか変わった Environment を消さないため。
+//
+//trace:checks INV-001 INV-004 FR-011
+func TestEnvironmentDeletionOf(t *testing.T) {
+	unit := setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "legacy")}
+	loss := &EnvironmentLoss{DeletedValue: setting.EnvironmentDeletedValue{WaitTimer: 30}, Variables: []github.Variable{{Name: "REGION", Value: "eu"}}}
+	deletion := SettingPlan{
+		Unit: unit, Observed: github.Observed(setting.Present()), Desired: setting.Absent(), EnvironmentIdentity: ObservedEnvironmentIdentity(7),
+		Result: Mismatch, Applicability: Applicable(), EnvironmentLoss: loss,
+	}
+
+	got := environmentDeletionOf(deletion)
+	want := LogicalChange{
+		DesiredState: []configuration.ManagedSetting{{Unit: unit, Desired: setting.Absent()}},
+		Operations: []UpdateOperation{{
+			Kind: EnvironmentDeletion, Unit: unit,
+			PreconditionBases: []PreconditionBasis{{
+				Unit: unit, AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: ObservedEnvironmentIdentity(7), AnticipatedEnvironmentLoss: loss,
+			}},
+		}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("environmentDeletionOf() =\n%+v\nwant\n%+v", got, want)
+	}
+
+	t.Run("deletion without what it loses panics", func(t *testing.T) {
+		withoutLoss := deletion
+		withoutLoss.EnvironmentLoss = nil
+		defer func() {
+			if recover() == nil {
+				t.Error("environmentDeletionOf() did not panic")
+			}
+		}()
+		environmentDeletionOf(withoutLoss)
+	})
 }
 
 // TestCreatedValueOfPanicsOnSettingOtherThanProtectionRule は、作成直後の値を持たない設定を不変条件の破れとすることを確かめる。

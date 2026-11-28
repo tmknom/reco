@@ -4,9 +4,11 @@
 
 reco が変えるのは、設定ファイルに書いた設定だけです。
 
-Environment も同じです。reco が作成するのも、`deployment_branch_policy` や `reviewers` などの設定を変えるのも、設定ファイルに名前を書いた Environment だけです。Environment を削除することはありません。Ruleset も同じです。reco が作成するのも、内容を変えるのも、設定ファイルに名前を書いた Ruleset だけで、書いていない Ruleset は変更も削除もしません。
+Environment も同じです。reco が作成するのも、`deployment_branch_policy` や `reviewers` などの設定を変えるのも、設定ファイルに名前を書いた Environment だけで、書いていない Environment は変更も削除もしません。Ruleset も同じです。reco が作成するのも、内容を変えるのも、設定ファイルに名前を書いた Ruleset だけで、書いていない Ruleset は変更も削除もしません。
 
-reco が削除するのは、設定ファイルに `state: absent` と書いた名前の Repository Variable、Environment Variable、Ruleset だけです。行を消した変数や Ruleset、書いていない変数や Ruleset は消しません。消す変数の値は、変更計画に `"<今の値>" -> absent` と示し、消す Ruleset は `present -> absent` と内容の全体を示して、承認を求めます。
+reco が削除するのは、設定ファイルに `state: absent` と書いた名前の Repository Variable、Environment Variable、Environment、Ruleset だけです。要素を消した変数、Environment、Ruleset と、書いていないものは消しません。消す変数の値は、変更計画に `"<今の値>" -> absent` と示し、消す Ruleset は `present -> absent` と内容の全体を、消す Environment は `present -> absent` と消える保護設定を示して、承認を求めます。
+
+Environment を消すと、GitHub はその Environment Variables と Environment Secrets も一緒に消します。設定ファイルに書いていない変数と Secret も消えます。Secret の値は reco も読めないため、消えたあとは取り戻せません。同じ名前で Environment を作り直しても、変数と Secret は戻りません。reco は、消える変数の名前と値と、消える Secret の名前を、承認の前に変更計画の `Side effect:` の行に示します。
 
 書いた設定だけを変えるという原則の例外は、書いた設定を変えると GitHub の仕様でほかの値が消えるか変わる場合です。たとえば、`allowed_actions` を `selected` から `all` や `local_only` に変えると、GitHub が `selected_actions` の値を消します。`dependabot_alerts` を変えると、GitHub は Dependency graph も同じ値（有効か無効）に変えます。`dependabot_alerts` を無効にすると、GitHub は設定ファイルに書いていない Dependabot security updates も、有効だったなら無効にします。`secret_scanning` を無効にすると、GitHub は設定ファイルに書いていないリポジトリの push protection を、有効だったなら無効にします。Environment の `reviewers` から担当者をすべて外すと、GitHub は設定ファイルに書いていない `prevent_self_review` を、有効だったなら無効にします。reco はこれらを変更計画の `Side effect:` の行に示し、その内容も含めて承認を求めます。
 
@@ -24,7 +26,7 @@ reco が削除するのは、設定ファイルに `state: absent` と書いた�
 
 ## 承認のあとで設定が変わったら止まる
 
-reco は、更新の直前ごとに、関係する設定が、承認したときの値（先に行った更新で予定どおりに変えた設定は、その変更後の値）のままかを確かめます。Environment、変数（Repository Variable と Environment Variable）、Ruleset を作成するときは、同じ名前（大文字と小文字だけが違う名前を含む）のものがまだないことを確かめます。承認のあとでほかの人や仕組みが設定を変えていたり、同じ名前の Environment、変数、Ruleset が作られていたりしたら、その更新もそのあとの更新も始めずに止まります。同じ名前の変数が作られていた場合は、その値が設定ファイルと同じでも止まります。変数を削除するときは、値が承認したときのままかを確かめ、変わっていれば消さずに止まります。既存の Ruleset の内容を置き換えるときは、変える予定の部分だけでなく、Ruleset の内容の全体が承認したときのままか、消されたり、別の名前に変えられたり、作り直されたりしていないかを確かめ、どれかが崩れていれば（ほかの人がルールや迂回できる主体を足しただけでも）置き換えずに止まります。Ruleset を削除するときも同じく確かめ、崩れていれば消さずに止まります。変数の削除と、Ruleset の置き換えと削除でこう確かめるのは、承認の前に示していない値を失わせないためです。それでも、`apply` のあいだに設定を変えられると、reco が見つけられないことがあります。たとえば、削除の直前の確認のあとに Ruleset の名前を変えられると、reco は承認したときの内容のその Ruleset を消し、完了と表示します。`apply` のあいだは、同じリポジトリの設定をほかの手段で変えないようにします。
+reco は、更新の直前ごとに、関係する設定が、承認したときの値（先に行った更新で予定どおりに変えた設定は、その変更後の値）のままかを確かめます。Environment、変数（Repository Variable と Environment Variable）、Ruleset を作成するときは、同じ名前（大文字と小文字だけが違う名前を含む）のものがまだないことを確かめます。承認のあとでほかの人や仕組みが設定を変えていたり、同じ名前の Environment、変数、Ruleset が作られていたりしたら、その更新もそのあとの更新も始めずに止まります。同じ名前の変数が作られていた場合は、その値が設定ファイルと同じでも止まります。変数を削除するときは、値が承認したときのままかを確かめ、変わっていれば消さずに止まります。既存の Ruleset の内容を置き換えるときは、変える予定の部分だけでなく、Ruleset の内容の全体が承認したときのままか、消されたり、別の名前に変えられたり、作り直されたりしていないかを確かめ、どれかが崩れていれば（ほかの人がルールや迂回できる主体を足しただけでも）置き換えずに止まります。Ruleset を削除するときも同じく確かめ、崩れていれば消さずに止まります。Environment を削除するときは、Environment が消されたり作り直されたりしていないか、消える保護設定と変数が承認したときのままか、Secret が足されたり消されたり登録し直されたりしていないかを確かめ、どれかが崩れていれば消さずに止まります。変数の削除と、Ruleset の置き換えと削除、Environment の削除でこう確かめるのは、承認の前に示していない値を失わせないためです。それでも、`apply` のあいだに設定を変えられると、reco が見つけられないことがあります。たとえば、削除の直前の確認のあとに Ruleset の名前を変えられると、reco は承認したときの内容のその Ruleset を消し、完了と表示します。同じく、削除の直前の確認のあとに Environment を消して同じ名前で作り直されると、reco は作り直された Environment を、承認の前に示していない中身ごと消し、完了と表示します。確認のあとに足された変数や Secret も、Environment と一緒に消えます。`apply` のあいだは、同じリポジトリの設定をほかの手段で変えないようにします。
 
 ## 問題が起きたら、それ以上更新しない
 
@@ -42,7 +44,7 @@ reco は、渡されたトークンを GitHub へのアクセスにだけ使い�
 
 ## reco がしないこと
 
-- **変更を元に戻さない**：`apply` が途中で止まっても、すでに反映した変更はそのまま残る。元に戻すときは、元の値を書いて `apply` する。作成した Environment は GitHub 上で消し、作成した Ruleset は `state: absent` を書いて `apply` するか GitHub 上で消し、設定ファイルに書けない設定（Dependency graph など）は GitHub 上で元の値に戻す。内容を置き換えた Ruleset が、置き換える前に設定ファイルに書けない値（`enforcement: evaluate` や `conditions: {}` など）を持っていたときも、GitHub 上でその値に戻す
+- **変更を元に戻さない**：`apply` が途中で止まっても、すでに反映した変更はそのまま残る。元に戻すときは、元の値を書いて `apply` する。作成した Environment と Ruleset は `state: absent` を書いて `apply` するか GitHub 上で消し、設定ファイルに書けない設定（Dependency graph など）は GitHub 上で元の値に戻す。内容を置き換えた Ruleset が、置き換える前に設定ファイルに書けない値（`enforcement: evaluate` や `conditions: {}` など）を持っていたときも、GitHub 上でその値に戻す
 - **成否が分からない更新を送り直さない**：GitHub が更新を受け付けたか分からないときは、送り直さずに止まる。`plan` で今の値を確かめてから `apply` し直す
 - **外部のクラウドなどの設定を確かめない**：OIDC トークンの subject の形を変えたとき、`updated` が示すのは GitHub 上の設定値が設定ファイルのとおりになったことまでで、外部のクラウドなどでワークフローが認証できることではない。reco は外部の信頼の条件を読まず、変えない
 - **リダイレクトに従わない**：名前を変えたか移転したリポジトリを古い名前で指定すると、意図しない宛先へトークンを送らないよう、エラーで止まる
@@ -52,7 +54,8 @@ reco は、渡されたトークンを GitHub へのアクセスにだけ使い�
 ## References
 
 - [要求定義](../spec/requirements.md)：この文書に書いた動作の全条件（リポジトリリソースの作成と削除の範囲（対象範囲）、不変条件 INV-001〜INV-005、適用できない変更をまとめて報告すること FR-008、承認後の変更前提の再確認 FR-010、変更後の確認 FR-012、変更結果の報告 FR-013、認証情報の秘匿 QR-001）
-- [YAML 設定仕様](../spec/configuration.md)：一覧を値とする設定（2.1節）、存在しないことの宣言による変数の削除（10.3節）、Environment を削除しないこと（11章）、存在しないことの宣言による Ruleset の削除と、書いていない Ruleset を変更しないこと（13章、13.6節）
+- [YAML 設定仕様](../spec/configuration.md)：一覧を値とする設定（2.1節）、存在しないことの宣言による変数の削除（10.3節）、存在しないことの宣言による Environment の削除と、一緒に消える変数と Secret（11.6節）、存在しないことの宣言による Ruleset の削除と、書いていない Ruleset を変更しないこと（13章、13.6節）
 - [CLI 仕様](../spec/cli.md)：認証情報の扱い（3章）、適用できない変更があるときに `apply` が止まること、承認と、承認のあとに対象と変更内容を差し替えないこと、承認のあとの変化による停止（4章）、リダイレクトに従わないこと（5章）
 - [表示仕様](../spec/output.md)：Repository Variables と Environment Variables の値を表示すること（2章）、副作用と適用できない変更の表示（3.4節）、変更結果の区分（4.2節）
 - [アーキテクチャ設計](../design/architecture.md)：リダイレクトに従わない理由（5.2節）、書いていない設定を変えない更新方式（5.3節）
+- [Environments の設計](../design/settings/environments.md)：Environment の削除で承認の前に示すもの、削除の直前に確かめること、防げない競合

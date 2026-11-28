@@ -99,6 +99,7 @@ func TestCreateEnvironmentPanicsOnUnaddressableName(t *testing.T) {
 		{name: "remove deployment pattern", update: func() {
 			_, _ = c.RemoveDeploymentPattern(t.Context(), reference, "..", setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"}, 42)
 		}},
+		{name: "delete environment", update: func() { _, _ = c.DeleteEnvironment(t.Context(), reference, "..") }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -653,6 +654,106 @@ func TestAddDeploymentPatternOutcome(t *testing.T) {
 			}
 			if tc.unwantedMessage != "" && strings.Contains(err.Error(), tc.unwantedMessage) {
 				t.Errorf("error = %q, want it not to contain %q", err, tc.unwantedMessage)
+			}
+			if n := received.Load(); n != 1 {
+				t.Errorf("server received %d requests, want 1", n)
+			}
+		})
+	}
+}
+
+// TestDeleteEnvironment は、Environment を削除する DELETE を、エスケープした名前の宛先へ、本文も Content-Type もなしで一度だけ送ることを確かめる。
+//
+//trace:checks INV-001 FR-011 INV-005
+func TestDeleteEnvironment(t *testing.T) {
+	var received atomic.Int32
+	var gotMethod, gotPath, gotRawQuery string
+	var gotHeader http.Header
+	var gotBody []byte
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		received.Add(1)
+		gotMethod, gotPath, gotRawQuery, gotHeader = r.Method, r.URL.EscapedPath(), r.URL.RawQuery, r.Header
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	outcome, err := c.DeleteEnvironment(t.Context(), mustReference(t, "owner/repo"), "Legacy/Eu 100%")
+	if err != nil || outcome != UpdateSucceeded {
+		t.Fatalf("DeleteEnvironment() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+	}
+
+	if n := received.Load(); n != 1 {
+		t.Errorf("server received %d requests, want 1", n)
+	}
+	if want := "/repos/owner/repo/environments/Legacy%2FEu%20100%25"; gotMethod != http.MethodDelete || gotPath != want || gotRawQuery != "" {
+		t.Errorf("request = %s %s?%s, want DELETE %s without a query", gotMethod, gotPath, gotRawQuery, want)
+	}
+	if len(gotBody) != 0 {
+		t.Errorf("request body = %q, want none", gotBody)
+	}
+	if v, ok := gotHeader["Content-Type"]; ok {
+		t.Errorf("Content-Type = %q, want the header absent", v)
+	}
+}
+
+// TestDeleteEnvironmentOutcome は、削除の応答から成否を判定し、再送しないことを確かめる。404 はすでにないことの確認として成功にしない。
+//
+//trace:checks FR-012 FR-013 INV-005
+func TestDeleteEnvironmentOutcome(t *testing.T) {
+	cases := []struct {
+		name        string
+		respond     func(t *testing.T, w http.ResponseWriter)
+		wantOutcome UpdateOutcome
+		wantErr     error
+	}{
+		{
+			name:        "404 is rejected, not read as already absent",
+			respond:     func(_ *testing.T, w http.ResponseWriter) { w.WriteHeader(http.StatusNotFound) },
+			wantOutcome: UpdateRejected,
+			wantErr:     ErrNotFound,
+		},
+		{
+			name:        "500 is unknown and not retried",
+			respond:     func(_ *testing.T, w http.ResponseWriter) { w.WriteHeader(http.StatusInternalServerError) },
+			wantOutcome: UpdateUnknown,
+			wantErr:     ErrUnexpectedResponse,
+		},
+		{
+			name:        "200 is unknown, not success",
+			respond:     func(_ *testing.T, w http.ResponseWriter) { w.WriteHeader(http.StatusOK) },
+			wantOutcome: UpdateUnknown,
+			wantErr:     ErrUnexpectedResponse,
+		},
+		{
+			name: "a lost response is unknown and not retried",
+			respond: func(t *testing.T, w http.ResponseWriter) {
+				conn, _, err := http.NewResponseController(w).Hijack()
+				if err != nil {
+					t.Errorf("Hijack() error = %v", err)
+					return
+				}
+				_ = conn.Close() // 応答を返さずに接続を切るため、Close の失敗は結果に影響しない
+			},
+			wantOutcome: UpdateUnknown,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var received atomic.Int32
+			c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+				received.Add(1)
+				tc.respond(t, w)
+			})
+
+			outcome, err := c.DeleteEnvironment(t.Context(), mustReference(t, "example/project-a"), "legacy")
+			if outcome != tc.wantOutcome || err == nil {
+				t.Fatalf("DeleteEnvironment() = %v, %v, want %v with an error", outcome, err, tc.wantOutcome)
+			}
+			if tc.wantErr != nil && !errors.Is(err, tc.wantErr) {
+				t.Errorf("error = %v, want it to wrap %v", err, tc.wantErr)
+			}
+			if want := `delete environment "legacy" example/project-a: `; !strings.HasPrefix(err.Error(), want) {
+				t.Errorf("error = %q, want prefix %q", err, want)
 			}
 			if n := received.Load(); n != 1 {
 				t.Errorf("server received %d requests, want 1", n)

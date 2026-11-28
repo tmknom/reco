@@ -93,6 +93,19 @@ func (c *Client) RemoveDeploymentPattern(ctx context.Context, reference reposito
 	return describeUpdateOutcome(fmt.Sprintf("remove deployment pattern %s %q (id %d) from environment %q", pattern.Type, pattern.Name, id, environment), reference, status, err)
 }
 
+// DeleteEnvironment は、reference のリポジトリの name の Environment を削除する DELETE を、本文なしで一度だけ送る。再送はしない。
+// 削除は Environment の変数と Secret も消すため、呼び出し元は承認の前に示した Environment にだけ送る。
+// 404 はすでにないことの確認として成功にせず、ほかの更新要求と同じく拒否にする。存在しないことは更新後の観測で確かめる。
+// 呼び出し元は宛先にできる名前だけを渡すため、URL を組めないときは不変条件の破れとして panic する。
+func (c *Client) DeleteEnvironment(ctx context.Context, reference repository.Reference, name string) (UpdateOutcome, error) {
+	u, ok := c.environmentURL(reference, name)
+	if !ok {
+		panic(fmt.Sprintf("github: environment name %q cannot be addressed", name))
+	}
+	status, _, err := c.send(ctx, http.MethodDelete, u, nil, http.StatusNoContent)
+	return describeUpdateOutcome(fmt.Sprintf("delete environment %q", name), reference, status, err)
+}
+
 // putEnvironment は name の Environment へ body を本文とする PUT を送る。body が nil なら本文を送らない。
 // 成功応答の本文は、Environment の取得の契約に適合するかを確かめるためだけに解釈する。
 // 呼び出し元は宛先にできる名前だけを渡すため、URL を組めないときは不変条件の破れとして panic する。

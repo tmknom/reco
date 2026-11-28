@@ -25,9 +25,14 @@ type Environment struct {
 	// 方式が selected で nil なのは読む範囲に含めなかった Environment で、個別パターンが一つもないことや、個別パターンの観測不能とは異なる。
 	DeploymentPatterns *SettingObservation[DeploymentPatterns]
 	Protection         EnvironmentProtection
+	// UninterpretedProtectionRules は、reco が種類を知らない保護ルールの type を、応答の順に、同じものは最初の一つだけ持つ。
+	// 保護設定の値に入れないのは、存在の宣言をした Environment の照合と更新の前後の比較を変えないためで、削除で失われる値の全体を示せるかの判定にだけ使う。
+	UninterpretedProtectionRules []UninterpretedPart
 	// Variables は、Environment Variables の領域を選ばなかった観測と、読む範囲に含めなかった Environment では nil になる。
 	// Variable が一つもないことと取り違えさせないため、値型にしない。
 	Variables *Variables
+	// Secrets は、削除で失われるものまで読む範囲に含めた Environment でだけ持つ。ほかでは nil で、Secret が一つもないこととは異なる。
+	Secrets *EnvironmentSecrets
 }
 
 // EnvironmentProtection は、Environment の保護設定の観測結果。reco は観測し、can_admins_bypass のほかは宣言を受け付ける。
@@ -68,6 +73,32 @@ func (e Environment) DeploymentBranchPolicy() SettingObservation[setting.Deploym
 		return Unavailable[setting.DeploymentBranchPolicy](observation.UnavailableReason())
 	}
 	return Observed(setting.DeploymentBranchPolicy{Mode: e.DeploymentBranchPolicyMode, Patterns: patterns.Existing})
+}
+
+// DeletedValue は、削除で失われる値の観測結果を返す。担当者は観測した login を持つ。
+// 知らない種類の保護ルールがあれば、削除がその保護ルールも消すことを値で示せないため、解釈しない部分を理由にした観測不能にする。
+// そうでなく、デプロイ元制限か担当者の集合が観測不能なら、同じ理由（知らない値）の観測不能にする。観測不能を方式だけの値や空集合で埋めると、失われる値を少なく示すため。
+// 方式が selected で個別パターンを読んでいなければ、DeploymentBranchPolicy と同じく panic する。
+func (e Environment) DeletedValue() SettingObservation[setting.EnvironmentDeletedValue] {
+	if len(e.UninterpretedProtectionRules) > 0 {
+		return Unavailable[setting.EnvironmentDeletedValue](UnavailableUninterpretedParts)
+	}
+	policy := e.DeploymentBranchPolicy()
+	deploymentBranchPolicy, ok := policy.Value()
+	if !ok {
+		return Unavailable[setting.EnvironmentDeletedValue](policy.UnavailableReason())
+	}
+	reviewerSet, ok := e.Protection.ReviewerSet.Value()
+	if !ok {
+		return Unavailable[setting.EnvironmentDeletedValue](e.Protection.ReviewerSet.UnavailableReason())
+	}
+	return Observed(setting.EnvironmentDeletedValue{
+		DeploymentBranchPolicy: deploymentBranchPolicy,
+		ReviewerSet:            reviewerSet,
+		PreventSelfReview:      e.Protection.PreventSelfReview,
+		WaitTimer:              e.Protection.WaitTimer,
+		CanAdminsBypass:        e.Protection.CanAdminsBypass,
+	})
 }
 
 // DeploymentPatternID は、読んだ個別パターン pattern の ID を返す。方式が selected でないか、個別パターンが観測不能か、pattern を読んでいなければ偽を返す。
@@ -144,6 +175,31 @@ func (c *Client) observeEnvironments(ctx context.Context, reference repository.R
 		e.DeploymentPatterns = &patterns
 	}
 	return Environments{Existing: existing}, nil
+}
+
+// observeEnvironmentDeletions は、environments の並びで、削除で失われるものまで読む scope の範囲にある Environment ごとに、
+// 変数をまだ読んでいなければ変数の一覧を、続けて Secret の一覧を読み、その Environment に入れる。
+// environments は同じ観測で一覧から読んだ Environment に限る。範囲にあっても一覧にない名前には要求を送らない。
+func (c *Client) observeEnvironmentDeletions(ctx context.Context, reference repository.Reference, environments []Environment, scope resourceScope) error {
+	for i := range environments {
+		e := &environments[i]
+		if !scope.includesEnvironmentDeletion(e.Name) {
+			continue
+		}
+		if e.Variables == nil {
+			variables, err := c.observeVariablesOfEnvironment(ctx, reference, e.Name)
+			if err != nil {
+				return err
+			}
+			e.Variables = &variables
+		}
+		secrets, err := c.observeEnvironmentSecrets(ctx, reference, e.Name)
+		if err != nil {
+			return err
+		}
+		e.Secrets = &secrets
+	}
+	return nil
 }
 
 // observeDeploymentPatterns は、方式が selected の Environment の個別パターンを一覧の並びのまま読む。

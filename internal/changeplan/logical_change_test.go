@@ -55,6 +55,7 @@ func TestUpdateOperation_Endpoint(t *testing.T) {
 		{name: "environment update has no endpoint of a setting", operation: UpdateOperation{Kind: DeploymentBranchPolicyModeUpdate, Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}}},
 		{name: "ruleset creation has no endpoint of a setting", operation: UpdateOperation{Kind: RulesetCreation, Unit: rulesetUnit(t, "protect")}},
 		{name: "ruleset deletion has no endpoint of a setting", operation: UpdateOperation{Kind: RulesetDeletion, Unit: rulesetUnit(t, "protect")}},
+		{name: "environment deletion has no endpoint of a setting", operation: UpdateOperation{Kind: EnvironmentDeletion, Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}}},
 		{name: "reviewer set update has no endpoint of a setting", operation: UpdateOperation{Kind: ReviewerSetUpdate, Unit: setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: production}}},
 		{name: "prevent self-review update has no endpoint of a setting", operation: UpdateOperation{Kind: PreventSelfReviewUpdate, Unit: setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: production}}},
 		{name: "wait timer update has no endpoint of a setting", operation: UpdateOperation{Kind: WaitTimerUpdate, Unit: setting.Unit{Key: setting.EnvironmentWaitTimer, Environment: production}}},
@@ -1337,6 +1338,65 @@ func TestRepositoryPlan_LogicalChangesOfEnvironments(t *testing.T) {
 	})
 }
 
+// TestRepositoryPlan_LogicalChangesOfEnvironmentDeletion は、Environment の削除の変更予定が、作成と取り違えられずに削除の論理的な設定変更になり、
+// 別の Environment の作成や中の設定の変更と、計画の並びで実行されることを確かめる。
+//
+//trace:checks INV-001 INV-004 FR-011
+func TestRepositoryPlan_LogicalChangesOfEnvironmentDeletion(t *testing.T) {
+	legacy, production, staging := mustEnvironmentName(t, "legacy"), mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging")
+	deletion := SettingPlan{
+		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: legacy}, Observed: github.Observed(setting.Present()), Desired: setting.Absent(),
+		EnvironmentIdentity: ObservedEnvironmentIdentity(3), Result: Mismatch, Applicability: Applicable(),
+		EnvironmentLoss: &EnvironmentLoss{Variables: []github.Variable{}, Secrets: []github.EnvironmentSecret{}},
+	}
+	creation := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch, Applicability: Applicable()}
+	stagingExistence := SettingPlan{
+		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, Observed: github.Observed(setting.Present()), Desired: setting.Present(),
+		EnvironmentIdentity: ObservedEnvironmentIdentity(7), Result: Match,
+	}
+	waitTimer := SettingPlan{
+		Unit: setting.Unit{Key: setting.EnvironmentWaitTimer, Environment: staging}, Observed: github.Observed(setting.WaitTimerValue(0)), Desired: setting.WaitTimerValue(30),
+		Result: Mismatch, Applicability: Applicable(),
+	}
+	type step struct {
+		kind UpdateOperationKind
+		unit setting.Unit
+	}
+	cases := []struct {
+		name     string
+		settings []SettingPlan
+		want     []step
+	}{
+		{
+			name:     "deletion first is executed first",
+			settings: []SettingPlan{deletion, creation, stagingExistence, waitTimer},
+			want:     []step{{EnvironmentDeletion, deletion.Unit}, {EnvironmentCreation, creation.Unit}, {WaitTimerUpdate, waitTimer.Unit}},
+		},
+		{
+			name:     "deletion in the middle stays in the middle",
+			settings: []SettingPlan{creation, deletion, stagingExistence, waitTimer},
+			want:     []step{{EnvironmentCreation, creation.Unit}, {EnvironmentDeletion, deletion.Unit}, {WaitTimerUpdate, waitTimer.Unit}},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			changes, err := RepositoryPlan{Target: mustReference(t, "owner/repo"), RepositoryID: 1, Settings: tc.settings}.LogicalChanges()
+			if err != nil {
+				t.Fatalf("LogicalChanges() error = %v", err)
+			}
+			var got []step
+			for _, change := range changes {
+				for _, operation := range change.Operations {
+					got = append(got, step{operation.Kind, operation.Unit})
+				}
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("LogicalChanges() operations = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestLogicalChange_ExcludedFromOutsideSettings は、変更対象外の設定から、変える設定に加えて副作用として提示した設定も除くことを確かめる。
 //
 //trace:checks INV-001 FR-012
@@ -1720,11 +1780,23 @@ func TestCheckUpdateEndpoint(t *testing.T) {
 	squash := configuration.ManagedSetting{Unit: setting.Unit{Key: setting.AllowSquashMerge}, Desired: setting.BoolValue(true)}
 	rebase := configuration.ManagedSetting{Unit: setting.Unit{Key: setting.AllowRebaseMerge}, Desired: setting.BoolValue(false)}
 	autoMerge := configuration.ManagedSetting{Unit: setting.Unit{Key: setting.AllowAutoMerge}, Desired: setting.BoolValue(true)}
+	productionUnit := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
+	loss := &EnvironmentLoss{Variables: []github.Variable{}, Secrets: []github.EnvironmentSecret{}}
+	// environmentDeletion は、production の削除の更新操作で、基準を bases にしたもの。
+	environmentDeletion := func(bases ...PreconditionBasis) UpdateOperation {
+		return UpdateOperation{Kind: EnvironmentDeletion, Unit: productionUnit, PreconditionBases: bases}
+	}
 
 	passing := []struct {
 		name      string
 		operation UpdateOperation
 	}{
+		{
+			name: "environment deletion based on an observed ID and what it loses passes",
+			operation: environmentDeletion(PreconditionBasis{
+				Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: ObservedEnvironmentIdentity(7), AnticipatedEnvironmentLoss: loss,
+			}),
+		},
 		{name: "setting update with an update endpoint passes", operation: UpdateOperation{Kind: SettingUpdate, Unit: autoMerge.Unit, Value: autoMerge.Desired}},
 		{name: "merge methods update sending only merge methods passes", operation: UpdateOperation{Kind: MergeMethodsUpdate, Unit: squash.Unit, Settings: []configuration.ManagedSetting{squash, rebase}}},
 		{name: "environment creation passes without an endpoint of a setting", operation: UpdateOperation{Kind: EnvironmentCreation, Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}}},
@@ -1760,6 +1832,24 @@ func TestCheckUpdateEndpoint(t *testing.T) {
 	}{
 		{name: "ruleset value update without an observed ID panics", operation: UpdateOperation{Kind: RulesetValueUpdate, Unit: rulesetUnit(t, "protect"), Value: setting.RulesetValue(protectRuleset())}},
 		{name: "ruleset deletion without an observed ID panics", operation: UpdateOperation{Kind: RulesetDeletion, Unit: rulesetUnit(t, "protect")}},
+		// 承認のあとに作り直された Environment か、示していない値を持つ Environment を消さないため、どちらの基準も欠かせない
+		{
+			name:      "environment deletion without an observed ID panics",
+			operation: environmentDeletion(PreconditionBasis{Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentLoss: loss}),
+		},
+		{
+			name: "environment deletion without what it loses panics",
+			operation: environmentDeletion(PreconditionBasis{
+				Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: ObservedEnvironmentIdentity(7),
+			}),
+		},
+		{
+			name: "environment deletion whose bases are of another environment panics",
+			operation: environmentDeletion(PreconditionBasis{
+				Unit:             setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "staging")},
+				AnticipatedValue: AnticipateValue(setting.Present()), AnticipatedEnvironmentIdentity: ObservedEnvironmentIdentity(7), AnticipatedEnvironmentLoss: loss,
+			}),
+		},
 		{name: "setting without an update request panics", operation: UpdateOperation{Kind: SettingUpdate, Unit: setting.Unit{Key: "general.unknown"}}},
 		{name: "merge method updated on its own panics", operation: UpdateOperation{Kind: SettingUpdate, Unit: squash.Unit, Value: squash.Desired}},
 		{name: "merge methods update without a setting to send panics", operation: UpdateOperation{Kind: MergeMethodsUpdate, Unit: squash.Unit}},

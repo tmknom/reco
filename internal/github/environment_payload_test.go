@@ -82,6 +82,17 @@ func TestDecodeEnvironment(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "rules of unknown types are kept as uninterpreted protection rules",
+			body: environmentJSON(map[string]string{"protection_rules": `[{"type": "custom_rule"}, {"type": "wait_timer", "wait_timer": 5}]`}),
+			want: Environment{
+				ID:                           161088068,
+				Name:                         "production",
+				DeploymentBranchPolicyMode:   setting.DeploymentBranchPolicyAll,
+				Protection:                   EnvironmentProtection{WaitTimer: 5, ReviewerSet: Observed(setting.ReviewerSetOfRule(nil))},
+				UninterpretedProtectionRules: []UninterpretedPart{{Kind: UninterpretedProtectionRuleType, Name: "custom_rule"}},
+			},
+		},
 	}
 	for _, tc := range successes {
 		t.Run(tc.name, func(t *testing.T) {
@@ -216,11 +227,22 @@ func TestDecodeEnvironmentProtection(t *testing.T) {
 		p.WaitTimer = minutes
 		return p
 	}
+	// unknownRule は、type のほかのフィールドを持たない、reco が種類を知らない保護ルール。
+	unknownRule := func(ruleType string) string { return fmt.Sprintf(`{"type": %q}`, ruleType) }
+	uninterpreted := func(ruleTypes ...string) []UninterpretedPart {
+		parts := make([]UninterpretedPart, len(ruleTypes))
+		for i, ruleType := range ruleTypes {
+			parts[i] = UninterpretedPart{Kind: UninterpretedProtectionRuleType, Name: ruleType}
+		}
+		return parts
+	}
 	successes := []struct {
 		name            string
 		rules           []string
 		canAdminsBypass bool
 		want            EnvironmentProtection
+		// wantUninterpreted は、解釈しなかった保護ルール。nil は一つもないこと。
+		wantUninterpreted []UninterpretedPart
 	}{
 		{name: "no rules is an empty reviewer set without prevent_self_review", rules: nil, want: unprotected},
 		{name: "can_admins_bypass is carried over", rules: nil, canAdminsBypass: true, want: EnvironmentProtection{ReviewerSet: unprotected.ReviewerSet, CanAdminsBypass: true}},
@@ -279,17 +301,39 @@ func TestDecodeEnvironmentProtection(t *testing.T) {
 			rules: []string{`{"type": "required_reviewers", "prevent_self_review": false, "reviewers": [{"type": "App", "reviewer": {"app_id": 9}}, {"type": "Bot"}]}`},
 			want:  EnvironmentProtection{ReviewerSet: Unavailable[setting.ReviewerSet](UnavailableUnknownValue)},
 		},
-		{name: "branch_policy rule is skipped", rules: []string{`{"type": "branch_policy"}`}, want: unprotected},
-		{name: "rule of a type reco does not know is skipped", rules: []string{`{"type": "custom_rule", "id": 9}`, waitTimerRule}, want: withWaitTimer(unprotected, 30)},
+		{name: "branch_policy rule is skipped and is not uninterpreted", rules: []string{`{"type": "branch_policy"}`}, want: unprotected},
+		{
+			// 保護設定の値は知らない種類の保護ルールの有無で変えない。存在の宣言をした Environment の照合を変えないため
+			name:              "rule of a type reco does not know is uninterpreted and leaves the protection unchanged",
+			rules:             []string{reviewersRule, `{"type": "custom_rule", "id": 9}`, waitTimerRule},
+			want:              withWaitTimer(withRule(true, []setting.Reviewer{user1, team2}, nil), 30),
+			wantUninterpreted: uninterpreted("custom_rule"),
+		},
+		{name: "rule of an unknown type needs no field other than type", rules: []string{unknownRule("custom_rule")}, want: unprotected, wantUninterpreted: uninterpreted("custom_rule")},
+		{
+			name:              "two rules of the same unknown type are one uninterpreted part",
+			rules:             []string{unknownRule("custom_rule"), unknownRule("custom_rule")},
+			want:              unprotected,
+			wantUninterpreted: uninterpreted("custom_rule"),
+		},
+		{
+			name:              "rules of different unknown types are kept in the response order",
+			rules:             []string{unknownRule("zeta"), unknownRule("alpha"), unknownRule("zeta")},
+			want:              unprotected,
+			wantUninterpreted: uninterpreted("zeta", "alpha"),
+		},
 	}
 	for _, tc := range successes {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := decodeEnvironmentProtection(toRules(tc.rules...), tc.canAdminsBypass)
+			got, gotUninterpreted, err := decodeEnvironmentProtection(toRules(tc.rules...), tc.canAdminsBypass)
 			if err != nil {
 				t.Fatalf("decodeEnvironmentProtection() error = %v", err)
 			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("decodeEnvironmentProtection() = %+v, want %+v", got, tc.want)
+			}
+			if !reflect.DeepEqual(gotUninterpreted, tc.wantUninterpreted) {
+				t.Errorf("decodeEnvironmentProtection() uninterpreted = %+v, want %+v", gotUninterpreted, tc.wantUninterpreted)
 			}
 		})
 	}
@@ -335,7 +379,7 @@ func TestDecodeEnvironmentProtection(t *testing.T) {
 	}
 	for _, tc := range failures {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := decodeEnvironmentProtection(toRules(waitTimerRule, tc.body), false)
+			_, _, err := decodeEnvironmentProtection(toRules(waitTimerRule, tc.body), false)
 			if !errors.Is(err, ErrUnexpectedResponse) {
 				t.Fatalf("decodeEnvironmentProtection() error = %v, want %v", err, ErrUnexpectedResponse)
 			}
@@ -362,7 +406,7 @@ func TestDecodeEnvironmentProtection(t *testing.T) {
 	}
 	for _, tc := range duplicates {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := decodeEnvironmentProtection(toRules(tc.rule, tc.rule), false)
+			_, _, err := decodeEnvironmentProtection(toRules(tc.rule, tc.rule), false)
 			if !errors.Is(err, ErrUnexpectedResponse) {
 				t.Fatalf("decodeEnvironmentProtection() error = %v, want %v", err, ErrUnexpectedResponse)
 			}

@@ -43,12 +43,7 @@ func rulesetChangeText(s changeplan.SettingPlan) string {
 	if s.Applicability.IsNotApplicable() {
 		fmt.Fprintf(&b, "    Applicability: not applicable (%s)\n", notApplicableReasonText(s))
 	}
-	if (s.Applicability.Reason() == changeplan.NotApplicableUninterpretedParts) != (len(s.UninterpretedParts) > 0) {
-		panic(fmt.Sprintf("changeplandisplay: %s has %d uninterpreted parts for not-applicable reason %d", s.Unit.String(), len(s.UninterpretedParts), int(s.Applicability.Reason())))
-	}
-	for _, part := range s.UninterpretedParts {
-		fmt.Fprintf(&b, "      %s\n", part.String())
-	}
+	b.WriteString(uninterpretedPartsLines(s))
 	return b.String()
 }
 

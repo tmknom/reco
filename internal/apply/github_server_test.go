@@ -1,6 +1,7 @@
 package apply
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"sync"
@@ -148,6 +149,26 @@ func selectedBody() *githubtest.DeploymentBranchPolicyBody {
 // okVariables は、variables を一覧の全体とする変数の一覧の取得の正常応答。Repository Variables と Environment Variables で同じ形である。
 func okVariables(variables ...githubtest.VariableBody) response {
 	return response{status: http.StatusOK, body: githubtest.VariablesBody{TotalCount: len(variables), Variables: variables}.JSON()}
+}
+
+// environmentSecretBody は、Environment Secret の一覧の要素の本文。GitHub は値を返さない。
+type environmentSecretBody struct {
+	Name      string `json:"name"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// okEnvironmentSecrets は、secrets を一覧の全体とする Environment Secret の一覧の取得の正常応答。
+func okEnvironmentSecrets(t *testing.T, secrets ...environmentSecretBody) response {
+	t.Helper()
+	body, err := json.Marshal(struct {
+		TotalCount int                     `json:"total_count"`
+		Secrets    []environmentSecretBody `json:"secrets"`
+	}{TotalCount: len(secrets), Secrets: append([]environmentSecretBody{}, secrets...)})
+	if err != nil {
+		t.Fatalf("marshal environment secrets: %v", err)
+	}
+	return response{status: http.StatusOK, body: string(body)}
 }
 
 // createdVariable は、Repository Variable と Environment Variable の作成の正常応答。GitHub は 201 で、変数を含まない空のオブジェクトを返す。

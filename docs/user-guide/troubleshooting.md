@@ -54,7 +54,7 @@ export GH_TOKEN=$(gh auth token)
 {"time":"...","level":"ERROR","msg":"command failed","error":"fetch repository example/project-a: not found or not accessible (HTTP 404)"}
 ```
 
-`HTTP 404`、`HTTP 403`、`missing fields` のどれかを含むエラーは、トークンの持ち主（`gh` にログインしたアカウント）がそのリポジトリで十分なロールを持っていないときや、トークンの権限が足りないときに出ます。そのリポジトリで Admin ロールを持つアカウントの、`gh auth token` で取ったトークンを渡します。`HTTP 404` は、リポジトリの名前の綴りを誤ったときにも出ます。`delete repository variable`、`delete environment variable`、`update ruleset`、`delete ruleset` のエラーの `HTTP 404` は、[そのほかのエラーと行](#そのほかのエラーと行) を見ます。
+`HTTP 404`、`HTTP 403`、`missing fields` のどれかを含むエラーは、トークンの持ち主（`gh` にログインしたアカウント）がそのリポジトリで十分なロールを持っていないときや、トークンの権限が足りないときに出ます。そのリポジトリで Admin ロールを持つアカウントの、`gh auth token` で取ったトークンを渡します。`HTTP 404` は、リポジトリの名前の綴りを誤ったときにも出ます。`delete repository variable`、`delete environment variable`、`delete environment`、`update ruleset`、`delete ruleset` のエラーの `HTTP 404` は、[そのほかのエラーと行](#そのほかのエラーと行) を見ます。
 
 ## `Plan cannot be applied.` と表示された
 
@@ -77,7 +77,7 @@ Plan cannot be applied.
 {"time":"...","level":"ERROR","msg":"command failed","error":"plan cannot be applied: example/project-a: actions.permissions.sha_pinning_required is not applicable; no changes made"}
 ```
 
-理由は、変更計画の `Applicability:` の行の括弧の中にあります。セミコロンの前が成り立っていないこと、後ろが設定ファイルの直し方です。この例では Actions が無効のため、同じリポジトリに `enabled: true` か `allowed_actions` を書き足します。`Dependabot alerts is disabled` なら、同じリポジトリに `dependabot_alerts: true` を書き足します。`Secret scanning is disabled` なら `secret_scanning: true` を書き足し、`the repository is private` なら、そのリポジトリから、セミコロンの後ろに示されたキー（`secret_scanning` や `fork_pr_contributor_approval` など）を消します。`the repository is public` なら、セミコロンの後ろに示されたキー（`access` か `fork_pr_workflows_private_repos`）を消し、`an environment on GitHub has a name reco cannot compare` なら、設定ファイルから、`Applicability:` の行のすぐ上の変更に出た Environment の宣言を消します。`no merge method would remain enabled` なら、セミコロンの後ろに示されたキー（`allow_rebase_merge` など）のどれかを `true` と書き足します。`exceeds the maximum` なら、`days` を、セミコロンの後ろに示された上限の日数以下に直します。`the environment would have no required reviewers` なら、その Environment の `reviewers` に担当者を1人以上書き足すか、`prevent_self_review` を消します。GitHub が、担当者のいない Environment の「Prevent self-review」の変更を受け付けないためです。`a ruleset on GitHub has a name reco cannot compare` か `the ruleset on GitHub contains parts that reco does not interpret` なら、設定ファイルから、`Applicability:` の行の上の `rulesets.<名前>` に出た Ruleset の宣言を消します。後者では、`Applicability:` の行の下に、reco の解釈しない部分（`rule type: "creation"` など）が1行に一つずつ出ます。`GitHub does not accept changes to squash_merge_commit while it is disabled` なら、`allow_squash_merge: true` を書き足すか `squash_merge_commit` を消します（`merge_commit` なら `allow_merge_commit`）。`GitHub returned a value that reco does not know` なら、セミコロンの後ろに示されたキー（`merge_commit`、`allowed_actions` など）を消します。`GitHub returned a value of secret_scanning that reco does not know` なら、`secret_scanning_push_protection` を消します。Secret scanning が有効かを reco が確かめられないためです。今の値は GitHub の設定画面で確かめられます。`GitHub did not return the value` なら、設定ファイルから `web_commit_signoff_required` を消します。設定ファイルを直したら、`plan` で `Plan cannot be applied.` が消えたことを確かめ、`apply` を実行し直します。
+理由は、変更計画の `Applicability:` の行の括弧の中にあります。セミコロンの前が成り立っていないこと、後ろが設定ファイルの直し方です。この例では Actions が無効のため、同じリポジトリに `enabled: true` か `allowed_actions` を書き足します。`Dependabot alerts is disabled` なら、同じリポジトリに `dependabot_alerts: true` を書き足します。`Secret scanning is disabled` なら `secret_scanning: true` を書き足し、`the repository is private` なら、そのリポジトリから、セミコロンの後ろに示されたキー（`secret_scanning` や `fork_pr_contributor_approval` など）を消します。`the repository is public` なら、セミコロンの後ろに示されたキー（`access` か `fork_pr_workflows_private_repos`）を消し、`an environment on GitHub has a name reco cannot compare` なら、設定ファイルから、`Applicability:` の行のすぐ上の変更に出た Environment の宣言を消します。`no merge method would remain enabled` なら、セミコロンの後ろに示されたキー（`allow_rebase_merge` など）のどれかを `true` と書き足します。`exceeds the maximum` なら、`days` を、セミコロンの後ろに示された上限の日数以下に直します。`the environment would have no required reviewers` なら、その Environment の `reviewers` に担当者を1人以上書き足すか、`prevent_self_review` を消します。GitHub が、担当者のいない Environment の「Prevent self-review」の変更を受け付けないためです。`a ruleset on GitHub has a name reco cannot compare` か `the ruleset on GitHub contains parts that reco does not interpret` なら、設定ファイルから、`Applicability:` の行の上の `rulesets.<名前>` に出た Ruleset の宣言を消します。後者では、`Applicability:` の行の下に、reco の解釈しない部分（`rule type: "creation"` など）が1行に一つずつ出ます。`the environment on GitHub has protection rules that reco does not interpret` か `the environment on GitHub has a value that reco does not know` なら、設定ファイルから、`Applicability:` の行の上の `environments.<名前>` に出た Environment の `state: absent` の要素を消します。その Environment が、GitHub App による保護ルールなど reco の解釈しない保護ルールか、reco のまだ知らない値を持つため、消える内容の全体を示せず、reco は消しません。前者では、`Applicability:` の行の下に、解釈しない保護ルールの種類が `protection rule type: "<種類>"` の形で1行に一つずつ出ます。その Environment を消すなら、GitHub の「Environments」ページで消します。`GitHub does not accept changes to squash_merge_commit while it is disabled` なら、`allow_squash_merge: true` を書き足すか `squash_merge_commit` を消します（`merge_commit` なら `allow_merge_commit`）。`GitHub returned a value that reco does not know` なら、セミコロンの後ろに示されたキー（`merge_commit`、`allowed_actions` など）を消します。`GitHub returned a value of secret_scanning that reco does not know` なら、`secret_scanning_push_protection` を消します。Secret scanning が有効かを reco が確かめられないためです。今の値は GitHub の設定画面で確かめられます。`GitHub did not return the value` なら、設定ファイルから `web_commit_signoff_required` を消します。設定ファイルを直したら、`plan` で `Plan cannot be applied.` が消えたことを確かめ、`apply` を実行し直します。
 
 ## 承認できない
 
@@ -117,7 +117,7 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 | `Desired state: does not match` | 読み直した値が設定ファイルのとおりでなかった |
 | `Desired state: does not match (<設定>, ...)` | 複数の設定をまとめた変更（マージ方式など）で、括弧の中の設定の値が設定ファイルのとおりでなかった。ほかの設定が設定ファイルのとおりでも、変更全体は `failed` になる |
 | `Desired state: not confirmed (read failed)` | 更新のあとで値を読み直せず、設定ファイルのとおりになったか確かめられなかった。読み直せなかった原因は、結果のあとに出るエラーの行に出る |
-| `Desired state: not confirmed (environment existence unknown)` | 宣言した名前と同じかどうかを判定できない名前の Environment が現れ、宣言した Environment があるかを確かめられなかった |
+| `Desired state: not confirmed (environment existence unknown)` | 宣言した名前と同じかどうかを判定できない名前の Environment が現れ、宣言した Environment があるか、削除した Environment がないかを確かめられなかった |
 | `Desired state: not confirmed (ruleset existence unknown)` | 宣言した名前と同じかどうかを判定できない名前の Ruleset が現れ、作成したか内容を置き換えた Ruleset があるか、削除した Ruleset がないかを確かめられなかった |
 | `Desired state: not confirmed (the ruleset contains parts that reco does not interpret)` | 作成したか内容を置き換えた Ruleset が、reco の解釈しない部分を含んでいたため、設定ファイルのとおりか確かめられなかった。削除のあとに出たときは、消したはずの名前の Ruleset が reco の解釈しない部分を含んで存在しており、削除は効いていない。`plan` が、解釈しなかったものを示す |
 | `Desired state: not confirmed (GitHub returned a value that reco does not know)` | 設定を変えたあと、GitHub がその設定に reco のまだ知らない値を返したため、設定ファイルのとおりか確かめられなかった。値は GitHub の設定画面で確かめる |
@@ -200,6 +200,26 @@ Applying changes...
 
 `reviewers` を変えた `apply` がこの結果になったときです。GitHub は、担当者にできない ID（存在しない利用者の ID など）を、担当者にできる利用者と一緒に受け取ると、更新を受け付けたうえで、担当者にできない ID を黙って除きます。リポジトリへの権限を持たない利用者だけを書いたときは、担当者が1人もいない承認の設定が残ります（`plan` には `[] (protection rule without reviewers)` と出ます）。`plan` で今の担当者を見て除かれた利用者を特定し、その ID が正しいか、その利用者がリポジトリへの権限を持つかを確かめます。ID を直すか権限を与えてから、`apply` し直します。
 
+### Environment の削除が完了しなかった
+
+```text
+Applying changes...
+  example/project-a: not attempted
+    Precondition: environments.legacy changed since approval
+```
+
+`state: absent` を書いた Environment の削除を承認したあとで、その Environment か、承認の前に示した消えるものが変わったため、reco が削除を始めずに止まったときです。Environment がなくなったか作り直された、保護設定が変わった、変数か Secret が足されたか消された、変数の値が変わった、Secret が登録し直された、のどれでもこの行になります。reco は Environment を消していません。`plan` で、消える保護設定、変数、Secret を示し直させ、消してよいかを確かめてから `apply` し直します。`plan` に `environments.legacy` の行が出なければ、その Environment はもうありません。
+
+```text
+Applying changes...
+  example/project-a: failed
+    Update request: succeeded
+    Desired state: does not match
+    Possible cause: a workflow that references the environment may have run after the deletion, where GitHub creates an environment of the same name
+```
+
+GitHub は削除を受け付けたが、そのあとの確認で、同じ名前の Environment が GitHub 上にあったときです。その Environment を参照するワークフローが削除のあとに動き、GitHub が保護ルールも Secret もない Environment を同じ名前で作った可能性があります。消す前の保護設定、変数、Secret は戻っていません。参照しているワークフローを直してから、`plan` で確かめて `apply` し直し、もう一度消します。
+
 ## そのほかのエラーと行
 
 | 見えたもの | 次にすること |
@@ -211,7 +231,7 @@ Applying changes...
 | `communication failed`、`unexpected response (HTTP 5xx)` | 通信の失敗か、GitHub 側の障害。時間をおいて実行し直す |
 | `redirect not followed`（下の `HTTP 303` の行を除く） | リポジトリの名前が変わったか、移転した可能性がある。設定ファイルの `name` と `--repo` に、今の名前を書く |
 | `redirect not followed (HTTP 303): GitHub returns this when the pattern already exists` | Environment に加えようとしたパターンが、GitHub 上にすでにあった可能性が高い。`plan` で今のパターンを確かめてから、`apply` し直す |
-| `Precondition: ... changed since approval` | 承認したあとに、その設定の値、Environment そのもの、変数、Ruleset そのもの、Ruleset の内容のどれかが変わった。Environment そのものの変化は、作成する予定の名前の Environment が作られた、変える予定の Environment がなくなった、作り直されたなどの場合に当たる。`actions.variables.<名前>` では、作る予定の名前の変数が作られた、値を変えるか削除する予定の変数の値が変わった、その変数がなくなった場合に当たる。`environments.<Environment の名前>.variables.<名前>` も同じで、同じ `apply` で作った Environment がそのあとでなくなった場合にも当たる。`rulesets.<名前>` では、作る予定の名前（大文字と小文字だけが違う名前を含む）の Ruleset が作られた場合と、内容を置き換える予定の Ruleset の内容が変わった（変える予定のない部分だけが変わった場合や、ルールや迂回できる主体が足されただけの場合を含む）、なくなった、別の名前に変えられた、作り直された場合に当たる。削除する予定の Ruleset も同じで、内容が変わった、なくなった、別の名前に変えられた、作り直された場合に当たる。`plan` で今の値を確かめてから、`apply` し直す |
+| `Precondition: ... changed since approval` | 承認したあとに、その設定の値、Environment そのもの、変数、Ruleset そのもの、Ruleset の内容のどれかが変わった。Environment そのものの変化は、作成する予定の名前の Environment が作られた、変える予定の Environment がなくなった、作り直されたなどの場合に当たる。`actions.variables.<名前>` では、作る予定の名前の変数が作られた、値を変えるか削除する予定の変数の値が変わった、その変数がなくなった場合に当たる。`environments.<Environment の名前>.variables.<名前>` も同じで、同じ `apply` で作った Environment がそのあとでなくなった場合にも当たる。`rulesets.<名前>` では、作る予定の名前（大文字と小文字だけが違う名前を含む）の Ruleset が作られた場合と、内容を置き換える予定の Ruleset の内容が変わった（変える予定のない部分だけが変わった場合や、ルールや迂回できる主体が足されただけの場合を含む）、なくなった、別の名前に変えられた、作り直された場合に当たる。削除する予定の Ruleset も同じで、内容が変わった、なくなった、別の名前に変えられた、作り直された場合に当たる。削除する予定の Environment は `environments.<名前>` と示し、[Environment の削除が完了しなかった](#environment-の削除が完了しなかった) に当たる場合がある。`plan` で今の値を確かめてから、`apply` し直す |
 | そのほかの `Precondition:` | 更新を始める前の確認ができなかったか、一つ前の更新のあとの値が予定した値と違った。エラーの行があれば原因を取り除き、`plan` で確かめてから `apply` し直す |
 | `request conflicts with the current state (HTTP 409)`（`create repository variable` か `create environment variable` のエラー） | 作ろうとした名前（大文字と小文字だけが違う名前を含む）の変数が、GitHub 上にすでにある。更新の直前の確認のあとに作られた可能性がある。`plan` で今の値を確かめてから、`apply` し直す |
 | `not found or not accessible (HTTP 404)`（`delete repository variable` か `delete environment variable` のエラー） | 消そうとした変数が、GitHub 上になかった可能性がある。更新の直前の確認のあとに消されたときに出る。`plan` で今の状態を確かめる。変数がなければ、その変数の行は変更計画に出ない |
@@ -220,6 +240,7 @@ Applying changes...
 | `request not processable (HTTP 422)`（`update ruleset` のエラー） | GitHub が Ruleset の内容の置き換えを受け付けなかった。書いた値（`Integration` の `actor_id` や、リポジトリにインストールされていない App の `integration_id` など）を GitHub が受け付けなかった可能性がある。値を直してから `apply` し直す |
 | `not found or not accessible (HTTP 404)`（`update ruleset` のエラー） | 内容を置き換える予定の Ruleset が、更新の直前の確認のあとに消された可能性がある。`plan` で今の状態を確かめる。Ruleset がなければ、その Ruleset は作成（`absent -> present`）として出る |
 | `not found or not accessible (HTTP 404)`（`delete ruleset` のエラー） | 削除する予定の Ruleset が、更新の直前の確認のあとに消された可能性がある。`plan` で今の状態を確かめる。`rulesets.<名前>` の行が出なければ、その Ruleset はもうない |
+| `not found or not accessible (HTTP 404)`（`delete environment` のエラー） | 削除する予定の Environment が、更新の直前の確認のあとに消された可能性がある。`plan` で今の状態を確かめる。`environments.<名前>` の行が出なければ、その Environment はもうない |
 | `Update request: unknown`（`rulesets.<名前>` の変更） | GitHub が Ruleset の作成、内容の置き換え、削除を受け付けたか分からない。reco は要求を送り直さない。`plan` を実行し、`Applicability: not applicable` の行が出たら、[`Plan cannot be applied.` と表示された](#plan-cannot-be-applied-と表示された) に従う。出なければ、その Ruleset の行が変更計画にあるかを見る。なければ変更は済んでいる。あれば差分を確かめてから `apply` し直す |
 | `unexpected response (HTTP 400)`（`update oidc subject` のエラー） | GitHub が `include_claim_keys` の key を受け付けなかった可能性が高い。reco は key の形式（英数字と `_`）だけを確かめ、GitHub が受け付ける key は確かめない。大文字を含む key（`Repo` など）や、定義にない key がないかを確かめ、直してから `apply` し直す。GitHub 上の値は変わっていない |
 | `Other settings: ... (cause not determined)` | 変えようとしていない設定が、更新の前後で変わっていた。誰かが変えたものかを確かめ、`plan` で今の値を確かめる |
@@ -233,4 +254,5 @@ Applying changes...
 - [GitHub リポジトリ API 仕様](../research/repositories.md)：名前を変えたリポジトリへのリダイレクト、GitHub Free の非公開リポジトリでの自動マージと Wiki
 - [GitHub Actions 変数 API 仕様](../research/actions-variables.md)：変数の値の大きさと件数の上限、変数の作成、更新、削除の応答
 - [GitHub Rules API 仕様](../research/rules.md)：同じ名前（大文字と小文字だけが違う名前を含む）の Ruleset の作成の拒否、Bypass の主体など書いた値の作成と内容の置き換えの拒否、消された Ruleset の内容の置き換えと削除の `404`
-- [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md)：担当者にできない ID を送ったときの `422` と、黙って除かれる場合、権限を持たない利用者だけのときに残る担当者のいない承認の設定、非公開リポジトリで担当者と待機時間を設定できる料金プランと、設定できないときの `422`、担当者のいない Environment で「Prevent self-review」を変えたときの `422`
+- [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md)：担当者にできない ID を送ったときの `422` と、黙って除かれる場合、権限を持たない利用者だけのときに残る担当者のいない承認の設定、非公開リポジトリで担当者と待機時間を設定できる料金プランと、設定できないときの `422`、担当者のいない Environment で「Prevent self-review」を変えたときの `422`、存在しない Environment を参照するワークフローを実行すると GitHub が Environment を作ること（1.1）、消された Environment の削除の `404`（5.1）
+- [Environments の設計](../design/settings/environments.md)：Environment の削除が適用できない場合、削除の直前に確かめること、削除のあとの `Possible cause:` の候補

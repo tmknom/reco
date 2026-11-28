@@ -61,7 +61,9 @@ type General struct {
 // NamedResources は、観測を使う側が名指したリポジトリリソースの名前を種類ごとに持つ。リポジトリリソースごとの読み取りを送る範囲を決める。
 type NamedResources struct {
 	Environments []setting.EnvironmentName
-	Rulesets     []setting.RulesetName
+	// EnvironmentsReadForDeletion は、削除で失われるものを示すために変数と Secret の一覧まで読む Environment。Environments に名指したときと同じ読み取りも送る。
+	EnvironmentsReadForDeletion []setting.EnvironmentName
+	Rulesets                    []setting.RulesetName
 }
 
 // Setting は、管理の単位 unit の設定の観測結果を返す。取得条件を持たない設定は、常に観測値になる。
@@ -157,12 +159,14 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 // General は常に読み取るため、areas に AreaGeneral を含めても結果は変わらない。
 // 読み取り要求は areas の並びによらず、設計で定めた固定の順に送る。
 // Environment ごとの読み取りと Ruleset ごとの詳細の読み取りは、一覧のすべての Environment と Ruleset に送る。
+// Environment Secret の一覧は、削除で失われるものを示すためだけに読むため、どの Environment にも送らない。
 func (c *Client) ObserveRepository(ctx context.Context, reference repository.Reference, areas ...setting.Area) (ObservationResult, error) {
 	return c.observe(ctx, reference, allResources(), areas)
 }
 
 // ObserveRepositoryForNamedResources は、ObserveRepository と同じく観測し、リポジトリリソースごとの読み取りを、種類ごとに named が名指したどれかと同じ名前のリポジトリリソースに限る。
 // 範囲の外の Environment は、存在と一覧の要素の値だけを持ち、個別パターンと変数を読んでいない状態になる。
+// named が削除で失われるものまで読むと名指した Environment には、Environment の一覧を読む観測なら、変数と Secret の一覧も読む。
 // 範囲の外の Ruleset は、存在と ID と名前だけを持ち、値を読んでいない状態になる。
 // どの種類の一覧も、範囲によらず、その設定の領域を選べば読む。
 func (c *Client) ObserveRepositoryForNamedResources(ctx context.Context, reference repository.Reference, named NamedResources, areas ...setting.Area) (ObservationResult, error) {
@@ -253,6 +257,11 @@ func (c *Client) observe(ctx context.Context, reference repository.Reference, sc
 	if slices.Contains(areas, setting.AreaEnvironmentVariables) {
 		if err := c.observeEnvironmentVariables(ctx, reference, o.Environments.Existing, scope); err != nil {
 			return ObservationResult{}, fmt.Errorf("fetch environment variables %s: %w", reference, err)
+		}
+	}
+	if o.Environments != nil {
+		if err := c.observeEnvironmentDeletions(ctx, reference, o.Environments.Existing, scope); err != nil {
+			return ObservationResult{}, fmt.Errorf("fetch environments %s: %w", reference, err)
 		}
 	}
 	// Dependabot の二つの設定は、片方だけの観測結果を作らない

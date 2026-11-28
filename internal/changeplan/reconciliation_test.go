@@ -330,11 +330,54 @@ func TestManagedEnvironments(t *testing.T) {
 			}},
 			want: []setting.EnvironmentName{production, staging, qa},
 		},
+		{
+			// 削除で失われる値は個別パターンを含むため、存在しないことを宣言した Environment も個別パターンを読む範囲に入れる
+			name: "environment declared absent is named like a declared one",
+			desired: configuration.DesiredState{Environments: []configuration.EnvironmentDeclaration{
+				{Name: production, DeclaredAbsent: true},
+				{Name: staging},
+			}},
+			want: []setting.EnvironmentName{production, staging},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := managedEnvironments(tc.desired); !slices.Equal(got, tc.want) {
 				t.Errorf("managedEnvironments() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestEnvironmentsDeclaredAbsent は、削除で失われるものまで読む範囲が、存在しないことを宣言した Environment だけに限られることを確かめる。
+//
+//trace:checks FR-004
+func TestEnvironmentsDeclaredAbsent(t *testing.T) {
+	production, staging, qa := mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging"), mustEnvironmentName(t, "qa")
+	region := []configuration.VariableDeclaration{{Name: mustVariableName(t, "REGION"), Desired: setting.Absent()}}
+	cases := []struct {
+		name    string
+		desired configuration.DesiredState
+		want    []setting.EnvironmentName
+	}{
+		{
+			name: "environments declared present, including one declaring only absent variables, name none",
+			desired: configuration.DesiredState{Environments: []configuration.EnvironmentDeclaration{
+				{Name: production}, {Name: staging, Variables: region},
+			}},
+		},
+		{
+			name: "only environments declared absent are named in the declared order",
+			desired: configuration.DesiredState{Environments: []configuration.EnvironmentDeclaration{
+				{Name: qa, DeclaredAbsent: true}, {Name: production}, {Name: staging, DeclaredAbsent: true},
+			}},
+			want: []setting.EnvironmentName{qa, staging},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := environmentsDeclaredAbsent(tc.desired); !slices.Equal(got, tc.want) {
+				t.Errorf("environmentsDeclaredAbsent() = %v, want %v", got, tc.want)
 			}
 		})
 	}
@@ -640,6 +683,13 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 		e.Protection = protectedByRule(rule, false)
 		return e
 	}
+	unknownRules := []github.UninterpretedPart{{Kind: github.UninterpretedProtectionRuleType, Name: "custom"}}
+	withUnknownRule := func(e github.Environment) github.Environment {
+		e.UninterpretedProtectionRules = unknownRules
+		return e
+	}
+	deletionSecret := github.EnvironmentSecret{Name: "TOKEN", UpdatedAt: "2026-01-02T03:04:05Z"}
+	allDeletedValue := setting.EnvironmentDeletedValue{DeploymentBranchPolicy: all, ReviewerSet: setting.ReviewerSetOfRule(nil)}
 	cases := []struct {
 		name     string
 		declared configuration.EnvironmentDeclaration
@@ -765,6 +815,37 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 				creation,
 				{Unit: environmentVariableUnit(production, region), Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent), Desired: setting.Absent(), Result: NotComparable},
 			},
+		},
+		{
+			name:     "existing environment declared absent under a name differing in letter case is a mismatch with its ID and what the deletion loses",
+			declared: configuration.EnvironmentDeclaration{Name: production, DeclaredAbsent: true},
+			observed: []github.Environment{readForDeletion(existing("Production", all.Mode), []github.Variable{{Name: "REGION", Value: "eu"}}, deletionSecret)},
+			want: []SettingPlan{{
+				Unit: existence, Observed: github.Observed(setting.Present()), Desired: setting.Absent(), EnvironmentIdentity: ObservedEnvironmentIdentity(7), Result: Mismatch,
+				EnvironmentLoss: &EnvironmentLoss{DeletedValue: allDeletedValue, Variables: []github.Variable{{Name: "REGION", Value: "eu"}}, Secrets: []github.EnvironmentSecret{deletionSecret}},
+			}},
+		},
+		{
+			name:     "existing environment declared absent with an unknown protection rule is a mismatch with the uninterpreted parts and without what the deletion loses",
+			declared: configuration.EnvironmentDeclaration{Name: production, DeclaredAbsent: true},
+			observed: []github.Environment{readForDeletion(withUnknownRule(existing("production", all.Mode)), nil)},
+			want: []SettingPlan{{
+				Unit: existence, Observed: github.Observed(setting.Present()), Desired: setting.Absent(), EnvironmentIdentity: ObservedEnvironmentIdentity(7), Result: Mismatch,
+				UninterpretedParts: unknownRules,
+			}},
+		},
+		{
+			// 存在の宣言の照合は、知らない種類の保護ルールで変わらない
+			name:     "existing environment declared present with an unknown protection rule matches without the uninterpreted parts",
+			declared: configuration.EnvironmentDeclaration{Name: production},
+			observed: []github.Environment{withUnknownRule(existing("production", all.Mode))},
+			want:     []SettingPlan{matchedExistence},
+		},
+		{
+			name:     "absent environment declared absent matches with its absence",
+			declared: configuration.EnvironmentDeclaration{Name: production, DeclaredAbsent: true},
+			observed: []github.Environment{existing("staging", all.Mode)},
+			want:     []SettingPlan{{Unit: existence, Observed: github.Observed(setting.Absent()), Desired: setting.Absent(), Result: Match}},
 		},
 	}
 	for _, tc := range cases {

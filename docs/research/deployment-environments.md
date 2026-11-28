@@ -1,22 +1,24 @@
 # GitHub デプロイ環境 API 仕様
 
-本ドキュメントは、GitHub REST API の「REST API endpoints for deployment environments」のうち、reco が利用するリポジトリ単位のエンドポイントの外部契約を整理します。対象は、Environment の一覧・取得・作成と更新に必要な権限、HTTP 応答、フィールド、名前の扱いです。Environment ごとに、デプロイできるブランチとタグを名前のパターンで指定する設定（deployment branch policies。以下、デプロイ元パターン）は [GitHub デプロイ元パターン API 仕様](deployment-branch-policies.md) が、すべてのエンドポイントに共通する仕様は [GitHub REST API 共通仕様](rest-api.md) が扱います。記述の前提（根拠とする API バージョン、注釈の意味）は [Research](README.md) に従います。
+本ドキュメントは、GitHub REST API の「REST API endpoints for deployment environments」のうち、reco が利用するリポジトリ単位のエンドポイントの外部契約を整理します。対象は、Environment の一覧・取得・作成と更新・削除に必要な権限、HTTP 応答、フィールド、名前の扱いです。Environment ごとに、デプロイできるブランチとタグを名前のパターンで指定する設定（deployment branch policies。以下、デプロイ元パターン）は [GitHub デプロイ元パターン API 仕様](deployment-branch-policies.md) が、Environment のシークレットは [GitHub Actions シークレット API 仕様](actions-secrets.md) が、すべてのエンドポイントに共通する仕様は [GitHub REST API 共通仕様](rest-api.md) が扱います。記述の前提（根拠とする API バージョン、注釈の意味）は [Research](README.md) に従います。
 
 ## 1. 必要な権限と HTTP 応答
 
-一覧と取得は、リポジトリの read 権限を持つ利用者なら使えると記載されています。OAuth app のトークンと personal access token (classic) は、一覧と取得を非公開リポジトリに使うとき、作成と更新にはリポジトリによらず、`repo` scope が必要です。GitHub App の権限の一覧では、一覧と取得が Actions の read、作成と更新が Administration の write に分類されています。
+一覧と取得は、リポジトリの read 権限を持つ利用者なら使えると記載されています。OAuth app のトークンと personal access token (classic) は、一覧と取得を非公開リポジトリに使うとき、作成と更新と削除にはリポジトリによらず、`repo` scope が必要です。GitHub App の権限の一覧では、一覧と取得が Actions の read、作成と更新と削除が Administration の write に分類されています。fine-grained personal access token の権限の一覧でも、削除は Administration の write に分類されています。
 
 | 用途 | メソッド・パス | GitHub App の権限 |
 |---|---|---|
 | Environment の一覧 | `GET /repos/{owner}/{repo}/environments` | Actions: read |
 | Environment の取得 | `GET /repos/{owner}/{repo}/environments/{environment_name}` | Actions: read |
 | Environment の作成と更新 | `PUT /repos/{owner}/{repo}/environments/{environment_name}` | Administration: write |
+| Environment の削除 | `DELETE /repos/{owner}/{repo}/environments/{environment_name}` | Administration: write |
 
 | メソッド・パス | 正常応答 | ドキュメントに記載されたその他の応答 |
 |---|---|---|
 | `GET /repos/{owner}/{repo}/environments` | `200` | 記載なし |
 | `GET /repos/{owner}/{repo}/environments/{environment_name}` | `200` | 記載なし |
 | `PUT /repos/{owner}/{repo}/environments/{environment_name}` | `200` | `422` 名前が不正な場合、または `deployment_branch_policy` の `protected_branches` と `custom_branch_policies` に同じ値を送った場合の検証エラー |
+| `DELETE /repos/{owner}/{repo}/environments/{environment_name}` | `204` | 記載なし |
 
 存在しない名前への取得の応答は、記載がありません。`PUT` が作成と更新のどちらでも同じ `200` を返すため、応答のステータスからは作成したのか既存の Environment を更新したのかを区別できません。
 
@@ -31,6 +33,7 @@
 |---|---|---|
 | `grounding` | [REST API endpoints for deployment environments](https://docs.github.com/en/rest/deployments/environments?apiVersion=2026-03-10) | External Document |
 | `grounding` | [Permissions required for GitHub Apps](https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps?apiVersion=2026-03-10) | External Document |
+| `grounding` | [Permissions required for fine-grained personal access tokens](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2026-03-10) | External Document |
 
 ### 1.1 利用できる料金プランとリポジトリ
 
@@ -182,3 +185,29 @@ Environment の管理の手順は、設定画面の左のサイドバーの「En
 | `grounding` | [Create or update an environment](https://docs.github.com/en/rest/deployments/environments?apiVersion=2026-03-10#create-or-update-an-environment) | External Document |
 | `grounding` | [Deployments and environments: Deployment protection rules](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments#deployment-protection-rules) | External Document |
 | `grounding` | [Managing environments for deployment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments) | External Document |
+
+## 5. Environment の削除
+
+### 5.1 `DELETE /repos/{owner}/{repo}/environments/{environment_name}`
+
+- 用途：Environment の削除
+- 本文：なし
+
+REST API のドキュメントは、正常応答を `204` とだけ記載し、存在しない名前への応答、名前の大文字小文字の扱い、削除で何が失われるかは記載していません。Environment の管理のドキュメントは、Environment を削除すると、その Environment に関連するすべてのシークレットと保護ルールが削除され、削除した Environment の保護ルールのために待っているジョブは自動的に失敗すると記載しています。Environment Variables が削除されるかは記載がありません。設定画面から削除できるのは、個人アカウント所有のリポジトリでは所有者、Organization 所有のリポジトリでは `admin` のアクセスを持つ利用者と記載されています。
+
+> [!NOTE]
+> 次は、reco の開発者が `repo` scope を持つ personal access token (classic) で、API バージョン `2026-03-10` を指定した `DELETE` で実際の動作を確認した事項です（公開・非公開リポジトリで確認）。
+>
+> - 応答：存在する名前への `DELETE` は、本文のない `204` を返した。同じ名前への2回目の `DELETE` は `404` を返し、本文は `message` が `Not Found` の Basic Error だった
+> - 大文字と小文字：小文字の名前で作った Environment に、大文字に変えた名前で `DELETE` を送ると `204` を返し、その Environment が消えた
+> - `/` を含む名前：`%2F` にエンコードした名前で作った Environment に、同じ宛先で送った `DELETE` は `204` を返した
+> - 削除で失われるもの：待機時間の保護ルールと Environment Variable を持つ Environment を削除して同じ名前で作り直すと、別の `id` で、`protection_rules` は空の配列、変数の一覧は空だった。Environment のシークレットを1件と Environment Variable を1件持つ Environment でも、削除して同じ名前で作り直した Environment のシークレットの一覧と変数の一覧は空だった（公開リポジトリで確認）。削除した名前へのシークレットの一覧は `404` を返した
+> - デプロイの記録：削除した Environment の名前を持つデプロイの記録は、削除のあとも `GET /repos/{owner}/{repo}/deployments` が返した
+> - 非公開リポジトリ：利用者によると GitHub Free のアカウントが所有する非公開リポジトリでも、作成と `DELETE`（`204`）ができた
+> - 別の名前の Environment：確認の前後で、公開リポジトリの既存の別の Environment は `id` と `updated_at` が変わらなかった。非公開リポジトリの既存の別の Environment も同じ `id` で残っていた
+> - 同じ名前の Repository Variable：Environment Variable と同じ名前の Repository Variable を作り、その Environment を削除した前後で、Repository Variable の値と `updated_at` は変わらなかった（公開リポジトリで確認）
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [Delete an environment](https://docs.github.com/en/rest/deployments/environments?apiVersion=2026-03-10#delete-an-environment) | External Document |
+| `grounding` | [Managing environments for deployment: Deleting an environment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments#deleting-an-environment) | External Document |
