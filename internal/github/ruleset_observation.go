@@ -2,7 +2,7 @@ package github
 
 import "github.com/tmknom/reco/internal/setting"
 
-// RulesetObservation は、同一性を判定できる名前で引いた一つの Ruleset の関連リソースの観測結果。存在する、存在しない、理由を伴う観測不能のいずれか一つを持つ。
+// RulesetObservation は、同一性を判定できる名前で引いた一つの Ruleset の観測結果。存在する、存在しない、理由を伴う観測不能のいずれか一つを持つ。
 // 存在する Ruleset が解釈しない部分を含むときは、存在を確かめていても、値の観測としては解釈しない部分を理由とする観測不能になる。
 // 状態を取り違えた値を作れないよう、フィールドを公開せず Rulesets.Lookup でだけ作る。
 // どの状態でもないゼロ値は作れるが、値の観測として読もうとすると panic で検出する。Existing はゼロ値に偽を返す。

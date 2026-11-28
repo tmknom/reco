@@ -13,11 +13,11 @@ const (
 	UnavailablePublicRepository
 	// UnavailableEnvironmentAbsent は、属する先の Environment が存在しないことを表す。
 	UnavailableEnvironmentAbsent
-	// UnavailableNameUndetermined は、引いた名前と同じ名前の関連リソースはないが、同じかどうかを判定できない名前の関連リソースがあることを表す。
+	// UnavailableNameUndetermined は、引いた名前と同じ名前のリポジトリリソースはないが、同じかどうかを判定できない名前のリポジトリリソースがあることを表す。
 	UnavailableNameUndetermined
 	// UnavailablePrivateRepository は、リポジトリが非公開であることを表す。
 	UnavailablePrivateRepository
-	// UnavailableUninterpretedParts は、関連リソースの値が reco の解釈しない部分を含むことを表す。
+	// UnavailableUninterpretedParts は、リポジトリリソースの値が reco の解釈しない部分を含むことを表す。
 	// 値の中の列挙の項目に GitHub が reco の知らない値を返したことも、解釈しない部分に数えてこの理由にする。
 	UnavailableUninterpretedParts
 	// UnavailableUnknownValue は、GitHub が値を足し得る列挙の設定に、GitHub が reco の知らない値を返したことを表す。

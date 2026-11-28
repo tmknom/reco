@@ -28,7 +28,7 @@ const (
 	NotApplicableActionsRemainDisabled NotApplicableReason = iota + 1
 	// NotApplicablePublicRepository は、リポジトリが公開で、その設定が公開リポジトリに適用されないこと。
 	NotApplicablePublicRepository
-	// NotApplicableNameUndetermined は、宣言の名前と同じかどうかを判定できない名前の関連リソースがあり、宣言の名前の関連リソースが存在するかを確かめられないこと。
+	// NotApplicableNameUndetermined は、宣言の名前と同じかどうかを判定できない名前のリポジトリリソースがあり、宣言の名前のリポジトリリソースが存在するかを確かめられないこと。
 	NotApplicableNameUndetermined
 	// NotApplicableDependabotAlertsRemainDisabled は、Dependabot alerts が無効で、同じリポジトリの期待状態が Dependabot alerts の有効を含まないこと。
 	NotApplicableDependabotAlertsRemainDisabled
@@ -39,7 +39,7 @@ const (
 	NotApplicableSecretScanningRemainsDisabled
 	// NotApplicableNoMergeMethodEnabled は、更新後に有効なマージ方式が一つも残らないこと。無効のまま残るマージ方式を伴う。
 	NotApplicableNoMergeMethodEnabled
-	// NotApplicableUninterpretedParts は、存在する関連リソースの値が reco の解釈しない部分を含むこと。
+	// NotApplicableUninterpretedParts は、存在するリポジトリリソースの値が reco の解釈しない部分を含むこと。
 	NotApplicableUninterpretedParts
 	// NotApplicableAboveMaximumAllowed は、期待値が、計画時に観測した設定できる値の範囲の上限を超えること。上限を伴う。
 	// この理由を持つのは保持日数の変更予定だけである。
@@ -145,7 +145,7 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 	reason := s.Observed.UnavailableReason()
 	switch {
 	case (s.Unit.Key.HasEnvironmentName() || s.Unit.Key == setting.RulesetResource) && reason == github.UnavailableNameUndetermined:
-		// 作成すれば、GitHub が同じとみなす既存の関連リソースを変え得る。存在しないことの宣言は、存在するかを確かめられず、存在するなら消える値を承認の前に示せない。同じリポジトリのほかの宣言では解消しない
+		// 作成すれば、GitHub が同じとみなす既存のリポジトリリソースを変え得る。存在しないことの宣言は、存在するかを確かめられず、存在するなら消える値を承認の前に示せない。同じリポジトリのほかの宣言では解消しない
 		return NotApplicable(NotApplicableNameUndetermined)
 	case s.Unit.Key == setting.RulesetResource && reason == github.UnavailableUninterpretedParts:
 		// 期待値に変える更新は解釈しない部分も置き換え、削除は解釈しない部分も消し、reco が承認の前に示せない値を変えるか失わせる。同じリポジトリのほかの宣言では解消しない

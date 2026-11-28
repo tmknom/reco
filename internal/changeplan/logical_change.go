@@ -41,7 +41,7 @@ type UpdateOperation struct {
 	PreconditionBases []PreconditionBasis
 }
 
-// UpdateOperationKind は、更新操作の種類。送る更新要求の形と、関連リソースを作るかどうかで分ける。
+// UpdateOperationKind は、更新操作の種類。送る更新要求の形と、リポジトリリソースを作るかどうかで分ける。
 // EnvironmentCreationWithMode と DeploymentBranchPolicyModeUpdate は同じ形の要求を送るが、作成かどうかで変更前提の基準、表示、失敗の示し方が変わるため分ける。
 type UpdateOperationKind int
 
@@ -90,7 +90,7 @@ const (
 // PreconditionBasis は、変更前提の基準で、関係する現在値に当たる設定と、その承認時に予定した値の組。
 type PreconditionBasis struct {
 	Unit setting.Unit
-	// AnticipatedValue は、承認時に予定した値。関連リソースそのものでは、存在すること (値を伴う) か存在しないことである。
+	// AnticipatedValue は、承認時に予定した値。リポジトリリソースそのものでは、存在すること (値を伴う) か存在しないことである。
 	AnticipatedValue AnticipatedValue
 	// AnticipatedEnvironmentIdentity は、Environment が存在すると予定したときに、存在に加えて確かめる同一性の基準。ほかではゼロ値。
 	AnticipatedEnvironmentIdentity EnvironmentIdentity
@@ -129,7 +129,7 @@ func (o UpdateOperation) CreatesEnvironment() bool {
 }
 
 // Endpoint は、この更新操作が更新要求を送る更新エンドポイントを、設定の識別から引けるときだけ、それと真を返す。
-// 関連リソースの更新操作は、更新エンドポイントが名前ごとに別で、設定の識別だけでは引けないため偽を返す。
+// リポジトリリソースの更新操作は、更新エンドポイントが名前ごとに別で、設定の識別だけでは引けないため偽を返す。
 // 更新要求を持たない設定は UpdateEndpointOf が panic する。
 // 未定義の種類は宛先が決まらないため、不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func (o UpdateOperation) Endpoint() (github.UpdateEndpoint, bool) {

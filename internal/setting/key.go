@@ -7,7 +7,7 @@ import (
 )
 
 // Key は設定の識別。リポジトリ設定では、値を表示にそのまま使い、管理の単位 (RepositorySettingUnits) では YAML 設定仕様のキーのパスと一致する。
-// 関連リソースに関わる管理の単位では、Key は形だけを表し、名前との組 (Unit) で一つに定まる。
+// リポジトリリソースに関わる管理の単位では、Key は形だけを表し、名前との組 (Unit) で一つに定まる。
 type Key string
 
 const (
@@ -66,7 +66,7 @@ const (
 )
 
 // RepositorySettingUnits は、リポジトリ設定の管理の単位 (reco が期待値の宣言を受け付ける設定) を YAML 設定仕様の章と表の並びで返す。
-// 設定グループは一つの Key で表す。関連リソースに関わる管理の単位は、宣言の名前ごとに決まるため含めない。
+// 設定グループは一つの Key で表す。リポジトリリソースに関わる管理の単位は、宣言の名前ごとに決まるため含めない。
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
 func RepositorySettingUnits() []Key {
 	return []Key{DeleteBranchOnMerge, AllowAutoMerge, AllowSquashMerge, AllowMergeCommit, AllowRebaseMerge, AllowUpdateBranch, SquashMergeCommit, MergeCommit, HasIssues, HasProjects, HasWiki, WebCommitSignoffRequired, ActionsEnabled, AllowedActions, SelectedActions, SHAPinningRequired, DefaultWorkflowPermissions, CanApprovePullRequestReviews, ActionsAccessLevel, ForkPullRequestApproval, PrivateForkPullRequestWorkflows, RetentionDays, OIDCSubject, DependabotAlerts, DependabotSecurityUpdates, SecretScanningEnabled, RepositoryPushProtection, PrivateVulnerabilityReportingEnabled}
@@ -92,13 +92,13 @@ func (k Key) CorrespondingMergeMethod() (Key, bool) {
 }
 
 // DeclaredKeyName は、k の管理の単位を宣言する、設定ファイルの最も内側のキーを返す。
-// Key の値は YAML 設定仕様のキーのパスを表すため、パスの最後の要素がそのキーになる。関連リソースの形では、その種類を並べるキー (rulesets など) を返す。
+// Key の値は YAML 設定仕様のキーのパスを表すため、パスの最後の要素がそのキーになる。リポジトリリソースの形では、その種類を並べるキー (rulesets など) を返す。
 func (k Key) DeclaredKeyName() string {
 	path := string(k)
 	return path[strings.LastIndex(path, ".")+1:]
 }
 
-// HasEnvironmentName は、k の形の管理の単位が Environment の名前を含むか (Environment そのもの、その中の設定、それに属する関連リソースか) を返す。
+// HasEnvironmentName は、k の形の管理の単位が Environment の名前を含むか (Environment そのもの、その中の設定、それに属するリポジトリリソースか) を返す。
 func (k Key) HasEnvironmentName() bool {
 	area := k.Area()
 	return area == AreaEnvironments || area == AreaEnvironmentVariables

@@ -127,16 +127,16 @@ repositories:
 | `alignment` | `FR-006` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
 
-### 2.1 関連リソースの宣言
+### 2.1 リポジトリリソースの宣言
 
-Environment、Variable、Ruleset のように、一つのリポジトリに名前の違うものが複数あり得る関連リソースは、名前ごとに宣言します。規則は次のとおりです。
+Environment、Variable、Ruleset のように、一つのリポジトリに名前の違うものが複数あり得るリポジトリリソースは、名前ごとに宣言します。規則は次のとおりです。
 
-- **書いた名前だけを管理する**：宣言に書かなかった名前の関連リソースは管理範囲外であり、reco は作成も変更も削除もしない
-- **書いた関連リソースが存在しなければ作成する**：宣言は、その名前の関連リソースが存在することを期待状態に含む。含まない宣言の形がある場合は、その章で定める
-- **名前を消しても削除しない**：設定宣言から名前を消すことは省略であり、削除の宣言ではない。削除するのは、その名前について存在しないことを明示的に宣言した場合に限る。存在しないことを宣言できる関連リソースと書き方は、その章で定める
-- **同じ名前を二度書けない**：同じリポジトリの中で、同一とみなされる名前の宣言が複数あれば、入力不正として拒否する。名前が同じかどうかの判定は、関連リソースの種類ごとにその章で定める
+- **書いた名前だけを管理する**：宣言に書かなかった名前のリポジトリリソースは管理範囲外であり、reco は作成も変更も削除もしない
+- **書いたリポジトリリソースが存在しなければ作成する**：宣言は、その名前のリポジトリリソースが存在することを期待状態に含む。含まない宣言の形がある場合は、その章で定める
+- **名前を消しても削除しない**：設定宣言から名前を消すことは省略であり、削除の宣言ではない。削除するのは、その名前について存在しないことを明示的に宣言した場合に限る。存在しないことを宣言できるリポジトリリソースと書き方は、その章で定める
+- **同じ名前を二度書けない**：同じリポジトリの中で、同一とみなされる名前の宣言が複数あれば、入力不正として拒否する。名前が同じかどうかの判定は、リポジトリリソースの種類ごとにその章で定める
 
-要素の一覧を値とする設定（`patterns_allowed`、`deployment_branch_policy.patterns` など）は、関連リソースと読み方が違います。宣言した一覧が期待値の全体であり、GitHub 上の一覧にあって宣言にない要素は、適用するとなくなります。たとえば GitHub 上の一覧が `main` と `feature/*` で、宣言が `main` と `release/*` なら、適用後の一覧は `main` と `release/*` です。どちらの読み方をするかは、設定ごとにその章で定めます。
+要素の一覧を値とする設定（`patterns_allowed`、`deployment_branch_policy.patterns` など）は、リポジトリリソースと読み方が違います。宣言した一覧が期待値の全体であり、GitHub 上の一覧にあって宣言にない要素は、適用するとなくなります。たとえば GitHub 上の一覧が `main` と `feature/*` で、宣言が `main` と `release/*` なら、適用後の一覧は `main` と `release/*` です。どちらの読み方をするかは、設定ごとにその章で定めます。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -395,14 +395,14 @@ reco は、GitHub が受け付ける key の一覧を持たず、形式だけを
 
 ## 10. Repository Variables
 
-`actions.variables` は、リポジトリの Repository Variable を名前ごとに宣言するシーケンスです。Repository Variable は関連リソースであり、2.1節の規則に従います。
+`actions.variables` は、リポジトリの Repository Variable を名前ごとに宣言するシーケンスです。Repository Variable はリポジトリリソースであり、2.1節の規則に従います。
 
 | YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
 |---|---|---|---|---|
 | `actions.variables` | シーケンス | 変数の宣言を1件以上 | 管理する Repository Variable の一覧 | なし（要素ごとに定まる） |
-| `actions.variables[].name` | 文字列 | 10.1節の名前 | 管理する Repository Variable の名前 | Repository Variable（関連リソースそのもの） |
-| `actions.variables[].value` | 文字列 | 10.2節の値。`state` を書かない要素では必須 | その名前の Repository Variable が存在し、その値であること | Repository Variable（関連リソースそのもの） |
-| `actions.variables[].state` | 文字列 | `absent` | その名前の Repository Variable が存在しないこと | Repository Variable（関連リソースそのもの） |
+| `actions.variables[].name` | 文字列 | 10.1節の名前 | 管理する Repository Variable の名前 | Repository Variable（リポジトリリソースそのもの） |
+| `actions.variables[].value` | 文字列 | 10.2節の値。`state` を書かない要素では必須 | その名前の Repository Variable が存在し、その値であること | Repository Variable（リポジトリリソースそのもの） |
+| `actions.variables[].state` | 文字列 | `absent` | その名前の Repository Variable が存在しないこと | Repository Variable（リポジトリリソースそのもの） |
 
 - **`name` は必須で、`value` か `state` のどちらか一方を書く**：要素が持てるキーはこの3つだけである。組み合わせは 10.3節が定める
 - **`value` を書いた要素は、存在と値の宣言を兼ねる**：書いた名前の Repository Variable が存在しなければ作成を計画し、存在して値が違えば値の変更を計画する
@@ -465,11 +465,11 @@ actions:
 
 ## 11. Environments
 
-`environments` は、リポジトリの Environment を名前ごとに宣言するシーケンスです。Environment は関連リソースであり、2.1節の規則に従います。
+`environments` は、リポジトリの Environment を名前ごとに宣言するシーケンスです。Environment はリポジトリリソースであり、2.1節の規則に従います。
 
 | YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
 |---|---|---|---|---|
-| `environments[].name` | 文字列 | 11.1節の名前 | その名前の Environment が存在すること | Environment（関連リソースそのもの） |
+| `environments[].name` | 文字列 | 11.1節の名前 | その名前の Environment が存在すること | Environment（リポジトリリソースそのもの） |
 | `environments[].deployment_branch_policy.mode` | 文字列 | `all` / `protected_branches` / `selected` | Environment へデプロイできるブランチとタグの制限の方式 | デプロイ元制限（設定グループ） |
 | `environments[].deployment_branch_policy.patterns` | シーケンス | 個別パターンの要素を0件以上（`[]` 可）。`mode` が `selected` のときだけ必須で、ほかの方式では指定できない（11.2節） | デプロイを許可するブランチとタグのパターンの一覧の全体 | デプロイ元制限（設定グループ） |
 | `environments[].deployment_branch_policy.patterns[].type` | 文字列 | `branch` / `tag` | パターンがブランチとタグのどちらに一致するか | デプロイ元制限（設定グループ） |
@@ -480,9 +480,9 @@ actions:
 | `environments[].prevent_self_review` | 真偽値 | `true` / `false`（11.5節） | デプロイジョブを起動した利用者が、自分のジョブを承認できないこと | 自己承認の禁止 |
 | `environments[].wait_timer` | 整数 | `0` 以上 `43199` 以下（11.5節） | ジョブが起動されてから実行されるまでデプロイを待たせる分数 | デプロイの待機時間 |
 | `environments[].variables` | シーケンス | 変数の宣言を1件以上（11.4節） | その Environment で管理する Environment Variable の一覧 | なし（要素ごとに定まる） |
-| `environments[].variables[].name` | 文字列 | 10.1節の名前 | その Environment で管理する Environment Variable の名前 | Environment Variable（関連リソースそのもの） |
-| `environments[].variables[].value` | 文字列 | 10.2節の値。`state` を書かない要素では必須 | その Environment に、その名前の Environment Variable が存在し、その値であること | Environment Variable（関連リソースそのもの） |
-| `environments[].variables[].state` | 文字列 | `absent` | その Environment に、その名前の Environment Variable が存在しないこと | Environment Variable（関連リソースそのもの） |
+| `environments[].variables[].name` | 文字列 | 10.1節の名前 | その Environment で管理する Environment Variable の名前 | Environment Variable（リポジトリリソースそのもの） |
+| `environments[].variables[].value` | 文字列 | 10.2節の値。`state` を書かない要素では必須 | その Environment に、その名前の Environment Variable が存在し、その値であること | Environment Variable（リポジトリリソースそのもの） |
+| `environments[].variables[].state` | 文字列 | `absent` | その Environment に、その名前の Environment Variable が存在しないこと | Environment Variable（リポジトリリソースそのもの） |
 
 - **`name` は必須である**：`name` のない要素は、`deployment_branch_policy` や `variables` を書いていても入力不正として拒否する。どの Environment の宣言かを補わない
 - **要素は存在の宣言を兼ねる**：`environments[]` に書いた名前の Environment が存在しなければ、作成を計画する。`variables` だけを書いた Environment も同じである。`deployment_branch_policy`、`reviewers`、`prevent_self_review`、`wait_timer`、`variables` を省略した Environment は、存在だけを管理する
@@ -580,7 +580,7 @@ environments:
 
 ### 11.4 Environment Variables
 
-`environments[].variables` は、その Environment に属する Environment Variable を名前ごとに宣言するシーケンスです。Environment Variable は関連リソースであり、2.1節の規則に従います。2.1節の2つ目の規則（書いた関連リソースが存在しなければ作成する）は、変数にも、属する先の Environment にも当てはまります。変数を書くことは、属する先の Environment が存在することの宣言を兼ねるためです。
+`environments[].variables` は、その Environment に属する Environment Variable を名前ごとに宣言するシーケンスです。Environment Variable はリポジトリリソースであり、2.1節の規則に従います。2.1節の2つ目の規則（書いたリポジトリリソースが存在しなければ作成する）は、変数にも、属する先の Environment にも当てはまります。変数を書くことは、属する先の Environment が存在することの宣言を兼ねるためです。
 
 ```yaml
 environments:
@@ -688,19 +688,19 @@ GitHub が Dependabot security updates を一時停止していても、設定�
 
 ## 13. Rulesets
 
-`rulesets` は、リポジトリの Ruleset を名前ごとに宣言するシーケンスです。Ruleset は関連リソースであり、2.1節の規則に従います。
+`rulesets` は、リポジトリの Ruleset を名前ごとに宣言するシーケンスです。Ruleset はリポジトリリソースであり、2.1節の規則に従います。
 
 | YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
 |---|---|---|---|---|
 | `rulesets` | シーケンス | Ruleset の宣言を1件以上 | 管理する Ruleset の一覧 | なし（要素ごとに定まる） |
-| `rulesets[].name` | 文字列 | 13.1節の名前 | 管理する Ruleset の名前 | Ruleset（関連リソースそのもの） |
-| `rulesets[].target` | 文字列 | `branch` | Ruleset が対象にする ref の種類 | Ruleset（関連リソースそのもの） |
-| `rulesets[].enforcement` | 文字列 | `active` / `disabled` | ルールを強制するか | Ruleset（関連リソースそのもの） |
-| `rulesets[].conditions.ref_name.include` | シーケンス | 13.3節のパターンを0件以上（`[]` 可） | 対象にするブランチのパターン | Ruleset（関連リソースそのもの） |
-| `rulesets[].conditions.ref_name.exclude` | シーケンス | 13.3節のパターンを0件以上（`[]` 可） | 対象から外すブランチのパターン | Ruleset（関連リソースそのもの） |
-| `rulesets[].bypass_actors` | シーケンス | 13.4節の要素を0件以上（`[]` 可） | ルールを Bypass できる主体の全体 | Ruleset（関連リソースそのもの） |
-| `rulesets[].rules` | シーケンス | 13.5節の要素を0件以上（`[]` 可） | Ruleset が強制するルールの全体 | Ruleset（関連リソースそのもの） |
-| `rulesets[].state` | 文字列 | `absent` | その名前の Ruleset が存在しないこと | Ruleset（関連リソースそのもの） |
+| `rulesets[].name` | 文字列 | 13.1節の名前 | 管理する Ruleset の名前 | Ruleset（リポジトリリソースそのもの） |
+| `rulesets[].target` | 文字列 | `branch` | Ruleset が対象にする ref の種類 | Ruleset（リポジトリリソースそのもの） |
+| `rulesets[].enforcement` | 文字列 | `active` / `disabled` | ルールを強制するか | Ruleset（リポジトリリソースそのもの） |
+| `rulesets[].conditions.ref_name.include` | シーケンス | 13.3節のパターンを0件以上（`[]` 可） | 対象にするブランチのパターン | Ruleset（リポジトリリソースそのもの） |
+| `rulesets[].conditions.ref_name.exclude` | シーケンス | 13.3節のパターンを0件以上（`[]` 可） | 対象から外すブランチのパターン | Ruleset（リポジトリリソースそのもの） |
+| `rulesets[].bypass_actors` | シーケンス | 13.4節の要素を0件以上（`[]` 可） | ルールを Bypass できる主体の全体 | Ruleset（リポジトリリソースそのもの） |
+| `rulesets[].rules` | シーケンス | 13.5節の要素を0件以上（`[]` 可） | Ruleset が強制するルールの全体 | Ruleset（リポジトリリソースそのもの） |
+| `rulesets[].state` | 文字列 | `absent` | その名前の Ruleset が存在しないこと | Ruleset（リポジトリリソースそのもの） |
 
 - **`name` は必須で、ほかに Ruleset の値の5つのキー（`target`、`enforcement`、`conditions`、`bypass_actors`、`rules`）か `state` のどちらか一方を書く**：要素が持てるキーはこの7つだけで、`id` は受け付けない。組み合わせは 13.6節が定める
 - **`state` を書かない要素では、5つのキーがどれも必須である**：省略を空のシーケンスや GitHub の既定値に補わない
