@@ -10,9 +10,9 @@ import (
 type NameComparison int
 
 const (
-	// NameSame は、GitHub が同じ関連リソースとみなす名前であること。
+	// NameSame は、GitHub が同じリポジトリリソースとみなす名前であること。
 	NameSame NameComparison = iota + 1
-	// NameDifferent は、GitHub が別の関連リソースとみなす名前であること。
+	// NameDifferent は、GitHub が別のリポジトリリソースとみなす名前であること。
 	NameDifferent
 	// NameUndetermined は、GitHub が同じとみなすかを reco が判定できないこと。
 	NameUndetermined

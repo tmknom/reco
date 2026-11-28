@@ -36,7 +36,7 @@ type RepositoryPlan struct {
 type SettingPlan struct {
 	// Unit は、この計画の管理の単位。Environment と Ruleset の名前の綴りは宣言のまま。
 	Unit setting.Unit
-	// Observed は計画時の設定の観測結果。関連リソースそのものの計画では、存在の観測結果である。
+	// Observed は計画時の設定の観測結果。リポジトリリソースそのものの計画では、存在の観測結果である。
 	// 観測不能のときだけ比較不能になり、その理由が比較できない理由になる。
 	// 省略しても GitHub が値を保持する項目を省略した管理設定では、その項目を除いた値である。
 	Observed github.SettingObservation[setting.Value]
@@ -132,10 +132,10 @@ func (s SettingPlan) EnablesActionsByPolicy() bool {
 	return s.Unit.Key == setting.AllowedActions && s.Result == NotComparable && s.Observed.UnavailableReason() == github.UnavailableActionsDisabled
 }
 
-// IsConfirmedCreation は、この変更予定が確認済みの差分の作成 (存在しないと確かめた関連リソースの不一致) かを返す。
+// IsConfirmedCreation は、この変更予定が確認済みの差分の作成 (存在しないと確かめたリポジトリリソースの不一致) かを返す。
 // 属する先が存在しないために比較不能で、先に属する先を作成する作成は含まない。
 // 作成かどうかを読む処理ごとに条件を組み立てると、存在しないことの宣言を受け付ける種類で削除を作成と取り違えるため、ここだけで判定する。
-// 存在しないことは関連リソースの観測値にだけ現れるため、Key で関連リソースに限らない。
+// 存在しないことはリポジトリリソースの観測値にだけ現れるため、Key でリポジトリリソースに限らない。
 // 不一致は観測値があるときにだけ生じるため、観測値のない不一致は Equal が不変条件の破れとして panic する。
 func (s SettingPlan) IsConfirmedCreation() bool {
 	if s.Result != Mismatch {

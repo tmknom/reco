@@ -244,9 +244,9 @@ func observationAreas(change changeplan.LogicalChange) []setting.Area {
 	return areas
 }
 
-// observationResources は、change の更新直前と更新後の観測で、関連リソースごとの読み取りを送る関連リソースの名前を返す。
+// observationResources は、change の更新直前と更新後の観測で、リポジトリリソースごとの読み取りを送るリポジトリリソースの名前を返す。
 // Environment は個別パターンと変数の一覧を、Ruleset は値の詳細を、名指したものにだけ読む。
-// 変更前提、期待状態の確認、変更対象外の設定の比較、更新要求の宛先は、どれもこの名前の関連リソースしか引かないため、ほかの関連リソースを読まなくても判断は変わらない。
+// 変更前提、期待状態の確認、変更対象外の設定の比較、更新要求の宛先は、どれもこの名前のリポジトリリソースしか引かないため、ほかのリポジトリリソースを読まなくても判断は変わらない。
 func observationResources(change changeplan.LogicalChange) github.NamedResources {
 	var named github.NamedResources
 	for _, unit := range comparedUnits(change) {

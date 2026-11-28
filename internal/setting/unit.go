@@ -2,9 +2,9 @@ package setting
 
 import "fmt"
 
-// Unit は管理の単位の識別。リポジトリ設定は Key だけで定まり、関連リソースに関わる管理の単位は、
-// 形を表す Key と関連リソースの名前の組で定まる (アーキテクチャ設計の package の分け方)。
-// Environment か Ruleset の名前を持つ単位どうしでは、== は綴りの違う同じ関連リソースを別の単位とするため、同じ管理の単位かは Same で判定する。
+// Unit は管理の単位の識別。リポジトリ設定は Key だけで定まり、リポジトリリソースに関わる管理の単位は、
+// 形を表す Key とリポジトリリソースの名前の組で定まる (アーキテクチャ設計の package の分け方)。
+// Environment か Ruleset の名前を持つ単位どうしでは、== は綴りの違う同じリポジトリリソースを別の単位とするため、同じ管理の単位かは Same で判定する。
 type Unit struct {
 	Key Key
 	// Environment は、Key が Environment か、Environment に属する Environment Variable の形のときだけ持つ。ほかの形ではゼロ値。
@@ -16,7 +16,7 @@ type Unit struct {
 }
 
 // Same は、u と other が同じ管理の単位かを返す。
-// Environment と Ruleset の名前は、GitHub が同じ関連リソースとみなす名前どうしを同じ単位にするため、EqualFold で比べる。
+// Environment と Ruleset の名前は、GitHub が同じリポジトリリソースとみなす名前どうしを同じ単位にするため、EqualFold で比べる。
 // 変数の名前は英小文字を含まないため、== で比べれば足りる。
 func (u Unit) Same(other Unit) bool {
 	return u.Key == other.Key && u.Environment.EqualFold(other.Environment) && u.Variable == other.Variable &&

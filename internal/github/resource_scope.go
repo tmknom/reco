@@ -6,20 +6,20 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// resourceScope は、一回の観測で関連リソースごとの読み取りを送る関連リソースの範囲。
-// Environment では個別パターンと変数の一覧、Ruleset では値の詳細の読み取りを、範囲にある関連リソースにだけ送る。
+// resourceScope は、一回の観測でリポジトリリソースごとの読み取りを送るリポジトリリソースの範囲。
+// Environment では個別パターンと変数の一覧、Ruleset では値の詳細の読み取りを、範囲にあるリポジトリリソースにだけ送る。
 type resourceScope struct {
 	all          bool
 	environments []setting.EnvironmentName
 	rulesets     []setting.RulesetName
 }
 
-// allResources は、一覧のすべての関連リソースを範囲とする。
+// allResources は、一覧のすべてのリポジトリリソースを範囲とする。
 func allResources() resourceScope {
 	return resourceScope{all: true}
 }
 
-// scopeOfNamed は、種類ごとに、named が名指したどれかと同じ名前の関連リソースだけを範囲とする。
+// scopeOfNamed は、種類ごとに、named が名指したどれかと同じ名前のリポジトリリソースだけを範囲とする。
 func scopeOfNamed(named NamedResources) resourceScope {
 	return resourceScope{environments: named.Environments, rulesets: named.Rulesets}
 }

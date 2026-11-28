@@ -79,7 +79,7 @@ func TestPlan_NotApplicableError(t *testing.T) {
 	}
 }
 
-// TestSettingPlan_IsConfirmedCreation は、確認済みの差分の作成を、存在しないと確かめた関連リソースの不一致とする定義を確かめる。
+// TestSettingPlan_IsConfirmedCreation は、確認済みの差分の作成を、存在しないと確かめたリポジトリリソースの不一致とする定義を確かめる。
 //
 //trace:checks FR-007
 func TestSettingPlan_IsConfirmedCreation(t *testing.T) {

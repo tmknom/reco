@@ -12,7 +12,7 @@ import (
 
 // ObservationResult は、一回の観測で確認できた、リポジトリ指定が指す実体の ID と、読み取った設定の領域の設定ごとの、設定の観測結果である。
 // 設定できる値の範囲を GitHub が設定と同じ応答で返す領域については、その範囲も含む。
-// 関連リソースを読み取った設定の領域については、関連リソースの観測結果も含む。
+// リポジトリリソースを読み取った設定の領域については、リポジトリリソースの観測結果も含む。
 type ObservationResult struct {
 	RepositoryID repository.ID
 	General      General
@@ -58,7 +58,7 @@ type General struct {
 	WebCommitSignoffRequired SettingObservation[bool]
 }
 
-// NamedResources は、観測を使う側が名指した関連リソースの名前を種類ごとに持つ。関連リソースごとの読み取りを送る範囲を決める。
+// NamedResources は、観測を使う側が名指したリポジトリリソースの名前を種類ごとに持つ。リポジトリリソースごとの読み取りを送る範囲を決める。
 type NamedResources struct {
 	Environments []setting.EnvironmentName
 	Rulesets     []setting.RulesetName
@@ -161,7 +161,7 @@ func (c *Client) ObserveRepository(ctx context.Context, reference repository.Ref
 	return c.observe(ctx, reference, allResources(), areas)
 }
 
-// ObserveRepositoryForNamedResources は、ObserveRepository と同じく観測し、関連リソースごとの読み取りを、種類ごとに named が名指したどれかと同じ名前の関連リソースに限る。
+// ObserveRepositoryForNamedResources は、ObserveRepository と同じく観測し、リポジトリリソースごとの読み取りを、種類ごとに named が名指したどれかと同じ名前のリポジトリリソースに限る。
 // 範囲の外の Environment は、存在と一覧の要素の値だけを持ち、個別パターンと変数を読んでいない状態になる。
 // 範囲の外の Ruleset は、存在と ID と名前だけを持ち、値を読んでいない状態になる。
 // どの種類の一覧も、範囲によらず、その設定の領域を選べば読む。

@@ -6,8 +6,8 @@ import (
 )
 
 // Value は、一つの設定の値。期待値と観測値のどちらも、同じ設定についてはこの値で表す。
-// 関連リソースそのものでは、存在すること (値を持つ種類の Variable と Ruleset では値を伴う) と存在しないことも、この値で表す。
-// GitHub が付ける ID は含めない (ドメインモデルの関連リソースの同一性)。
+// リポジトリリソースそのものでは、存在すること (値を持つ種類の Variable と Ruleset では値を伴う) と存在しないことも、この値で表す。
+// GitHub が付ける ID は含めない (ドメインモデルのリポジトリリソースの同一性)。
 // 種別の違う設定の値を一つの並びで扱うため、値の種別を持つ。
 // ゼロ値は値がないことを表す。
 // 種別ごとに使わないフィールドをゼロ値に保つため、フィールドを公開せず、コンストラクタでだけ作る。
@@ -153,12 +153,12 @@ func RulesetValue(r Ruleset) Value {
 	return Value{kind: kindRuleset, ruleset: r.clone()}
 }
 
-// Present は、値を持たない種類の関連リソース (Environment) が存在することを表す値を作る。
+// Present は、値を持たない種類のリポジトリリソース (Environment) が存在することを表す値を作る。
 func Present() Value {
 	return Value{kind: kindPresent}
 }
 
-// Absent は、関連リソースが存在しないことを表す値を作る。値が空文字列で存在する VariableValue("") とは別の値である。
+// Absent は、リポジトリリソースが存在しないことを表す値を作る。値が空文字列で存在する VariableValue("") とは別の値である。
 func Absent() Value {
 	return Value{kind: kindAbsent}
 }

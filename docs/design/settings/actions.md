@@ -22,7 +22,7 @@
 | subject のカスタマイズ | OIDC Subject Customization | OIDC subject の領域の設定。既定の形を使うか（`use_default`）、クレームの key の並び（`include_claim_keys`）、immutable subject の形を選ぶか（`use_immutable_subject`）の3項目からなる設定グループ。`use_immutable_subject` は省略できる項目（[ドメインモデル](../domain.md) の宣言）である |
 | クレームの key の並び | Claim Keys | subject のカスタマイズの項目。subject を組み立てるクレームの key を、指定した順に並べたもの。既定の形を使わないときに限って持つ |
 | Repository Variables | Repository Variables | リポジトリに属する Repository Variable からなる設定の領域 |
-| Repository Variable | Repository Variable | リポジトリに属し、名前と値を持つ関連リソース。GitHub は ID を付けないため、名前だけで識別する種類として扱う |
+| Repository Variable | Repository Variable | リポジトリに属し、名前と値を持つリポジトリリソース。GitHub は ID を付けないため、名前だけで識別する種類として扱う |
 
 承認ポリシーは単独の管理の単位です。実行条件は4項目を一つの値とする設定グループで、照合結果、変更予定、適用可能性を4項目の組に対して一つだけ持ちます。実行を許可しないと GitHub がほかの3項目を `false` にするため、項目ごとの期待状態は互いに独立に成り立たないためです（[GitHub Actions 権限 API 仕様](../../research/actions-permissions.md) 8.2）。保持日数は単独の管理の単位です。上限は設定ではなく、管理の単位に含めません。承認ポリシーと実行条件を一つの領域にしないのは、更新エンドポイントが別であることに加え、公開範囲に合わない側だけを宣言したリポジトリで、宣言していない側の取得を送らないためです。一つの領域にすると、その取得の失敗が、宣言していない設定のために変更計画の確認を止めます。
 

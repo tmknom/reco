@@ -298,7 +298,7 @@ func (d DesiredState) value(key setting.Key) (value setting.Value, ok bool) {
 	case setting.PrivateVulnerabilityReportingEnabled:
 		return optionalBoolValue(d.PrivateVulnerabilityReporting.Enabled)
 	case setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentReviewerSet, setting.EnvironmentPreventSelfReview, setting.EnvironmentWaitTimer, setting.EnvironmentVariable, setting.RulesetResource:
-		// 関連リソースに関わる管理の単位は名前との組で識別するため、この関数では引けない。
+		// リポジトリリソースに関わる管理の単位は名前との組で識別するため、この関数では引けない。
 	}
 	panic(fmt.Sprintf("unknown setting %q", key))
 }

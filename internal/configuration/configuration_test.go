@@ -236,8 +236,8 @@ func TestDesiredState_valueCoversEveryDesiredValue(t *testing.T) {
 	}
 }
 
-// 関連リソースに関わる管理の単位は名前との組で識別するため、value では引けない。
-func TestDesiredState_valueOfRelatedResourceSettingPanics(t *testing.T) {
+// リポジトリリソースに関わる管理の単位は名前との組で識別するため、value では引けない。
+func TestDesiredState_valueOfRepositoryResourceSettingPanics(t *testing.T) {
 	for _, key := range []setting.Key{setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentReviewerSet, setting.EnvironmentPreventSelfReview, setting.EnvironmentWaitTimer, setting.EnvironmentVariable, setting.RulesetResource} {
 		t.Run(string(key), func(t *testing.T) {
 			defer func() {
@@ -261,7 +261,7 @@ func TestDesiredState_valueOfUnknownSettingPanics(t *testing.T) {
 
 // fillDesiredValues は、v の中の期待値 (ポインタのフィールド) をすべてゼロ値への参照で埋め、その数を返す。
 // 列挙値のゼロ値は定義外の値だが、ここでは期待値の有無だけを数える。
-// 関連リソースの宣言 (RepositoryVariables、Environments、Rulesets) は value で引かない期待値のため、数えない。
+// リポジトリリソースの宣言 (RepositoryVariables、Environments、Rulesets) は value で引かない期待値のため、数えない。
 func fillDesiredValues(v reflect.Value) int {
 	n := 0
 	for structField, field := range v.Fields() {

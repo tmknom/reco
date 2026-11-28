@@ -2,7 +2,7 @@ package changeplan
 
 import "github.com/tmknom/reco/internal/github"
 
-// EnvironmentIdentity は、Environment そのものの変更前提で、存在に加えて確かめる同一性の基準 (ドメインモデルの関連リソースの同一性)。
+// EnvironmentIdentity は、Environment そのものの変更前提で、存在に加えて確かめる同一性の基準 (ドメインモデルのリポジトリリソースの同一性)。
 // ゼロ値は基準がないことを表し、存在しない Environment と、Environment そのもの以外の管理の単位が当たる。
 // 基準の形を取り違えた値を作れないよう、フィールドを公開せずコンストラクタでだけ作る。
 type EnvironmentIdentity struct {

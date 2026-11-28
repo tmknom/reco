@@ -1,13 +1,13 @@
 # Environments の設計
 
-設定宣言の `environments`（[YAML 設定仕様](../../spec/configuration.md) 11章）に属する設定の設計を定めます。文書の構成は [設定ごとの設計](README.md) に従います。関連リソースに共通する規則は [ドメインモデル](../domain.md) の関連リソースと存在に従い、ここでは繰り返しません。
+設定宣言の `environments`（[YAML 設定仕様](../../spec/configuration.md) 11章）に属する設定の設計を定めます。文書の構成は [設定ごとの設計](README.md) に従います。リポジトリリソースに共通する規則は [ドメインモデル](../domain.md) のリポジトリリソースと存在に従い、ここでは繰り返しません。
 
 ## 設定と管理の単位
 
 | 日本語 | 英語 | 意味 |
 |---|---|---|
 | Environments | Environments | Environment と、その中の設定からなる設定の領域 |
-| Environment | Environment | デプロイ先を表す、リポジトリに属する関連リソース。値を持たない種類で、GitHub が ID を付ける。中の設定として、デプロイ元制限、担当者の集合、自己承認の禁止、デプロイの待機時間を持ち、ほかに Environment の保護設定を観測する |
+| Environment | Environment | デプロイ先を表す、リポジトリに属するリポジトリリソース。値を持たない種類で、GitHub が ID を付ける。中の設定として、デプロイ元制限、担当者の集合、自己承認の禁止、デプロイの待機時間を持ち、ほかに Environment の保護設定を観測する |
 | デプロイ元制限 | Deployment Branch Policy | Environment にデプロイできるブランチとタグを限る設定グループ。方式（`all`、`protected_branches`、`selected`）と、方式が `selected` のときに限って持つ個別パターンの集合からなる |
 | 個別パターン | Deployment Pattern | デプロイ元制限の値の要素。種類（ブランチかタグか）と名前の組で、名前は大文字と小文字を区別する |
 | 担当者 | Reviewer | Environment を使うデプロイジョブの実行を承認できる利用者かチーム。種類と ID の組で一つに定まる。種類が利用者の担当者は、観測では login を伴うが、login は識別に含めない |
@@ -19,9 +19,9 @@
 | 保護ルールの設定 | Protection Rule Setting | 担当者の集合、自己承認の禁止、デプロイの待機時間の三つ。GitHub の `required_reviewers` と `wait_timer` の保護ルールが持つ Environment の中の設定で、Environment の `PUT` にその設定だけを送って更新する |
 | Environment の保護設定 | Environment Protection | デプロイの待機時間、`required_reviewers` の保護ルールの全体（担当者の集合と自己承認の禁止）、管理者による迂回の可否（`can_admins_bypass`）。reco はすべてを観測し、`can_admins_bypass` のほかは宣言を受け付ける |
 | Environment Variables | Environment Variables | Environment に属する Environment Variable からなる設定の領域。Environments とは別の設定の領域 |
-| Environment Variable | Environment Variable | Environment に属し、名前と値を持つ関連リソース。GitHub は ID を付けないため、名前だけで識別する種類として扱う |
+| Environment Variable | Environment Variable | Environment に属し、名前と値を持つリポジトリリソース。GitHub は ID を付けないため、名前だけで識別する種類として扱う |
 
-Environment は、一覧と個別取得の応答が ID を含み、同じ名前で作り直すと ID が変わることを確かめた種類です（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md)）。そのため、GitHub が ID を付ける種類として扱います（[ドメインモデル](../domain.md) の関連リソースの同一性）。
+Environment は、一覧と個別取得の応答が ID を含み、同じ名前で作り直すと ID が変わることを確かめた種類です（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md)）。そのため、GitHub が ID を付ける種類として扱います（[ドメインモデル](../domain.md) のリポジトリリソースの同一性）。
 
 Environment Variable の管理の単位は、属する先の Environment の名前と変数の名前の組です。Environment の名前は Environment と同じ規則で、変数の名前と値は Repository Variable と同じ規則で比べます（[Actions の設計](actions.md) の設定と管理の単位）。
 
@@ -159,7 +159,7 @@ Environment Variable の変更予定は、変数ごとに一つの更新操作�
 
 同じ Environment に複数の設定の変更予定があるときも、それぞれ別の論理的な設定変更とし、別々の `PUT` で送ります（[アーキテクチャ設計](../architecture.md) 5.3節）。Environment の `PUT` は、一部のフィールドを `422` で拒否したときも、先に処理したフィールドの変更を残すことがあります（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 4.1）。
 
-変数の更新操作の変更前提で比べる関係する現在値は、Environment そのもの、変数の順です。計画時に存在した Environment では、Environment の ID も比べます。作り直された Environment の変数の一覧は空になるため（同 4.3）、変数だけを比べると、変数の作成を承認したあとに Environment が作り直されたことを検出できないためです。同じ変更計画が作成する Environment では ID が定まらず、変数が存在しないと観測できたことで Environment の存在もあわせて確かめます（[ドメインモデル](../domain.md) の関連リソースの同一性）。
+変数の更新操作の変更前提で比べる関係する現在値は、Environment そのもの、変数の順です。計画時に存在した Environment では、Environment の ID も比べます。作り直された Environment の変数の一覧は空になるため（同 4.3）、変数だけを比べると、変数の作成を承認したあとに Environment が作り直されたことを検出できないためです。同じ変更計画が作成する Environment では ID が定まらず、変数が存在しないと観測できたことで Environment の存在もあわせて確かめます（[ドメインモデル](../domain.md) のリポジトリリソースの同一性）。
 
 論理的な設定変更は、Environment ごとに、存在（デプロイ元制限をまとめた作成を含む）、デプロイ元制限、担当者の集合、自己承認の禁止、デプロイの待機時間、変数（宣言の順）の順に並べ、Environment をまたいでは宣言の順に並べます。自己承認の禁止を担当者の集合のあとにするのは、担当者がいない状態で送ると GitHub が `422` で拒むためです。設定の領域の順（全 Environment のあとに全 Environment Variable）にしないのは、変更計画の行を設定ファイルの行と同じ順に並べ、作成から変数の更新直前の観測までのあいだを短くするためです。
 

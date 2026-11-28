@@ -6,7 +6,7 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// EnvironmentObservation は、同一性を判定できる名前で引いた一つの Environment の関連リソースの観測結果。存在する、存在しない、理由を伴う観測不能のいずれか一つを持つ。
+// EnvironmentObservation は、同一性を判定できる名前で引いた一つの Environment の観測結果。存在する、存在しない、理由を伴う観測不能のいずれか一つを持つ。
 // 状態を取り違えた値を作れないよう、フィールドを公開せず Environments.Lookup でだけ作る。
 // どの状態でもないゼロ値は作れるが、理由を読もうとすると panic で検出する。
 type EnvironmentObservation struct {
