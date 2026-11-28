@@ -60,6 +60,7 @@ For developers:
 
 - [Requirements](docs/spec/requirements.md)
 - [CLI specification](docs/spec/cli.md)
+- [Output specification](docs/spec/output.md)
 - [YAML configuration specification](docs/spec/configuration.md)
 
 ## Release notes

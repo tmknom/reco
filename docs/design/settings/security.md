@@ -86,6 +86,8 @@ Dependabot と Secret scanning には、一つの設定の更新が別の設定�
 | 無効 | `true` | 適用可能。Dependabot alerts を有効にする変更のあとに更新する |
 | 無効 | 省略か `false` | 適用不能。理由は Dependabot alerts が無効であること |
 
+この適用不能の直し方には、Dependabot alerts を有効にする宣言を示します。上の表の2行目に当たり、適用可能になるためです。
+
 Dependabot alerts の変更予定は、どちらの向きも適用可能です。Dependabot alerts の変更予定に添える副作用と、副作用を生む更新操作の変更前提に含める設定は、次のとおりです。
 
 | Dependabot alerts の変更予定 | `dependabot_security_updates` の宣言 | Dependabot security updates の計画時の観測 | 変更に伴う副作用 | 変更前提に含める Dependabot security updates |
@@ -112,6 +114,8 @@ Dependabot security updates の変更の変更前提に、Dependabot alerts が�
 | 知らない値 | 省略 | 適用不能。理由は Secret scanning の値を reco が知らないこと | 適用可能 |
 
 push protection を有効にする向きを適用不能にする根拠は、Dependabot security updates と異なり、GitHub が拒否せず `200` を返して値を変えないことです。送っても期待状態に至る手段がありません。無効にする向きは、Secret scanning が無効のときに反映されない動作を確かめておらず、確かめていない条件で止めないため適用可能とし、反映されなければ更新後の観測が不一致として検出します。
+
+push protection を有効にする変更予定の適用不能の直し方は、理由で分けます。Secret scanning が無効なら、Secret scanning を有効にする宣言を示します。上の表の2行目に当たり、適用可能になるためです。Secret scanning が知らない値なら、push protection の宣言を消すことを示します。Secret scanning を有効にする宣言は、上の表の4行目のとおり変更計画を承認の対象にしないためです。
 
 | Secret scanning の変更予定 | `secret_scanning_push_protection` の宣言 | push protection の計画時の観測 | 変更に伴う副作用 | 変更前提に含める push protection |
 |---|---|---|---|---|

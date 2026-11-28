@@ -9,7 +9,7 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// 期待値は CLI 仕様 4章の Ruleset の表示例と、値の変更の行の表から導く。
+// Ruleset の変更予定の行を確かめる。present と absent の置き方と、値の変更で変わる部分だけを示すことは表示仕様に従う。
 //
 //trace:checks FR-005 FR-006 FR-007 QR-002
 func TestPlannedChangeText_Rulesets(t *testing.T) {
@@ -119,7 +119,7 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 				"    rules: []\n",
 		},
 		{
-			name: "value update of the specification example shows only the changed parts",
+			name: "value update shows only the changed parts",
 			s: update(
 				setting.Ruleset{
 					Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementDisabled,
@@ -145,7 +145,7 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 				"    Rule pull_request: required_approving_review_count: 0 -> 1, require_code_owner_review: false -> true\n",
 		},
 		{
-			name: "every kind of line is shown in the order of the specification table",
+			name: "value update with every kind of change shows each kind of line in a fixed order",
 			s: update(
 				setting.Ruleset{
 					Target: setting.RulesetTarget("tag"), Enforcement: setting.RulesetEnforcementEvaluate,
@@ -526,21 +526,21 @@ func TestPlannedChangeText_RulesetInvariantsPanic(t *testing.T) {
 			},
 		},
 		{
-			name: "value update to a declared value without ref_name has no line in the specification",
+			name: "value update to a declared value without ref_name panics",
 			s: changeplan.SettingPlan{
 				Unit: protect, Observed: github.Observed(setting.RulesetValue(value)), Desired: setting.RulesetValue(withoutRefName),
 				Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 			},
 		},
 		{
-			name: "creation of a declared value without ref_name has no line in the specification",
+			name: "creation of a declared value without ref_name panics",
 			s: changeplan.SettingPlan{
 				Unit: protect, Observed: github.Observed(setting.Absent()), Desired: setting.RulesetValue(withoutRefName),
 				Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 			},
 		},
 		{
-			name: "not comparable with a declared value without ref_name has no line in the specification",
+			name: "not comparable with a declared value without ref_name panics",
 			s: changeplan.SettingPlan{
 				Unit: protect, Observed: github.Unavailable[setting.Value](github.UnavailableNameUndetermined), Desired: setting.RulesetValue(withoutRefName),
 				Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable(changeplan.NotApplicableNameUndetermined),

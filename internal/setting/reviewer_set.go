@@ -119,7 +119,7 @@ func (s ReviewerSet) WithLoginsFrom(other ReviewerSet) ReviewerSet {
 }
 
 // WithoutLogins は、s から login を除いた値を返す。担当者、並び、担当者のいない保護ルールの印は s のまま変えない。
-// CLI 仕様が変更対象外の設定の担当者に login を示さないため、その表示に使う。
+// 変更対象外の設定の予期しない変化を示すときに使う。
 func (s ReviewerSet) WithoutLogins() ReviewerSet {
 	s.logins = nil
 	return s

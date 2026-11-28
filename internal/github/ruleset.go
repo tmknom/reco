@@ -129,7 +129,7 @@ func (r Rulesets) Lookup(name setting.RulesetName) RulesetObservation {
 	return RulesetObservation{state: resourceAbsent}
 }
 
-// String は、解釈しなかったもの一つを、種類と、引用符で囲んでエスケープした名前の一行で返す。形は CLI 仕様の解釈しなかったものの表に従う。
+// String は、解釈しなかったもの一つを、種類と、引用符で囲んでエスケープした名前の一行で返す。
 // 表示の形を外部クライアントの package に置くのは、状態確認（show）と変更計画の表示（changeplandisplay）が同じ形を使い、
 // show は変更計画の package に依存しないため、両方が使える置き場が解釈しなかったものの型を持つこの package だけだからである。
 // 名前は GitHub が返した任意の文字列のため、strconv.Quote で改行や表示の向きを変える文字をエスケープし、一行に収める。

@@ -7,8 +7,8 @@ import (
 	"github.com/tmknom/reco/internal/changeplan"
 )
 
-// Text は、変更計画を CLI 仕様の plan の形式で返す。
-// CLI 仕様は変更不要の対象を確認した件数でだけ示すため、変更予定のないリポジトリの計画には節を書かない。
+// Text は、変更計画を表示仕様の plan の形式で返す。
+// 表示仕様は変更不要の対象を確認した件数でだけ示すため、変更予定のないリポジトリの計画には節を書かない。
 // リポジトリの計画を持たない変更計画は changeplan が生成しない。何も確認していないのに No changes. と示さないよう、不変条件の破れとして panic する。
 func Text(configPath string, p changeplan.Plan) string {
 	if len(p.Repositories) == 0 {

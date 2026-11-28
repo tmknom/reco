@@ -7,7 +7,7 @@ An index of the reco repository for Coding Agents. reco (Repository Configurator
 Find the sections that match the task below, then pick documents within them by their "Use when":
 
 - Judging whether a feature belongs to reco, or settling a design tradeoff → **Project Overview**, then **Specifications**
-- Changing a command, option, output line, exit code, or configuration key or validation rule → **Specifications**
+- Changing a command, option, output line, exit code, or configuration key or validation rule → **Specifications**; a change to message wording alone needs no specification change, only the user guide documents that quote it
 - Naming a new or renamed configuration key or value, or reviewing one → **Contributing** (Configuration Policy), then **Specifications**
 - Changing Go code, naming a domain type, or adding or changing a supported setting → **Design**, then **Specifications**
 - Checking what the GitHub API specifies or actually returned → **Research**
@@ -22,7 +22,8 @@ Find the sections that match the task below, then pick documents within them by 
 ## Specifications
 
 - [Requirements](docs/spec/requirements.md): FR-, QR-, and INV- requirements, including the safety invariants - Use when deciding whether a behavior is required, looking up a requirement ID, or before any change that could weaken a safety guarantee, because invariants must not be relaxed without a human decision
-- [CLI](docs/spec/cli.md): Commands, options, credentials, approval, and every user-visible output of `plan`, `apply`, and `show` - Use when changing `cmd/`, an output line or its wording, stdout vs. stderr, the JSON error, or an exit code; the conditions under which lines such as `Applicability:` or `Side effect:` appear are in the settings design
+- [CLI](docs/spec/cli.md): Commands, options, repository selection, credentials, approval input, the order and stop behavior of `apply`, stdout vs. stderr, the JSON error, redirects, and exit codes - Use when changing `cmd/`, a command or option, how approval is accepted, where something is printed, the error format, or an exit code
+- [Output](docs/spec/output.md): Setting-independent display contract of `plan`, `apply`, and `show`: structure, fixed tokens (line labels, result categories, `absent` / `present`), the information each line must and must not convey, ordering and counting; message wording and value notation are not part of the contract and are owned by code and tests - Use when adding a kind of line or changing what a line must show, the order or counting of planned changes, result categories, or how `show` marks values it could not confirm; which setting shows which line, and with what information, is in the settings design
 - [Configuration](docs/spec/configuration.md): YAML structure, allowed values and combinations, and input validation for every configuration key, including the title and message combinations of merge messages, variables with `state: absent`, environment names, required reviewers, prevent self-review and wait timer, and rulesets with their bypass actors and rules, including status checks, rule parameters that must all be declared, and `state: absent` - Use when changing configuration parsing or validation, or adding a configuration key; what a valid declaration does on GitHub, and when it is found not applicable, is in the settings design
 
 ## Design

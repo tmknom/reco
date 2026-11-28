@@ -14,7 +14,7 @@ type changedPair[T any] struct {
 	from, to T
 }
 
-// rulesetChangeText は、Ruleset の変更予定を CLI 仕様の形で返す。値は1行に収まらないため、期待値の位置に present または absent を置き、値を続く行に示す。
+// rulesetChangeText は、Ruleset の変更予定を表示仕様の形で返す。値は1行に収まらないため、期待値の位置に present または absent を置き、値を続く行に示す。
 // 期待値が値なら、現在が値でない (作成と比較不能) なら宣言の値の全体を、値なら値の差だけを示す。
 // 期待値が存在しないなら、削除は計画時の観測値の全体を示し、比較不能は現在の値が読めていないため値の行を示さない。
 // 解釈しなかったものは、理由が解釈しない部分であることと一つ以上あることが一致しなければ、扱えない部分を示さずに承認を求め得るため、不変条件の破れとして panic する。
@@ -52,7 +52,7 @@ func rulesetChangeText(s changeplan.SettingPlan) string {
 	return b.String()
 }
 
-// declaredRulesetValueLines は、宣言の値の全体を CLI 仕様の順で1行ずつ返す。
+// declaredRulesetValueLines は、宣言の値の全体を1行ずつ返す。
 // 宣言の値は必ず ref_name を持ち、持たない値は conditions: {} と示すと承認した値と違う値を示すことになるため、不変条件の破れとして panic する。
 func declaredRulesetValueLines(r setting.Ruleset) string {
 	if r.Conditions.RefName == nil {
@@ -61,7 +61,7 @@ func declaredRulesetValueLines(r setting.Ruleset) string {
 	return rulesetValueLines(r)
 }
 
-// rulesetValueLines は、Ruleset の値の全体を CLI 仕様の順で1行ずつ返す。
+// rulesetValueLines は、Ruleset の値の全体を1行ずつ返す。
 // 観測値は ref_name を持たないことがあり、その値は、include と exclude がどちらも空の値と異なるため、2行の代わりに conditions: {} の1行で示す。
 func rulesetValueLines(r setting.Ruleset) string {
 	conditions := "    conditions: {}\n"
@@ -72,7 +72,7 @@ func rulesetValueLines(r setting.Ruleset) string {
 		r.Target, r.Enforcement, conditions, bypassActorsText(r.BypassActors), rulesText(r.Rules))
 }
 
-// rulesetDifferenceLines は、現在の値 observed を宣言の値 desired に変えるときの値の差を、CLI 仕様の行の表の順で返す。
+// rulesetDifferenceLines は、現在の値 observed を宣言の値 desired に変えるときの値の差を、変わる部分だけの行で返す。
 // 差のない不一致は示す行がなく、変更の中身を示さずに承認を求め得るため、不変条件の破れとして panic する。
 // 宣言の値は必ず ref_name を持つため、ref_name がなくなる向きの差も不変条件の破れとして panic する。
 func rulesetDifferenceLines(observed, desired setting.Ruleset) string {
@@ -113,7 +113,7 @@ func rulesetDifferenceLines(observed, desired setting.Ruleset) string {
 	return b.String()
 }
 
-// ruleParameterChangeLines は、同じ型で値の違う二つのルール from、to のパラメータの差を、CLI 仕様の行で返す。
+// ruleParameterChangeLines は、同じ型で値の違う二つのルール from、to のパラメータの差の行を返す。
 // 同じ型で値の違う二つのルールはパラメータを持つ型に限るため、パラメータのない型の組と定義にない型は、不変条件の破れとして panic する。
 // ルール型を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func ruleParameterChangeLines(from, to setting.RulesetRule) string {
@@ -146,7 +146,7 @@ func requiredStatusChecksChangeLines(from, to setting.RequiredStatusChecksParame
 	return b.String()
 }
 
-// elementsLine は、要素が一つ以上あるときだけ、要素の一覧の行を返す。CLI 仕様は該当する要素のない行を示さない。
+// elementsLine は、要素が一つ以上あるときだけ、要素の一覧の行を返す。表示仕様は該当する要素のない行を示さない。
 func elementsLine[T any](label string, elements []T, text func([]T) string) string {
 	if len(elements) == 0 {
 		return ""

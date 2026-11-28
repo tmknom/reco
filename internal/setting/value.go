@@ -219,7 +219,7 @@ func (v Value) String() string {
 	case kindRetentionDays:
 		return strconv.Itoa(v.days)
 	case kindWaitTimer:
-		// 単位を添えて、分の数だと表示から分かるようにする (CLI 仕様)
+		// 単位を添えて、分の数だと表示から分かるようにする
 		if v.minutes == 1 {
 			return "1 minute"
 		}

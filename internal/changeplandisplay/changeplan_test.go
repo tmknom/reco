@@ -170,7 +170,7 @@ func TestText(t *testing.T) {
 	}
 }
 
-// 期待値は CLI 仕様の plan の表示例から導く。
+// 確認済みの差分と比較不能な設定予定を区別せずに数えることを確かめる。数え方は表示仕様に従う。
 //
 //trace:checks FR-005 FR-007 QR-002 INV-001
 func TestText_ActionsPermissions(t *testing.T) {
@@ -208,7 +208,7 @@ func TestText_ActionsPermissions(t *testing.T) {
 	}
 }
 
-// 期待値は CLI 仕様の plan の表示例と、節の並び・数え方の規則から導く。
+// リポジトリの節の並びと数え方を確かめる。どちらの規則も表示仕様に従う。
 // 計画は宣言の並びを名前順と逆にし、名前順に並べ替える実装を失敗させる。
 //
 //trace:checks FR-007 QR-002
