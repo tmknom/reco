@@ -561,7 +561,7 @@ environments:
         id: 1234567
 ```
 
-要素は、`type` と `id` の両方を持つマッピングです。`type` は `User` だけを受け付け、省略できません。省略を `User` と読まないのは、省略を GitHub が `User` と補う動作に依存しないためです。`Team` は受け付けません。個人アカウント所有のリポジトリでは GitHub が `type: Team` を受け付けず、Organization が所有するリポジトリでの動作は確かめていないためです（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 4.1）。`id` は利用者の GitHub 上の ID で、正の整数です。login では宣言できません。reco が login から ID を解決すると、解決した相手が意図した相手かを確かめる手段がないためです。ID は `show` の表示から書き写せます（[CLI 仕様](cli.md) 6章）。
+要素は、`type` と `id` の両方を持つマッピングです。`type` は `User` だけを受け付け、省略できません。省略を `User` と読まないのは、省略を GitHub が `User` と補う動作に依存しないためです。`Team` は受け付けません。個人アカウント所有のリポジトリでは GitHub が `type: Team` を受け付けず、Organization が所有するリポジトリでの動作は確かめていないためです（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 4.1）。`id` は利用者の GitHub 上の ID で、正の整数です。login では宣言できません。reco が login から ID を解決すると、解決した相手が意図した相手かを確かめる手段がないためです。ID は `show` の表示から書き写せます（[表示仕様](output.md) 5章）。
 
 `reviewers` の値は `type` と `id` の組の **集合** です。要素の順序に意味はなく、順序だけが違う宣言は同じ期待値です。一覧の全体であり、宣言した一覧が適用後の一覧になります（2.1節）。
 

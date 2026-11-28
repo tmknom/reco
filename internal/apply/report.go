@@ -12,7 +12,7 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// writeChangeReport は、選択したすべての対象リポジトリの変更結果を、宣言順に CLI 仕様の apply の形式で書く。
+// writeChangeReport は、選択したすべての対象リポジトリの変更結果を、宣言順に表示仕様の apply の形式で書く。
 // 注記は、先に完了した対象リポジトリの変更も GitHub に残るため、すべての対象リポジトリの記録から判定する。
 func writeChangeReport(w io.Writer, records []repositoryRecord) error {
 	var b strings.Builder
@@ -274,7 +274,7 @@ func updateOutcomeText(u github.UpdateOutcome) string {
 
 // confirmationText は、更新操作の結果に応じた期待状態の確認結果の表示を返す。
 // 成否不明のときの一致は、更新操作の成否が判明したことにならないため、その旨を添える。
-// 二つ以上の管理設定をまとめた論理的な設定変更の不一致にだけ、一致しなかった管理設定を添える (CLI 仕様の apply の結果の表示区分)。
+// 二つ以上の管理設定をまとめた論理的な設定変更の不一致にだけ、一致しなかった管理設定を添える (表示仕様の Desired state: の区分)。
 func confirmationText(record changeRecord) string {
 	switch record.confirmation {
 	case desiredStateMatches:
@@ -311,7 +311,7 @@ func mismatchedSettingsText(units []setting.Unit) string {
 	return strings.Join(names, ", ")
 }
 
-// unavailableConfirmationText は、期待値と比べる設定が観測不能だったことによる確認失敗を、CLI 仕様の文言で返す。
+// unavailableConfirmationText は、期待値と比べる設定が観測不能だったことによる確認失敗の表示を返す。
 // not in effect と not confirmed の分け方は、ドメインモデルの期待状態の確認結果に従う。
 // 理由だけでは文言が決まらないため、観測不能だった管理設定の種類からも選び、観測が作らない組は既定の文言で埋めずに不変条件の破れとして panic する。
 // 定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。

@@ -23,7 +23,7 @@ func (u Unit) Same(other Unit) bool {
 		u.Ruleset.EqualFold(other.Ruleset)
 }
 
-// String は、CLI 仕様の表示の形で識別を返す。
+// String は、表示に示す設定の名前の形で識別を返す。
 // Key の形と名前の有無が食い違う識別は、どの管理の単位か決まらないため、不変条件の破れとして panic する。
 func (u Unit) String() string {
 	area := u.Key.Area()

@@ -140,7 +140,7 @@ func TestChangesError(t *testing.T) {
 
 //trace:checks FR-013
 func TestPossibleCause(t *testing.T) {
-	// 期待値は CLI 仕様の Possible cause: の表示例から導く。
+	// 原因の候補を添える設定と条件を確かめる。更新操作の成否が不明なときに添えないことは表示仕様に従う。
 	const autoMerge = "auto-merge is not available for private repositories on GitHub Free, where GitHub may accept the update without applying it"
 	const wiki = "wikis are not available for private repositories on GitHub Free, where GitHub may accept the update without applying it"
 	succeeded := []operationRecord{{precondition: preconditionHolds, update: github.UpdateSucceeded}}
@@ -497,7 +497,7 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 }
 
 // TestWriteChangeReport_Repositories は、選択したすべての対象リポジトリを宣言順に示す規則、変更不要と停止の行、
-// Apply complete. の条件と数え方、対象リポジトリをまたぐ注記の判定を確かめる。期待値は CLI 仕様の apply の表示例から導く。
+// Apply complete. の条件と数え方、対象リポジトリをまたぐ注記の判定を、表示仕様の apply に照らして確かめる。
 //
 //trace:checks FR-013 INV-005 QR-002
 func TestWriteChangeReport_Repositories(t *testing.T) {
@@ -681,7 +681,7 @@ func updateRequestRows(first, second string) string {
 		"    Update request (actions.permissions.selected_actions): " + second + "\n"
 }
 
-// TestWriteChangeReport_Environments は、Environment の作成と方式の変更の変更結果の表示を確かめる。期待値は CLI 仕様の apply の表示例から導く。
+// TestWriteChangeReport_Environments は、Environment の作成と方式の変更の変更結果の表示を確かめる。
 //
 //trace:checks FR-013 QR-002
 func TestWriteChangeReport_Environments(t *testing.T) {
@@ -757,7 +757,6 @@ func TestWriteChangeReport_Environments(t *testing.T) {
 }
 
 // TestWriteChangeReport_DeploymentPatterns は、個別パターンを一つずつ取り除き、加える論理的な設定変更の変更結果の表示を確かめる。
-// 期待値は CLI 仕様の apply の表示例から導く。
 //
 //trace:checks FR-013 QR-002
 func TestWriteChangeReport_DeploymentPatterns(t *testing.T) {
@@ -919,7 +918,7 @@ func TestWriteChangeReport_RepositoryVariables(t *testing.T) {
 }
 
 // TestWriteChangeReport_RepositoryVariableDeletions は、削除の変更結果も名前だけで示し、失われる値を示さないことを確かめる。
-// 期待値は CLI 仕様の apply の Repository Variable の削除の記述から導く。
+// 論理的な設定変更を管理設定の名前で示すことは表示仕様の apply に従う。
 //
 //trace:checks INV-005 FR-013 QR-002
 func TestWriteChangeReport_RepositoryVariableDeletions(t *testing.T) {
@@ -942,7 +941,6 @@ func TestWriteChangeReport_RepositoryVariableDeletions(t *testing.T) {
 }
 
 // TestWriteChangeReport_EnvironmentVariables は、Environment Variable の変更結果を Environment と変数の名前で示すことを確かめる。
-// 期待値は CLI 仕様の apply の表示例から導く。
 //
 //trace:checks FR-013 INV-005 QR-002
 func TestWriteChangeReport_EnvironmentVariables(t *testing.T) {

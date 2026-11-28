@@ -74,7 +74,7 @@ func outsideChangesAt(endpoint github.UpdateEndpoint, excluded []setting.Unit, b
 	return changes
 }
 
-// oidcSubjectOmittedItemChanges は、更新操作の値が省略した subject のカスタマイズの項目 (use_immutable_subject) について、更新直前と更新後の観測値の差を、CLI 仕様の変更対象外の設定の名前と値の表記で返す。
+// oidcSubjectOmittedItemChanges は、更新操作の値が省略した subject のカスタマイズの項目 (use_immutable_subject) について、更新直前と更新後の観測値の差を、Other settings: の行に示す名前と値で返す。
 // 省略した項目は更新要求で送らず GitHub が保持する値に任せるため、期待状態の確認は比べない。そのため、更新操作の影響を受けていない保証をここで与える。
 // 値が項目を宣言しているときは、期待状態の確認が比べるため返さない。
 func oidcSubjectOmittedItemChanges(operation changeplan.UpdateOperation, before, after github.ObservationResult) []unexpectedOutsideChange {
@@ -92,7 +92,7 @@ func oidcSubjectOmittedItemChanges(operation changeplan.UpdateOperation, before,
 }
 
 // environmentPutOutsideChanges は、宣言の名前 name の Environment のデプロイ元制限の方式と保護設定のうち、変更対象外の設定から除く excluded に含まれないものについて、
-// 更新直前と更新後の観測の差を、CLI 仕様の変更対象外の設定の名前と値の表記で、方式、保護設定の項目の順に返す。
+// 更新直前と更新後の観測の差を、Other settings: の行に示す名前と値で、方式、保護設定の項目の順に返す。
 // 方式は方式の名前で示し、個別パターンは別の更新エンドポイントの設定のため比べない。
 // 比べる範囲はアーキテクチャ設計の未管理設定を保全する更新方式と、設定ごとの設計の更新方式に従う。
 // どちらかの観測で存在しない Environment は、比べる値がないため返さない。作成の直前がこれに当たる。
@@ -111,7 +111,7 @@ func environmentPutOutsideChanges(name setting.EnvironmentName, excluded []setti
 }
 
 // environmentProtectionChanges は、宣言の名前 name の Environment の保護設定の項目のうち、変更対象外の設定から除く excluded に含まれないものについて、
-// 更新直前 before と更新後 after の差を、CLI 仕様の変更対象外の設定の名前と値の表記で、待機時間、担当者の集合、自己承認の禁止、can_admins_bypass の順に返す。
+// 更新直前 before と更新後 after の差を、Other settings: の行に示す名前と値で、待機時間、担当者の集合、自己承認の禁止、can_admins_bypass の順に返す。
 // 担当者の集合は、管理設定の照合と同じ判定で比べ、login を示さない。片方でも観測不能なときの比べ方は observationChange に従う。
 // can_admins_bypass は宣言を受け付けない項目で、管理の単位に当たらないため、excluded によらず比べる。
 func environmentProtectionChanges(name setting.EnvironmentName, excluded []setting.Unit, before, after github.EnvironmentProtection) []unexpectedOutsideChange {
@@ -168,7 +168,7 @@ func sameReviewerSet(a, b setting.ReviewerSet) bool {
 	return setting.ReviewerSetValue(a).Equal(setting.ReviewerSetValue(b))
 }
 
-// reviewerSetText は、担当者の集合を、CLI 仕様が変更対象外の設定に示す login のない表記で返す。
+// reviewerSetText は、担当者の集合を、login を除いた表記で返す。
 func reviewerSetText(s setting.ReviewerSet) string {
 	return s.WithoutLogins().String()
 }

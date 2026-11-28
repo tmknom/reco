@@ -39,7 +39,7 @@ func TestOIDCSubjectCustomization_Equal(t *testing.T) {
 	}
 }
 
-// 期待値は CLI 仕様の subject のカスタマイズの変更予定の表示例から導く。
+// subject のカスタマイズの値を1行で示す表記を確かめる。
 func TestOIDCSubjectCustomization_Format(t *testing.T) {
 	immutable := func(b bool) *bool { return &b }
 	cases := []struct {

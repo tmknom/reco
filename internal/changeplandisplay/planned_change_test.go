@@ -8,7 +8,7 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// 期待値は CLI 仕様 4章の表示例から導く。
+// 変更予定の行と、その下に添える行を確かめる。添える行の並びは表示仕様に従う。
 //
 //trace:checks FR-005 FR-007 QR-002 INV-001
 func TestPlannedChangeText(t *testing.T) {
@@ -504,7 +504,7 @@ func squashMergeCommitValue(title setting.SquashMergeCommitTitle, message settin
 	return setting.SquashMergeCommitDefaultValue(setting.SquashMergeCommitDefault{Title: title, Message: message})
 }
 
-// 期待値は CLI 仕様の Repository Variable の表示例から導く。
+// Repository Variable の変更予定の行を確かめる。作成と削除の absent の置き方は表示仕様に従う。
 //
 //trace:checks FR-005 FR-007 QR-002
 func TestPlannedChangeText_RepositoryVariables(t *testing.T) {
@@ -534,7 +534,7 @@ func TestPlannedChangeText_RepositoryVariables(t *testing.T) {
 	}
 }
 
-// 期待値は CLI 仕様 4章の Environment Variable の表示例から導く。
+// Environment Variable の変更予定の行を確かめる。absent と属する先がない状態の示し方は表示仕様に従う。
 //
 //trace:checks FR-005 FR-006 FR-007
 func TestPlannedChangeText_EnvironmentVariables(t *testing.T) {
@@ -586,7 +586,7 @@ func TestPlannedChangeText_EnvironmentVariables(t *testing.T) {
 	}
 }
 
-// 期待値は CLI 仕様 4章の Environment の表示例から導く。
+// 担当者の集合の変更予定の行を確かめる。なくなる要素と加わる要素の行の並びと、該当する要素のない行を示さないことは表示仕様に従う。
 //
 //trace:checks FR-005 FR-006 FR-007
 func TestPlannedChangeText_EnvironmentReviewerSet(t *testing.T) {
@@ -669,7 +669,7 @@ func TestPlannedChangeText_EnvironmentReviewerSet(t *testing.T) {
 	}
 }
 
-// 期待値は CLI 仕様 4章の Environment の表示例から導く。
+// Environment とデプロイ元制限の方式の変更予定の行を確かめる。個別パターンの差分の行の並びは表示仕様に従う。
 //
 //trace:checks FR-005 FR-006 FR-007
 func TestPlannedChangeText_Environments(t *testing.T) {

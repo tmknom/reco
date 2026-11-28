@@ -721,7 +721,7 @@ func TestEnvironmentPutOutsideChanges(t *testing.T) {
 	}
 }
 
-// TestEnvironmentProtectionChanges は、Environment の保護設定の項目ごとの差を、CLI 仕様の変更対象外の設定の名前と値の表記で返す規則を確かめる。
+// TestEnvironmentProtectionChanges は、Environment の保護設定の項目ごとの差を、Other settings: の行に示す名前と値で返す規則を確かめる。
 // 観測不能を含む組の比べ方は TestObservationChange が確かめ、ここでは担当者の集合がその判定を通ることだけを確かめる。
 //
 //trace:checks INV-001 FR-012

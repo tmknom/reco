@@ -13,10 +13,10 @@ import (
 
 const unreadWhileDisabled = "reco cannot read them while GitHub Actions is disabled"
 
-// UnknownValueText は、GitHub が reco の知らない値を返した設定の値の表記。CLI 仕様は、変更予定の現在値と、変更対象外の設定の予期しない変化の値に同じ表記を使う。
+// UnknownValueText は、GitHub が reco の知らない値を返した設定の値の表記。表示仕様は、変更予定の現在値と、変更対象外の設定の予期しない変化の値に同じ表記を使う。
 const UnknownValueText = "(unknown value)"
 
-// PlannedChangeText は、変更予定を CLI 仕様の現在 -> 期待値の形で返し、適用不能の理由、変更予定の注記、再開する設定、副作用をその下に添える。
+// PlannedChangeText は、変更予定を表示仕様の現在 -> 期待値の形で返し、適用不能の理由、変更予定の注記、再開する設定、副作用をその下に添える。
 // 末尾に改行を含む複数行になりうる。一致は空文字列を返す。
 func PlannedChangeText(s changeplan.SettingPlan) string {
 	if s.Unit.Key == setting.RulesetResource {
@@ -88,7 +88,7 @@ func repositoryStateText(reason github.UnavailableReason) string {
 	panic(fmt.Sprintf("changeplandisplay: undefined unavailable reason %d", int(reason)))
 }
 
-// notApplicableReasonText は、適用不能の理由を、利用者が対処を選べる CLI 仕様の文言で返す。
+// notApplicableReasonText は、適用不能の理由を、成り立っていない条件と設定ファイルの直し方を示す文で返す。
 // 公開範囲の理由は複数の設定が持つため、直し方に挙げるキーを s の管理の単位から決める。
 // 未定義の理由は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func notApplicableReasonText(s changeplan.SettingPlan) string {
@@ -165,7 +165,7 @@ func noMergeMethodEnabledText(keys []setting.Key) string {
 	panic(fmt.Sprintf("changeplandisplay: %d merge methods left disabled", len(names)))
 }
 
-// resumedSettingsText は、再開する設定を、CLI 仕様の Previous settings: の文言で返す。
+// resumedSettingsText は、再開する設定を、Previous settings: の行の文で返す。
 // 設定の名前は英語の列挙にし、値を示せない理由の代名詞を挙げる設定の数に合わせる。
 func resumedSettingsText(keys []setting.Key) string {
 	names := make([]string, len(keys))
@@ -184,7 +184,7 @@ func resumedSettingsText(keys []setting.Key) string {
 	return "GitHub Actions resumes with " + listed + " kept from before it was disabled (" + unread + ")"
 }
 
-// sideEffectText は、副作用を CLI 仕様の Side effect: の文言で返す。
+// sideEffectText は、副作用を Side effect: の行の文で返す。
 // 失われる値を観測できなかったときは、値を推測せずに失われる可能性だけを示す。
 // Dependency graph は reco が観測しない設定のため、現在値を示さない。
 // 未定義の種類は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
@@ -217,7 +217,7 @@ func sideEffectText(effect changeplan.SideEffect) string {
 	panic(fmt.Sprintf("changeplandisplay: undefined side effect kind %d", int(effect.Kind)))
 }
 
-// plannedChangeNoteText は、変更予定の注記を CLI 仕様の Note: の文言で返す。文言は設定の意味の事実だけを述べ、評価を含めない。
+// plannedChangeNoteText は、変更予定の注記を Note: の行の文で返す。文言は設定の意味の事実だけを述べ、評価を含めない。
 // 未定義の種類は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func plannedChangeNoteText(note changeplan.PlannedChangeNote) string {
 	switch note {

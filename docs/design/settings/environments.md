@@ -53,6 +53,8 @@ Environment Variables は、`GET /repos/{owner}/{repo}/environments/{environment
 
 Environments と Environment Variables に、取得条件による観測不能はありません。非公開リポジトリでも一覧と個別パターンと変数を取得できたためです（GitHub デプロイ環境 API 仕様 1.1、GitHub Actions 変数 API 仕様 1.1）。
 
+担当者の login は、観測した担当者にだけ表示に添えます。変更計画の期待値の担当者のうち、現在の集合にいない担当者は ID だけで示します。reco は ID から login を解決しないためです。担当者のいない保護ルールは、変更計画では空集合と見分けられる現在値として示し、`show` では `reviewers` の行をコメントにして示します。`reviewers: []` と示すと、設定宣言として読んだときに観測した状態と一致しない宣言になるためです（設定と管理の単位）。
+
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-004` | Functional Requirement |
@@ -74,7 +76,7 @@ Environment そのものと Environment Variables に固有の適用不能の条
 
 非公開リポジトリでの宣言も適用不能にしません。GitHub Free の非公開リポジトリでは、担当者を送る `PUT` は、担当者をなくす `reviewers: []` も含めて `422` になりますが、reco は料金プランを観測できず、非公開リポジトリで担当者を使えるプランもあるためです。担当者と自己承認の禁止の組み合わせ（担当者が1人のときにその人のデプロイを誰も承認できなくなるなど）は、reco が設定の望ましさを評価しないため、判定せず注記も添えません。
 
-自己承認の禁止には、固有の適用不能の条件があります。自己承認の禁止の変更予定は、更新時点に担当者がいない状態になる見込みで、`prevent_self_review` を送らずには期待値にならないとき、適用不能です。GitHub は、担当者がいない状態への `prevent_self_review` の `PUT` を、`true` も `false` も `422` で拒むためです（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 4.1）。
+自己承認の禁止には、固有の適用不能の条件があります。自己承認の禁止の変更予定は、更新時点に担当者がいない状態になる見込みで、`prevent_self_review` を送らずには期待値にならないとき、適用不能です。GitHub は、担当者がいない状態への `prevent_self_review` の `PUT` を、`true` も `false` も `422` で拒むためです（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 4.1）。適用不能の理由には、担当者を1人以上宣言するか、`prevent_self_review` の宣言を消す直し方を示します。
 
 - **更新時点の担当者**：担当者の集合を宣言していればその期待値、宣言していなければ計画時の観測値で決める。宣言していない担当者の集合は管理範囲外で、reco は変えないためである。存在しない Environment で担当者の集合を宣言していなければ、担当者がいない。宣言していない担当者の集合が、値が知らない値であることを理由に観測不能なら、担当者がいる。観測不能になるのは、知らない種類の担当者が1人以上いるときに限るためである
 - **送らずに期待値になる場合**：期待値が `false` で、担当者の集合の宣言が `[]` か、Environment を作成する場合である。どちらも、更新後に `required_reviewers` の保護ルールがなく、`false` と読むため（論理的な設定変更と更新操作）
@@ -88,7 +90,7 @@ Environment そのものと Environment Variables に固有の適用不能の条
 
 | 自己承認の禁止の宣言 | 計画時の値 | 示す形 |
 |---|---|---|
-| なし | `true` | 値が失われることを `Side effect:` で示す（表示の形は [CLI 仕様](../../spec/cli.md) 4章） |
+| なし | `true` | 値が失われることを `Side effect:` で示す（表示の形は [表示仕様](../../spec/output.md) 3.4節） |
 | なし | `false` | 示さない。保護ルールがないときと同じく、自己承認を禁じない状態のまま変わらないため |
 | `false` | `true` | 自己承認の禁止の変更予定（`true -> false`）。担当者の集合の論理的な設定変更に加わる |
 | `false` | `false` | 一致 |
@@ -183,7 +185,7 @@ Environment Variable の変更予定は、変数ごとに一つの更新操作�
 - 方式の両方 `true` と両方 `false` は `422` で、値は変わらなかった
 - 別の名前の Environment を作成、更新、削除した前後で、ほかの Environment が `updated_at` を含む全フィールドと個別パターンまで一致した
 
-更新後に比べるのは、宛先の Environment の保護設定（デプロイの待機時間、担当者の集合、自己承認の禁止、`can_admins_bypass`）です。待機時間と自己承認の禁止は、照合と同じく、保護ルールがない観測を `0` と `false` と読んで比べます（設定と管理の単位）。保護ルールのない状態から `prevent_self_review: true` の保護ルールが現れた変化も、自己承認の禁止の変化として示すためです。reco が種類を知らない保護ルールは観測しないため比べません。担当者の集合が、更新直前か更新後の片方で知らない値のために観測不能で、もう片方で観測値なら、予期しない変化とします。両方で観測不能なら、担当者の集合は比べません（[ドメインモデル](../domain.md) の変更計画・論理的な設定変更・変更結果）。比べないときの保全の根拠は、`wait_timer` だけ、`prevent_self_review` だけ、`deployment_branch_policy` だけの `PUT` が担当者を変えなかった確認結果です。
+更新後に比べるのは、宛先の Environment の保護設定（デプロイの待機時間、担当者の集合、自己承認の禁止、`can_admins_bypass`）です。待機時間と自己承認の禁止は、照合と同じく、保護ルールがない観測を `0` と `false` と読んで比べます（設定と管理の単位）。保護ルールのない状態から `prevent_self_review: true` の保護ルールが現れた変化も、自己承認の禁止の変化として示すためです。reco が種類を知らない保護ルールは観測しないため比べません。担当者の集合が、更新直前か更新後の片方で知らない値のために観測不能で、もう片方で観測値なら、予期しない変化とします。両方で観測不能なら、担当者の集合は比べません（[ドメインモデル](../domain.md) の変更計画・論理的な設定変更・変更結果）。比べないときの保全の根拠は、`wait_timer` だけ、`prevent_self_review` だけ、`deployment_branch_policy` だけの `PUT` が担当者を変えなかった確認結果です。変更対象外の設定の変化として示す担当者の集合には、login を添えません。login は値に含めず、login だけの違いは予期しない変化ではないためです。
 
 Environment の `PUT` の更新操作（作成、方式、担当者の集合、自己承認の禁止、デプロイの待機時間）は、どれも同じ範囲を更新後に比べます。デプロイ元制限の方式と保護設定のうち、その論理的な設定変更が変えない設定と、変更に伴う副作用として示した設定です。作成は更新直前に Environment がなく、比べる値がありません。
 
@@ -292,6 +294,7 @@ Environment の `PUT` に `wait_timer` だけを、分の整数で送ります�
 - [GitHub API 通信の設計](../github-access.md)
 - [Actions の設計](actions.md)
 - [YAML 設定仕様](../../spec/configuration.md)
+- [表示仕様](../../spec/output.md)
 - [GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md)
 - [GitHub デプロイ元パターン API 仕様](../../research/deployment-branch-policies.md)
 - [GitHub Actions 変数 API 仕様](../../research/actions-variables.md)

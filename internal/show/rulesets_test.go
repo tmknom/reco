@@ -47,7 +47,7 @@ func TestWriteRulesets(t *testing.T) {
 			want: "    # rulesets: none\n",
 		},
 		{
-			name: "the example ruleset is shown as in the CLI specification including the deploy key without actor_id",
+			name: "an interpreted ruleset is shown with all its parts and the deploy key without actor_id",
 			in: observed(github.InterpretedRuleset(1, "protect-default-branch", active(
 				setting.RulesetConditions{RefName: &setting.RefNameCondition{Include: []string{"~DEFAULT_BRANCH"}}},
 				[]setting.BypassActor{

@@ -37,7 +37,7 @@ func writeUnknownMergeMessage(b *strings.Builder, key string, reason github.Unav
 }
 
 // writeWebCommitSignoffRequired は web_commit_signoff_required を書く。
-// 値が返らなかったときの示し方は CLI 仕様の show が定める。
+// 値が返らなかったときの示し方は表示仕様の show が定める。
 // 観測は値の欠落だけをこの設定の観測不能にするため、ほかの理由は不変条件の破れとして panic する。
 func writeWebCommitSignoffRequired(b *strings.Builder, o github.SettingObservation[bool]) {
 	if required, ok := o.Value(); ok {

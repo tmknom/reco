@@ -31,7 +31,7 @@ func Run(ctx context.Context, cfg Config) error {
 	return writeObservationResult(cfg.Out, cfg.Target, observed)
 }
 
-// writeObservationResult は観測結果を、CLI 仕様の show の形式で書く。
+// writeObservationResult は観測結果を、表示仕様の show の形式で書く。
 // observed はすべての設定の領域を読み取った観測の結果に限る。読み取っていなければ nil 参照で止まり、値を補って表示しない。
 func writeObservationResult(w io.Writer, target repository.Reference, observed github.ObservationResult) error {
 	var b strings.Builder

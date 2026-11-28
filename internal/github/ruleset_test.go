@@ -143,7 +143,7 @@ func TestRulesets_Lookup(t *testing.T) {
 	}
 }
 
-// 種類ごとの行の形は CLI 仕様の解釈しなかったものの表に従う。
+// 解釈しなかったものの種類ごとに、種類と、引用符で囲んでエスケープした名前の一行を確かめる。
 //
 //trace:checks FR-004 QR-002
 func TestUninterpretedPart_String(t *testing.T) {
