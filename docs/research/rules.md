@@ -24,6 +24,8 @@ GitHub App の権限の一覧では、一覧と取得が Metadata の read、作
 
 Ruleset を利用できる料金プランとリポジトリの公開範囲は、エンドポイントのドキュメントに記載がありません。Ruleset の概要のドキュメントは、一つのリポジトリに Ruleset を75個まで置けると記載しています。
 
+Ruleset の作成と管理の手順は、設定画面の左のサイドバーの「Code, planning, and automation」の欄で **Rulesets** を押し、さらに **Rulesets** を押して Ruleset の一覧のページを開くと記載しています。同じ管理の手順のうち Insights を開く手順は、「Code and automation」の欄の **Rules** から **Insights** を開くと記載しており、サイドバーの欄と項目の名前は手順によって違います。
+
 > [!NOTE]
 > 次は、reco の開発者が `repo` scope を持つ personal access token (classic) で実際の動作を確認した事項です（個人アカウント所有のリポジトリで、所有者のトークンで確認）。
 >
@@ -38,6 +40,8 @@ Ruleset を利用できる料金プランとリポジトリの公開範囲は、
 | `grounding` | [REST API endpoints for rules](https://docs.github.com/en/rest/repos/rules?apiVersion=2026-03-10) | External Document |
 | `grounding` | [Permissions required for GitHub Apps](https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps?apiVersion=2026-03-10) | External Document |
 | `grounding` | [About rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets) | External Document |
+| `grounding` | [Creating rulesets for a repository](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository) | External Document |
+| `grounding` | [Managing rulesets for a repository](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/managing-rulesets-for-a-repository) | External Document |
 
 ## 2. Ruleset の名前と ID
 

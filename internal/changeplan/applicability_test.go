@@ -307,12 +307,11 @@ func TestJudgeApplicability_Rulesets(t *testing.T) {
 		{name: "ruleset whose existence cannot be determined is not applicable", in: notComparable(github.UnavailableNameUndetermined), want: NotApplicable(NotApplicableNameUndetermined)},
 		{name: "ruleset with uninterpreted parts is not applicable", in: notComparable(github.UnavailableUninterpretedParts), want: NotApplicable(NotApplicableUninterpretedParts)},
 		{
-			name: "value change that resets an omitted parameter observed true is not applicable with the parameter",
-			in:   statusChecksPlan(statusChecksRuleset(false, new(true)), statusChecksRuleset(true, nil)),
-			want: NotApplicableResetParameters([]setting.ResetParameter{{Rule: setting.RulesetRuleRequiredStatusChecks, Name: "do_not_enforce_on_create", Value: "true"}}),
+			name: "value change of an observed ruleset is applicable",
+			in:   statusChecksPlan(statusChecksRuleset(false, true), statusChecksRuleset(false, false)),
+			want: Applicable(),
 		},
-		{name: "creation with an omitted parameter is applicable", in: newSettingPlan(unit, github.Observed(setting.Absent()), setting.RulesetValue(statusChecksRuleset(true, nil))), want: Applicable()},
-		{name: "deletion of a ruleset with an observed parameter that GitHub decides is applicable", in: absentDeclared(github.Observed(setting.RulesetValue(statusChecksRuleset(false, new(true))))), want: Applicable()},
+		{name: "deletion of an observed ruleset is applicable", in: absentDeclared(github.Observed(setting.RulesetValue(statusChecksRuleset(false, true)))), want: Applicable()},
 		{name: "declared absence not comparable because of uninterpreted parts is not applicable", in: absentDeclared(github.Unavailable[setting.Value](github.UnavailableUninterpretedParts)), want: NotApplicable(NotApplicableUninterpretedParts)},
 		{name: "declared absence not comparable because the name cannot be determined is not applicable", in: absentDeclared(github.Unavailable[setting.Value](github.UnavailableNameUndetermined)), want: NotApplicable(NotApplicableNameUndetermined)},
 		{name: "declared absence not comparable because the repository is private is not applicable", in: absentDeclared(github.Unavailable[setting.Value](github.UnavailablePrivateRepository)), want: NotApplicable(NotApplicablePrivateRepository)},
@@ -770,7 +769,6 @@ func TestNotApplicable_PanicsOnInconsistentReason(t *testing.T) {
 		{name: "no merge method enabled without merge methods left disabled", reason: NotApplicableNoMergeMethodEnabled},
 		{name: "reason without unmanaged settings given unmanaged settings", reason: NotApplicablePublicRepository, unmanaged: []setting.Key{setting.AllowRebaseMerge}},
 		{name: "above the maximum allowed must be built with NotApplicableAboveMaximum", reason: NotApplicableAboveMaximumAllowed},
-		{name: "omitted parameters reset must be built with NotApplicableResetParameters", reason: NotApplicableOmittedParametersReset},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -784,15 +782,6 @@ func TestNotApplicable_PanicsOnInconsistentReason(t *testing.T) {
 	}
 }
 
-func TestNotApplicableResetParameters_PanicsWithoutParameters(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Error("NotApplicableResetParameters() did not panic")
-		}
-	}()
-	_ = NotApplicableResetParameters(nil)
-}
-
 func TestApplicability(t *testing.T) {
 	cases := []struct {
 		name              string
@@ -802,7 +791,6 @@ func TestApplicability(t *testing.T) {
 		wantReason        NotApplicableReason
 		wantUnmanaged     []setting.Key
 		wantMaximum       int
-		wantReset         []setting.ResetParameter
 	}{
 		{name: "no judgment is neither applicable nor not applicable", in: Applicability{}},
 		{name: "applicable has no reason", in: Applicable(), wantApplicable: true},
@@ -814,10 +802,6 @@ func TestApplicability(t *testing.T) {
 		{
 			name: "above the maximum has the maximum", in: NotApplicableAboveMaximum(90),
 			wantNotApplicable: true, wantReason: NotApplicableAboveMaximumAllowed, wantMaximum: 90,
-		},
-		{
-			name: "omitted parameters reset has the parameters", in: NotApplicableResetParameters([]setting.ResetParameter{{Rule: setting.RulesetRuleRequiredStatusChecks, Name: "x", Value: "true"}}),
-			wantNotApplicable: true, wantReason: NotApplicableOmittedParametersReset, wantReset: []setting.ResetParameter{{Rule: setting.RulesetRuleRequiredStatusChecks, Name: "x", Value: "true"}},
 		},
 	}
 	for _, tc := range cases {
@@ -836,9 +820,6 @@ func TestApplicability(t *testing.T) {
 			}
 			if got := tc.in.MaximumAllowed(); got != tc.wantMaximum {
 				t.Errorf("MaximumAllowed() = %d, want %d", got, tc.wantMaximum)
-			}
-			if got := tc.in.ResetParameters(); !slices.Equal(got, tc.wantReset) {
-				t.Errorf("ResetParameters() = %v, want %v", got, tc.wantReset)
 			}
 		})
 	}

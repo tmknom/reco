@@ -20,7 +20,7 @@ func TestEncodeRulesetCreation(t *testing.T) {
 		RequireLastPushApproval:                    true,
 		RequiredReviewThreadResolution:             false,
 		AllowedMergeMethods:                        []setting.AllowedMergeMethod{setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodMerge},
-		RequireExtraApprovalForUnattributedChanges: new(false),
+		RequireExtraApprovalForUnattributedChanges: false,
 	})
 	statusChecks := setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{
 		RequiredStatusChecks:             []setting.StatusCheck{{Context: "test"}, {Context: "lint", IntegrationID: 15368}},
@@ -51,7 +51,7 @@ func TestEncodeRulesetCreation(t *testing.T) {
 				`"conditions":{"ref_name":{"include":["~DEFAULT_BRANCH","refs/heads/release"],"exclude":["refs/heads/tmp"]}},` +
 				`"bypass_actors":[{"actor_type":"RepositoryRole","actor_id":5,"bypass_mode":"always"},{"actor_type":"DeployKey","actor_id":null,"bypass_mode":"always"}],` +
 				`"rules":[{"type":"pull_request","parameters":{"required_approving_review_count":1,"dismiss_stale_reviews_on_push":true,"require_code_owner_review":false,"require_last_push_approval":true,"required_review_thread_resolution":false,"allowed_merge_methods":["squash","merge"],"require_extra_approval_for_unattributed_changes":false}},{"type":"deletion"},{"type":"non_fast_forward"},` +
-				`{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test"},{"context":"lint","integration_id":15368}],"strict_required_status_checks_policy":true}}]}`,
+				`{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test"},{"context":"lint","integration_id":15368}],"strict_required_status_checks_policy":true,"do_not_enforce_on_create":false}}]}`,
 		},
 		{
 			name:    "nil collections are sent as empty arrays",
@@ -82,7 +82,7 @@ func TestEncodeRulesetValueUpdate(t *testing.T) {
 		RequireLastPushApproval:                    true,
 		RequiredReviewThreadResolution:             false,
 		AllowedMergeMethods:                        []setting.AllowedMergeMethod{setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodMerge},
-		RequireExtraApprovalForUnattributedChanges: new(false),
+		RequireExtraApprovalForUnattributedChanges: false,
 	})
 	statusChecks := setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{
 		RequiredStatusChecks:             []setting.StatusCheck{{Context: "test"}, {Context: "lint", IntegrationID: 15368}},
@@ -111,7 +111,7 @@ func TestEncodeRulesetValueUpdate(t *testing.T) {
 				`"conditions":{"ref_name":{"include":["~DEFAULT_BRANCH","refs/heads/release"],"exclude":["refs/heads/tmp"]}},` +
 				`"bypass_actors":[{"actor_type":"RepositoryRole","actor_id":5,"bypass_mode":"always"},{"actor_type":"DeployKey","actor_id":null,"bypass_mode":"always"}],` +
 				`"rules":[{"type":"pull_request","parameters":{"required_approving_review_count":1,"dismiss_stale_reviews_on_push":true,"require_code_owner_review":false,"require_last_push_approval":true,"required_review_thread_resolution":false,"allowed_merge_methods":["squash","merge"],"require_extra_approval_for_unattributed_changes":false}},{"type":"deletion"},{"type":"non_fast_forward"},` +
-				`{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test"},{"context":"lint","integration_id":15368}],"strict_required_status_checks_policy":true}}]}`,
+				`{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test"},{"context":"lint","integration_id":15368}],"strict_required_status_checks_policy":true,"do_not_enforce_on_create":false}}]}`,
 		},
 	}
 	for _, tc := range cases {
@@ -123,7 +123,7 @@ func TestEncodeRulesetValueUpdate(t *testing.T) {
 	}
 }
 
-// TestEncodeRulesetRule は、ルールの本文が、宣言した省略できるパラメータと integration_id だけを送ることを確かめる。
+// TestEncodeRulesetRule は、ルールの本文が、false のパラメータも省かずに送り、integration_id だけを持つときに送ることを確かめる。
 //
 //trace:checks INV-001 FR-011
 func TestEncodeRulesetRule(t *testing.T) {
@@ -133,19 +133,14 @@ func TestEncodeRulesetRule(t *testing.T) {
 		want string
 	}{
 		{
-			name: "declared do_not_enforce_on_create false is sent",
-			rule: setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{RequiredStatusChecks: []setting.StatusCheck{}, DoNotEnforceOnCreate: new(false)}),
-			want: `{"type":"required_status_checks","parameters":{"required_status_checks":[],"strict_required_status_checks_policy":false,"do_not_enforce_on_create":false}}`,
+			name: "do_not_enforce_on_create true is sent",
+			rule: setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{RequiredStatusChecks: []setting.StatusCheck{}, DoNotEnforceOnCreate: true}),
+			want: `{"type":"required_status_checks","parameters":{"required_status_checks":[],"strict_required_status_checks_policy":false,"do_not_enforce_on_create":true}}`,
 		},
 		{
 			name: "nil checks are sent as an empty array",
 			rule: setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{StrictRequiredStatusChecksPolicy: true}),
-			want: `{"type":"required_status_checks","parameters":{"required_status_checks":[],"strict_required_status_checks_policy":true}}`,
-		},
-		{
-			name: "pull_request omitting the optional parameters sends only the five required ones",
-			rule: setting.PullRequestRule(setting.PullRequestParameters{RequiredApprovingReviewCount: 1}),
-			want: `{"type":"pull_request","parameters":{"required_approving_review_count":1,"dismiss_stale_reviews_on_push":false,"require_code_owner_review":false,"require_last_push_approval":false,"required_review_thread_resolution":false}}`,
+			want: `{"type":"required_status_checks","parameters":{"required_status_checks":[],"strict_required_status_checks_policy":true,"do_not_enforce_on_create":false}}`,
 		},
 	}
 	for _, tc := range cases {

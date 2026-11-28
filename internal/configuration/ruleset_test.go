@@ -440,9 +440,9 @@ func TestDocumentBypassActor(t *testing.T) {
 //trace:checks FR-001
 func TestDocumentRulesetRules(t *testing.T) {
 	const deletionItem = "- type: deletion\n"
-	const pullRequestItem = "- type: pull_request\n  parameters:\n    required_approving_review_count: 1\n    dismiss_stale_reviews_on_push: false\n    require_code_owner_review: false\n    require_last_push_approval: false\n    required_review_thread_resolution: false\n"
-	const statusChecksItem = "- type: required_status_checks\n  parameters:\n    required_status_checks: []\n    strict_required_status_checks_policy: false\n"
-	pullRequest := setting.PullRequestRule(setting.PullRequestParameters{RequiredApprovingReviewCount: 1})
+	const pullRequestItem = "- type: pull_request\n  parameters:\n    required_approving_review_count: 1\n    dismiss_stale_reviews_on_push: false\n    require_code_owner_review: false\n    require_last_push_approval: false\n    required_review_thread_resolution: false\n    allowed_merge_methods: [squash]\n    require_extra_approval_for_unattributed_changes: false\n"
+	const statusChecksItem = "- type: required_status_checks\n  parameters:\n    required_status_checks: []\n    strict_required_status_checks_policy: false\n    do_not_enforce_on_create: false\n"
+	pullRequest := setting.PullRequestRule(setting.PullRequestParameters{RequiredApprovingReviewCount: 1, AllowedMergeMethods: []setting.AllowedMergeMethod{setting.AllowedMergeMethodSquash}})
 	cases := []struct {
 		name       string
 		src        string
@@ -484,15 +484,15 @@ func TestDocumentRulesetRules(t *testing.T) {
 	}
 }
 
-// TestDocumentRulesetRule は、ルールの型ごとの parameters の有無と、pull_request の 5 項目の判定を確かめる。
+// TestDocumentRulesetRule は、ルールの型ごとの parameters の有無と、pull_request の 7 項目のキーと、5 項目の値の判定を確かめる。
 // 拒否のケースは、受理される入力 (base) の条件を 1 つだけ変えて作る。
 //
 //trace:checks FR-001
 func TestDocumentRulesetRule(t *testing.T) {
-	const base = "type: pull_request\nparameters:\n  required_approving_review_count: 1\n  dismiss_stale_reviews_on_push: false\n  require_code_owner_review: false\n  require_last_push_approval: false\n  required_review_thread_resolution: false\n"
+	const base = "type: pull_request\nparameters:\n  required_approving_review_count: 1\n  dismiss_stale_reviews_on_push: false\n  require_code_owner_review: false\n  require_last_push_approval: false\n  required_review_thread_resolution: false\n  allowed_merge_methods: [squash]\n  require_extra_approval_for_unattributed_changes: false\n"
 	with := func(old, replacement string) string { return strings.Replace(base, old, replacement, 1) }
 	parameters := func(edit func(*setting.PullRequestParameters)) setting.RulesetRule {
-		p := setting.PullRequestParameters{RequiredApprovingReviewCount: 1}
+		p := setting.PullRequestParameters{RequiredApprovingReviewCount: 1, AllowedMergeMethods: []setting.AllowedMergeMethod{setting.AllowedMergeMethodSquash}}
 		edit(&p)
 		return setting.PullRequestRule(p)
 	}
@@ -504,7 +504,7 @@ func TestDocumentRulesetRule(t *testing.T) {
 		wantReason string
 	}{
 		{name: "deletion without parameters is read", src: "type: deletion\n", want: setting.DeletionRule()},
-		{name: "pull_request with five parameters is read", src: base, want: parameters(func(*setting.PullRequestParameters) {})},
+		{name: "pull_request with seven parameters is read", src: base, want: parameters(func(*setting.PullRequestParameters) {})},
 		{name: "count 0 is read", src: with("count: 1", "count: 0"), want: parameters(func(p *setting.PullRequestParameters) { p.RequiredApprovingReviewCount = 0 })},
 		{name: "count 10 is read", src: with("count: 1", "count: 10"), want: parameters(func(p *setting.PullRequestParameters) { p.RequiredApprovingReviewCount = 10 })},
 		{name: "dismiss_stale_reviews_on_push true is read into its own field", src: with("dismiss_stale_reviews_on_push: false", "dismiss_stale_reviews_on_push: true"), want: parameters(func(p *setting.PullRequestParameters) { p.DismissStaleReviewsOnPush = true })},
@@ -520,7 +520,7 @@ func TestDocumentRulesetRule(t *testing.T) {
 		{name: "non_fast_forward with parameters is rejected", src: "type: non_fast_forward\nparameters: {}\n", wantPath: "R.parameters", wantReason: `parameters is not allowed when type is "non_fast_forward"`},
 		{
 			name: "required_status_checks with parameters is read",
-			src:  "type: required_status_checks\nparameters:\n  required_status_checks: []\n  strict_required_status_checks_policy: true\n",
+			src:  "type: required_status_checks\nparameters:\n  required_status_checks: []\n  strict_required_status_checks_policy: true\n  do_not_enforce_on_create: false\n",
 			want: setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{RequiredStatusChecks: []setting.StatusCheck{}, StrictRequiredStatusChecksPolicy: true}),
 		},
 		{name: "required_status_checks without parameters is rejected", src: "type: required_status_checks\n", wantPath: "R", wantReason: `type "required_status_checks" requires parameters`},
@@ -533,6 +533,8 @@ func TestDocumentRulesetRule(t *testing.T) {
 		{name: "missing require_code_owner_review is rejected", src: with("  require_code_owner_review: false\n", ""), wantPath: "R.parameters", wantReason: `missing key "require_code_owner_review"`},
 		{name: "missing require_last_push_approval is rejected", src: with("  require_last_push_approval: false\n", ""), wantPath: "R.parameters", wantReason: `missing key "require_last_push_approval"`},
 		{name: "missing required_review_thread_resolution is rejected", src: with("  required_review_thread_resolution: false\n", ""), wantPath: "R.parameters", wantReason: `missing key "required_review_thread_resolution"`},
+		{name: "missing allowed_merge_methods is rejected", src: with("  allowed_merge_methods: [squash]\n", ""), wantPath: "R.parameters", wantReason: `missing key "allowed_merge_methods"`},
+		{name: "missing require_extra_approval_for_unattributed_changes is rejected", src: with("  require_extra_approval_for_unattributed_changes: false\n", ""), wantPath: "R.parameters", wantReason: `missing key "require_extra_approval_for_unattributed_changes"`},
 		{name: "unknown parameter is rejected", src: base + "  automatic_copilot_code_review_enabled: false\n", wantPath: "R.parameters", wantReason: `unknown key "automatic_copilot_code_review_enabled"; expected required_approving_review_count, dismiss_stale_reviews_on_push, require_code_owner_review, require_last_push_approval, required_review_thread_resolution, allowed_merge_methods, require_extra_approval_for_unattributed_changes`},
 		{name: "count 11 is rejected", src: with("count: 1", "count: 11"), wantPath: "R.parameters.required_approving_review_count", wantReason: "must be an integer from 0 to 10; got 11"},
 		{name: "quoted count is rejected", src: with("count: 1", `count: "1"`), wantPath: "R.parameters.required_approving_review_count", wantReason: `must be an integer; got "1"`},
@@ -574,7 +576,7 @@ func TestDocumentRulesetRule(t *testing.T) {
 //
 //trace:checks FR-001
 func TestDocumentRequiredStatusChecksParameters(t *testing.T) {
-	const base = "required_status_checks:\n  - context: test\n  - context: lint\n    integration_id: 15368\nstrict_required_status_checks_policy: false\n"
+	const base = "required_status_checks:\n  - context: test\n  - context: lint\n    integration_id: 15368\nstrict_required_status_checks_policy: false\ndo_not_enforce_on_create: false\n"
 	with := func(old, replacement string) string { return strings.Replace(base, old, replacement, 1) }
 	test, lint := setting.StatusCheck{Context: "test"}, setting.StatusCheck{Context: "lint", IntegrationID: 15368}
 	parameters := func(edit func(*setting.RequiredStatusChecksParameters)) setting.RequiredStatusChecksParameters {
@@ -590,13 +592,12 @@ func TestDocumentRequiredStatusChecksParameters(t *testing.T) {
 		wantPath   string
 		wantReason string
 	}{
-		{name: "checks are read in declared order with omitted do_not_enforce_on_create left unset", src: base, want: parameters(unchanged)},
+		{name: "checks are read in declared order", src: base, want: parameters(unchanged)},
 		{name: "strict policy true is read", src: with("policy: false", "policy: true"), want: parameters(func(p *setting.RequiredStatusChecksParameters) { p.StrictRequiredStatusChecksPolicy = true })},
-		{name: "declared do_not_enforce_on_create true is read", src: base + "do_not_enforce_on_create: true\n", want: parameters(func(p *setting.RequiredStatusChecksParameters) { p.DoNotEnforceOnCreate = new(true) })},
-		{name: "declared do_not_enforce_on_create false is read", src: base + "do_not_enforce_on_create: false\n", want: parameters(func(p *setting.RequiredStatusChecksParameters) { p.DoNotEnforceOnCreate = new(false) })},
+		{name: "do_not_enforce_on_create true is read", src: with("create: false", "create: true"), want: parameters(func(p *setting.RequiredStatusChecksParameters) { p.DoNotEnforceOnCreate = true })},
 		{
 			name: "empty checks are read as non-nil empty",
-			src:  "required_status_checks: []\nstrict_required_status_checks_policy: false\n",
+			src:  "required_status_checks: []\nstrict_required_status_checks_policy: false\ndo_not_enforce_on_create: false\n",
 			want: setting.RequiredStatusChecksParameters{RequiredStatusChecks: []setting.StatusCheck{}},
 		},
 		{
@@ -609,8 +610,9 @@ func TestDocumentRequiredStatusChecksParameters(t *testing.T) {
 			src:  with("context: lint", "context: test"),
 			want: parameters(func(p *setting.RequiredStatusChecksParameters) { p.RequiredStatusChecks[1].Context = "test" }),
 		},
-		{name: "missing checks are rejected", src: "strict_required_status_checks_policy: false\n", wantPath: "P", wantReason: `missing key "required_status_checks"`},
+		{name: "missing checks are rejected", src: "strict_required_status_checks_policy: false\ndo_not_enforce_on_create: false\n", wantPath: "P", wantReason: `missing key "required_status_checks"`},
 		{name: "missing strict policy is rejected", src: with("strict_required_status_checks_policy: false\n", ""), wantPath: "P", wantReason: `missing key "strict_required_status_checks_policy"`},
+		{name: "missing do_not_enforce_on_create is rejected", src: with("do_not_enforce_on_create: false\n", ""), wantPath: "P", wantReason: `missing key "do_not_enforce_on_create"`},
 		{name: "unknown parameter is rejected", src: base + "other: 1\n", wantPath: "P", wantReason: `unknown key "other"`},
 		{name: "null checks are rejected", src: with("required_status_checks:\n  - context: test\n  - context: lint\n    integration_id: 15368\n", "required_status_checks:\n"), wantPath: "P.required_status_checks", wantReason: "must not be null"},
 		{name: "missing context is rejected", src: with("  - context: test\n", "  - integration_id: 1\n"), wantPath: "P.required_status_checks[0]", wantReason: `missing key "context"`},
@@ -627,9 +629,9 @@ func TestDocumentRequiredStatusChecksParameters(t *testing.T) {
 			wantReason: `duplicate status check "lint" with integration_id 15368; same as P.required_status_checks[1]`,
 		},
 		{name: "non-boolean strict policy is rejected", src: with("policy: false", "policy: yes"), wantPath: "P.strict_required_status_checks_policy", wantReason: "must be true or false"},
-		{name: "non-boolean do_not_enforce_on_create is rejected", src: base + "do_not_enforce_on_create: 1\n", wantPath: "P.do_not_enforce_on_create", wantReason: "must be true or false"},
+		{name: "non-boolean do_not_enforce_on_create is rejected", src: with("create: false", "create: 1"), wantPath: "P.do_not_enforce_on_create", wantReason: "must be true or false"},
 		{name: "checks are checked before the strict policy", src: strings.Replace(with("policy: false", "policy: yes"), "context: test", `context: ""`, 1), wantPath: "P.required_status_checks[0].context", wantReason: "must not be empty"},
-		{name: "strict policy is checked before do_not_enforce_on_create", src: with("policy: false", "policy: yes") + "do_not_enforce_on_create: 1\n", wantPath: "P.strict_required_status_checks_policy", wantReason: "must be true or false"},
+		{name: "strict policy is checked before do_not_enforce_on_create", src: strings.Replace(with("policy: false", "policy: yes"), "create: false", "create: 1", 1), wantPath: "P.strict_required_status_checks_policy", wantReason: "must be true or false"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -657,13 +659,13 @@ func TestDocumentRequiredStatusChecksParameters(t *testing.T) {
 	}
 }
 
-// TestDocumentPullRequestParameters は、pull_request の省略できるパラメータの判定を確かめる。必須の5項目の判定は TestDocumentRulesetRule が確かめる。
-// 拒否のケースは、2項目を宣言した受理される入力 (declared) を基準にする。
+// TestDocumentPullRequestParameters は、pull_request の allowed_merge_methods と require_extra_approval_for_unattributed_changes の値の判定を確かめる。
+// キーの判定とほかの5項目の値の判定は TestDocumentRulesetRule が確かめる。拒否のケースは、受理される入力 (declared) の条件を 1 つだけ変えて作る。
 //
 //trace:checks FR-001
 func TestDocumentPullRequestParameters(t *testing.T) {
-	const base = "required_approving_review_count: 1\ndismiss_stale_reviews_on_push: false\nrequire_code_owner_review: false\nrequire_last_push_approval: false\nrequired_review_thread_resolution: false\n"
-	const declared = base + "allowed_merge_methods: [squash, merge]\nrequire_extra_approval_for_unattributed_changes: false\n"
+	const declared = "required_approving_review_count: 1\ndismiss_stale_reviews_on_push: false\nrequire_code_owner_review: false\nrequire_last_push_approval: false\nrequired_review_thread_resolution: false\n" +
+		"allowed_merge_methods: [squash, merge]\nrequire_extra_approval_for_unattributed_changes: false\n"
 	with := func(old, replacement string) string { return strings.Replace(declared, old, replacement, 1) }
 	squash, merge := setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodMerge
 	cases := []struct {
@@ -673,29 +675,23 @@ func TestDocumentPullRequestParameters(t *testing.T) {
 		wantPath   string
 		wantReason string
 	}{
-		{name: "omitted optional parameters are left unset", src: base, want: setting.PullRequestParameters{RequiredApprovingReviewCount: 1}},
 		{
-			name: "declared optional parameters are read in the declared order",
+			name: "allowed_merge_methods are read in the declared order",
 			src:  declared,
-			want: setting.PullRequestParameters{RequiredApprovingReviewCount: 1, AllowedMergeMethods: []setting.AllowedMergeMethod{squash, merge}, RequireExtraApprovalForUnattributedChanges: new(false)},
+			want: setting.PullRequestParameters{RequiredApprovingReviewCount: 1, AllowedMergeMethods: []setting.AllowedMergeMethod{squash, merge}},
 		},
 		{
-			name: "only allowed_merge_methods can be declared",
-			src:  base + "allowed_merge_methods: [rebase]\n",
-			want: setting.PullRequestParameters{RequiredApprovingReviewCount: 1, AllowedMergeMethods: []setting.AllowedMergeMethod{setting.AllowedMergeMethodRebase}},
-		},
-		{
-			name: "only require_extra_approval_for_unattributed_changes can be declared",
-			src:  base + "require_extra_approval_for_unattributed_changes: true\n",
-			want: setting.PullRequestParameters{RequiredApprovingReviewCount: 1, RequireExtraApprovalForUnattributedChanges: new(true)},
+			name: "require_extra_approval_for_unattributed_changes true is read",
+			src:  with("changes: false", "changes: true"),
+			want: setting.PullRequestParameters{RequiredApprovingReviewCount: 1, AllowedMergeMethods: []setting.AllowedMergeMethod{squash, merge}, RequireExtraApprovalForUnattributedChanges: true},
 		},
 		{name: "empty allowed_merge_methods is rejected", src: with("[squash, merge]", "[]"), wantPath: "P.allowed_merge_methods", wantReason: "must not be empty"},
 		{name: "non-string merge method is rejected", src: with("[squash, merge]", "[squash, 1]"), wantPath: "P.allowed_merge_methods[1]", wantReason: "must be a string"},
 		{name: "undefined merge method is rejected", src: with("[squash, merge]", "[squash, fast_forward]"), wantPath: "P.allowed_merge_methods[1]", wantReason: `must be merge, squash, or rebase; got "fast_forward"`},
 		{name: "duplicate merge method is rejected", src: with("[squash, merge]", "[squash, squash]"), wantPath: "P.allowed_merge_methods[1]", wantReason: `duplicate merge method "squash"; same as P.allowed_merge_methods[0]`},
 		{name: "non-boolean require_extra_approval_for_unattributed_changes is rejected", src: with("changes: false", "changes: no"), wantPath: "P.require_extra_approval_for_unattributed_changes", wantReason: "must be true or false"},
-		{name: "dismissal_restriction is rejected as an unknown key", src: base + "dismissal_restriction: {}\n", wantPath: "P", wantReason: `unknown key "dismissal_restriction"`},
-		{name: "required_reviewers is rejected as an unknown key", src: base + "required_reviewers: []\n", wantPath: "P", wantReason: `unknown key "required_reviewers"`},
+		{name: "dismissal_restriction is rejected as an unknown key", src: declared + "dismissal_restriction: {}\n", wantPath: "P", wantReason: `unknown key "dismissal_restriction"`},
+		{name: "required_reviewers is rejected as an unknown key", src: declared + "required_reviewers: []\n", wantPath: "P", wantReason: `unknown key "required_reviewers"`},
 		{name: "booleans are checked before allowed_merge_methods", src: strings.Replace(with("[squash, merge]", "[]"), "resolution: false", "resolution: 0", 1), wantPath: "P.required_review_thread_resolution", wantReason: "must be true or false"},
 		{name: "allowed_merge_methods is checked before require_extra_approval_for_unattributed_changes", src: strings.Replace(with("[squash, merge]", "[]"), "changes: false", "changes: no", 1), wantPath: "P.allowed_merge_methods", wantReason: "must not be empty"},
 	}

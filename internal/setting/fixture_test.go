@@ -43,15 +43,13 @@ func withRules(rules ...RulesetRule) testRulesetOption {
 	return func(r *Ruleset) { r.Rules = rules }
 }
 
-// statusChecksRule は、チェック checks と厳格な再検証 strict を持つ required_status_checks のルールを作る。
-// doNotEnforceOnCreate が nil なら、宣言が省略したルールになる。
-func statusChecksRule(strict bool, doNotEnforceOnCreate *bool, checks ...StatusCheck) RulesetRule {
+// statusChecksRule は、チェック checks、厳格な再検証 strict、作成時に強制しないか doNotEnforceOnCreate を持つ required_status_checks のルールを作る。
+func statusChecksRule(strict bool, doNotEnforceOnCreate bool, checks ...StatusCheck) RulesetRule {
 	return RequiredStatusChecksRule(RequiredStatusChecksParameters{RequiredStatusChecks: checks, StrictRequiredStatusChecksPolicy: strict, DoNotEnforceOnCreate: doNotEnforceOnCreate})
 }
 
-// pullRequestRule は、承認数 count を持ち、ほかの必須の項目がゼロ値の pull_request のルールを作る。
-// methods と extraApproval が nil なら、宣言がそのパラメータを省略したルールになる。
-func pullRequestRule(count int, methods []AllowedMergeMethod, extraApproval *bool) RulesetRule {
+// pullRequestRule は、承認数 count、許すマージ方式 methods、追加の承認 extraApproval を持ち、ほかの真偽値が偽の pull_request のルールを作る。
+func pullRequestRule(count int, methods []AllowedMergeMethod, extraApproval bool) RulesetRule {
 	return PullRequestRule(PullRequestParameters{RequiredApprovingReviewCount: count, AllowedMergeMethods: methods, RequireExtraApprovalForUnattributedChanges: extraApproval})
 }
 

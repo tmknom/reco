@@ -23,7 +23,7 @@ type RepositoryDeclaration struct {
 }
 
 // DesiredState は、一つのリポジトリについて管理設定に求める状態。
-// YAML の入れ子 (actions.workflow) は写さず、設定の領域ごとに持つ。
+// YAML の入れ子 (actions.workflow_permissions) は写さず、設定の領域ごとに持つ。
 type DesiredState struct {
 	General                         General
 	ActionsPermissions              ActionsPermissions

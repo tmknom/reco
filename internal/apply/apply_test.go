@@ -893,7 +893,7 @@ const workflowConfigSource = `repositories:
     general:
       allow_auto_merge: true
     actions:
-      workflow:
+      workflow_permissions:
         default_workflow_permissions: read
 `
 
@@ -939,7 +939,7 @@ func TestRun(t *testing.T) {
 		if !slices.Equal(server.RequestLines(), want) {
 			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}
-		if !strings.Contains(out.String(), "actions.workflow.default_workflow_permissions: write -> read") ||
+		if !strings.Contains(out.String(), "actions.workflow_permissions.default_workflow_permissions: write -> read") ||
 			!strings.Contains(out.String(), "owner/repo: updated") {
 			t.Errorf("got Out %q, want the workflow permissions change and the repository updated", out.String())
 		}
@@ -1270,7 +1270,7 @@ func TestRun(t *testing.T) {
 			okRepository(1, true, false), okWorkflowPermissions("read", false))
 		var out bytes.Buffer
 		calls := 0
-		source := configSource + "    actions:\n      permissions:\n        allowed_actions: local_only\n      workflow:\n        default_workflow_permissions: read\n"
+		source := configSource + "    actions:\n      permissions:\n        allowed_actions: local_only\n      workflow_permissions:\n        default_workflow_permissions: read\n"
 		files := fstest.MapFS{"reco.yaml": {Data: []byte(source)}}
 
 		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {

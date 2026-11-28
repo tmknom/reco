@@ -46,7 +46,7 @@ repositories:
         enabled: true
         allowed_actions: all
         sha_pinning_required: false
-      workflow:
+      workflow_permissions:
         default_workflow_permissions: read
         can_approve_pull_request_reviews: false
       access:

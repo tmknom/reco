@@ -59,7 +59,7 @@ func TestWriteObservationResult(t *testing.T) {
 			"      merge_commit:\n        title: MERGE_MESSAGE\n        message: PR_TITLE\n" +
 			"      has_issues: false\n      has_projects: false\n      has_wiki: false\n      web_commit_signoff_required: false\n"
 		allPermissions                      = "    actions:\n      permissions:\n        enabled: true\n        allowed_actions: all\n        sha_pinning_required: true\n"
-		readOnlyWorkflow                    = "      workflow:\n        default_workflow_permissions: read\n        can_approve_pull_request_reviews: false\n"
+		readOnlyWorkflow                    = "      workflow_permissions:\n        default_workflow_permissions: read\n        can_approve_pull_request_reviews: false\n"
 		notSharedAccess                     = "      access:\n        access_level: none\n"
 		privateForkPullRequestsAndRetention = "      # fork_pr_contributor_approval:\n      #   approval_policy: unavailable (the repository is private)\n" +
 			"      fork_pr_workflows_private_repos:\n" +
@@ -122,7 +122,7 @@ func TestWriteObservationResult(t *testing.T) {
 			want: header +
 				generalLines +
 				allPermissions +
-				"      workflow:\n        default_workflow_permissions: write\n        can_approve_pull_request_reviews: true\n" +
+				"      workflow_permissions:\n        default_workflow_permissions: write\n        can_approve_pull_request_reviews: true\n" +
 				"      access:\n        access_level: user\n" +
 				privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
@@ -320,7 +320,7 @@ func TestWriteObservationResult(t *testing.T) {
 				Rulesets:                        emptyRulesets,
 			},
 			want: header + generalLines + allPermissions +
-				"      workflow:\n        # default_workflow_permissions: unavailable (GitHub returned a value that reco does not know)\n        can_approve_pull_request_reviews: true\n" +
+				"      workflow_permissions:\n        # default_workflow_permissions: unavailable (GitHub returned a value that reco does not know)\n        can_approve_pull_request_reviews: true\n" +
 				notSharedAccess + privateForkPullRequestsAndRetention + defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{

@@ -21,9 +21,8 @@ type RulesetDifference struct {
 	ExcludeAdded        []string
 	BypassActorsRemoved []BypassActor
 	BypassActorsAdded   []BypassActor
-	// RulesRemoved と RulesAdded は、比べなかった省略できるパラメータも持ったままの要素である。
-	RulesRemoved []RulesetRule
-	RulesAdded   []RulesetRule
+	RulesRemoved        []RulesetRule
+	RulesAdded          []RulesetRule
 }
 
 // Empty は、値の差がないこと、つまり二つの値が同じ値であることを返す。
@@ -37,11 +36,8 @@ func (d RulesetDifference) Empty() bool {
 
 // DifferenceTo は、r を other に変えるときの値の差を返す。
 // 等価判定 (equal) も同じ差から導き、同じ値と判定した二つの値の表示に差の行が出る食い違いを起こさない。
-// 省略できるパラメータは、パラメータごとに、二つの値の両方が持つときだけ比べる。一つの省略を理由に、宣言したほかのパラメータまで比べないことにはしない。
 func (r Ruleset) DifferenceTo(other Ruleset) RulesetDifference {
 	from, to := r.Conditions.refNameOrEmpty(), other.Conditions.refNameOrEmpty()
-	compared := comparedOptionalParameters(r, other)
-	ruleKey := func(rule RulesetRule) ruleComparisonKey { return rule.comparisonKey(compared) }
 	return RulesetDifference{
 		TargetChanged:       r.Target != other.Target,
 		EnforcementChanged:  r.Enforcement != other.Enforcement,
@@ -52,8 +48,8 @@ func (r Ruleset) DifferenceTo(other Ruleset) RulesetDifference {
 		ExcludeAdded:        elementsNotIn(to.Exclude, from.Exclude, identity),
 		BypassActorsRemoved: elementsNotIn(r.BypassActors, other.BypassActors, identity),
 		BypassActorsAdded:   elementsNotIn(other.BypassActors, r.BypassActors, identity),
-		RulesRemoved:        elementsNotIn(r.Rules, other.Rules, ruleKey),
-		RulesAdded:          elementsNotIn(other.Rules, r.Rules, ruleKey),
+		RulesRemoved:        elementsNotIn(r.Rules, other.Rules, RulesetRule.comparisonKey),
+		RulesAdded:          elementsNotIn(other.Rules, r.Rules, RulesetRule.comparisonKey),
 	}
 }
 
@@ -77,7 +73,7 @@ type PullRequestDifference struct {
 	RequireCodeOwnerReviewChanged         bool
 	RequireLastPushApprovalChanged        bool
 	RequiredReviewThreadResolutionChanged bool
-	// 次の二つは、両方が持ち、値が違うときだけ真になる。AllowedMergeMethodsChanged は集合として比べる。
+	// AllowedMergeMethodsChanged は、方式を集合として比べた差である。
 	AllowedMergeMethodsChanged                        bool
 	RequireExtraApprovalForUnattributedChangesChanged bool
 }
@@ -91,25 +87,22 @@ func (d PullRequestDifference) Empty() bool {
 // 差が空であることは、二つのルールを同じ値とする判定 (comparisonKey の一致) と同じでなければならない。
 func (p PullRequestParameters) DifferenceTo(other PullRequestParameters) PullRequestDifference {
 	return PullRequestDifference{
-		RequiredApprovingReviewCountChanged:   p.RequiredApprovingReviewCount != other.RequiredApprovingReviewCount,
-		DismissStaleReviewsOnPushChanged:      p.DismissStaleReviewsOnPush != other.DismissStaleReviewsOnPush,
-		RequireCodeOwnerReviewChanged:         p.RequireCodeOwnerReview != other.RequireCodeOwnerReview,
-		RequireLastPushApprovalChanged:        p.RequireLastPushApproval != other.RequireLastPushApproval,
-		RequiredReviewThreadResolutionChanged: p.RequiredReviewThreadResolution != other.RequiredReviewThreadResolution,
-		AllowedMergeMethodsChanged: p.AllowedMergeMethods != nil && other.AllowedMergeMethods != nil &&
-			allowedMergeMethodSetText(p.AllowedMergeMethods) != allowedMergeMethodSetText(other.AllowedMergeMethods),
-		RequireExtraApprovalForUnattributedChangesChanged: p.RequireExtraApprovalForUnattributedChanges != nil && other.RequireExtraApprovalForUnattributedChanges != nil &&
-			*p.RequireExtraApprovalForUnattributedChanges != *other.RequireExtraApprovalForUnattributedChanges,
+		RequiredApprovingReviewCountChanged:               p.RequiredApprovingReviewCount != other.RequiredApprovingReviewCount,
+		DismissStaleReviewsOnPushChanged:                  p.DismissStaleReviewsOnPush != other.DismissStaleReviewsOnPush,
+		RequireCodeOwnerReviewChanged:                     p.RequireCodeOwnerReview != other.RequireCodeOwnerReview,
+		RequireLastPushApprovalChanged:                    p.RequireLastPushApproval != other.RequireLastPushApproval,
+		RequiredReviewThreadResolutionChanged:             p.RequiredReviewThreadResolution != other.RequiredReviewThreadResolution,
+		AllowedMergeMethodsChanged:                        allowedMergeMethodSetText(p.AllowedMergeMethods) != allowedMergeMethodSetText(other.AllowedMergeMethods),
+		RequireExtraApprovalForUnattributedChangesChanged: p.RequireExtraApprovalForUnattributedChanges != other.RequireExtraApprovalForUnattributedChanges,
 	}
 }
 
 // RequiredStatusChecksDifference は、二つの required_status_checks のパラメータのあいだの差。
 type RequiredStatusChecksDifference struct {
 	// ChecksRemoved は元のパラメータの並びで、ChecksAdded は相手のパラメータの並びで、それぞれ重複を除いて持つ。
-	ChecksRemoved       []StatusCheck
-	ChecksAdded         []StatusCheck
-	StrictPolicyChanged bool
-	// DoNotEnforceOnCreateChanged は、両方が持ち、値が違うときだけ真になる。
+	ChecksRemoved               []StatusCheck
+	ChecksAdded                 []StatusCheck
+	StrictPolicyChanged         bool
 	DoNotEnforceOnCreateChanged bool
 }
 
@@ -122,50 +115,44 @@ func (d RequiredStatusChecksDifference) Empty() bool {
 // 差が空であることは、二つのルールを同じ値とする判定 (comparisonKey の一致) と同じでなければならない。
 func (p RequiredStatusChecksParameters) DifferenceTo(other RequiredStatusChecksParameters) RequiredStatusChecksDifference {
 	return RequiredStatusChecksDifference{
-		ChecksRemoved:       elementsNotIn(p.RequiredStatusChecks, other.RequiredStatusChecks, identity),
-		ChecksAdded:         elementsNotIn(other.RequiredStatusChecks, p.RequiredStatusChecks, identity),
-		StrictPolicyChanged: p.StrictRequiredStatusChecksPolicy != other.StrictRequiredStatusChecksPolicy,
-		DoNotEnforceOnCreateChanged: p.DoNotEnforceOnCreate != nil && other.DoNotEnforceOnCreate != nil &&
-			*p.DoNotEnforceOnCreate != *other.DoNotEnforceOnCreate,
+		ChecksRemoved:               elementsNotIn(p.RequiredStatusChecks, other.RequiredStatusChecks, identity),
+		ChecksAdded:                 elementsNotIn(other.RequiredStatusChecks, p.RequiredStatusChecks, identity),
+		StrictPolicyChanged:         p.StrictRequiredStatusChecksPolicy != other.StrictRequiredStatusChecksPolicy,
+		DoNotEnforceOnCreateChanged: p.DoNotEnforceOnCreate != other.DoNotEnforceOnCreate,
 	}
 }
 
 // ruleComparisonKey は、二つのルールが同じ値かを決める項目を、比較演算子で比べられる形にしたもの。
-// pull_request の省略できるパラメータはスライスを持ち比較演算子で比べられないため、必須の5項目だけをフィールドに開く。
+// パラメータのスライスは比較演算子で比べられないため、順序と重複を除いた集合の表記にして持つ。
 type ruleComparisonKey struct {
-	ruleType                       RulesetRuleType
-	requiredApprovingReviewCount   int
-	dismissStaleReviewsOnPush      bool
-	requireCodeOwnerReview         bool
-	requireLastPushApproval        bool
-	requiredReviewThreadResolution bool
-	// statusChecks は、順序と重複を除いたチェックの集合の表記である。
-	statusChecks string
-	strictPolicy bool
-	// optional は、比べる省略できるパラメータの名前と比較用の表記を、一覧の順に並べたもの。比べないときと持たないときは含めない。
-	optional string
+	ruleType                                   RulesetRuleType
+	requiredApprovingReviewCount               int
+	dismissStaleReviewsOnPush                  bool
+	requireCodeOwnerReview                     bool
+	requireLastPushApproval                    bool
+	requiredReviewThreadResolution             bool
+	allowedMergeMethods                        string
+	requireExtraApprovalForUnattributedChanges bool
+	statusChecks                               string
+	strictPolicy                               bool
+	doNotEnforceOnCreate                       bool
 }
 
-// comparisonKey は、r の比較用のキーを返す。省略できるパラメータは compared にあるものだけをキーに含める。
-func (r RulesetRule) comparisonKey(compared []optionalParameter) ruleComparisonKey {
-	key := ruleComparisonKey{
-		ruleType:                       r.ruleType,
-		requiredApprovingReviewCount:   r.pullRequest.RequiredApprovingReviewCount,
-		dismissStaleReviewsOnPush:      r.pullRequest.DismissStaleReviewsOnPush,
-		requireCodeOwnerReview:         r.pullRequest.RequireCodeOwnerReview,
-		requireLastPushApproval:        r.pullRequest.RequireLastPushApproval,
-		requiredReviewThreadResolution: r.pullRequest.RequiredReviewThreadResolution,
-		statusChecks:                   statusCheckSetText(r.statusChecks.RequiredStatusChecks),
-		strictPolicy:                   r.statusChecks.StrictRequiredStatusChecksPolicy,
+// comparisonKey は、r の比較用のキーを返す。
+func (r RulesetRule) comparisonKey() ruleComparisonKey {
+	return ruleComparisonKey{
+		ruleType:                                   r.ruleType,
+		requiredApprovingReviewCount:               r.pullRequest.RequiredApprovingReviewCount,
+		dismissStaleReviewsOnPush:                  r.pullRequest.DismissStaleReviewsOnPush,
+		requireCodeOwnerReview:                     r.pullRequest.RequireCodeOwnerReview,
+		requireLastPushApproval:                    r.pullRequest.RequireLastPushApproval,
+		requiredReviewThreadResolution:             r.pullRequest.RequiredReviewThreadResolution,
+		allowedMergeMethods:                        allowedMergeMethodSetText(r.pullRequest.AllowedMergeMethods),
+		requireExtraApprovalForUnattributedChanges: r.pullRequest.RequireExtraApprovalForUnattributedChanges,
+		statusChecks:                               statusCheckSetText(r.statusChecks.RequiredStatusChecks),
+		strictPolicy:                               r.statusChecks.StrictRequiredStatusChecksPolicy,
+		doNotEnforceOnCreate:                       r.statusChecks.DoNotEnforceOnCreate,
 	}
-	var optional strings.Builder
-	for _, p := range compared {
-		if v, ok := p.valueOf(r); ok {
-			optional.WriteString(p.name + "=" + v.comparison + ";")
-		}
-	}
-	key.optional = optional.String()
-	return key
 }
 
 // allowedMergeMethodSetText は、許すマージ方式の集合を、並べ替えて重複を除いた一つの文字列にする。

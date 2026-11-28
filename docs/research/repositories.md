@@ -236,6 +236,8 @@ Pull Request の自動マージは、GitHub Free と GitHub Free for organizatio
 
 Secret scanning の利用条件は、Secret scanning の概説に記載があります。公開リポジトリでは無料で自動的に動きます。Organization が所有する非公開・internal のリポジトリでは、GitHub Team か GitHub Enterprise Cloud で GitHub Secret Protection を有効にすると利用できます。ユーザーが所有するリポジトリでは、Enterprise Managed Users の GitHub Enterprise Cloud と、Secret Protection を有効にした GitHub Enterprise Server で利用できます。push protection の有効化の手順は、Secret Protection を有効にしてから push protection を有効にする順序で書かれています。
 
+設定画面では、サイドバーの「Security and quality」の欄から「Advanced Security」ページを開きます。Secret scanning の有効化の手順は、このページの「Secret Protection」の右の **Enable** を押すと記載しています。push protection の有効化の手順は、同じページの「Secret Protection」の欄にある「Push protection」の右の **Enable** を押すと記載しています。
+
 > [!NOTE]
 > 次は、reco の開発者が `gh auth token` のトークン（scope は `admin:public_key`、`gist`、`read:org`、`repo`）で実際の動作を確認した事項です。対象は、トークン所有者が Admin ロールを持つ個人アカウント所有の公開リポジトリと非公開リポジトリ（GitHub Free のアカウント）、Write 以上のロールを持たない第三者の公開リポジトリです。
 >
@@ -253,6 +255,7 @@ Secret scanning の利用条件は、Secret scanning の概説に記載があり
 | `grounding` | [Get a repository](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#get-a-repository) | External Document |
 | `grounding` | [Update a repository](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#update-a-repository) | External Document |
 | `grounding` | [Secret scanning](https://docs.github.com/en/code-security/concepts/secret-security/secret-scanning) | External Document |
+| `grounding` | [Enabling secret scanning for your repository](https://docs.github.com/en/code-security/how-tos/secure-your-secrets/detect-secret-leaks/enable-secret-scanning) | External Document |
 | `grounding` | [Enabling push protection for your repository](https://docs.github.com/en/code-security/how-tos/secure-your-secrets/prevent-future-leaks/enable-push-protection) | External Document |
 
 ## 6. Dependabot alerts
@@ -264,7 +267,7 @@ PUT    /repos/{owner}/{repo}/vulnerability-alerts  Enables dependency alerts and
 DELETE /repos/{owner}/{repo}/vulnerability-alerts  Disables dependency alerts and the dependency graph
 ```
 
-リポジトリの設定画面の解説は、Dependency graph と Dependabot alerts を別々の項目として示し、Dependabot alerts には先に Dependency graph を有効にする必要があると記載しています。Dependency graph、Dependabot alerts、push protection は、公開リポジトリでも既定では有効でないと記載されています。
+リポジトリの設定画面の解説は、Dependency graph と Dependabot alerts を別々の項目として示し、Dependabot alerts には先に Dependency graph を有効にする必要があると記載しています。Dependency graph、Dependabot alerts、push protection は、公開リポジトリでも既定では有効でないと記載されています。Dependabot alerts の設定の手順は、設定画面の「Advanced Security」ページ（5章）で、「Dependabot alerts」の右の **Enable** か **Disable** を押すと記載しています。
 
 Dependency graph の有効状態を返す操作と、Dependency graph だけを有効・無効にする操作は、REST API の記載にありません。Dependency graph を有効・無効にすると記載された操作は、Dependabot alerts の `PUT` と `DELETE` だけです。`/repos/{owner}/{repo}/dependency-graph/` の下の操作は、SBOM の取得、2つのコミットのあいだの依存関係の差分の取得（dependency review）、依存関係のスナップショットの送信（dependency submission）で、どれも Dependency graph の有効状態を返さず、変えもしません。SBOM を同期で返す `GET /repos/{owner}/{repo}/dependency-graph/sbom` は、2026年11月13日以降は使えなくなると記載され、生成を依頼する `.../sbom/generate-report` と、生成した SBOM を取得する `.../sbom/fetch-report/{sbom_uuid}` への移行が勧められています。`security_and_analysis` にも Dependency graph の項目はありません（5章）。Dependency graph の有効化の手順は、設定画面の操作だけを示し、REST API に触れていません。無効にしたときにほかの機能がどうなるかは記載がありません。
 
@@ -290,6 +293,7 @@ Dependabot security updates は、Dependency graph と Dependabot alerts を有�
 | `grounding` | [Enable vulnerability alerts](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#enable-vulnerability-alerts) | External Document |
 | `grounding` | [Disable vulnerability alerts](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#disable-vulnerability-alerts) | External Document |
 | `grounding` | [Managing security and analysis settings for your repository](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-security-and-analysis-settings-for-your-repository) | External Document |
+| `grounding` | [Configuring Dependabot alerts](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/configure-dependabot-alerts) | External Document |
 | `grounding` | [Dependabot security updates](https://docs.github.com/en/code-security/concepts/supply-chain-security/dependabot-security-updates) | External Document |
 | `grounding` | [Enabling the dependency graph](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/enable-dependency-graph) | External Document |
 | `grounding` | [REST API endpoints for software bill of materials (SBOM)](https://docs.github.com/en/rest/dependency-graph/sboms?apiVersion=2026-03-10) | External Document |
@@ -300,7 +304,7 @@ Dependabot security updates は、Dependency graph と Dependabot alerts を有�
 
 `GET /repos/{owner}/{repo}/automated-security-fixes` は、Dependabot security updates が有効か、無効か、一時停止中かを示すと記載されています。有効なら `200` で、本文は `enabled` と `paused`（どちらも boolean、必須）を持ちます。無効なら `404` と記載されています。`PUT` は有効にし、`DELETE` は無効にします。どちらも正常応答は本文のない `204` です。
 
-Dependabot security updates は、Dependency graph と Dependabot alerts を有効にしたリポジトリで利用できると記載されています。メンテナーが Dependabot の Pull Request に反応しなくなると、Dependabot は更新を一時停止して知らせると記載されています。一時停止を API で解除できるかは記載がありません。`security_and_analysis.dependabot_security_updates`（5章）と、このエンドポイントの値の関係は記載がありません。
+Dependabot security updates は、Dependency graph と Dependabot alerts を有効にしたリポジトリで利用できると記載されています。メンテナーが Dependabot の Pull Request に反応しなくなると、Dependabot は更新を一時停止して知らせると記載されています。一時停止を API で解除できるかは記載がありません。`security_and_analysis.dependabot_security_updates`（5章）と、このエンドポイントの値の関係は記載がありません。設定の手順は、設定画面の「Advanced Security」ページ（5章）で、「Dependabot security updates」の右の **Enable** か **Disable** を押すと記載しています。
 
 > [!NOTE]
 > 次は、reco の開発者が 5章と同じトークンと対象で、実際の動作を確認した事項です。
@@ -318,12 +322,13 @@ Dependabot security updates は、Dependency graph と Dependabot alerts を有�
 | `grounding` | [Enable Dependabot security updates](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#enable-dependabot-security-updates) | External Document |
 | `grounding` | [Disable Dependabot security updates](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#disable-dependabot-security-updates) | External Document |
 | `grounding` | [Dependabot security updates](https://docs.github.com/en/code-security/concepts/supply-chain-security/dependabot-security-updates) | External Document |
+| `grounding` | [Configuring Dependabot security updates](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/configure-security-updates) | External Document |
 
 ## 8. Private vulnerability reporting
 
 `GET /repos/{owner}/{repo}/private-vulnerability-reporting` は、Private vulnerability reporting が有効かを `enabled`（boolean、必須）で返すと記載されています。`PUT` は有効にし、`DELETE` は無効にします。正常応答は、取得が `200`、更新が本文のない `204` です。どれも `422` Bad Request を返し得ると記載されていますが、条件は記載がありません。
 
-設定の手順のページは、公開リポジトリのオーナーと管理者が Private vulnerability reporting を有効にできると記載しています。非公開リポジトリで利用できるかは記載がありません。
+設定の手順のページは、公開リポジトリのオーナーと管理者が Private vulnerability reporting を有効にできると記載しています。手順は、設定画面の「Advanced Security」ページ（5章）で、「Private vulnerability reporting」の右の **Enable** か **Disable** を押すと記載しています。非公開リポジトリで利用できるかは記載がありません。
 
 > [!NOTE]
 > 次は、reco の開発者が 5章と同じトークンと対象で、実際の動作を確認した事項です。

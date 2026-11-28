@@ -324,7 +324,7 @@ func (d document) deploymentPattern(n *yaml.Node, path string) (setting.Deployme
 // 失敗したときに途中まで埋まった desired は、呼び出し元が捨てる。
 // どれも任意のキーだが、空のマッピングは拒否されるため、成功すればどれかは必ずある。
 func (d document) actions(n *yaml.Node, path string, desired *DesiredState) error {
-	entries, err := d.mappingEntries(n, path, nil, []string{"permissions", "workflow", "access", "fork_pr_contributor_approval", "fork_pr_workflows_private_repos", "artifact_and_log_retention", "oidc_subject", "variables"})
+	entries, err := d.mappingEntries(n, path, nil, []string{"permissions", "workflow_permissions", "access", "fork_pr_contributor_approval", "fork_pr_workflows_private_repos", "artifact_and_log_retention", "oidc_subject", "variables"})
 	if err != nil {
 		return err
 	}
@@ -333,8 +333,8 @@ func (d document) actions(n *yaml.Node, path string, desired *DesiredState) erro
 			return err
 		}
 	}
-	if value, ok := entries["workflow"]; ok {
-		if desired.WorkflowPermissions, err = d.workflow(value, path+".workflow"); err != nil {
+	if value, ok := entries["workflow_permissions"]; ok {
+		if desired.WorkflowPermissions, err = d.workflowPermissions(value, path+".workflow_permissions"); err != nil {
 			return err
 		}
 	}
@@ -543,7 +543,7 @@ func (d document) selectedActions(n *yaml.Node, path string) (setting.SelectedAc
 	return setting.SelectedActionsCriteria{GitHubOwnedAllowed: githubOwned, VerifiedAllowed: verified, PatternsAllowed: patterns}, nil
 }
 
-func (d document) workflow(n *yaml.Node, path string) (WorkflowPermissions, error) {
+func (d document) workflowPermissions(n *yaml.Node, path string) (WorkflowPermissions, error) {
 	entries, err := d.mappingEntries(n, path, nil, []string{"default_workflow_permissions", "can_approve_pull_request_reviews"})
 	if err != nil {
 		return WorkflowPermissions{}, err

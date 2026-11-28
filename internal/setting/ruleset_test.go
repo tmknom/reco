@@ -185,7 +185,7 @@ func TestRulesetRule(t *testing.T) {
 			RequiredApprovingReviewCount:               2,
 			RequireCodeOwnerReview:                     true,
 			AllowedMergeMethods:                        []AllowedMergeMethod{AllowedMergeMethodSquash},
-			RequireExtraApprovalForUnattributedChanges: new(false),
+			RequireExtraApprovalForUnattributedChanges: true,
 		}
 		rule := PullRequestRule(parameters)
 		if got := rule.Type(); got != RulesetRulePullRequest {
@@ -195,31 +195,24 @@ func TestRulesetRule(t *testing.T) {
 			t.Errorf("PullRequest() = %+v, want %+v", got, parameters)
 		}
 	})
-	t.Run("pull_request rule keeps omitted parameters omitted", func(t *testing.T) {
-		got := PullRequestRule(PullRequestParameters{}).PullRequest()
-		if got.AllowedMergeMethods != nil || got.RequireExtraApprovalForUnattributedChanges != nil {
-			t.Errorf("PullRequest() = %+v, want omitted optional parameters", got)
-		}
-	})
 	t.Run("pull_request rule does not share its parameters with the caller", func(t *testing.T) {
-		extraApproval := true
 		methods := []AllowedMergeMethod{AllowedMergeMethodSquash}
-		rule := PullRequestRule(PullRequestParameters{AllowedMergeMethods: methods, RequireExtraApprovalForUnattributedChanges: &extraApproval})
-		methods[0], extraApproval = AllowedMergeMethodRebase, false
+		rule := PullRequestRule(PullRequestParameters{AllowedMergeMethods: methods})
+		methods[0] = AllowedMergeMethodRebase
 		got := rule.PullRequest()
-		got.AllowedMergeMethods[0], *got.RequireExtraApprovalForUnattributedChanges = AllowedMergeMethodRebase, false
+		got.AllowedMergeMethods[0] = AllowedMergeMethodRebase
 		again := rule.PullRequest()
-		if again.AllowedMergeMethods[0] != AllowedMergeMethodSquash || !*again.RequireExtraApprovalForUnattributedChanges {
+		if again.AllowedMergeMethods[0] != AllowedMergeMethodSquash {
 			t.Errorf("PullRequest() = %+v, want the parameters given at construction", again)
 		}
 	})
-	t.Run("pull_request rule with empty but not omitted allowed_merge_methods panics", func(t *testing.T) {
+	t.Run("pull_request rule without allowed_merge_methods panics", func(t *testing.T) {
 		defer func() {
 			if recover() == nil {
 				t.Error("PullRequestRule() did not panic")
 			}
 		}()
-		PullRequestRule(PullRequestParameters{AllowedMergeMethods: []AllowedMergeMethod{}})
+		PullRequestRule(PullRequestParameters{})
 	})
 	t.Run("pull_request rule with an undefined merge method panics", func(t *testing.T) {
 		defer func() {
@@ -238,7 +231,7 @@ func TestRulesetRule(t *testing.T) {
 		parameters := RequiredStatusChecksParameters{
 			RequiredStatusChecks:             []StatusCheck{{Context: "test"}, {Context: "lint", IntegrationID: 15368}},
 			StrictRequiredStatusChecksPolicy: true,
-			DoNotEnforceOnCreate:             new(true),
+			DoNotEnforceOnCreate:             true,
 		}
 		rule := RequiredStatusChecksRule(parameters)
 		if got := rule.Type(); got != RulesetRuleRequiredStatusChecks {
@@ -249,14 +242,13 @@ func TestRulesetRule(t *testing.T) {
 		}
 	})
 	t.Run("required_status_checks rule does not share its parameters with the caller", func(t *testing.T) {
-		enforce := true
 		checks := []StatusCheck{{Context: "test"}}
-		rule := RequiredStatusChecksRule(RequiredStatusChecksParameters{RequiredStatusChecks: checks, DoNotEnforceOnCreate: &enforce})
-		checks[0].Context, enforce = "changed", false
+		rule := RequiredStatusChecksRule(RequiredStatusChecksParameters{RequiredStatusChecks: checks})
+		checks[0].Context = "changed"
 		got := rule.RequiredStatusChecks()
-		got.RequiredStatusChecks[0].Context, *got.DoNotEnforceOnCreate = "changed", false
+		got.RequiredStatusChecks[0].Context = "changed"
 		again := rule.RequiredStatusChecks()
-		if again.RequiredStatusChecks[0].Context != "test" || !*again.DoNotEnforceOnCreate {
+		if again.RequiredStatusChecks[0].Context != "test" {
 			t.Errorf("RequiredStatusChecks() = %+v, want the parameters given at construction", again)
 		}
 	})

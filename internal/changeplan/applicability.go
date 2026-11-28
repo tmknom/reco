@@ -17,7 +17,6 @@ type Applicability struct {
 	reason            NotApplicableReason
 	unmanagedSettings []setting.Key
 	maximumAllowed    int
-	resetParameters   []setting.ResetParameter
 }
 
 // NotApplicableReason は、変更予定が適用不能である理由。文言は表示が決める。
@@ -53,8 +52,6 @@ const (
 	NotApplicableUnknownValue
 	// NotApplicableNotReturned は、GitHub が現在の値を返さなかったこと。
 	NotApplicableNotReturned
-	// NotApplicableOmittedParametersReset は、値の全体を置き換える更新が、宣言の省略したパラメータを GitHub の決める値に変えること。そのパラメータを伴う。
-	NotApplicableOmittedParametersReset
 	// NotApplicableSecretScanningUnknown は、Secret scanning の有効状態が reco の知らない値で、同じリポジトリの期待状態が Secret scanning の有効を含まず、有効と確かめられないこと。
 	// 無効であるとは確かめていないため、NotApplicableSecretScanningRemainsDisabled と分ける。
 	NotApplicableSecretScanningUnknown
@@ -68,9 +65,9 @@ func Applicable() Applicability {
 // NotApplicable は、理由 reason による適用不能の判断を返す。unmanagedSettings は、理由に添える、成り立っていない条件に関わる未管理設定。
 // 未管理設定を伴う理由は NotApplicableNoMergeMethodEnabled (無効のまま残るマージ方式) だけで、そのときは一つ以上を伴う。
 // 理由がないか、理由と未管理設定の有無が食い違う判断と、上限を伴う理由は、表示が対処を示せないため不変条件の破れとして panic する。
-// 上限を伴う理由は NotApplicableAboveMaximum で、パラメータを伴う理由は NotApplicableResetParameters で作る。
+// 上限を伴う理由は NotApplicableAboveMaximum で作る。
 func NotApplicable(reason NotApplicableReason, unmanagedSettings ...setting.Key) Applicability {
-	if reason == 0 || reason == NotApplicableAboveMaximumAllowed || reason == NotApplicableOmittedParametersReset ||
+	if reason == 0 || reason == NotApplicableAboveMaximumAllowed ||
 		(reason == NotApplicableNoMergeMethodEnabled) != (len(unmanagedSettings) > 0) {
 		panic(fmt.Sprintf("changeplan: not-applicable reason %d with %d unmanaged settings", int(reason), len(unmanagedSettings)))
 	}
@@ -80,15 +77,6 @@ func NotApplicable(reason NotApplicableReason, unmanagedSettings ...setting.Key)
 // NotApplicableAboveMaximum は、期待値が計画時に観測した上限 maximum を超えることによる適用不能の判断を返す。
 func NotApplicableAboveMaximum(maximum int) Applicability {
 	return Applicability{reason: NotApplicableAboveMaximumAllowed, maximumAllowed: maximum}
-}
-
-// NotApplicableResetParameters は、宣言の省略したパラメータ parameters を、値の全体を置き換える更新が変えることによる適用不能の判断を返す。
-// parameters が空なら、利用者に何を宣言すれば解消するかを示せないため、不変条件の破れとして panic する。
-func NotApplicableResetParameters(parameters []setting.ResetParameter) Applicability {
-	if len(parameters) == 0 {
-		panic("changeplan: omitted parameters reset without parameters")
-	}
-	return Applicability{reason: NotApplicableOmittedParametersReset, resetParameters: parameters}
 }
 
 // IsApplicable は、適用可能と判断したかを返す。
@@ -114,11 +102,6 @@ func (a Applicability) UnmanagedSettings() []setting.Key {
 // MaximumAllowed は、適用不能の理由に添える、計画時に観測した上限を返す。伴わなければ 0 を返す。
 func (a Applicability) MaximumAllowed() int {
 	return a.maximumAllowed
-}
-
-// ResetParameters は、適用不能の理由に添える、宣言の省略したパラメータとその観測値を返す。伴わなければ nil を返す。
-func (a Applicability) ResetParameters() []setting.ResetParameter {
-	return a.resetParameters
 }
 
 // judgeApplicability は、管理設定の計画 s の観測結果と、同じリポジトリの管理設定の計画 settings の期待値と、
@@ -155,10 +138,6 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 		}
 		if s.Unit.Key == setting.EnvironmentPreventSelfReview && !preventSelfReviewReachable(s, settings, observed) {
 			return NotApplicable(NotApplicableNoReviewers)
-		}
-		// GitHub は rules を置き換える更新で、送らなかったパラメータを決まった値にする。reco は宣言していない値を変えず、観測値も併送しない
-		if reset := parametersResetBy(s); len(reset) > 0 {
-			return NotApplicableResetParameters(reset)
 		}
 		return Applicable()
 	case NotComparable:
@@ -260,14 +239,4 @@ func enabledAtUpdate(required setting.Key, settings []SettingPlan, observed gith
 	return slices.ContainsFunc(settings, func(s SettingPlan) bool {
 		return s.Unit.Key == required && s.Desired.Bool()
 	})
-}
-
-// parametersResetBy は、Ruleset の値の変更予定 s が、宣言の省略によって変えるパラメータを返す。
-// 作成は変わる値がなく、削除は値を送らず、ほかの設定は当たらないため、いずれも nil を返す。
-func parametersResetBy(s SettingPlan) []setting.ResetParameter {
-	if s.Unit.Key != setting.RulesetResource || s.IsConfirmedCreation() || s.Desired.Equal(setting.Absent()) {
-		return nil
-	}
-	observed, _ := s.Observed.Value()
-	return observed.Ruleset().ParametersResetBy(s.Desired.Ruleset())
 }

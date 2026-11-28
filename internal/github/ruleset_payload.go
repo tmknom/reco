@@ -313,7 +313,7 @@ func decodeHandledRulesetRule(ruleType setting.RulesetRuleType, fields map[strin
 	panic(fmt.Sprintf("github: unknown ruleset rule type %q", ruleType))
 }
 
-// decodePullRequestRule は pull_request のルールを読む。必須の5項目は、欠けると値を作れないため、欠落を契約外の応答とする。
+// decodePullRequestRule は pull_request のルールを読む。GitHub の API で必須の5項目は、欠けると値を作れないため、欠落を契約外の応答とする。
 // 宣言できる allowed_merge_methods と require_extra_approval_for_unattributed_changes は、読めないときだけ解釈しない部分とする（Rulesets の設計の解釈しない部分）。
 func decodePullRequestRule(fields map[string]json.RawMessage) (setting.RulesetRule, []UninterpretedPart, error) {
 	if isAbsent(fields["parameters"]) {
@@ -333,19 +333,20 @@ func decodePullRequestRule(fields map[string]json.RawMessage) (setting.RulesetRu
 			return setting.RulesetRule{}, nil, err
 		}
 	}
-	// 解釈しなかったパラメータがあれば値は作られないため、読めなかったパラメータは省略を表す nil のまま渡す
 	var unread []string
 	methods, ok := decodeAllowedMergeMethods(parameters["allowed_merge_methods"])
 	if !ok {
 		unread = append(unread, "allowed_merge_methods")
 	}
-	var extraApproval *bool
-	if v, ok := decodeOptional[bool](parameters["require_extra_approval_for_unattributed_changes"]); ok {
-		extraApproval = &v
-	} else {
+	extraApproval, ok := decodeOptional[bool](parameters["require_extra_approval_for_unattributed_changes"])
+	if !ok {
 		unread = append(unread, "require_extra_approval_for_unattributed_changes")
 	}
+	// 読めなかった allowed_merge_methods は方式を持たず、ルールを作ると PullRequestRule の不変条件を破るため、解釈しない部分があればルールを作らない
 	parts := slices.Concat(ruleKeyParts(fields, setting.RulesetRulePullRequest, "type", "parameters"), pullRequestParameterParts(parameters, unread))
+	if len(parts) > 0 {
+		return setting.RulesetRule{}, parts, nil
+	}
 	return setting.PullRequestRule(setting.PullRequestParameters{
 		RequiredApprovingReviewCount:               count,
 		DismissStaleReviewsOnPush:                  flags[0],
@@ -354,10 +355,10 @@ func decodePullRequestRule(fields map[string]json.RawMessage) (setting.RulesetRu
 		RequiredReviewThreadResolution:             flags[3],
 		AllowedMergeMethods:                        methods,
 		RequireExtraApprovalForUnattributedChanges: extraApproval,
-	}), parts, nil
+	}), nil, nil
 }
 
-// pullRequestParameterParts は、pull_request のパラメータのうち解釈しないものを、読めなかった省略できるパラメータ unread、required_reviewers、ほかのキーの名前の順で返す。
+// pullRequestParameterParts は、pull_request のパラメータのうち解釈しないものを、読めなかったパラメータ unread、required_reviewers、ほかのキーの名前の順で返す。
 // 宣言できない required_reviewers を既定値のときだけ解釈できたとする理由は、Rulesets の設計の解釈しない部分にある。
 func pullRequestParameterParts(parameters map[string]json.RawMessage, unread []string) []UninterpretedPart {
 	// 読めない値はゼロ値の空の配列になり、既定値の [] と区別できないため、読めたかも確かめる
@@ -374,7 +375,7 @@ func pullRequestParameterParts(parameters map[string]json.RawMessage, unread []s
 	return parts
 }
 
-// decodeRequiredStatusChecksRule は required_status_checks のルールを読む。値に含める必須の項目は、欠けると値を作れないため、欠落を契約外の応答とする。
+// decodeRequiredStatusChecksRule は required_status_checks のルールを読む。GitHub の API で必須の項目は、欠けると値を作れないため、欠落を契約外の応答とする。
 // 宣言できる do_not_enforce_on_create は、どちらの値も値に含め、読めないときだけ解釈しない部分とする（Rulesets の設計の解釈しない部分）。
 func decodeRequiredStatusChecksRule(fields map[string]json.RawMessage) (setting.RulesetRule, []UninterpretedPart, error) {
 	if isAbsent(fields["parameters"]) {
@@ -414,7 +415,7 @@ func decodeRequiredStatusChecksRule(fields map[string]json.RawMessage) (setting.
 	return setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{
 		RequiredStatusChecks:             checks,
 		StrictRequiredStatusChecksPolicy: strict,
-		DoNotEnforceOnCreate:             &enforce,
+		DoNotEnforceOnCreate:             enforce,
 	}), parts, nil
 }
 

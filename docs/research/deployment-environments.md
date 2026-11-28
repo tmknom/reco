@@ -152,7 +152,7 @@ Environment の名前は、パスパラメータ `environment_name` に URL エ�
 
 本文はすべて任意で、省略したフィールドの既存値が保持されるかは記載がありません。本文のない `PUT` の扱いも記載がありません。`protected_branches` は保護ルールを持つブランチだけをデプロイ元とするか、`custom_branch_policies` は指定した名前のパターンに一致するブランチだけをデプロイ元とするかを表します。パターンそのものは、このエンドポイントでは送れず、[GitHub デプロイ元パターン API 仕様](deployment-branch-policies.md) のエンドポイントで作成と削除をします。
 
-デプロイの資料は、設定画面の「Deployment branches」の選択肢として、制限のない「No restriction」、保護ルールを持つブランチだけの「Protected branches only」、指定した名前のパターンに一致するブランチとタグだけの「Selected branches and tags」を挙げています。それぞれ `deployment_branch_policy` の `null`、`protected_branches: true`、`custom_branch_policies: true` に当たります。また、設定画面の「Allow administrators to bypass configured protection rules」で、管理者が保護ルールを迂回してデプロイできるかを選べ、既定では迂回できると記載しています。この選択に当たる本文フィールドは、REST API のドキュメントに記載がありません。必須レビュアーについては、担当者のうち1人が承認すればジョブが進み、自己承認の禁止（Prevent self-review）を有効にすると、デプロイを開始した利用者は担当者であってもそのジョブを承認できないと記載しています。
+Environment の管理の手順は、設定画面の左のサイドバーの「Environments」ページで Environment を作り、その Environment の画面で次の項目を設定すると記載しています。担当者は「Required reviewers」、自己承認の禁止はその下の「Prevent self-review」、待機時間は「Wait timer」、デプロイ元の制限は「Deployment branches」のドロップダウンです。デプロイの参照の資料は、デプロイ元の制限を「Deployment branches and tags」という見出しで説明し、選択肢として、制限のない「No restriction」、保護ルールを持つブランチだけの「Protected branches only」、指定した名前のパターンに一致するブランチとタグだけの「Selected branches and tags」を挙げています。それぞれ `deployment_branch_policy` の `null`、`protected_branches: true`、`custom_branch_policies: true` に当たります。また、設定画面の「Allow administrators to bypass configured protection rules」で、管理者が保護ルールを迂回してデプロイできるかを選べ、既定では迂回できると記載しています。この選択に当たる本文フィールドは、REST API のドキュメントに記載がありません。必須レビュアーについては、担当者のうち1人が承認すればジョブが進み、自己承認の禁止（Prevent self-review）を有効にすると、デプロイを開始した利用者は担当者であってもそのジョブを承認できないと記載しています。
 
 > [!NOTE]
 > 次は、reco の開発者が実際の動作で確認した事項です（公開リポジトリで確認）。
@@ -181,3 +181,4 @@ Environment の名前は、パスパラメータ `environment_name` に URL エ�
 |---|---|---|
 | `grounding` | [Create or update an environment](https://docs.github.com/en/rest/deployments/environments?apiVersion=2026-03-10#create-or-update-an-environment) | External Document |
 | `grounding` | [Deployments and environments: Deployment protection rules](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments#deployment-protection-rules) | External Document |
+| `grounding` | [Managing environments for deployment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments) | External Document |

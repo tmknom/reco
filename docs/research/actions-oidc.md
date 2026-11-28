@@ -33,9 +33,9 @@
 
 GitHub Actions のワークフローは、OIDC トークンを外部のクラウドなどへ示して認証を受けられます。受け取る側は、トークンの `sub` などのクレームを信頼の条件と照らし合わせます。OIDC のリファレンスのドキュメントは、`sub` が既定ではワークフローの主なメタデータを決まった形でつないだ値だと記載し、`repo:octo-org/octo-repo:environment:Production` や `repo:octo-org/octo-repo:ref:refs/heads/demo-branch` を例に挙げています。リポジトリの後ろに続く部分（`environment:Production` など）を **コンテキスト** と呼びます。
 
-カスタマイズでは、`sub` を組み立てるクレームの key を並べて指定します。カスタマイズすると `sub` 全体が新しい形になります。ドキュメントは、リポジトリの key を `repository` ではなく `repo` と書くこと、コンテキストを `context` で指定できること、値の中のコロンを `%3A` に置き換えることを記載しています。`sub` の中の並びが key の指定の順になると明記した記載はありませんが、例はどれも指定の順に並んでいます（`["repo", "context", "job_workflow_ref"]` が `repo:octo-org/octo-repo:environment:prod:job_workflow_ref:...` になる）。指定できる key の一覧はなく、OIDC の設定の `claims_supported` を参照するよう案内しています。カスタムプロパティのクレームは `repo_property_` の接頭辞で指定します。
+カスタマイズでは、`sub` を組み立てるクレームの key を並べて指定します。カスタマイズすると `sub` 全体が新しい形になります。ドキュメントは、リポジトリの key を `repository` ではなく `repo` と書くこと、コンテキストを `context` で指定できること、値の中のコロンを `%3A` に置き換えることを記載しています。`sub` の中の並びが key の指定の順になると明記した記載はありませんが、例はどれも指定の順に並んでいます（`["repo", "context", "job_workflow_ref"]` が `repo:octo-org/octo-repo:environment:prod:job_workflow_ref:...` になる）。指定できる key の一覧はなく、OIDC の設定の `claims_supported` を参照するよう案内しています。カスタムプロパティのクレームは `repo_property_` の接頭辞で指定します。ドキュメントは、カスタマイズの設定の手段として REST API だけを挙げ、リポジトリでカスタマイズをやめて既定の形に戻す手段も REST API だと記載しています。
 
-OIDC のリファレンスのドキュメントは、リポジトリの名前ではなく ID にもとづく **immutable subject** の形も記載しています（`repo:OWNER@OWNER-ID/REPO@REPO-ID:ref:refs/heads/BRANCH`）。2026年7月15日より後に作られたリポジトリは、既定でこの形を使います。それより前のリポジトリは、Organization かリポジトリの単位で選んだときに限りこの形になり、2026年7月15日より後に名前を変えたか移転したリポジトリもこの形に移ります。changelog は、2026年7月15日から新しいリポジトリと名前の変更にこの形を自動で強制すると記載しています。強制されたリポジトリで `use_immutable_subject` を `false` にできるかは、どちらの資料にも記載がありません。immutable subject とカスタマイズを併用すると、`repo` の部分に所有者とリポジトリの ID が常に含まれます。
+OIDC のリファレンスのドキュメントは、リポジトリの名前ではなく ID にもとづく **immutable subject** の形も記載しています（`repo:OWNER@OWNER-ID/REPO@REPO-ID:ref:refs/heads/BRANCH`）。2026年7月15日より後に作られたリポジトリは、既定でこの形を使います。それより前のリポジトリは、Organization かリポジトリの単位で選んだときに限りこの形になり（選ぶ手段は OIDC の設定画面か REST API と記載され、設定画面のページ名は記載がない）、2026年7月15日より後に名前を変えたか移転したリポジトリもこの形に移ります。changelog は、2026年7月15日から新しいリポジトリと名前の変更にこの形を自動で強制すると記載しています。強制されたリポジトリで `use_immutable_subject` を `false` にできるかは、どちらの資料にも記載がありません。immutable subject とカスタマイズを併用すると、`repo` の部分に所有者とリポジトリの ID が常に含まれます。
 
 > [!NOTE]
 > 次は、reco の開発者が実際の動作で確認した事項です。

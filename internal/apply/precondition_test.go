@@ -380,9 +380,9 @@ func TestCheckPrecondition_ReviewerSetRemoval(t *testing.T) {
 func TestMatchesPreconditionBasis_Ruleset(t *testing.T) {
 	name := mustRulesetName(t, "protect")
 	unit := setting.Unit{Key: setting.RulesetResource, Ruleset: name}
-	// observedPullRequestRule は、計画時の観測値と同じく、省略できるパラメータを持つ pull_request のルールを作る
-	observedPullRequestRule := func(methods ...setting.AllowedMergeMethod) setting.RulesetRule {
-		return setting.PullRequestRule(setting.PullRequestParameters{RequiredApprovingReviewCount: 1, AllowedMergeMethods: methods, RequireExtraApprovalForUnattributedChanges: new(true)})
+	// pullRequestRule は、許すマージ方式が methods の pull_request のルールを作る
+	pullRequestRule := func(methods ...setting.AllowedMergeMethod) setting.RulesetRule {
+		return setting.PullRequestRule(setting.PullRequestParameters{RequiredApprovingReviewCount: 1, AllowedMergeMethods: methods, RequireExtraApprovalForUnattributedChanges: true})
 	}
 	// approvedValue は、順序の違いを作れるよう、ルールと Bypass を二つずつ持つ
 	approvedValue := setting.Ruleset{
@@ -393,7 +393,7 @@ func TestMatchesPreconditionBasis_Ruleset(t *testing.T) {
 			{ActorType: setting.BypassActorRepositoryRole, ActorID: 5, BypassMode: setting.BypassModeAlways},
 			{ActorType: setting.BypassActorDeployKey, BypassMode: setting.BypassModeAlways},
 		},
-		Rules: []setting.RulesetRule{setting.DeletionRule(), observedPullRequestRule(setting.AllowedMergeMethodMerge, setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodRebase)},
+		Rules: []setting.RulesetRule{setting.DeletionRule(), pullRequestRule(setting.AllowedMergeMethodMerge, setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodRebase)},
 	}
 	reordered := approvedValue
 	reordered.BypassActors = []setting.BypassActor{approvedValue.BypassActors[1], approvedValue.BypassActors[0]}
@@ -407,16 +407,6 @@ func TestMatchesPreconditionBasis_Ruleset(t *testing.T) {
 		Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.RulesetValue(approvedValue)), AnticipatedRulesetIdentity: changeplan.ObservedRulesetIdentity(42),
 	}
 	absentBasis := changeplan.PreconditionBasis{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Absent())}
-	// statusChecksValue は、do_not_enforce_on_create だけが違う観測値を作る。計画時の観測値はこの項目を必ず持つ
-	statusChecksValue := func(doNotEnforceOnCreate bool) setting.Ruleset {
-		r := approvedValue
-		r.Rules = []setting.RulesetRule{setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{DoNotEnforceOnCreate: &doNotEnforceOnCreate})}
-		return r
-	}
-	statusChecksBasis := approvedBasis
-	statusChecksBasis.AnticipatedValue = changeplan.AnticipateValue(setting.RulesetValue(statusChecksValue(false)))
-	squashOnly := approvedValue
-	squashOnly.Rules = []setting.RulesetRule{setting.DeletionRule(), observedPullRequestRule(setting.AllowedMergeMethodSquash)}
 	cases := []struct {
 		name    string
 		basis   changeplan.PreconditionBasis
@@ -433,17 +423,6 @@ func TestMatchesPreconditionBasis_Ruleset(t *testing.T) {
 		{
 			name: "same ID with uninterpreted parts differs", basis: approvedBasis,
 			current: []github.Ruleset{github.UninterpretedRuleset(42, "protect", []github.UninterpretedPart{{Kind: github.UninterpretedRuleType, Name: "creation"}})},
-			want:    false,
-		},
-		{
-			// 宣言が省略しても、値の全体を置き換える更新はこの項目を GitHub の決める値に変えるため、比べる
-			name: "same ID whose do_not_enforce_on_create alone changed differs", basis: statusChecksBasis,
-			current: []github.Ruleset{github.InterpretedRuleset(42, "protect", statusChecksValue(true))},
-			want:    false,
-		},
-		{
-			name: "same ID whose allowed_merge_methods alone changed differs", basis: approvedBasis,
-			current: []github.Ruleset{github.InterpretedRuleset(42, "protect", squashOnly)},
 			want:    false,
 		},
 		{name: "only an undetermined name differs", basis: approvedBasis, current: []github.Ruleset{github.InterpretedRuleset(42, "protëct", approvedValue)}, want: false},

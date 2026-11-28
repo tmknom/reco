@@ -19,17 +19,14 @@ func TestWriteRulesets(t *testing.T) {
 		return setting.Ruleset{Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive, Conditions: conditions, BypassActors: actors, Rules: rules}
 	}
 	emptyRefName := setting.RulesetConditions{RefName: &setting.RefNameCondition{}}
-	// observedPullRequest は、観測した値と同じく、省略できるパラメータを持つ pull_request のルールを作る。持たない p の項目には GitHub の既定値を入れる。
-	observedPullRequest := func(p setting.PullRequestParameters) setting.RulesetRule {
+	// pullRequest は、p の項目で pull_request のルールを作る。p が許すマージ方式を持たなければ、3方式すべてを許す。
+	pullRequest := func(p setting.PullRequestParameters) setting.RulesetRule {
 		if p.AllowedMergeMethods == nil {
 			p.AllowedMergeMethods = []setting.AllowedMergeMethod{setting.AllowedMergeMethodMerge, setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodRebase}
 		}
-		if p.RequireExtraApprovalForUnattributedChanges == nil {
-			p.RequireExtraApprovalForUnattributedChanges = new(true)
-		}
 		return setting.PullRequestRule(p)
 	}
-	const defaultOptionalLines = "              allowed_merge_methods:\n                - merge\n                - squash\n                - rebase\n" +
+	const allMethodsWithExtraApprovalLines = "              allowed_merge_methods:\n                - merge\n                - squash\n                - rebase\n" +
 		"              require_extra_approval_for_unattributed_changes: true\n"
 	observed := func(rulesets ...github.Ruleset) github.Rulesets {
 		return github.Rulesets{Existing: github.Observed(rulesets)}
@@ -57,7 +54,7 @@ func TestWriteRulesets(t *testing.T) {
 					{ActorType: setting.BypassActorRepositoryRole, ActorID: 5, BypassMode: setting.BypassModeAlways},
 					{ActorType: setting.BypassActorDeployKey, BypassMode: setting.BypassModeAlways},
 				},
-				[]setting.RulesetRule{observedPullRequest(setting.PullRequestParameters{RequiredApprovingReviewCount: 1}), setting.DeletionRule()},
+				[]setting.RulesetRule{pullRequest(setting.PullRequestParameters{RequiredApprovingReviewCount: 1, RequireExtraApprovalForUnattributedChanges: true}), setting.DeletionRule()},
 			))),
 			want: "    rulesets:\n" +
 				"      - name: \"protect-default-branch\"\n" +
@@ -82,7 +79,7 @@ func TestWriteRulesets(t *testing.T) {
 				"              require_code_owner_review: false\n" +
 				"              require_last_push_approval: false\n" +
 				"              required_review_thread_resolution: false\n" +
-				defaultOptionalLines +
+				allMethodsWithExtraApprovalLines +
 				"          - type: deletion\n",
 		},
 		{
@@ -94,14 +91,13 @@ func TestWriteRulesets(t *testing.T) {
 				BypassActors: []setting.BypassActor{{ActorType: setting.BypassActorUser, ActorID: 7, BypassMode: setting.BypassModePullRequest}},
 				// 各ブール値を別々に true にして、項目の取り違えを検出する
 				Rules: []setting.RulesetRule{
-					observedPullRequest(setting.PullRequestParameters{
+					pullRequest(setting.PullRequestParameters{
 						RequiredApprovingReviewCount: 2, DismissStaleReviewsOnPush: true,
-						AllowedMergeMethods:                        []setting.AllowedMergeMethod{setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodMerge},
-						RequireExtraApprovalForUnattributedChanges: new(false),
+						AllowedMergeMethods: []setting.AllowedMergeMethod{setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodMerge},
 					}),
-					observedPullRequest(setting.PullRequestParameters{RequireCodeOwnerReview: true}),
-					observedPullRequest(setting.PullRequestParameters{RequireLastPushApproval: true}),
-					observedPullRequest(setting.PullRequestParameters{RequiredReviewThreadResolution: true}),
+					pullRequest(setting.PullRequestParameters{RequireCodeOwnerReview: true, RequireExtraApprovalForUnattributedChanges: true}),
+					pullRequest(setting.PullRequestParameters{RequireLastPushApproval: true, RequireExtraApprovalForUnattributedChanges: true}),
+					pullRequest(setting.PullRequestParameters{RequiredReviewThreadResolution: true, RequireExtraApprovalForUnattributedChanges: true}),
 				},
 			})),
 			want: "    rulesets:\n      - name: \"n\"\n        target: branch\n        enforcement: evaluate\n" +
@@ -115,13 +111,13 @@ func TestWriteRulesets(t *testing.T) {
 				"              require_extra_approval_for_unattributed_changes: false\n" +
 				"          - type: pull_request\n            parameters:\n              required_approving_review_count: 0\n" +
 				"              dismiss_stale_reviews_on_push: false\n              require_code_owner_review: true\n" +
-				"              require_last_push_approval: false\n              required_review_thread_resolution: false\n" + defaultOptionalLines +
+				"              require_last_push_approval: false\n              required_review_thread_resolution: false\n" + allMethodsWithExtraApprovalLines +
 				"          - type: pull_request\n            parameters:\n              required_approving_review_count: 0\n" +
 				"              dismiss_stale_reviews_on_push: false\n              require_code_owner_review: false\n" +
-				"              require_last_push_approval: true\n              required_review_thread_resolution: false\n" + defaultOptionalLines +
+				"              require_last_push_approval: true\n              required_review_thread_resolution: false\n" + allMethodsWithExtraApprovalLines +
 				"          - type: pull_request\n            parameters:\n              required_approving_review_count: 0\n" +
 				"              dismiss_stale_reviews_on_push: false\n              require_code_owner_review: false\n" +
-				"              require_last_push_approval: false\n              required_review_thread_resolution: true\n" + defaultOptionalLines,
+				"              require_last_push_approval: false\n              required_review_thread_resolution: true\n" + allMethodsWithExtraApprovalLines,
 		},
 		{
 			name: "non_fast_forward and required_status_checks are shown with quoted checks in the returned order with duplicates",
@@ -130,9 +126,9 @@ func TestWriteRulesets(t *testing.T) {
 				setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{
 					RequiredStatusChecks:             []setting.StatusCheck{{Context: "test"}, {Context: "lint", IntegrationID: 15368}, {Context: "a\"b\n# x:"}, {Context: "test"}},
 					StrictRequiredStatusChecksPolicy: true,
-					DoNotEnforceOnCreate:             new(false),
+					DoNotEnforceOnCreate:             false,
 				}),
-				setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{RequiredStatusChecks: []setting.StatusCheck{}, DoNotEnforceOnCreate: new(true)}),
+				setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{RequiredStatusChecks: []setting.StatusCheck{}, DoNotEnforceOnCreate: true}),
 			}))),
 			want: "    rulesets:\n      - name: \"n\"\n        target: branch\n        enforcement: active\n" +
 				"        conditions:\n          ref_name:\n            include: []\n            exclude: []\n        bypass_actors: []\n" +
@@ -245,27 +241,6 @@ func TestWriteRulesets(t *testing.T) {
 			name: "a rule of an undefined rule type panics",
 			in: observed(github.InterpretedRuleset(1, "n", setting.Ruleset{
 				Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive, Rules: []setting.RulesetRule{{}},
-			})),
-		},
-		{
-			name: "a required_status_checks rule without do_not_enforce_on_create panics",
-			in: observed(github.InterpretedRuleset(1, "n", setting.Ruleset{
-				Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive,
-				Rules: []setting.RulesetRule{setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{})},
-			})),
-		},
-		{
-			name: "a pull_request rule without allowed_merge_methods panics",
-			in: observed(github.InterpretedRuleset(1, "n", setting.Ruleset{
-				Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive,
-				Rules: []setting.RulesetRule{setting.PullRequestRule(setting.PullRequestParameters{RequireExtraApprovalForUnattributedChanges: new(true)})},
-			})),
-		},
-		{
-			name: "a pull_request rule without require_extra_approval_for_unattributed_changes panics",
-			in: observed(github.InterpretedRuleset(1, "n", setting.Ruleset{
-				Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive,
-				Rules: []setting.RulesetRule{setting.PullRequestRule(setting.PullRequestParameters{AllowedMergeMethods: []setting.AllowedMergeMethod{setting.AllowedMergeMethodMerge}})},
 			})),
 		},
 	}

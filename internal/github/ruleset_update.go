@@ -75,23 +75,22 @@ type rulesetRuleBody struct {
 	Parameters any    `json:"parameters,omitempty"`
 }
 
-// pullRequestParametersBody の省略できる2項目は、宣言したときだけ送るため omitempty で持つ。
-// 省略を表す nil のスライスとポインタは省かれ、false を指すポインタは省かれない。宣言は空の AllowedMergeMethods を作らない。
+// pullRequestParametersBody は、pull_request の7項目を、false も省かずに常に送る (Rulesets の設計の更新方式)。
 type pullRequestParametersBody struct {
 	RequiredApprovingReviewCount               int      `json:"required_approving_review_count"`
 	DismissStaleReviewsOnPush                  bool     `json:"dismiss_stale_reviews_on_push"`
 	RequireCodeOwnerReview                     bool     `json:"require_code_owner_review"`
 	RequireLastPushApproval                    bool     `json:"require_last_push_approval"`
 	RequiredReviewThreadResolution             bool     `json:"required_review_thread_resolution"`
-	AllowedMergeMethods                        []string `json:"allowed_merge_methods,omitempty"`
-	RequireExtraApprovalForUnattributedChanges *bool    `json:"require_extra_approval_for_unattributed_changes,omitempty"`
+	AllowedMergeMethods                        []string `json:"allowed_merge_methods"`
+	RequireExtraApprovalForUnattributedChanges bool     `json:"require_extra_approval_for_unattributed_changes"`
 }
 
-// requiredStatusChecksParametersBody の DoNotEnforceOnCreate は、宣言したときだけ送るため omitempty のポインタで持つ。false を指すポインタは省かれない。
+// requiredStatusChecksParametersBody は、required_status_checks の3項目を、false も省かずに常に送る (Rulesets の設計の更新方式)。
 type requiredStatusChecksParametersBody struct {
 	RequiredStatusChecks             []statusCheckBody `json:"required_status_checks"`
 	StrictRequiredStatusChecksPolicy bool              `json:"strict_required_status_checks_policy"`
-	DoNotEnforceOnCreate             *bool             `json:"do_not_enforce_on_create,omitempty"`
+	DoNotEnforceOnCreate             bool              `json:"do_not_enforce_on_create"`
 }
 
 // statusCheckBody の IntegrationID は、発行元を限らないチェック (0) では送らない。GitHub は 0 を拒否するため。
@@ -146,9 +145,9 @@ func encodeRulesetRule(rule setting.RulesetRule) rulesetRuleBody {
 	switch rule.Type() {
 	case setting.RulesetRulePullRequest:
 		p := rule.PullRequest()
-		var methods []string
-		for _, m := range p.AllowedMergeMethods {
-			methods = append(methods, string(m))
+		methods := make([]string, len(p.AllowedMergeMethods))
+		for i, m := range p.AllowedMergeMethods {
+			methods[i] = string(m)
 		}
 		return rulesetRuleBody{Type: string(rule.Type()), Parameters: &pullRequestParametersBody{
 			RequiredApprovingReviewCount:               p.RequiredApprovingReviewCount,
