@@ -49,10 +49,6 @@ func rulesetChangeText(s changeplan.SettingPlan) string {
 	for _, part := range s.UninterpretedParts {
 		fmt.Fprintf(&b, "      %s\n", part.String())
 	}
-	// 変更計画は省略したパラメータの値を示さないため、何を宣言すれば解消するかを観測値とともに示す
-	for _, p := range s.Applicability.ResetParameters() {
-		fmt.Fprintf(&b, "      %s.%s: %s\n", p.Rule, p.Name, p.Value)
-	}
 	return b.String()
 }
 
@@ -132,7 +128,6 @@ func ruleParameterChangeLines(from, to setting.RulesetRule) string {
 }
 
 // requiredStatusChecksChangeLines は、required_status_checks のパラメータの差を、なくなるチェック、加わるチェック、変わる真偽値の行の順で返す。
-// do_not_enforce_on_create は、両方が持つときだけ差になるため、宣言が省略したときは示さない。
 func requiredStatusChecksChangeLines(from, to setting.RequiredStatusChecksParameters) string {
 	d := from.DifferenceTo(to)
 	var b strings.Builder
@@ -143,7 +138,7 @@ func requiredStatusChecksChangeLines(from, to setting.RequiredStatusChecksParame
 		changes = append(changes, fmt.Sprintf("strict_required_status_checks_policy: %t -> %t", from.StrictRequiredStatusChecksPolicy, to.StrictRequiredStatusChecksPolicy))
 	}
 	if d.DoNotEnforceOnCreateChanged {
-		changes = append(changes, fmt.Sprintf("do_not_enforce_on_create: %t -> %t", *from.DoNotEnforceOnCreate, *to.DoNotEnforceOnCreate))
+		changes = append(changes, fmt.Sprintf("do_not_enforce_on_create: %t -> %t", from.DoNotEnforceOnCreate, to.DoNotEnforceOnCreate))
 	}
 	if len(changes) > 0 {
 		fmt.Fprintf(&b, "    Rule %s: %s\n", setting.RulesetRuleRequiredStatusChecks, strings.Join(changes, ", "))
@@ -238,25 +233,16 @@ func ruleText(r setting.RulesetRule) string {
 	switch r.Type() {
 	case setting.RulesetRulePullRequest:
 		p := r.PullRequest()
-		text := fmt.Sprintf("%s (required_approving_review_count: %d, dismiss_stale_reviews_on_push: %t, require_code_owner_review: %t, "+
-			"require_last_push_approval: %t, required_review_thread_resolution: %t",
-			r.Type(), p.RequiredApprovingReviewCount, p.DismissStaleReviewsOnPush, p.RequireCodeOwnerReview, p.RequireLastPushApproval, p.RequiredReviewThreadResolution)
-		if p.AllowedMergeMethods != nil {
-			text += ", allowed_merge_methods: " + setting.AllowedMergeMethodsText(p.AllowedMergeMethods)
-		}
-		if p.RequireExtraApprovalForUnattributedChanges != nil {
-			text += fmt.Sprintf(", require_extra_approval_for_unattributed_changes: %t", *p.RequireExtraApprovalForUnattributedChanges)
-		}
-		return text + ")"
+		return fmt.Sprintf("%s (required_approving_review_count: %d, dismiss_stale_reviews_on_push: %t, require_code_owner_review: %t, "+
+			"require_last_push_approval: %t, required_review_thread_resolution: %t, allowed_merge_methods: %s, require_extra_approval_for_unattributed_changes: %t)",
+			r.Type(), p.RequiredApprovingReviewCount, p.DismissStaleReviewsOnPush, p.RequireCodeOwnerReview, p.RequireLastPushApproval, p.RequiredReviewThreadResolution,
+			setting.AllowedMergeMethodsText(p.AllowedMergeMethods), p.RequireExtraApprovalForUnattributedChanges)
 	case setting.RulesetRuleDeletion, setting.RulesetRuleNonFastForward:
 		return string(r.Type())
 	case setting.RulesetRuleRequiredStatusChecks:
 		p := r.RequiredStatusChecks()
-		text := fmt.Sprintf("%s (required_status_checks: %s, strict_required_status_checks_policy: %t", r.Type(), statusChecksText(p.RequiredStatusChecks), p.StrictRequiredStatusChecksPolicy)
-		if p.DoNotEnforceOnCreate != nil {
-			text += fmt.Sprintf(", do_not_enforce_on_create: %t", *p.DoNotEnforceOnCreate)
-		}
-		return text + ")"
+		return fmt.Sprintf("%s (required_status_checks: %s, strict_required_status_checks_policy: %t, do_not_enforce_on_create: %t)",
+			r.Type(), statusChecksText(p.RequiredStatusChecks), p.StrictRequiredStatusChecksPolicy, p.DoNotEnforceOnCreate)
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined ruleset rule type %q", r.Type()))
 }
@@ -275,7 +261,6 @@ func statusChecksText(checks []setting.StatusCheck) string {
 }
 
 // pullRequestParameterChangesText は、pull_request のパラメータのうち変わるものだけを、パラメータの順に現在値 -> 期待値で返す。
-// 省略できるパラメータは、両方が持つときだけ差になるため、宣言が省略したときは示さない。
 func pullRequestParameterChangesText(from, to setting.PullRequestParameters) string {
 	d := from.DifferenceTo(to)
 	var changes []string
@@ -303,7 +288,7 @@ func pullRequestParameterChangesText(from, to setting.PullRequestParameters) str
 	}
 	if d.RequireExtraApprovalForUnattributedChangesChanged {
 		changes = append(changes, fmt.Sprintf("require_extra_approval_for_unattributed_changes: %t -> %t",
-			*from.RequireExtraApprovalForUnattributedChanges, *to.RequireExtraApprovalForUnattributedChanges))
+			from.RequireExtraApprovalForUnattributedChanges, to.RequireExtraApprovalForUnattributedChanges))
 	}
 	return strings.Join(changes, ", ")
 }

@@ -85,11 +85,7 @@ func writeRulesetRule(b *strings.Builder, rule setting.RulesetRule) {
 }
 
 // writePullRequestRule は pull_request のルールを書く。許すマージ方式は返った順に重複も残して書く。
-// 観測した値は省略できるパラメータを必ず持つ。持たない値は宣言から作った値で、観測値として示すと省略を値と取り違えるため、不変条件の破れとして panic する。
 func writePullRequestRule(b *strings.Builder, p setting.PullRequestParameters) {
-	if p.AllowedMergeMethods == nil || p.RequireExtraApprovalForUnattributedChanges == nil {
-		panic("show: observed pull_request rule has an omitted optional parameter")
-	}
 	fmt.Fprintf(b, "          - type: pull_request\n            parameters:\n              required_approving_review_count: %d\n              dismiss_stale_reviews_on_push: %t\n"+
 		"              require_code_owner_review: %t\n              require_last_push_approval: %t\n              required_review_thread_resolution: %t\n",
 		p.RequiredApprovingReviewCount, p.DismissStaleReviewsOnPush, p.RequireCodeOwnerReview, p.RequireLastPushApproval, p.RequiredReviewThreadResolution)
@@ -97,15 +93,11 @@ func writePullRequestRule(b *strings.Builder, p setting.PullRequestParameters) {
 	for _, m := range p.AllowedMergeMethods {
 		fmt.Fprintf(b, "                - %s\n", m)
 	}
-	fmt.Fprintf(b, "              require_extra_approval_for_unattributed_changes: %t\n", *p.RequireExtraApprovalForUnattributedChanges)
+	fmt.Fprintf(b, "              require_extra_approval_for_unattributed_changes: %t\n", p.RequireExtraApprovalForUnattributedChanges)
 }
 
 // writeRequiredStatusChecksRule は required_status_checks のルールを書く。チェックは返った順に重複も残して書き、context は名前と同じく引用符で囲む。
-// 観測した値は do_not_enforce_on_create を必ず持つ。持たない値は宣言から作った値で、観測値として示すと省略を値と取り違えるため、不変条件の破れとして panic する。
 func writeRequiredStatusChecksRule(b *strings.Builder, p setting.RequiredStatusChecksParameters) {
-	if p.DoNotEnforceOnCreate == nil {
-		panic("show: observed required_status_checks rule has no do_not_enforce_on_create")
-	}
 	b.WriteString("          - type: required_status_checks\n            parameters:\n")
 	if len(p.RequiredStatusChecks) == 0 {
 		b.WriteString("              required_status_checks: []\n")
@@ -120,7 +112,7 @@ func writeRequiredStatusChecksRule(b *strings.Builder, p setting.RequiredStatusC
 		}
 	}
 	fmt.Fprintf(b, "              strict_required_status_checks_policy: %t\n              do_not_enforce_on_create: %t\n",
-		p.StrictRequiredStatusChecksPolicy, *p.DoNotEnforceOnCreate)
+		p.StrictRequiredStatusChecksPolicy, p.DoNotEnforceOnCreate)
 }
 
 // writeRefNamePatterns は ref_name の include か exclude を、空なら [] で、そうでなければ一行に一つずつ書く。

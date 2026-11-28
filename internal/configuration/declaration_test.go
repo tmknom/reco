@@ -417,12 +417,12 @@ func TestDocumentDeclaration(t *testing.T) {
     general:
       allow_auto_merge: false
 `
-	// withWorkflow は、2 件目の宣言に actions.workflow を足し、その中身を entries にした入力を作る。
+	// withWorkflow は、2 件目の宣言に actions.workflow_permissions を足し、その中身を entries にした入力を作る。
 	withWorkflow := func(entries string) string {
-		return second + "    actions:\n      workflow:\n" + entries
+		return second + "    actions:\n      workflow_permissions:\n" + entries
 	}
 	actionsOnly := strings.Replace(second, "    general:\n      allow_auto_merge: false\n",
-		"    actions:\n      workflow:\n        default_workflow_permissions: write\n        can_approve_pull_request_reviews: true\n", 1)
+		"    actions:\n      workflow_permissions:\n        default_workflow_permissions: write\n        can_approve_pull_request_reviews: true\n", 1)
 	cases := []struct {
 		name string
 		src  string
@@ -586,7 +586,7 @@ func TestDocumentDeclaration(t *testing.T) {
 		},
 		// Actions
 		{
-			name: "actions.permissions alone is read into ActionsPermissions, leaving workflow omitted",
+			name: "actions.permissions alone is read into ActionsPermissions, leaving workflow_permissions omitted",
 			src:  second + "    actions:\n      permissions:\n        allowed_actions: local_only\n",
 			want: Declaration{Repositories: []RepositoryDeclaration{
 				first,
@@ -600,8 +600,8 @@ func TestDocumentDeclaration(t *testing.T) {
 			}},
 		},
 		{
-			name: "actions.permissions and actions.workflow are read into their own fields",
-			src:  second + "    actions:\n      permissions:\n        allowed_actions: all\n      workflow:\n        can_approve_pull_request_reviews: true\n",
+			name: "actions.permissions and actions.workflow_permissions are read into their own fields",
+			src:  second + "    actions:\n      permissions:\n        allowed_actions: all\n      workflow_permissions:\n        can_approve_pull_request_reviews: true\n",
 			want: Declaration{Repositories: []RepositoryDeclaration{
 				first,
 				{
@@ -615,8 +615,8 @@ func TestDocumentDeclaration(t *testing.T) {
 			}},
 		},
 		{
-			name: "enabled false is read together with actions.workflow",
-			src:  second + "    actions:\n      permissions:\n        enabled: false\n      workflow:\n        can_approve_pull_request_reviews: true\n",
+			name: "enabled false is read together with actions.workflow_permissions",
+			src:  second + "    actions:\n      permissions:\n        enabled: false\n      workflow_permissions:\n        can_approve_pull_request_reviews: true\n",
 			want: Declaration{Repositories: []RepositoryDeclaration{
 				first,
 				{
@@ -719,7 +719,7 @@ func TestDocumentDeclaration(t *testing.T) {
 			name:       "unknown key in actions is rejected listing every actions key in order",
 			src:        second + "    actions:\n      secrets: {}\n",
 			wantPath:   "repositories[1].actions",
-			wantReason: `unknown key "secrets"; expected permissions, workflow, access, fork_pr_contributor_approval, fork_pr_workflows_private_repos, artifact_and_log_retention, oidc_subject, variables`,
+			wantReason: `unknown key "secrets"; expected permissions, workflow_permissions, access, fork_pr_contributor_approval, fork_pr_workflows_private_repos, artifact_and_log_retention, oidc_subject, variables`,
 		},
 		// Environments
 		{
@@ -888,51 +888,51 @@ func TestDocumentDeclaration(t *testing.T) {
 		},
 		{
 			name:       "duplicate key in actions is rejected",
-			src:        withWorkflow("        default_workflow_permissions: read\n      workflow:\n        default_workflow_permissions: write\n"),
+			src:        withWorkflow("        default_workflow_permissions: read\n      workflow_permissions:\n        default_workflow_permissions: write\n"),
 			wantPath:   "repositories[1].actions",
-			wantReason: `duplicate key "workflow"`,
+			wantReason: `duplicate key "workflow_permissions"`,
 		},
 		// Workflow permissions
 		{
-			name:       "empty workflow is rejected",
-			src:        second + "    actions:\n      workflow: {}\n",
-			wantPath:   "repositories[1].actions.workflow",
+			name:       "empty workflow_permissions is rejected",
+			src:        second + "    actions:\n      workflow_permissions: {}\n",
+			wantPath:   "repositories[1].actions.workflow_permissions",
 			wantReason: "must not be empty",
 		},
 		{
-			name:       "workflow without a value is rejected",
-			src:        second + "    actions:\n      workflow:\n",
-			wantPath:   "repositories[1].actions.workflow",
+			name:       "workflow_permissions without a value is rejected",
+			src:        second + "    actions:\n      workflow_permissions:\n",
+			wantPath:   "repositories[1].actions.workflow_permissions",
 			wantReason: "must not be null",
 		},
 		{
-			name:       "unknown key in workflow is rejected",
+			name:       "unknown key in workflow_permissions is rejected",
 			src:        withWorkflow("        default_workflow_permissions: read\n        sha_pinning_required: true\n"),
-			wantPath:   "repositories[1].actions.workflow",
+			wantPath:   "repositories[1].actions.workflow_permissions",
 			wantReason: `unknown key "sha_pinning_required"; expected default_workflow_permissions, can_approve_pull_request_reviews`,
 		},
 		{
-			name:       "duplicate key in workflow is rejected",
+			name:       "duplicate key in workflow_permissions is rejected",
 			src:        withWorkflow("        default_workflow_permissions: read\n        default_workflow_permissions: write\n"),
-			wantPath:   "repositories[1].actions.workflow",
+			wantPath:   "repositories[1].actions.workflow_permissions",
 			wantReason: `duplicate key "default_workflow_permissions"`,
 		},
 		{
 			name:       "default_workflow_permissions without a value is rejected rather than read as omitted",
 			src:        withWorkflow("        default_workflow_permissions:\n"),
-			wantPath:   "repositories[1].actions.workflow.default_workflow_permissions",
+			wantPath:   "repositories[1].actions.workflow_permissions.default_workflow_permissions",
 			wantReason: "must not be null",
 		},
 		{
 			name:       "can_approve_pull_request_reviews without a value is rejected rather than read as omitted",
 			src:        withWorkflow("        can_approve_pull_request_reviews:\n"),
-			wantPath:   "repositories[1].actions.workflow.can_approve_pull_request_reviews",
+			wantPath:   "repositories[1].actions.workflow_permissions.can_approve_pull_request_reviews",
 			wantReason: "must not be null",
 		},
 		{
 			name:       "quoted can_approve_pull_request_reviews is rejected by the same rule as general settings",
 			src:        withWorkflow("        can_approve_pull_request_reviews: \"true\"\n"),
-			wantPath:   "repositories[1].actions.workflow.can_approve_pull_request_reviews",
+			wantPath:   "repositories[1].actions.workflow_permissions.can_approve_pull_request_reviews",
 			wantReason: "must be true or false",
 		},
 	}

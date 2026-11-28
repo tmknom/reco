@@ -93,7 +93,7 @@ func TestApply_ApprovedWithWorkflowPermissions(t *testing.T) {
     general:
       allow_auto_merge: true
     actions:
-      workflow:
+      workflow_permissions:
         default_workflow_permissions: read
 `)
 	writePermissionsBody := githubtest.WorkflowPermissionsBody{DefaultWorkflowPermissions: "write"}.JSON()

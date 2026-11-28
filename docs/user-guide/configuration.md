@@ -42,7 +42,7 @@ repositories:
           verified_allowed: true
           patterns_allowed:
             - "actions/checkout@v7"
-      workflow:
+      workflow_permissions:
         default_workflow_permissions: read
         can_approve_pull_request_reviews: false
       access:
@@ -132,7 +132,7 @@ GitHub は、squash merge が無効のあいだ `squash_merge_commit` を、merg
 
 ## GitHub Actions の設定
 
-`actions` には、`permissions`（Actions の実行許可）、`workflow`（ワークフローの権限）、`access`（ほかのリポジトリのワークフローからのアクセス）、`fork_pr_contributor_approval`（Fork からの Pull Request のワークフローの承認）、`fork_pr_workflows_private_repos`（非公開リポジトリでの、Fork からの Pull Request のワークフローの実行条件）、`artifact_and_log_retention`（Artifact や Log などの保持期間）、`oidc_subject`（OIDC トークンの subject の形）、`variables`（Repository Variables）を書きます。使わないものは省けます。
+`actions` には、`permissions`（Actions の実行許可）、`workflow_permissions`（ワークフローの権限）、`access`（ほかのリポジトリのワークフローからのアクセス）、`fork_pr_contributor_approval`（Fork からの Pull Request のワークフローの承認）、`fork_pr_workflows_private_repos`（非公開リポジトリでの、Fork からの Pull Request のワークフローの実行条件）、`artifact_and_log_retention`（Artifact や Log などの保持期間）、`oidc_subject`（OIDC トークンの subject の形）、`variables`（Repository Variables）を書きます。使わないものは省けます。
 
 ### Actions の実行許可
 
@@ -180,7 +180,7 @@ GitHub は、squash merge が無効のあいだ `squash_merge_commit` を、merg
 
 ### ワークフローの権限
 
-`actions.workflow` には、次のキーを書きます。
+`actions.workflow_permissions` には、次のキーを書きます。
 
 | キー | 値 | 意味 |
 |---|---|---|
@@ -552,6 +552,8 @@ repositories:
               require_code_owner_review: false
               require_last_push_approval: false
               required_review_thread_resolution: true
+              allowed_merge_methods: [squash, rebase]
+              require_extra_approval_for_unattributed_changes: true
           - type: deletion
           - type: non_fast_forward
           - type: required_status_checks
@@ -561,6 +563,7 @@ repositories:
                 - context: "lint"
                   integration_id: 15368
               strict_required_status_checks_policy: true
+              do_not_enforce_on_create: false
 ```
 
 | キー | 値 | 意味 |
@@ -590,7 +593,7 @@ repositories:
 
 - 名前は、半角の英数字、空白、記号だけで書き、前後に空白を置かない。大文字と小文字だけが違う名前は同じ Ruleset とみなすため、同じリポジトリに並べられない
 - `bypass_actors` の `actor_type` は `RepositoryRole`、`User`、`Integration`、`DeployKey` のどれか。`bypass_mode` は `always`、`pull_request`、`exempt` のどれかで、省略できない。`RepositoryRole` の `actor_id` は `2`、`4`、`5` のどれかで、ロール名ではなく数値で書く。どの数値がどのロールかは公開されていないため、`show` の表示から書き写す。`DeployKey` には `actor_id` を書かず、`bypass_mode` は `always` だけ
-- `pull_request` の `parameters` は、例に示した5つのキーをすべて書く。`required_approving_review_count` は `0` から `10` の整数。省略できるキーは下の表のとおり
+- `pull_request` と `required_status_checks` の `parameters` には、下の表で必須としたキーをすべて書く
 - `deletion` と `non_fast_forward` には `parameters` を書かない
 - 一覧の要素の順序は問わない。並びだけが違っても変更にならない
 - 非公開リポジトリには書けない。書くと `plan` に `Applicability: not applicable` と `Plan cannot be applied.` が出る
@@ -598,15 +601,20 @@ repositories:
 - reco がまだ解釈しないルール（`creation` など）や `pull_request` の設定（空でない `required_reviewers` など）を持つ Ruleset の名前を書くと、`plan` に `Applicability: not applicable` と、reco の解釈しない部分の一覧が出る。そうした Ruleset は設定ファイルから外す。`state: absent` を書いた場合も同じで、消える内容の全体を示せないため、reco は消さない
 - `é` などを含む名前の Ruleset があるリポジトリで、GitHub 上にない名前に `state: absent` を書くと、その名前の Ruleset がないことを reco が確かめられないため、`plan` は `(existence unknown) -> absent` と `Applicability: not applicable` を示す
 
-`pull_request` の `parameters` には、5つのキーのほかに、次のキーを書けます。
+`pull_request` の `parameters` には、次のキーを書きます。
 
 | キー | 値 | 意味 |
 |---|---|---|
-| `allowed_merge_methods` | `merge` / `squash` / `rebase` の一覧（省略可。1件以上） | Pull Request をマージできる方式 |
-| `require_extra_approval_for_unattributed_changes` | `true` / `false`（省略可） | 人間の共同作業者のいない Copilot の Pull Request に、もう一つの承認を求めるか |
+| `required_approving_review_count` | `0` から `10` の整数（必須） | マージの前に要る承認の数 |
+| `dismiss_stale_reviews_on_push` | `true` / `false`（必須） | 新しいコミットが push されたら、それまでの承認を取り消すか |
+| `require_code_owner_review` | `true` / `false`（必須） | Code owner が指定されたファイルを変える Pull Request に、その Code owner の承認を求めるか |
+| `require_last_push_approval` | `true` / `false`（必須） | 最後の push を、push した人以外が承認することを求めるか |
+| `required_review_thread_resolution` | `true` / `false`（必須） | コードについての会話をすべて解決してからマージさせるか |
+| `allowed_merge_methods` | `merge` / `squash` / `rebase` の一覧（必須。1件以上） | Pull Request をマージできる方式 |
+| `require_extra_approval_for_unattributed_changes` | `true` / `false`（必須） | 人間の共同作業者のいない Copilot の Pull Request に、もう一つの承認を求めるか |
 
-- `allowed_merge_methods` は、同じ方式を二度書けない
-- どちらも、省略すると reco はその値を比べず、送らない。ただし、GitHub は送らなかった値を、`allowed_merge_methods` は3つの方式すべてに、`require_extra_approval_for_unattributed_changes` は `true` にする。そのため、GitHub 上でほかの値の Ruleset のほかの内容を変えようとすると、`plan` に `Applicability: not applicable` と、`pull_request.allowed_merge_methods: [squash]` のような今の値が出る。今の値を保つならその値を、変えるならほかの値を書き足す
+- `allowed_merge_methods` は、同じ方式を二度書けない。3つの方式をどれも許すときは `[merge, squash, rebase]` と書く
+- `allowed_merge_methods` と `require_extra_approval_for_unattributed_changes` を省略できないのは、GitHub が、Ruleset のルールを書き換えるときに送らなかった値を、`[merge, squash, rebase]` と `true` に戻すため。省略を許すと、書いていない値が適用で変わってしまう
 - **reco は、`allowed_merge_methods` をリポジトリの General のマージ方式（`allow_squash_merge` など）と突き合わせません**。General で無効にした方式だけを許す Ruleset も、GitHub は受け付け、reco も止めず、`plan` にも示さない。ただし、GitHub の公式資料によると、その状態では対象のブランチへの Pull Request をマージできない場合がある。設定ファイルの `general` のマージ方式と一緒に見直す
 
 `required_status_checks` の `parameters` には、次のキーを書きます。
@@ -617,13 +625,13 @@ repositories:
 | `required_status_checks[].context` | 文字列（必須） | ステータスチェックの名前 |
 | `required_status_checks[].integration_id` | 正の整数（省略可） | そのチェックを送ってよい GitHub App の ID。省略すると、どの発行元のチェックでも受け付ける |
 | `strict_required_status_checks_policy` | `true` / `false`（必須） | Pull Request のブランチを、対象のブランチの最新の内容で検証し直すことを求めるか |
-| `do_not_enforce_on_create` | `true` / `false`（省略可） | チェックが成功していなくても、対象のブランチの作成を許すか |
+| `do_not_enforce_on_create` | `true` / `false`（必須） | チェックが成功していなくても、対象のブランチの作成を許すか |
 
 - `context` には、Pull Request のチェックの一覧に出る名前を、大文字と小文字、前後の空白も含めてそのまま書く。名前が違うと別のチェックになる
 - **reco は、書いたチェックが実際にワークフローなどで作られるかを確かめません**。作られないチェックを必須にすると、対象のブランチへの Pull Request をマージできなくなる。チェックの名前は、そのブランチの Pull Request で一度実行されたものから書き写す
 - `integration_id` には、リポジトリにインストールされた App の ID を書く。GitHub Actions は `15368`。インストールされていない App の ID は、`plan` では分からず、`apply` で GitHub が受け付けずに失敗する
 - 同じ `context` と `integration_id` の組を二度書けない。同じ `context` でも、`integration_id` の有無や値が違えば別のチェックとして書ける
-- `do_not_enforce_on_create` を省略すると、reco はこの値を比べず、送らない。ただし、GitHub は送らなかった `do_not_enforce_on_create` を `false` にするため、GitHub 上で `true` の Ruleset のほかの内容を変えようとすると、`plan` に `Applicability: not applicable` と `required_status_checks.do_not_enforce_on_create: true` が出る。今の値を保つなら `do_not_enforce_on_create: true` を、`false` に変えるなら `do_not_enforce_on_create: false` を書き足す
+- `do_not_enforce_on_create` を省略できないのは、GitHub が、Ruleset のルールを書き換えるときに送らなかった値を `false` に戻すため
 
 GitHub 上にある Ruleset を管理に取り込むときは、`reco show` の `rulesets` の表示から、その Ruleset の要素を設定ファイルに書き写します。表示は設定ファイルと同じキーと値で示すため、書き写したあとの `plan` は、その Ruleset に差分を示しません。ただし、`unavailable` のコメントが付いた Ruleset は取り込めません。`enforcement: evaluate`、`conditions: {}`、`2`・`4`・`5` 以外の `RepositoryRole` のように設定ファイルに書けない値を持つ Ruleset は、そのまま書き写すと設定ファイルの誤りになります。
 
@@ -642,6 +650,13 @@ repositories:
 
 > [!NOTE]
 > **設定ファイルから設定を消しても、GitHub 上の値は元に戻りません**。値を変えたいときは、消すのではなく、設定したい値を書いて `apply` します。
+
+一覧の値は、要素を消したときの扱いで2種類に分かれます。どちらの一覧かは、キーの名前からは分かりません。たとえば `environments[].variables` と `deployment_branch_policy.patterns` は、どちらも要素に `name` を持ちますが、扱いが違います。
+
+| 一覧 | 一覧から要素を消したとき |
+|---|---|
+| `environments`、`actions.variables`、`environments[].variables`、`rulesets` | 消した要素の Environment、変数、Ruleset は GitHub 上に残る。変数と Ruleset を消すには、要素を消すのではなく `state: absent` を書く。Environment は reco では消せない |
+| `selected_actions.patterns_allowed`、`deployment_branch_policy.patterns`、`reviewers`、`oidc_subject.include_claim_keys`、Ruleset の中の一覧（`include`、`exclude`、`bypass_actors`、`rules`、`allowed_merge_methods`、`required_status_checks`） | 書いた一覧が GitHub 上の一覧の全体になるため、消した要素は `apply` で GitHub 上からもなくなる |
 
 ## 複数のリポジトリを並べる
 
@@ -690,3 +705,18 @@ repositories:
           github_owned_allowed: true
           verified_allowed: true
 ```
+
+## References
+
+- [YAML 設定仕様](../spec/configuration.md)：キーと値、組み合わせの規則、一覧の読み方（2.1節）、Ruleset のパラメータを省略できないこと（13.5節）
+- [Overview](overview.md)：GitHub の設定画面の項目と、設定ファイルのキーの対応
+- [Update a repository](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#update-a-repository)：`general` と、`security` の `secret_scanning`、`secret_scanning_push_protection` の値の意味
+- [REST API endpoints for GitHub Actions permissions](https://docs.github.com/en/rest/actions/permissions?apiVersion=2026-03-10)：`actions` の `permissions`、`workflow_permissions`、`access`、`fork_pr_contributor_approval`、`fork_pr_workflows_private_repos`、`artifact_and_log_retention` の値の意味
+- [Set the customization template for an OIDC subject claim for a repository](https://docs.github.com/en/rest/actions/oidc?apiVersion=2026-03-10#set-the-customization-template-for-an-oidc-subject-claim-for-a-repository)：`actions.oidc_subject` の値の意味
+- [REST API endpoints for GitHub Actions variables](https://docs.github.com/en/rest/actions/variables?apiVersion=2026-03-10)：`actions.variables` と `environments[].variables` の名前と値の規則
+- [Create or update an environment](https://docs.github.com/en/rest/deployments/environments?apiVersion=2026-03-10#create-or-update-an-environment)：`environments` の値の意味
+- [Create a deployment branch policy](https://docs.github.com/en/rest/deployments/branch-policies?apiVersion=2026-03-10#create-a-deployment-branch-policy)：`deployment_branch_policy.patterns` の要素の `name` と `type`
+- [Enable vulnerability alerts](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#enable-vulnerability-alerts)：`security.dependabot_alerts` に当たる操作。キーは機能名の「Dependabot alerts」から取っており、API の名前（`vulnerability-alerts`）とは違う
+- [Enable Dependabot security updates](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#enable-dependabot-security-updates)：`security.dependabot_security_updates` に当たる操作
+- [Enable private vulnerability reporting for a repository](https://docs.github.com/en/rest/repos/repos?apiVersion=2026-03-10#enable-private-vulnerability-reporting-for-a-repository)：`security.private_vulnerability_reporting` に当たる操作
+- [Create a repository ruleset](https://docs.github.com/en/rest/repos/rules?apiVersion=2026-03-10#create-a-repository-ruleset)：`rulesets` の値の意味

@@ -394,7 +394,7 @@ const workflowSource = `repositories:
     general:
       allow_auto_merge: true
     actions:
-      workflow:
+      workflow_permissions:
         default_workflow_permissions: read
 `
 
@@ -492,7 +492,7 @@ func TestGenerate_ObservedAreas(t *testing.T) {
 		client := github.New("test-token", github.WithBaseURL(server.URL()))
 		const src = "repositories:\n" +
 			"  - name: owner/first\n    general:\n      allow_auto_merge: true\n" +
-			"  - name: owner/second\n    actions:\n      workflow:\n        default_workflow_permissions: read\n" +
+			"  - name: owner/second\n    actions:\n      workflow_permissions:\n        default_workflow_permissions: read\n" +
 			"  - name: owner/third\n    general:\n      allow_auto_merge: true\n"
 
 		if _, err := Generate(context.Background(), client, file(src), nil); err != nil {
@@ -830,7 +830,7 @@ func TestGenerate_Rulesets(t *testing.T) {
 			"        rules:\n          - type: pull_request\n            parameters:\n              required_approving_review_count: 0\n" +
 			"              dismiss_stale_reviews_on_push: false\n              require_code_owner_review: false\n" +
 			"              require_last_push_approval: false\n              required_review_thread_resolution: false\n" +
-			"              allowed_merge_methods: [squash]\n"
+			"              allowed_merge_methods: [squash]\n              require_extra_approval_for_unattributed_changes: false\n"
 
 		got, err := Generate(context.Background(), client, file(src), nil)
 		if err != nil {

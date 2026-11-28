@@ -20,7 +20,7 @@ repositories:
           github_owned_allowed: true
           verified_allowed: true
           patterns_allowed: []
-      workflow:
+      workflow_permissions:
         default_workflow_permissions: read
         can_approve_pull_request_reviews: false
       access:
@@ -76,6 +76,8 @@ repositories:
               require_code_owner_review: false
               require_last_push_approval: false
               required_review_thread_resolution: false
+              allowed_merge_methods: [merge, squash, rebase]
+              require_extra_approval_for_unattributed_changes: true
           - type: deletion
 
   - name: example/project-b
@@ -89,7 +91,7 @@ repositories:
 | `repositories` | シーケンス | 1件以上のリポジトリごとの宣言を含む |
 | `repositories[]` | マッピング | `name` と、少なくとも一つの管理設定を含む `general`、`actions`、`environments`、`security`、`rulesets` のいずれかを持つ |
 | `repositories[].name` | 文字列 | 必須。空でない `OWNER/REPO` 形式 |
-| `general`、`squash_merge_commit`、`merge_commit`、`actions`、`permissions`、`selected_actions`、`workflow`、`access`、`fork_pr_contributor_approval`、`fork_pr_workflows_private_repos`、`artifact_and_log_retention`、`oidc_subject`、`security` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions`、`workflow`、`access`、`fork_pr_contributor_approval`、`fork_pr_workflows_private_repos`、`artifact_and_log_retention`、`oidc_subject`、`variables` のうち一つ以上を含めばよい |
+| `general`、`squash_merge_commit`、`merge_commit`、`actions`、`permissions`、`selected_actions`、`workflow_permissions`、`access`、`fork_pr_contributor_approval`、`fork_pr_workflows_private_repos`、`artifact_and_log_retention`、`oidc_subject`、`security` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions`、`workflow_permissions`、`access`、`fork_pr_contributor_approval`、`fork_pr_workflows_private_repos`、`artifact_and_log_retention`、`oidc_subject`、`variables` のうち一つ以上を含めばよい |
 | `variables`（`actions` 配下） | シーケンス | 使用する場合は、1件以上の変数の宣言を含む（10章） |
 | `environments` | シーケンス | 使用する場合は、1件以上の Environment の宣言を含む（11章） |
 | `reviewers`（`environments[]` 配下） | シーケンス | 0件以上6件以下の担当者の宣言を含む（11.3節） |
@@ -240,7 +242,7 @@ GitHub が更新で受け付けるタイトルと本文の組み合わせは、�
 | `false` | 省略 | 省略 | 指定 | エラー |
 | 省略 | 省略 | 省略 | 省略（`permissions` 自体を宣言） | エラー（空のマッピング） |
 
-`enabled: false` と `allowed_actions`・`selected_actions`・`sha_pinning_required` を同時に宣言できないのは、Actions が無効のあいだ GitHub がこれらの保存された値を返さず（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 3.1・4章）、期待状態を確かめられないためです。この組み合わせの誤りは、`allowed_actions` の値や `selected_actions` の中身の誤りより先に示します。`actions.workflow` の設定は、`enabled` の値によらず同時に宣言できます。
+`enabled: false` と `allowed_actions`・`selected_actions`・`sha_pinning_required` を同時に宣言できないのは、Actions が無効のあいだ GitHub がこれらの保存された値を返さず（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 3.1・4章）、期待状態を確かめられないためです。この組み合わせの誤りは、`allowed_actions` の値や `selected_actions` の中身の誤りより先に示します。`actions.workflow_permissions` の設定は、`enabled` の値によらず同時に宣言できます。
 
 3項目を必須とする点は **reco 固有の入力契約** です。GitHub REST API では Selected actions の3項目は任意パラメータですが、reco は選択方式の Actions 許可条件の期待状態を一意に定めるため、3項目を必須とします。
 
@@ -260,8 +262,8 @@ patterns_allowed:
 
 | YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
 |---|---|---|---|---|
-| `actions.workflow.default_workflow_permissions` | 文字列 | `read` / `write` | ワークフローの `GITHUB_TOKEN` の既定権限 | 独立 |
-| `actions.workflow.can_approve_pull_request_reviews` | 真偽値 | `true` / `false` | GitHub Actions による Pull Request の作成と承認の許可 | 独立 |
+| `actions.workflow_permissions.default_workflow_permissions` | 文字列 | `read` / `write` | ワークフローの `GITHUB_TOKEN` の既定権限 | 独立 |
+| `actions.workflow_permissions.can_approve_pull_request_reviews` | 真偽値 | `true` / `false` | GitHub Actions による Pull Request の作成と承認の許可 | 独立 |
 
 `default_workflow_permissions: read` は個々のワークフローで明示された権限まで含め、すべての書き込み権限を禁止するものではありません。
 
@@ -406,7 +408,7 @@ reco は、GitHub が受け付ける key の一覧を持たず、形式だけを
 - **`value` を書いた要素は、存在と値の宣言を兼ねる**：書いた名前の Repository Variable が存在しなければ作成を計画し、存在して値が違えば値の変更を計画する
 - **`state: absent` を書いた要素は、存在しないことの宣言である**：その名前の Repository Variable が存在すれば削除を計画し、存在しなければ変更不要である
 - **行を消しても削除しない**：`actions.variables` から要素を消すことは省略であり（2.1節）、その変数は管理範囲外になる
-- **`actions` に `variables` だけを書いた宣言は、Actions の許可設定を宣言しない**：`permissions`、`workflow`、`access` の設定は管理範囲外のままである
+- **`actions` に `variables` だけを書いた宣言は、Actions の許可設定を宣言しない**：`permissions`、`workflow_permissions`、`access` の設定は管理範囲外のままである
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -703,7 +705,7 @@ GitHub が Dependabot security updates を一時停止していても、設定�
 - **`name` は必須で、ほかに Ruleset の値の5つのキー（`target`、`enforcement`、`conditions`、`bypass_actors`、`rules`）か `state` のどちらか一方を書く**：要素が持てるキーはこの7つだけで、`id` は受け付けない。組み合わせは 13.6節が定める
 - **`state` を書かない要素では、5つのキーがどれも必須である**：省略を空のシーケンスや GitHub の既定値に補わない
 - **5つのキーを書いた要素は、存在と値の宣言を兼ねる**：書いた名前の Ruleset が存在しなければ作成を計画し、存在して値が違えば値の変更を計画する
-- **宣言は、その Ruleset の全体である**：`include`、`exclude`、`bypass_actors`、`rules` は一覧の全体として読む（2.1節の、要素の一覧を値とする設定の読み方）。GitHub 上の Ruleset にあって宣言にないルール、Bypass、パターンは、適用するとなくなる。ただし、ルールの省略できるパラメータ（13.5節）を省略した場合、そのパラメータは管理範囲外で、reco は期待値と比べない
+- **宣言は、その Ruleset の全体である**：`include`、`exclude`、`bypass_actors`、`rules` は一覧の全体として読む（2.1節の、要素の一覧を値とする設定の読み方）。GitHub 上の Ruleset にあって宣言にないルール、Bypass、パターンは、適用するとなくなる
 - **`state: absent` を書いた要素は、存在しないことの宣言である**：書いた名前の Ruleset が存在すれば削除を計画し、存在しなければ変更は要らない
 - **宣言に書かなかった名前の Ruleset は管理範囲外である**：reco は作成も変更も削除もせず、要求も送らない。`rulesets` から要素を消すことは宣言の省略であり（2.1節）、その Ruleset を削除しない
 
@@ -769,19 +771,19 @@ conditions:
 
 `pull_request` は、マージの前に Pull Request を経ることを求めるルールです。`parameters` は必須で、次のキーを持ちます。ほかのキーは受け付けません。GitHub は未知のキーを黙って捨てるためです（[GitHub Rules API 仕様](../research/rules.md) 7.1）。
 
-| `parameters` のキー | 型 | 許容値 | 省略 |
-|---|---|---|---|
-| `required_approving_review_count` | 整数 | `0` から `10` | 不可 |
-| `dismiss_stale_reviews_on_push` | 真偽値 | `true` / `false` | 不可 |
-| `require_code_owner_review` | 真偽値 | `true` / `false` | 不可 |
-| `require_last_push_approval` | 真偽値 | `true` / `false` | 不可 |
-| `required_review_thread_resolution` | 真偽値 | `true` / `false` | 不可 |
-| `allowed_merge_methods` | シーケンス | `merge` / `squash` / `rebase` を1件以上 | 可 |
-| `require_extra_approval_for_unattributed_changes` | 真偽値 | `true` / `false` | 可 |
+| `parameters` のキー | 型 | 許容値 |
+|---|---|---|
+| `required_approving_review_count` | 整数 | `0` から `10` |
+| `dismiss_stale_reviews_on_push` | 真偽値 | `true` / `false` |
+| `require_code_owner_review` | 真偽値 | `true` / `false` |
+| `require_last_push_approval` | 真偽値 | `true` / `false` |
+| `required_review_thread_resolution` | 真偽値 | `true` / `false` |
+| `allowed_merge_methods` | シーケンス | `merge` / `squash` / `rebase` を1件以上 |
+| `require_extra_approval_for_unattributed_changes` | 真偽値 | `true` / `false` |
 
+- **7つのキーはどれも省略できない**：`allowed_merge_methods` と `require_extra_approval_for_unattributed_changes` は GitHub の API では任意だが、`rules` を置き換える更新で送らなかった値を、GitHub が `["merge", "squash", "rebase"]` と `true` に戻すためである（同 7.1）。省略を管理範囲外と読むと、適用で利用者が書かなかった値に変わる
 - **`allowed_merge_methods` は Pull Request をマージできる方式の集合である**：順序に意味はなく、順序だけが違う宣言は同じ期待値になる。`[]` は受け付けない。GitHub が拒否するためである（同 7.1）。値は書いたとおりに比べ、大文字小文字の違う `Merge` などを受け付けない。同じ方式を二度書けない。集合として比べるため、二つ目は意味を持たない
 - **`require_extra_approval_for_unattributed_changes` は、人間の共同作業者のいない Copilot の Pull Request に、もう一つの承認を求めるか** である
-- **`allowed_merge_methods` と `require_extra_approval_for_unattributed_changes` は省略できる**：`do_not_enforce_on_create` と同じく、書いたら比べて送り、省略したら管理範囲外で、期待値と比べず、送らない。省略は項目ごとに決まり、一方を書いて他方を省略できる
 - **`dismissal_restriction` と `required_reviewers` は受け付けない**：個人アカウント所有のリポジトリでは、GitHub が `dismissal_restriction` を保存せず、`required_reviewers` の空でない値を拒否するためである（同 7.1）
 - **リポジトリの General のマージ方式とは突き合わせない**：General で無効にした方式だけを `allowed_merge_methods` に書いても受け付ける。GitHub も拒否しないためである（同 7.1）
 
@@ -791,21 +793,21 @@ conditions:
 
 `required_status_checks` は、対象のブランチを更新する前に、指定したステータスチェックの成功を求めるルールです。`parameters` は必須で、次のキーを持ちます。ほかのキーは受け付けません。
 
-| `parameters` のキー | 型 | 許容値 | 省略 |
-|---|---|---|---|
-| `required_status_checks` | シーケンス | 下のチェックを0件以上（`[]` 可） | 不可 |
-| `strict_required_status_checks_policy` | 真偽値 | `true` / `false` | 不可 |
-| `do_not_enforce_on_create` | 真偽値 | `true` / `false` | 可 |
+| `parameters` のキー | 型 | 許容値 |
+|---|---|---|
+| `required_status_checks` | シーケンス | 下のチェックを0件以上（`[]` 可） |
+| `strict_required_status_checks_policy` | 真偽値 | `true` / `false` |
+| `do_not_enforce_on_create` | 真偽値 | `true` / `false` |
 
 | チェックのキー | 型 | 許容値 | 省略 |
 |---|---|---|---|
 | `context` | 文字列 | 空でない文字列 | 不可 |
 | `integration_id` | 整数 | 正の整数 | 可 |
 
+- **3つの `parameters` のキーはどれも省略できない**：`do_not_enforce_on_create` は GitHub の API では任意だが、`rules` を置き換える更新で送らなかった値を、GitHub が `false` に戻すためである（同 7.3）
 - **`context` はチェックの名前をそのまま書く**：前後の空白も大文字小文字も、書いたとおりに比べ、正規化しない。GitHub も送ったとおりに保存し、大文字小文字だけが違う名前を別のチェックとして保存する（同 7.3）。空文字列は、GitHub が拒否するため受け付けない
 - **`integration_id` は発行元の GitHub App の ID である**：省略したチェックは、どの発行元のステータスも受け付ける。省略と ID の指定は別のチェックで、同じ `context` で `integration_id` だけが違うチェックは二つ書ける。reco は、その App がリポジトリにインストールされているかを確かめない
 - **同じチェックを二度書けない**：`context` と `integration_id`（省略を一つの値とする）の組が同じチェックを二つ書くと拒否する。チェックの集合として比べるため（13章）、二つ目は意味を持たない
-- **`do_not_enforce_on_create` は省略できる**：書いたら比べて送る。省略したら管理範囲外で、期待値と比べず、送らない。省略した宣言が GitHub 上でどう扱われ、いつ適用不能になるかは [Rulesets の設計](../design/settings/rulesets.md) の適用可能性と副作用が定める
 - **未知のキーは受け付けない**：GitHub も `parameters` とチェックの未知のキーを拒否する（同 7.3）
 
 誤りは、`parameters` のキー、`required_status_checks` のチェックごとのキーと値、同じチェックの重複、`strict_required_status_checks_policy`、`do_not_enforce_on_create` の順に示します。チェックの数と `context` の長さは確かめません。上限が確かめられていないためです。
@@ -820,6 +822,7 @@ rules:
       require_last_push_approval: false
       required_review_thread_resolution: true
       allowed_merge_methods: [squash, rebase]
+      require_extra_approval_for_unattributed_changes: true
   - type: deletion
   - type: non_fast_forward
   - type: required_status_checks
@@ -829,6 +832,7 @@ rules:
         - context: "lint"
           integration_id: 15368
       strict_required_status_checks_policy: true
+      do_not_enforce_on_create: false
 ```
 
 `rules: []` は、ルールを一つも持たない Ruleset の宣言です。
@@ -923,7 +927,6 @@ rulesets:
 | `use_default: true` と `include_claim_keys: [repo]`（`oidc_subject`） | エラー（既定の形を使うときは key を指定できない） |
 | `include_claim_keys: [repo, job-workflow]` | エラー（`-` は claim key の形式に合わない） |
 | `include_claim_keys: [Repo]` | 値の形式は有効。GitHub が受け付けないため、`apply` の更新操作が失敗する |
-
 ### 14.2 リポジトリ名と重複
 
 `name` は、`OWNER` と `REPO` を一つの `/` で区切った `OWNER/REPO` 形式の文字列です。`OWNER` と `REPO` はともに空ではなく、ASCII の英数字と `-`、`_`、`.` だけからなり、`.` と `..` ではありません。このため、空白、制御文字、ASCII 以外の文字を含む名前は受け付けません。URL や、末尾に `.git` を付けたクローン用の表記（`.GIT` のように大文字小文字が異なるものを含む）は受け付けません。この値は名前による **リポジトリ指定** であり、GitHub のリポジトリ ID や、実体の存在確認を表すものではありません。

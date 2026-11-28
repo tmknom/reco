@@ -270,31 +270,31 @@ func TestConfirmDesiredState_RepositoryVariables(t *testing.T) {
 	}
 }
 
-// TestConfirmDesiredState_RulesetOmittedParameter は、Ruleset の期待状態を、宣言が省略したパラメータを比べずに確かめることを確かめる。
-// 省略したパラメータは管理範囲外で、送らなかったときに GitHub が決める値で返っても、完了を妨げない。
+// TestConfirmDesiredState_RulesetValue は、Ruleset の期待状態を、ルールのパラメータのすべてで確かめることを確かめる。
+// 値の変更は外部変更の確認でパラメータを比べないため、期待状態の確認が do_not_enforce_on_create も比べる。
 //
 //trace:checks FR-001 FR-012
-func TestConfirmDesiredState_RulesetOmittedParameter(t *testing.T) {
+func TestConfirmDesiredState_RulesetValue(t *testing.T) {
 	name := mustRulesetName(t, "protect")
 	unit := setting.Unit{Key: setting.RulesetResource, Ruleset: name}
-	value := func(strict bool, doNotEnforceOnCreate *bool) setting.Ruleset {
+	value := func(doNotEnforceOnCreate bool) setting.Ruleset {
 		return setting.Ruleset{
 			Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive,
 			Conditions:   setting.RulesetConditions{RefName: &setting.RefNameCondition{Include: []string{"~DEFAULT_BRANCH"}, Exclude: []string{}}},
 			BypassActors: []setting.BypassActor{},
 			Rules: []setting.RulesetRule{setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{
-				RequiredStatusChecks: []setting.StatusCheck{{Context: "test"}}, StrictRequiredStatusChecksPolicy: strict, DoNotEnforceOnCreate: doNotEnforceOnCreate,
+				RequiredStatusChecks: []setting.StatusCheck{{Context: "test"}}, StrictRequiredStatusChecksPolicy: true, DoNotEnforceOnCreate: doNotEnforceOnCreate,
 			})},
 		}
 	}
-	change := changeplan.LogicalChange{DesiredState: []configuration.ManagedSetting{{Unit: unit, Desired: setting.RulesetValue(value(true, nil))}}}
+	change := changeplan.LogicalChange{DesiredState: []configuration.ManagedSetting{{Unit: unit, Desired: setting.RulesetValue(value(false))}}}
 	cases := []struct {
 		name     string
 		observed setting.Ruleset
 		want     desiredStateConfirmation
 	}{
-		{name: "value with the omitted parameter at the value GitHub sets matches", observed: value(true, new(false)), want: desiredStateMatches},
-		{name: "value whose declared parameter differs is a mismatch", observed: value(false, new(false)), want: desiredStateMismatch},
+		{name: "same value matches", observed: value(false), want: desiredStateMatches},
+		{name: "value whose do_not_enforce_on_create alone differs is a mismatch", observed: value(true), want: desiredStateMismatch},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

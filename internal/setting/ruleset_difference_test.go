@@ -11,11 +11,11 @@ func TestRuleset_DifferenceTo(t *testing.T) {
 	adminOnPullRequest := BypassActor{ActorType: BypassActorRepositoryRole, ActorID: 5, BypassMode: BypassModePullRequest}
 	maintainer := BypassActor{ActorType: BypassActorRepositoryRole, ActorID: 2, BypassMode: BypassModeAlways}
 	deployKey := BypassActor{ActorType: BypassActorDeployKey, BypassMode: BypassModeAlways}
-	noApproval := PullRequestRule(PullRequestParameters{})
-	oneApproval := PullRequestRule(PullRequestParameters{RequiredApprovingReviewCount: 1})
-	test, testByActions := StatusCheck{Context: "test"}, StatusCheck{Context: "test", IntegrationID: 15368}
 	merge, squash, rebase := AllowedMergeMethodMerge, AllowedMergeMethodSquash, AllowedMergeMethodRebase
 	allMethods := []AllowedMergeMethod{merge, squash, rebase}
+	noApproval := pullRequestRule(0, allMethods, false)
+	oneApproval := pullRequestRule(1, allMethods, false)
+	test, testByActions := StatusCheck{Context: "test"}, StatusCheck{Context: "test", IntegrationID: 15368}
 	cases := []struct {
 		name  string
 		from  Ruleset
@@ -121,81 +121,45 @@ func TestRuleset_DifferenceTo(t *testing.T) {
 		},
 		{
 			name: "status check differing only in integration_id removes and adds the rule",
-			from: newTestRuleset(withRules(statusChecksRule(false, nil, test))),
-			to:   newTestRuleset(withRules(statusChecksRule(false, nil, testByActions))),
-			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, nil, test)}, RulesAdded: []RulesetRule{statusChecksRule(false, nil, testByActions)}},
+			from: newTestRuleset(withRules(statusChecksRule(false, false, test))),
+			to:   newTestRuleset(withRules(statusChecksRule(false, false, testByActions))),
+			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, false, test)}, RulesAdded: []RulesetRule{statusChecksRule(false, false, testByActions)}},
 		},
 		{
 			name: "status checks differing only in letter case of context remove and add the rule",
-			from: newTestRuleset(withRules(statusChecksRule(false, nil, test))),
-			to:   newTestRuleset(withRules(statusChecksRule(false, nil, StatusCheck{Context: "Test"}))),
-			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, nil, test)}, RulesAdded: []RulesetRule{statusChecksRule(false, nil, StatusCheck{Context: "Test"})}},
+			from: newTestRuleset(withRules(statusChecksRule(false, false, test))),
+			to:   newTestRuleset(withRules(statusChecksRule(false, false, StatusCheck{Context: "Test"}))),
+			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, false, test)}, RulesAdded: []RulesetRule{statusChecksRule(false, false, StatusCheck{Context: "Test"})}},
 		},
 		{
 			name: "different strict policy removes and adds the rule",
-			from: newTestRuleset(withRules(statusChecksRule(false, nil, test))),
-			to:   newTestRuleset(withRules(statusChecksRule(true, nil, test))),
-			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, nil, test)}, RulesAdded: []RulesetRule{statusChecksRule(true, nil, test)}},
+			from: newTestRuleset(withRules(statusChecksRule(false, false, test))),
+			to:   newTestRuleset(withRules(statusChecksRule(true, false, test))),
+			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, false, test)}, RulesAdded: []RulesetRule{statusChecksRule(true, false, test)}},
 		},
 		{
-			name: "do_not_enforce_on_create held by both values and different removes and adds the rule",
-			from: newTestRuleset(withRules(statusChecksRule(false, new(true), test))),
-			to:   newTestRuleset(withRules(statusChecksRule(false, new(false), test))),
-			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, new(true), test)}, RulesAdded: []RulesetRule{statusChecksRule(false, new(false), test)}},
-		},
-		{
-			name:  "do_not_enforce_on_create omitted by one value is not compared",
-			from:  newTestRuleset(withRules(statusChecksRule(false, new(true), test))),
-			to:    newTestRuleset(withRules(statusChecksRule(false, nil, test))),
-			equal: true,
-		},
-		{
-			name: "removed rule keeps the do_not_enforce_on_create that was not compared",
-			from: newTestRuleset(withRules(statusChecksRule(false, new(true), test))),
-			to:   newTestRuleset(withRules(statusChecksRule(true, nil, test))),
-			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, new(true), test)}, RulesAdded: []RulesetRule{statusChecksRule(true, nil, test)}},
+			name: "different do_not_enforce_on_create removes and adds the rule",
+			from: newTestRuleset(withRules(statusChecksRule(false, true, test))),
+			to:   newTestRuleset(withRules(statusChecksRule(false, false, test))),
+			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, true, test)}, RulesAdded: []RulesetRule{statusChecksRule(false, false, test)}},
 		},
 		{
 			name:  "allowed_merge_methods differing only in order and duplicates have no difference",
-			from:  newTestRuleset(withRules(pullRequestRule(0, []AllowedMergeMethod{merge, squash, rebase, rebase}, new(true)))),
-			to:    newTestRuleset(withRules(pullRequestRule(0, []AllowedMergeMethod{rebase, squash, merge}, new(true)))),
+			from:  newTestRuleset(withRules(pullRequestRule(0, []AllowedMergeMethod{merge, squash, rebase, rebase}, true))),
+			to:    newTestRuleset(withRules(pullRequestRule(0, []AllowedMergeMethod{rebase, squash, merge}, true))),
 			equal: true,
 		},
 		{
-			name: "allowed_merge_methods held by both values and different removes and adds the rule",
-			from: newTestRuleset(withRules(pullRequestRule(0, allMethods, new(true)))),
-			to:   newTestRuleset(withRules(pullRequestRule(0, []AllowedMergeMethod{squash}, new(true)))),
-			want: RulesetDifference{RulesRemoved: []RulesetRule{pullRequestRule(0, allMethods, new(true))}, RulesAdded: []RulesetRule{pullRequestRule(0, []AllowedMergeMethod{squash}, new(true))}},
+			name: "different set of allowed_merge_methods removes and adds the rule",
+			from: newTestRuleset(withRules(pullRequestRule(0, allMethods, true))),
+			to:   newTestRuleset(withRules(pullRequestRule(0, []AllowedMergeMethod{squash}, true))),
+			want: RulesetDifference{RulesRemoved: []RulesetRule{pullRequestRule(0, allMethods, true)}, RulesAdded: []RulesetRule{pullRequestRule(0, []AllowedMergeMethod{squash}, true)}},
 		},
 		{
-			name: "require_extra_approval_for_unattributed_changes held by both values and different removes and adds the rule",
-			from: newTestRuleset(withRules(pullRequestRule(0, allMethods, new(true)))),
-			to:   newTestRuleset(withRules(pullRequestRule(0, allMethods, new(false)))),
-			want: RulesetDifference{RulesRemoved: []RulesetRule{pullRequestRule(0, allMethods, new(true))}, RulesAdded: []RulesetRule{pullRequestRule(0, allMethods, new(false))}},
-		},
-		{
-			name:  "require_extra_approval_for_unattributed_changes omitted by one value is not compared",
-			from:  newTestRuleset(withRules(pullRequestRule(0, allMethods, new(false)))),
-			to:    newTestRuleset(withRules(pullRequestRule(0, allMethods, nil))),
-			equal: true,
-		},
-		{
-			name: "parameter declared beside an omitted one in the same rule is compared",
-			from: newTestRuleset(withRules(pullRequestRule(0, []AllowedMergeMethod{squash}, new(true)))),
-			to:   newTestRuleset(withRules(pullRequestRule(0, nil, new(false)))),
-			want: RulesetDifference{RulesRemoved: []RulesetRule{pullRequestRule(0, []AllowedMergeMethod{squash}, new(true))}, RulesAdded: []RulesetRule{pullRequestRule(0, nil, new(false))}},
-		},
-		{
-			name:  "parameter declared beside an omitted one that matches has no difference",
-			from:  newTestRuleset(withRules(pullRequestRule(0, []AllowedMergeMethod{squash}, new(true)))),
-			to:    newTestRuleset(withRules(pullRequestRule(0, nil, new(true)))),
-			equal: true,
-		},
-		{
-			name: "parameter omitted in another rule type does not stop comparing a declared one",
-			from: newTestRuleset(withRules(pullRequestRule(0, allMethods, new(true)), statusChecksRule(false, new(false), test))),
-			to:   newTestRuleset(withRules(pullRequestRule(0, nil, nil), statusChecksRule(false, new(true), test))),
-			want: RulesetDifference{RulesRemoved: []RulesetRule{statusChecksRule(false, new(false), test)}, RulesAdded: []RulesetRule{statusChecksRule(false, new(true), test)}},
+			name: "different require_extra_approval_for_unattributed_changes removes and adds the rule",
+			from: newTestRuleset(withRules(pullRequestRule(0, allMethods, true))),
+			to:   newTestRuleset(withRules(pullRequestRule(0, allMethods, false))),
+			want: RulesetDifference{RulesRemoved: []RulesetRule{pullRequestRule(0, allMethods, true)}, RulesAdded: []RulesetRule{pullRequestRule(0, allMethods, false)}},
 		},
 		{
 			name: "duplicated elements are reported once",
@@ -252,58 +216,59 @@ func TestRulesetDifference_Empty(t *testing.T) {
 func TestPullRequestParameters_DifferenceTo(t *testing.T) {
 	merge, squash, rebase := AllowedMergeMethodMerge, AllowedMergeMethodSquash, AllowedMergeMethodRebase
 	all := []AllowedMergeMethod{merge, squash, rebase}
-	parameters := func(methods []AllowedMergeMethod, extraApproval *bool) PullRequestParameters {
-		return PullRequestParameters{AllowedMergeMethods: methods, RequireExtraApprovalForUnattributedChanges: extraApproval}
+	// parameters は、許すマージ方式をすべて許し、ほかの項目がゼロ値のパラメータを change で一つ変えて作る。
+	parameters := func(change func(*PullRequestParameters)) PullRequestParameters {
+		p := PullRequestParameters{AllowedMergeMethods: all}
+		change(&p)
+		return p
 	}
+	unchanged := func(*PullRequestParameters) {}
 	cases := []struct {
 		name     string
 		from, to PullRequestParameters
 		want     PullRequestDifference
 	}{
-		{name: "same parameters have no difference", from: parameters(all, new(true)), to: parameters(all, new(true))},
+		{name: "same parameters have no difference", from: parameters(unchanged), to: parameters(unchanged)},
 		{
 			name: "different required_approving_review_count is a change",
-			from: PullRequestParameters{}, to: PullRequestParameters{RequiredApprovingReviewCount: 1},
+			from: parameters(unchanged), to: parameters(func(p *PullRequestParameters) { p.RequiredApprovingReviewCount = 1 }),
 			want: PullRequestDifference{RequiredApprovingReviewCountChanged: true},
 		},
 		{
 			name: "different dismiss_stale_reviews_on_push is a change",
-			from: PullRequestParameters{}, to: PullRequestParameters{DismissStaleReviewsOnPush: true},
+			from: parameters(unchanged), to: parameters(func(p *PullRequestParameters) { p.DismissStaleReviewsOnPush = true }),
 			want: PullRequestDifference{DismissStaleReviewsOnPushChanged: true},
 		},
 		{
 			name: "different require_code_owner_review is a change",
-			from: PullRequestParameters{}, to: PullRequestParameters{RequireCodeOwnerReview: true},
+			from: parameters(unchanged), to: parameters(func(p *PullRequestParameters) { p.RequireCodeOwnerReview = true }),
 			want: PullRequestDifference{RequireCodeOwnerReviewChanged: true},
 		},
 		{
 			name: "different require_last_push_approval is a change",
-			from: PullRequestParameters{}, to: PullRequestParameters{RequireLastPushApproval: true},
+			from: parameters(unchanged), to: parameters(func(p *PullRequestParameters) { p.RequireLastPushApproval = true }),
 			want: PullRequestDifference{RequireLastPushApprovalChanged: true},
 		},
 		{
 			name: "different required_review_thread_resolution is a change",
-			from: PullRequestParameters{}, to: PullRequestParameters{RequiredReviewThreadResolution: true},
+			from: parameters(unchanged), to: parameters(func(p *PullRequestParameters) { p.RequiredReviewThreadResolution = true }),
 			want: PullRequestDifference{RequiredReviewThreadResolutionChanged: true},
 		},
 		{
 			name: "allowed_merge_methods differing only in order and duplicates have no difference",
-			from: parameters([]AllowedMergeMethod{squash, squash, merge}, nil), to: parameters([]AllowedMergeMethod{merge, squash}, nil),
+			from: parameters(func(p *PullRequestParameters) { p.AllowedMergeMethods = []AllowedMergeMethod{squash, squash, merge} }),
+			to:   parameters(func(p *PullRequestParameters) { p.AllowedMergeMethods = []AllowedMergeMethod{merge, squash} }),
 		},
 		{
-			name: "allowed_merge_methods held by both and different is a change",
-			from: parameters(all, nil), to: parameters([]AllowedMergeMethod{rebase}, nil),
+			name: "different set of allowed_merge_methods is a change",
+			from: parameters(unchanged), to: parameters(func(p *PullRequestParameters) { p.AllowedMergeMethods = []AllowedMergeMethod{rebase} }),
 			want: PullRequestDifference{AllowedMergeMethodsChanged: true},
 		},
-		{name: "allowed_merge_methods omitted by the argument is not compared", from: parameters(all, nil), to: parameters(nil, nil)},
-		{name: "allowed_merge_methods omitted by the receiver is not compared", from: parameters(nil, nil), to: parameters([]AllowedMergeMethod{squash}, nil)},
 		{
-			name: "require_extra_approval_for_unattributed_changes held by both and different is a change",
-			from: parameters(nil, new(true)), to: parameters(nil, new(false)),
+			name: "different require_extra_approval_for_unattributed_changes is a change",
+			from: parameters(unchanged), to: parameters(func(p *PullRequestParameters) { p.RequireExtraApprovalForUnattributedChanges = true }),
 			want: PullRequestDifference{RequireExtraApprovalForUnattributedChangesChanged: true},
 		},
-		{name: "require_extra_approval_for_unattributed_changes omitted by the argument is not compared", from: parameters(nil, new(true)), to: parameters(nil, nil)},
-		{name: "require_extra_approval_for_unattributed_changes omitted by the receiver is not compared", from: parameters(nil, nil), to: parameters(nil, new(false))},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -349,7 +314,7 @@ func TestPullRequestDifference_Empty(t *testing.T) {
 //trace:checks FR-005
 func TestRequiredStatusChecksParameters_DifferenceTo(t *testing.T) {
 	test, testByActions, lint := StatusCheck{Context: "test"}, StatusCheck{Context: "test", IntegrationID: 15368}, StatusCheck{Context: "lint"}
-	parameters := func(strict bool, doNotEnforceOnCreate *bool, checks ...StatusCheck) RequiredStatusChecksParameters {
+	parameters := func(strict bool, doNotEnforceOnCreate bool, checks ...StatusCheck) RequiredStatusChecksParameters {
 		return RequiredStatusChecksParameters{RequiredStatusChecks: checks, StrictRequiredStatusChecksPolicy: strict, DoNotEnforceOnCreate: doNotEnforceOnCreate}
 	}
 	cases := []struct {
@@ -357,19 +322,17 @@ func TestRequiredStatusChecksParameters_DifferenceTo(t *testing.T) {
 		from, to RequiredStatusChecksParameters
 		want     RequiredStatusChecksDifference
 	}{
-		{name: "same parameters have no difference", from: parameters(true, new(true), test), to: parameters(true, new(true), test)},
-		{name: "checks differing only in order and duplicates have no difference", from: parameters(false, nil, test, lint, lint), to: parameters(false, nil, lint, test)},
-		{name: "empty checks have no difference", from: parameters(false, nil), to: parameters(false, nil)},
+		{name: "same parameters have no difference", from: parameters(true, true, test), to: parameters(true, true, test)},
+		{name: "checks differing only in order and duplicates have no difference", from: parameters(false, false, test, lint, lint), to: parameters(false, false, lint, test)},
+		{name: "empty checks have no difference", from: parameters(false, false), to: parameters(false, false)},
 		{
 			name: "removed checks follow the receiver's order once each and added ones the argument's order",
-			from: parameters(false, nil, lint, test, lint),
-			to:   parameters(false, nil, testByActions),
+			from: parameters(false, false, lint, test, lint),
+			to:   parameters(false, false, testByActions),
 			want: RequiredStatusChecksDifference{ChecksRemoved: []StatusCheck{lint, test}, ChecksAdded: []StatusCheck{testByActions}},
 		},
-		{name: "different strict policy is a strict policy change", from: parameters(false, nil), to: parameters(true, nil), want: RequiredStatusChecksDifference{StrictPolicyChanged: true}},
-		{name: "do_not_enforce_on_create held by both and different is a change", from: parameters(false, new(true)), to: parameters(false, new(false)), want: RequiredStatusChecksDifference{DoNotEnforceOnCreateChanged: true}},
-		{name: "do_not_enforce_on_create omitted by the argument is not compared", from: parameters(false, new(true)), to: parameters(false, nil)},
-		{name: "do_not_enforce_on_create omitted by the receiver is not compared", from: parameters(false, nil), to: parameters(false, new(true))},
+		{name: "different strict policy is a strict policy change", from: parameters(false, false), to: parameters(true, false), want: RequiredStatusChecksDifference{StrictPolicyChanged: true}},
+		{name: "different do_not_enforce_on_create is a change", from: parameters(false, true), to: parameters(false, false), want: RequiredStatusChecksDifference{DoNotEnforceOnCreateChanged: true}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

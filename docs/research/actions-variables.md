@@ -56,6 +56,15 @@ Environment Variables は、すべての公開リポジトリで利用でき、�
 |---|---|---|
 | `grounding` | [Deployments and environments: Environment variables](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments#environment-variables) | External Document |
 
+### 1.2 設定画面の項目
+
+Repository Variables の作成の手順は、設定画面のサイドバーの「Security」の欄の「Secrets and variables」から「Actions」ページを開き、「Variables」タブの **New repository variable** を押すと記載しています。Environment Variables の作成の手順は、「Environments」ページで開いた Environment の画面の「Environment variables」の欄で、**Add Variable** を押すと記載しています。
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `grounding` | [Store information in variables](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-variables) | External Document |
+| `grounding` | [Managing environments for deployment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments) | External Document |
+
 ## 2. 変数の名前
 
 変数の名前は、英数字（`[a-z]`、`[A-Z]`、`[0-9]`）と `_` だけからなり、空白を含まず、`GITHUB_` で始まらず、数字で始まらないと記載されています。参照するときは大文字と小文字を区別せず、GitHub は入力の大文字小文字によらず名前を大文字で保存すると記載されています（この記述は「secret names」と書いている）。名前は、作られたリポジトリ、Organization、Enterprise の中で一意でなければなりません。名前の長さの上限、API がパスの名前をどう比べるか、応答の名前がどの綴りかは記載がありません。

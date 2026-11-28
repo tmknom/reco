@@ -24,7 +24,7 @@ type unexpectedOutsideChange struct {
 // Repository Variable と Environment Variable の更新操作も、その更新エンドポイントで reco が観測するのがその変数だけのため、比べない。
 // Environment Variable の更新操作は Environment を宛先に含むが、Environment の保護設定は別の更新エンドポイントの設定である。
 // Ruleset の更新エンドポイントが受け付けるのは Ruleset の値だけのため、ほかの設定は比べない。
-// 値の変更は、値が省略したパラメータを送らないため、そのパラメータだけを比べる。作成は更新直前に、削除は更新後に、比べる値がない。
+// Ruleset は、作成、値の変更、削除のどれも比べない。値の変更は値の全体を送り、宛先の Ruleset の値は期待状態の確認が比べる。作成は更新直前に、削除は更新後に、比べる値がない。
 // 比べる範囲はアーキテクチャ設計の未管理設定を保全する更新方式と、設定ごとの設計の更新方式に従う。
 // 未定義の種類は比べる範囲が決まらないため、不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.ObservationResult, after github.ObservationResult) []unexpectedOutsideChange {
@@ -45,13 +45,10 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.O
 			changeplan.ReviewerSetUpdate, changeplan.PreventSelfReviewUpdate, changeplan.WaitTimerUpdate:
 			changes = append(changes, environmentPutOutsideChanges(operation.Unit.Environment, change.ExcludedFromOutsideSettings(), b, after)...)
 			continue
-		case changeplan.RulesetValueUpdate:
-			changes = append(changes, rulesetOmittedParameterChanges(operation, b, after)...)
-			continue
 		case changeplan.DeploymentPatternAddition, changeplan.DeploymentPatternRemoval,
 			changeplan.RepositoryVariableCreation, changeplan.RepositoryVariableValueUpdate, changeplan.RepositoryVariableDeletion,
 			changeplan.EnvironmentVariableCreation, changeplan.EnvironmentVariableValueUpdate, changeplan.EnvironmentVariableDeletion,
-			changeplan.RulesetCreation, changeplan.RulesetDeletion:
+			changeplan.RulesetCreation, changeplan.RulesetValueUpdate, changeplan.RulesetDeletion:
 			continue
 		}
 		panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))
@@ -92,24 +89,6 @@ func oidcSubjectOmittedItemChanges(operation changeplan.UpdateOperation, before,
 	return []unexpectedOutsideChange{{
 		Setting: string(setting.OIDCSubject) + ".use_immutable_subject", Before: strconv.FormatBool(b), After: strconv.FormatBool(a),
 	}}
-}
-
-// rulesetOmittedParameterChanges は、Ruleset の値の変更の更新操作の値が省略したパラメータについて、更新直前と更新後の観測値の差を、
-// CLI 仕様の変更対象外の設定の名前と値の表記で返す。
-// 省略したパラメータは送らず、期待状態の確認も比べないため、GitHub が決める値のまま保たれたかの保証をここで与える。
-// 更新直前の観測は、値の変更の変更前提が成立した観測で、宛先の Ruleset の値を必ず持つ。
-// 更新後の観測で値を読めなければ、比べる値がなく返さない。期待状態の確認が、不一致か確認失敗にする。
-func rulesetOmittedParameterChanges(operation changeplan.UpdateOperation, before, after github.ObservationResult) []unexpectedOutsideChange {
-	b, _ := before.Setting(operation.Unit).Value()
-	a, afterOK := after.Setting(operation.Unit).Value()
-	if !afterOK || a.Equal(setting.Absent()) {
-		return nil
-	}
-	var changes []unexpectedOutsideChange
-	for _, c := range b.Ruleset().OmittedParameterChangesTo(a.Ruleset(), operation.Value.Ruleset()) {
-		changes = append(changes, unexpectedOutsideChange{Setting: operation.Unit.String() + "." + string(c.Rule) + "." + c.Name, Before: c.Before, After: c.After})
-	}
-	return changes
 }
 
 // environmentPutOutsideChanges は、宣言の名前 name の Environment のデプロイ元制限の方式と保護設定のうち、変更対象外の設定から除く excluded に含まれないものについて、

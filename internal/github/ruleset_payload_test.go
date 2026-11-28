@@ -34,7 +34,7 @@ func basePullRequestParameters() setting.PullRequestParameters {
 		DismissStaleReviewsOnPush:                  true,
 		RequireLastPushApproval:                    true,
 		AllowedMergeMethods:                        []setting.AllowedMergeMethod{setting.AllowedMergeMethodMerge, setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodRebase},
-		RequireExtraApprovalForUnattributedChanges: new(true),
+		RequireExtraApprovalForUnattributedChanges: true,
 	}
 }
 
@@ -50,7 +50,7 @@ func baseStatusChecksParameters() setting.RequiredStatusChecksParameters {
 	return setting.RequiredStatusChecksParameters{
 		RequiredStatusChecks:             []setting.StatusCheck{{Context: "test"}, {Context: "lint", IntegrationID: 15368}},
 		StrictRequiredStatusChecksPolicy: true,
-		DoNotEnforceOnCreate:             new(false),
+		DoNotEnforceOnCreate:             false,
 	}
 }
 
@@ -202,7 +202,7 @@ func TestDecodeRulesetInterpreted(t *testing.T) {
 			},
 			want: func(v *setting.Ruleset) {
 				withStatusChecksParameters(v, func(p *setting.RequiredStatusChecksParameters) {
-					p.DoNotEnforceOnCreate, p.StrictRequiredStatusChecksPolicy = new(true), false
+					p.DoNotEnforceOnCreate, p.StrictRequiredStatusChecksPolicy = true, false
 				})
 			},
 		},
@@ -225,7 +225,7 @@ func TestDecodeRulesetInterpreted(t *testing.T) {
 			},
 			want: func(v *setting.Ruleset) {
 				withPullRequestParameters(v, func(p *setting.PullRequestParameters) {
-					p.AllowedMergeMethods, p.RequireExtraApprovalForUnattributedChanges = []setting.AllowedMergeMethod{setting.AllowedMergeMethodRebase}, new(false)
+					p.AllowedMergeMethods, p.RequireExtraApprovalForUnattributedChanges = []setting.AllowedMergeMethod{setting.AllowedMergeMethodRebase}, false
 				})
 			},
 		},

@@ -109,8 +109,8 @@ func TestText(t *testing.T) {
 			},
 			want: "Configuration: ./reco.yaml\n\nRepository: owner/repo\n" +
 				"  general.allow_auto_merge: false -> true\n" +
-				"  actions.workflow.default_workflow_permissions: write -> read\n" +
-				"  actions.workflow.can_approve_pull_request_reviews: true -> false\n\n" +
+				"  actions.workflow_permissions.default_workflow_permissions: write -> read\n" +
+				"  actions.workflow_permissions.can_approve_pull_request_reviews: true -> false\n\n" +
 				"Plan: 1 repository to update, 3 changes\nRepositories checked: 1\n",
 		},
 		{
@@ -272,7 +272,7 @@ func TestText_Repositories(t *testing.T) {
 				{Target: zeta, RepositoryID: 1, Settings: []changeplan.SettingPlan{notApplicable, workflowMismatch}},
 			},
 			want: "Configuration: ./reco.yaml\n\n" +
-				"Repository: owner/zeta\n" + notApplicableText + "  actions.workflow.default_workflow_permissions: write -> read\n\n" +
+				"Repository: owner/zeta\n" + notApplicableText + "  actions.workflow_permissions.default_workflow_permissions: write -> read\n\n" +
 				"Plan: 1 repository to update, 2 changes\nRepositories checked: 1\n\nPlan cannot be applied.\n",
 		},
 		{

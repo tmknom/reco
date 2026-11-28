@@ -209,11 +209,11 @@ Repositories checked: 1
 
 Ruleset の変更予定は、`rulesets.<名前>` の形で示し、集計では Ruleset 一つを一つの変更予定として数えます。Ruleset の値は1行に収まらないため、期待値の位置に `present` を置き、値を続く行に示します。
 
-作成は、`absent -> present` の行の下に、宣言した値の全体を `target`、`enforcement`、`include`、`exclude`、`bypass_actors`、`rules` の順で1行ずつ示します。パターンは `["~DEFAULT_BRANCH", "refs/heads/main"]` のように二重引用符で囲んでエスケープし、Bypass は `<actor_type> <actor_id> <bypass_mode>`（`DeployKey` は `DeployKey <bypass_mode>`）、ルールは `deletion`、`non_fast_forward` か、`pull_request (<パラメータ>: <値>, ...)`、`required_status_checks (<パラメータ>: <値>, ...)` の形で、どれも宣言の順に並べます。`required_status_checks` のチェックは、`context` を二重引用符で囲んでエスケープし、`integration_id` を持つチェックには ` (integration_id: <ID>)` を添えます。ルールの省略できるパラメータ（`pull_request` の `allowed_merge_methods` と `require_extra_approval_for_unattributed_changes`、`required_status_checks` の `do_not_enforce_on_create`）は、値が持つときだけ必須のパラメータのあとに示し、宣言で省略した値には示しません。`allowed_merge_methods` は `[squash, rebase]` のように、引用符で囲まずに、値の並びのまま示します。
+作成は、`absent -> present` の行の下に、宣言した値の全体を `target`、`enforcement`、`include`、`exclude`、`bypass_actors`、`rules` の順で1行ずつ示します。パターンは `["~DEFAULT_BRANCH", "refs/heads/main"]` のように二重引用符で囲んでエスケープし、Bypass は `<actor_type> <actor_id> <bypass_mode>`（`DeployKey` は `DeployKey <bypass_mode>`）、ルールは `deletion`、`non_fast_forward` か、`pull_request (<パラメータ>: <値>, ...)`、`required_status_checks (<パラメータ>: <値>, ...)` の形で、どれも宣言の順に並べます。`required_status_checks` のチェックは、`context` を二重引用符で囲んでエスケープし、`integration_id` を持つチェックには ` (integration_id: <ID>)` を添えます。ルールのパラメータは、`pull_request` の7項目と `required_status_checks` の3項目を、YAML 設定仕様のパラメータの表の順で常に示します。`allowed_merge_methods` は `[squash, rebase]` のように、引用符で囲まずに、値の並びのまま示します。
 
 ```text
 pull_request (required_approving_review_count: 1, dismiss_stale_reviews_on_push: false, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false, allowed_merge_methods: [squash, rebase], require_extra_approval_for_unattributed_changes: false)
-required_status_checks (required_status_checks: ["test", "lint" (integration_id: 15368)], strict_required_status_checks_policy: true)
+required_status_checks (required_status_checks: ["test", "lint" (integration_id: 15368)], strict_required_status_checks_policy: true, do_not_enforce_on_create: false)
 ```
 
 ```text
@@ -224,13 +224,13 @@ Repository: example/project-a
     include: ["~DEFAULT_BRANCH"]
     exclude: []
     bypass_actors: [RepositoryRole 5 always]
-    rules: [pull_request (required_approving_review_count: 0, dismiss_stale_reviews_on_push: false, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false), deletion]
+    rules: [pull_request (required_approving_review_count: 0, dismiss_stale_reviews_on_push: false, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false, allowed_merge_methods: [merge, squash, rebase], require_extra_approval_for_unattributed_changes: true), deletion]
 
 Plan: 1 repository to update, 1 change
 Repositories checked: 1
 ```
 
-存在しないことを宣言した Ruleset の削除は、`present -> absent` の行の下に、消える Ruleset の計画時の値の全体を、作成と同じ順と表記で1行ずつ示します。値は GitHub が返したもので、パターン、Bypass、ルール、チェック、`allowed_merge_methods` は返った順に、重複も残して示します。ルールの省略できるパラメータは、観測した値が必ず持つため、必ず示します。`ref_name` を持たない Ruleset は、`include` と `exclude` の行の代わりに `conditions: {}` の1行を示します（6章と同じ表記）。`enforcement: evaluate` のように設定宣言に書けない値も、そのまま示します。存在しない Ruleset に存在しないことを宣言した場合は一致であり、行を示しません。
+存在しないことを宣言した Ruleset の削除は、`present -> absent` の行の下に、消える Ruleset の計画時の値の全体を、作成と同じ順と表記で1行ずつ示します。値は GitHub が返したもので、パターン、Bypass、ルール、チェック、`allowed_merge_methods` は返った順に、重複も残して示します。`ref_name` を持たない Ruleset は、`include` と `exclude` の行の代わりに `conditions: {}` の1行を示します（6章と同じ表記）。`enforcement: evaluate` のように設定宣言に書けない値も、そのまま示します。存在しない Ruleset に存在しないことを宣言した場合は一致であり、行を示しません。
 
 ```text
 Repository: example/project-a
@@ -259,7 +259,7 @@ Repositories checked: 1
 | `Bypass actor <actor_type> <actor_id>: <現在の方式> -> <期待する方式>` | 同じ主体の Bypass で、`bypass_mode` だけが変わる |
 | `Rules to remove:`、`Rules to add:` | なくなるルール、加わるルール |
 | `Required status checks to remove:`、`Required status checks to add:` | 同じ型の `required_status_checks` のルールで、なくなるチェック、加わるチェック。`integration_id` だけが違うチェックは、なくなるチェックと加わるチェックとして示す |
-| `Rule <ルール型>: <パラメータ>: <現在値> -> <期待値>, ...` | 同じ型のルールで、真偽値か整数のパラメータか、`pull_request` の `allowed_merge_methods` が変わる。変わるパラメータだけを示す。`allowed_merge_methods` は方式の集合が違うときだけ、作成と同じ表記で `[merge, squash, rebase] -> [squash]` と示す。省略できるパラメータは、宣言したときだけ示す |
+| `Rule <ルール型>: <パラメータ>: <現在値> -> <期待値>, ...` | 同じ型のルールで、真偽値か整数のパラメータか、`pull_request` の `allowed_merge_methods` が変わる。変わるパラメータだけを示す。`allowed_merge_methods` は方式の集合が違うときだけ、作成と同じ表記で `[merge, squash, rebase] -> [squash]` と示す |
 
 なくなる要素は現在値の順、加わる要素は期待値の順に並べ、要素の表記は作成と同じです。なくなるルールはパラメータを含めて示します。集合として比べるため、順序だけの違いと、GitHub 上の重複した要素は示しません。同じ型のルールの組が二つ以上あれば、ルールの行とチェックの行は、組ごとに期待値のルールの順で示します。
 
@@ -363,7 +363,7 @@ Repository: example/project-a
   general.allow_auto_merge: false -> true
 
 Repository: example/project-c
-  actions.workflow.default_workflow_permissions: write -> read
+  actions.workflow_permissions.default_workflow_permissions: write -> read
 
 Plan: 2 repositories to update, 2 changes
 Repositories checked: 3
@@ -532,24 +532,6 @@ Repository: example/project-a
   rulesets.legacy: (uninterpreted parts) -> absent
     Applicability: not applicable (the ruleset on GitHub contains parts that reco does not interpret; remove this ruleset from the configuration)
       rule type: "creation"
-
-Plan: 1 repository to update, 1 change
-Repositories checked: 1
-
-Plan cannot be applied.
-```
-
-省略したパラメータを GitHub が変えることによる適用不能では、`Applicability:` の行の下に、そのパラメータを `<ルール型>.<パラメータ>: <現在値>` の形で1行に一つずつ、宣言のルールの順に、同じルールの中では YAML 設定仕様のパラメータの表の順に示します。現在値の表記は作成と同じで、`allowed_merge_methods` は GitHub が返した並びのまま示します。
-
-```text
-Repository: example/project-a
-  rulesets.protect-default-branch:
-    Rule pull_request: required_approving_review_count: 0 -> 1
-    Rule required_status_checks: strict_required_status_checks_policy: false -> true
-    Applicability: not applicable (updating the ruleset would change parameters that the configuration omits to the values GitHub sets; declare them in the configuration)
-      pull_request.allowed_merge_methods: [squash]
-      pull_request.require_extra_approval_for_unattributed_changes: false
-      required_status_checks.do_not_enforce_on_create: true
 
 Plan: 1 repository to update, 1 change
 Repositories checked: 1
@@ -759,7 +741,7 @@ Repository: example/project-a
   general.allow_auto_merge: false -> true
 
 Repository: example/project-c
-  actions.workflow.default_workflow_permissions: write -> read
+  actions.workflow_permissions.default_workflow_permissions: write -> read
 
 Plan: 2 repositories to update, 2 changes
 Repositories checked: 3
@@ -858,7 +840,7 @@ Ruleset の作成か値の変更のあとに Ruleset が存在しなかった場
 
 更新直前か更新後の片方で GitHub が reco の知らない値を返し、もう片方で値を返した変更対象外の設定は、変化として示し、知らない値の側を4章と同じ `(unknown value)` と示します。知らない値は reco の知るどの値とも異なるためです。
 
-設定グループの省略できる項目を省略した宣言で、その項目が更新の前後で変わった場合は、`<管理設定の名前>.<項目のキー>` の名前で示します。OIDC トークンの subject のカスタマイズの `use_immutable_subject` は、`actions.oidc_subject.use_immutable_subject` と示し、値は `true` か `false` です。Ruleset のルールの省略できるパラメータは、`<管理設定の名前>.<ルール型>.<パラメータ>` の名前で示します。`required_status_checks` の `do_not_enforce_on_create` は、`rulesets.<名前>.required_status_checks.do_not_enforce_on_create` と示し、値は `true` か `false` です。`pull_request` の `allowed_merge_methods` と `require_extra_approval_for_unattributed_changes` は、`rulesets.<名前>.pull_request.allowed_merge_methods` などと示し、値は4章と同じ表記です。`allowed_merge_methods` は集合として比べ、並びだけの変化は示しません。
+設定グループの省略できる項目を省略した宣言で、その項目が更新の前後で変わった場合は、`<管理設定の名前>.<項目のキー>` の名前で示します。OIDC トークンの subject のカスタマイズの `use_immutable_subject` は、`actions.oidc_subject.use_immutable_subject` と示し、値は `true` か `false` です。
 
 更新操作が成功したのに期待状態と一致しない場合、reco は原因を断定しません。設定ごとの設計が原因の候補を挙げている場合は、`Possible cause:` として可能性の形で添えます。更新操作の成否が不明な場合は添えません。
 
@@ -870,7 +852,7 @@ Ruleset の作成か値の変更のあとに Ruleset が存在しなかった場
 Applying changes...
   example/project-a
     general.allow_auto_merge: updated
-    actions.workflow.default_workflow_permissions: failed
+    actions.workflow_permissions.default_workflow_permissions: failed
       Update request: succeeded
       Desired state: not confirmed (read failed)
   example/project-b: not attempted
@@ -882,7 +864,7 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 この例で stderr へ表示するエラーは次のとおりです。
 
 ```text
-{"time":"...","level":"ERROR","msg":"command failed","error":"change actions.workflow.default_workflow_permissions failed: fetch workflow permissions example/project-a: unexpected response (HTTP 502)"}
+{"time":"...","level":"ERROR","msg":"command failed","error":"change actions.workflow_permissions.default_workflow_permissions failed: fetch workflow permissions example/project-a: unexpected response (HTTP 502)"}
 ```
 
 ```text
@@ -1045,7 +1027,7 @@ Applying changes...
       Update request (actions.permissions.allowed_actions): succeeded
       Update request (actions.permissions.selected_actions): rejected
       Desired state: does not match (actions.permissions.selected_actions)
-    actions.workflow.default_workflow_permissions: not attempted
+    actions.workflow_permissions.default_workflow_permissions: not attempted
       Stopped: a preceding change did not complete
 
 Note: Some changes may already have been applied. No automatic rollback was performed. Run reco plan to see the remaining changes.
@@ -1162,7 +1144,7 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 
 `show` は設定宣言を使用せず、指定リポジトリについて GitHub から確認できた管理設定の値と関連リソースを表示します。認証・権限・通信による観測操作の失敗は、正常な観測結果ではなくエラーとします。GitHub の設定は変更しません。
 
-表示は、YAML 設定仕様の設定宣言と同じ構造の YAML です。ルートの `repositories` に、`name` を指定したリポジトリとする要素を一つ置き、その下に `general`、`actions`（`permissions`、`workflow`、`access`、`fork_pr_contributor_approval`、`fork_pr_workflows_private_repos`、`artifact_and_log_retention`、`oidc_subject`、`variables`）、`environments`、`security`、`rulesets` の順で、確認できた値を設定宣言のキーで示します。`name` には、GitHub が返す名前ではなく、`--repo` に指定したリポジトリ指定を示します。観測操作の失敗の文言と同じ名前で対象を示すためです。設定宣言と同じ構造にするのは、表示から設定宣言のどこに何を書けばよいかを読み取れるようにし、表示をそのまま設定宣言の出発点にできるようにするためです。観測した値が設定宣言の入力検証を通る場合（この章の末尾）、表示を変えずに設定宣言として読むと、管理範囲は表示したすべての管理設定と Environment と Repository Variable と Environment Variable と Ruleset になり、期待値は観測時点の値と一致します。
+表示は、YAML 設定仕様の設定宣言と同じ構造の YAML です。ルートの `repositories` に、`name` を指定したリポジトリとする要素を一つ置き、その下に `general`、`actions`（`permissions`、`workflow_permissions`、`access`、`fork_pr_contributor_approval`、`fork_pr_workflows_private_repos`、`artifact_and_log_retention`、`oidc_subject`、`variables`）、`environments`、`security`、`rulesets` の順で、確認できた値を設定宣言のキーで示します。`name` には、GitHub が返す名前ではなく、`--repo` に指定したリポジトリ指定を示します。観測操作の失敗の文言と同じ名前で対象を示すためです。設定宣言と同じ構造にするのは、表示から設定宣言のどこに何を書けばよいかを読み取れるようにし、表示をそのまま設定宣言の出発点にできるようにするためです。観測した値が設定宣言の入力検証を通る場合（この章の末尾）、表示を変えずに設定宣言として読むと、管理範囲は表示したすべての管理設定と Environment と Repository Variable と Environment Variable と Ruleset になり、期待値は観測時点の値と一致します。
 
 ```text
 $ reco show --repo example/project-a
@@ -1190,7 +1172,7 @@ repositories:
         enabled: true
         allowed_actions: all
         sha_pinning_required: false
-      workflow:
+      workflow_permissions:
         default_workflow_permissions: read
         can_approve_pull_request_reviews: false
       access:

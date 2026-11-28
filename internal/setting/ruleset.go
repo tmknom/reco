@@ -128,7 +128,7 @@ func ParseBypassMode(s string) (BypassMode, bool) {
 }
 
 // RulesetRule は、Ruleset のルール。型に合わないパラメータを持たないよう、フィールドを公開せずコンストラクタでだけ作る。
-// パラメータのスライスとポインタは、コンストラクタとアクセサが複製し、作った後に誰も書き換えられない。そのため、ルールの並びの浅い写しで Ruleset を複製できる。
+// パラメータのスライスは、コンストラクタとアクセサが複製し、作った後に誰も書き換えられない。そのため、ルールの並びの浅い写しで Ruleset を複製できる。
 type RulesetRule struct {
 	ruleType     RulesetRuleType
 	pullRequest  PullRequestParameters
@@ -175,18 +175,14 @@ type PullRequestParameters struct {
 	RequireCodeOwnerReview         bool
 	RequireLastPushApproval        bool
 	RequiredReviewThreadResolution bool
-	// AllowedMergeMethods は省略できるパラメータで、nil は宣言が省略したことを表す。持つなら1件以上で、受け取った順のまま重複も残す。観測した値は必ず持つ。
-	AllowedMergeMethods []AllowedMergeMethod
-	// RequireExtraApprovalForUnattributedChanges は省略できるパラメータで、nil は宣言が省略したことを表す。観測した値は必ず持つ。
-	RequireExtraApprovalForUnattributedChanges *bool
+	// AllowedMergeMethods は1件以上で、受け取った順のまま重複も残す。
+	AllowedMergeMethods                        []AllowedMergeMethod
+	RequireExtraApprovalForUnattributedChanges bool
 }
 
-// clone は、スライスとポインタを共有しない写しを返す。省略を表す nil は nil のまま残す。
+// clone は、スライスを共有しない写しを返す。
 func (p PullRequestParameters) clone() PullRequestParameters {
 	p.AllowedMergeMethods = slices.Clone(p.AllowedMergeMethods)
-	if p.RequireExtraApprovalForUnattributedChanges != nil {
-		p.RequireExtraApprovalForUnattributedChanges = new(*p.RequireExtraApprovalForUnattributedChanges)
-	}
 	return p
 }
 
@@ -221,10 +217,10 @@ func AllowedMergeMethodsText(methods []AllowedMergeMethod) string {
 }
 
 // PullRequestRule は、パラメータ parameters を持つ pull_request のルールを作る。
-// nil でない空の AllowedMergeMethods と定義にない方式は、宣言も観測も作らないため、不変条件の破れとして panic する。
+// 方式を持たない AllowedMergeMethods と定義にない方式は、宣言も観測も作らないため、不変条件の破れとして panic する。
 // 定義にない方式を通すと、引用符で囲まずに示す表示が変更計画の行を偽装し得る。
 func PullRequestRule(parameters PullRequestParameters) RulesetRule {
-	if parameters.AllowedMergeMethods != nil && len(parameters.AllowedMergeMethods) == 0 {
+	if len(parameters.AllowedMergeMethods) == 0 {
 		panic("setting: pull_request rule with empty allowed_merge_methods")
 	}
 	for _, m := range parameters.AllowedMergeMethods {
@@ -240,16 +236,12 @@ type RequiredStatusChecksParameters struct {
 	// RequiredStatusChecks は受け取った順のまま、重複も残して持つ。順は意味を持たないが、表示に使う。
 	RequiredStatusChecks             []StatusCheck
 	StrictRequiredStatusChecksPolicy bool
-	// DoNotEnforceOnCreate は省略できるパラメータで、nil は宣言が省略したことを表す。観測した値は必ず持つ。
-	DoNotEnforceOnCreate *bool
+	DoNotEnforceOnCreate             bool
 }
 
-// clone は、スライスとポインタを共有しない写しを返す。
+// clone は、スライスを共有しない写しを返す。
 func (p RequiredStatusChecksParameters) clone() RequiredStatusChecksParameters {
 	p.RequiredStatusChecks = slices.Clone(p.RequiredStatusChecks)
-	if p.DoNotEnforceOnCreate != nil {
-		p.DoNotEnforceOnCreate = new(*p.DoNotEnforceOnCreate)
-	}
 	return p
 }
 

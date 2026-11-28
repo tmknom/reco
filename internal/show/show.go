@@ -98,9 +98,9 @@ func writePatternsAllowed(b *strings.Builder, patterns []string) {
 	}
 }
 
-// writeWorkflowPermissions は actions.workflow を書く。
+// writeWorkflowPermissions は actions.workflow_permissions を書く。
 func writeWorkflowPermissions(b *strings.Builder, w github.WorkflowPermissions) {
-	b.WriteString("      workflow:\n")
+	b.WriteString("      workflow_permissions:\n")
 	if level, ok := w.DefaultWorkflowPermissions.Value(); ok {
 		fmt.Fprintf(b, "        default_workflow_permissions: %s\n", level)
 	} else {

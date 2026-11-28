@@ -304,7 +304,7 @@ func TestWriteChangeReport_SingleChange(t *testing.T) {
 				}},
 			},
 			want: "  owner/repo: failed\n    Update request: succeeded\n    Desired state: matches\n" +
-				"    Other settings: actions.workflow.default_workflow_permissions changed read -> write (cause not determined)\n\n" +
+				"    Other settings: actions.workflow_permissions.default_workflow_permissions changed read -> write (cause not determined)\n\n" +
 				rollbackNote,
 		},
 		{
@@ -466,7 +466,7 @@ func TestWriteChangeReport_MultipleChanges(t *testing.T) {
 				"      Update request (actions.permissions.allowed_actions): succeeded\n" +
 				"      Update request (actions.permissions.selected_actions): rejected\n" +
 				"      Desired state: does not match (actions.permissions.selected_actions)\n" +
-				"    actions.workflow.default_workflow_permissions: not attempted\n" +
+				"    actions.workflow_permissions.default_workflow_permissions: not attempted\n" +
 				"      Stopped: a preceding change did not complete\n\n" +
 				rollbackNote,
 		},

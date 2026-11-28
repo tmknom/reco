@@ -314,7 +314,7 @@ func (d document) typedRulesetRule(ruleType setting.RulesetRuleType, parametersN
 	panic(fmt.Sprintf("configuration: undefined ruleset rule type %q", ruleType))
 }
 
-// pullRequestParameters は、pull_request のルールの必須の 5 項目と、省略できる 2 項目を読む。省略した項目は nil のまま残す。
+// pullRequestParameters は、pull_request のルールの 7 項目を読む。
 // 判定は、キーの集合、承認数、4 つの真偽値、allowed_merge_methods、require_extra_approval_for_unattributed_changes の順に行う。
 func (d document) pullRequestParameters(n *yaml.Node, path string) (setting.PullRequestParameters, error) {
 	entries, err := d.mappingEntries(n, path, []string{
@@ -323,7 +323,9 @@ func (d document) pullRequestParameters(n *yaml.Node, path string) (setting.Pull
 		"require_code_owner_review",
 		"require_last_push_approval",
 		"required_review_thread_resolution",
-	}, []string{"allowed_merge_methods", "require_extra_approval_for_unattributed_changes"})
+		"allowed_merge_methods",
+		"require_extra_approval_for_unattributed_changes",
+	}, nil)
 	if err != nil {
 		return setting.PullRequestParameters{}, err
 	}
@@ -348,17 +350,12 @@ func (d document) pullRequestParameters(n *yaml.Node, path string) (setting.Pull
 			return setting.PullRequestParameters{}, err
 		}
 	}
-	if node, ok := entries["allowed_merge_methods"]; ok {
-		if parameters.AllowedMergeMethods, err = d.allowedMergeMethods(node, path+".allowed_merge_methods"); err != nil {
-			return setting.PullRequestParameters{}, err
-		}
+	if parameters.AllowedMergeMethods, err = d.allowedMergeMethods(entries["allowed_merge_methods"], path+".allowed_merge_methods"); err != nil {
+		return setting.PullRequestParameters{}, err
 	}
-	if node, ok := entries["require_extra_approval_for_unattributed_changes"]; ok {
-		extraApproval, err := d.boolValue(node, path+".require_extra_approval_for_unattributed_changes")
-		if err != nil {
-			return setting.PullRequestParameters{}, err
-		}
-		parameters.RequireExtraApprovalForUnattributedChanges = &extraApproval
+	extraApprovalPath := path + ".require_extra_approval_for_unattributed_changes"
+	if parameters.RequireExtraApprovalForUnattributedChanges, err = d.boolValue(entries["require_extra_approval_for_unattributed_changes"], extraApprovalPath); err != nil {
+		return setting.PullRequestParameters{}, err
 	}
 	return parameters, nil
 }
@@ -389,10 +386,10 @@ func (d document) allowedMergeMethods(n *yaml.Node, path string) ([]setting.Allo
 	return methods, nil
 }
 
-// requiredStatusChecksParameters は、required_status_checks のルールのパラメータを読む。do_not_enforce_on_create は省略でき、省略したら nil のまま残す。
+// requiredStatusChecksParameters は、required_status_checks のルールの 3 項目を読む。
 // 判定は、キーの集合、チェック、strict_required_status_checks_policy、do_not_enforce_on_create の順に行う。
 func (d document) requiredStatusChecksParameters(n *yaml.Node, path string) (setting.RequiredStatusChecksParameters, error) {
-	entries, err := d.mappingEntries(n, path, []string{"required_status_checks", "strict_required_status_checks_policy"}, []string{"do_not_enforce_on_create"})
+	entries, err := d.mappingEntries(n, path, []string{"required_status_checks", "strict_required_status_checks_policy", "do_not_enforce_on_create"}, nil)
 	if err != nil {
 		return setting.RequiredStatusChecksParameters{}, err
 	}
@@ -404,12 +401,8 @@ func (d document) requiredStatusChecksParameters(n *yaml.Node, path string) (set
 	if parameters.StrictRequiredStatusChecksPolicy, err = d.boolValue(entries["strict_required_status_checks_policy"], strictPath); err != nil {
 		return setting.RequiredStatusChecksParameters{}, err
 	}
-	if node, ok := entries["do_not_enforce_on_create"]; ok {
-		enforce, err := d.boolValue(node, path+".do_not_enforce_on_create")
-		if err != nil {
-			return setting.RequiredStatusChecksParameters{}, err
-		}
-		parameters.DoNotEnforceOnCreate = &enforce
+	if parameters.DoNotEnforceOnCreate, err = d.boolValue(entries["do_not_enforce_on_create"], path+".do_not_enforce_on_create"); err != nil {
+		return setting.RequiredStatusChecksParameters{}, err
 	}
 	return parameters, nil
 }

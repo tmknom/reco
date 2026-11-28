@@ -1,6 +1,7 @@
 package changeplandisplay
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/tmknom/reco/internal/changeplan"
@@ -18,26 +19,23 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 	role := func(id int64, mode setting.BypassMode) setting.BypassActor {
 		return actor(setting.BypassActorRepositoryRole, id, mode)
 	}
-	pullRequest := func(p setting.PullRequestParameters) setting.RulesetRule { return setting.PullRequestRule(p) }
 	deletion := setting.DeletionRule()
-	// pullRequestOfDefaultsWithout は、必須の5項目がゼロ値の pull_request の表記の、閉じ括弧の手前までである。省略できるパラメータを続けて示す。
-	const pullRequestOfDefaultsWithout = "pull_request (required_approving_review_count: 0, dismiss_stale_reviews_on_push: false, require_code_owner_review: false, " +
-		"require_last_push_approval: false, required_review_thread_resolution: false"
-	const pullRequestOfDefaults = pullRequestOfDefaultsWithout + ")"
-	// observedDefaults は、GitHub が既定値で返す省略できるパラメータの表記で、観測したルールの表記の閉じ括弧の手前に続く。
-	const observedDefaults = ", allowed_merge_methods: [merge, squash, rebase], require_extra_approval_for_unattributed_changes: true)"
 	squash, rebase := setting.AllowedMergeMethodSquash, setting.AllowedMergeMethodRebase
 	allMethods := []setting.AllowedMergeMethod{setting.AllowedMergeMethodMerge, squash, rebase}
-	// observedPullRequest は、観測した値と同じく、省略できるパラメータを持つ pull_request のルールを作る。持たない p の項目には GitHub の既定値を入れる。
-	observedPullRequest := func(p setting.PullRequestParameters) setting.RulesetRule {
+	// pullRequest は、p の項目で pull_request のルールを作る。p が許すマージ方式を持たなければ、3方式すべてを許す。
+	pullRequest := func(p setting.PullRequestParameters) setting.RulesetRule {
 		if p.AllowedMergeMethods == nil {
 			p.AllowedMergeMethods = allMethods
 		}
-		if p.RequireExtraApprovalForUnattributedChanges == nil {
-			p.RequireExtraApprovalForUnattributedChanges = new(true)
-		}
 		return setting.PullRequestRule(p)
 	}
+	// pullRequestText は、承認数 count を持ち、ほかの項目が pullRequest の既定の pull_request の表記である。
+	pullRequestText := func(count int) string {
+		return fmt.Sprintf("pull_request (required_approving_review_count: %d, dismiss_stale_reviews_on_push: false, require_code_owner_review: false, "+
+			"require_last_push_approval: false, required_review_thread_resolution: false, allowed_merge_methods: [merge, squash, rebase], "+
+			"require_extra_approval_for_unattributed_changes: false)", count)
+	}
+	pullRequestOfDefaults := pullRequestText(0)
 	// base は、値の変更の各ケースが一つの項目だけを変える基準の値。呼ぶたびにスライスを共有しない値を返す。
 	base := func() setting.Ruleset {
 		return setting.Ruleset{
@@ -61,7 +59,7 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 	}
 	const header = "  rulesets.protect:\n"
 	test, lint := setting.StatusCheck{Context: "test"}, setting.StatusCheck{Context: "lint", IntegrationID: 15368}
-	statusChecks := func(strict bool, doNotEnforceOnCreate *bool, checks ...setting.StatusCheck) setting.RulesetRule {
+	statusChecks := func(strict bool, doNotEnforceOnCreate bool, checks ...setting.StatusCheck) setting.RulesetRule {
 		return setting.RequiredStatusChecksRule(setting.RequiredStatusChecksParameters{RequiredStatusChecks: checks, StrictRequiredStatusChecksPolicy: strict, DoNotEnforceOnCreate: doNotEnforceOnCreate})
 	}
 	rules := func(rules ...setting.RulesetRule) setting.Ruleset {
@@ -127,7 +125,7 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 					Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementDisabled,
 					Conditions:   refName([]string{"refs/heads/main"}, []string{}),
 					BypassActors: []setting.BypassActor{actor(setting.BypassActorDeployKey, 0, setting.BypassModeAlways), role(5, setting.BypassModeAlways)},
-					Rules:        []setting.RulesetRule{deletion, observedPullRequest(setting.PullRequestParameters{})},
+					Rules:        []setting.RulesetRule{deletion, pullRequest(setting.PullRequestParameters{})},
 				},
 				setting.Ruleset{
 					Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive,
@@ -153,7 +151,7 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 					Target: setting.RulesetTarget("tag"), Enforcement: setting.RulesetEnforcementEvaluate,
 					Conditions:   refName([]string{"refs/heads/main"}, []string{"refs/heads/tmp"}),
 					BypassActors: []setting.BypassActor{actor(setting.BypassActorUser, 1, setting.BypassModeAlways), role(5, setting.BypassModeAlways)},
-					Rules:        []setting.RulesetRule{observedPullRequest(setting.PullRequestParameters{})},
+					Rules:        []setting.RulesetRule{pullRequest(setting.PullRequestParameters{})},
 				},
 				setting.Ruleset{
 					Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive,
@@ -245,11 +243,11 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 			name: "removed rule is shown with its parameters",
 			s: update(
 				with(func(r *setting.Ruleset) {
-					r.Rules = []setting.RulesetRule{deletion, observedPullRequest(setting.PullRequestParameters{})}
+					r.Rules = []setting.RulesetRule{deletion, pullRequest(setting.PullRequestParameters{})}
 				}),
 				base(),
 			),
-			want: header + "    Rules to remove: [" + pullRequestOfDefaultsWithout + observedDefaults + "]\n",
+			want: header + "    Rules to remove: [" + pullRequestOfDefaults + "]\n",
 		},
 		{
 			name: "removed and added rules of different types are shown as remove then add",
@@ -267,7 +265,7 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 			name: "one changed pull_request parameter shows only that parameter",
 			s: update(
 				with(func(r *setting.Ruleset) {
-					r.Rules = []setting.RulesetRule{observedPullRequest(setting.PullRequestParameters{})}
+					r.Rules = []setting.RulesetRule{pullRequest(setting.PullRequestParameters{})}
 				}),
 				with(func(r *setting.Ruleset) {
 					r.Rules = []setting.RulesetRule{pullRequest(setting.PullRequestParameters{RequireLastPushApproval: true})}
@@ -279,7 +277,7 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 			name: "all changed pull_request parameters are shown in the parameter order",
 			s: update(
 				with(func(r *setting.Ruleset) {
-					r.Rules = []setting.RulesetRule{observedPullRequest(setting.PullRequestParameters{
+					r.Rules = []setting.RulesetRule{pullRequest(setting.PullRequestParameters{
 						RequiredApprovingReviewCount: 3, DismissStaleReviewsOnPush: true, RequireCodeOwnerReview: true, RequireLastPushApproval: true, RequiredReviewThreadResolution: true,
 					})}
 				}),
@@ -295,7 +293,7 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 			s: update(
 				with(func(r *setting.Ruleset) {
 					r.Rules = []setting.RulesetRule{
-						observedPullRequest(setting.PullRequestParameters{}), observedPullRequest(setting.PullRequestParameters{RequiredApprovingReviewCount: 2}),
+						pullRequest(setting.PullRequestParameters{}), pullRequest(setting.PullRequestParameters{RequiredApprovingReviewCount: 2}),
 					}
 				}),
 				with(func(r *setting.Ruleset) {
@@ -303,16 +301,14 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 				}),
 			),
 			want: header +
-				"    Rules to remove: [" + pullRequestOfDefaultsWithout + observedDefaults + ", pull_request (required_approving_review_count: 2, dismiss_stale_reviews_on_push: false, " +
-				"require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false" + observedDefaults + "]\n" +
-				"    Rules to add: [pull_request (required_approving_review_count: 1, dismiss_stale_reviews_on_push: false, " +
-				"require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false)]\n",
+				"    Rules to remove: [" + pullRequestOfDefaults + ", " + pullRequestText(2) + "]\n" +
+				"    Rules to add: [" + pullRequestText(1) + "]\n",
 		},
 		{
 			name: "two added rules of the same type are not combined into a parameter change",
 			s: update(
 				with(func(r *setting.Ruleset) {
-					r.Rules = []setting.RulesetRule{observedPullRequest(setting.PullRequestParameters{})}
+					r.Rules = []setting.RulesetRule{pullRequest(setting.PullRequestParameters{})}
 				}),
 				with(func(r *setting.Ruleset) {
 					r.Rules = []setting.RulesetRule{
@@ -321,29 +317,26 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 				}),
 			),
 			want: header +
-				"    Rules to remove: [" + pullRequestOfDefaultsWithout + observedDefaults + "]\n" +
-				"    Rules to add: [pull_request (required_approving_review_count: 1, dismiss_stale_reviews_on_push: false, " +
-				"require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false), " +
-				"pull_request (required_approving_review_count: 2, dismiss_stale_reviews_on_push: false, " +
-				"require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false)]\n",
+				"    Rules to remove: [" + pullRequestOfDefaults + "]\n" +
+				"    Rules to add: [" + pullRequestText(1) + ", " + pullRequestText(2) + "]\n",
 		},
 		{
-			name: "creation shows non_fast_forward and required_status_checks with quoted checks and without an omitted parameter",
+			name: "creation shows non_fast_forward and required_status_checks with quoted checks",
 			s: changeplan.SettingPlan{
 				Unit: protect, Observed: github.Observed(setting.Absent()),
-				Desired: setting.RulesetValue(rules(setting.NonFastForwardRule(), statusChecks(true, nil, test, lint, setting.StatusCheck{Context: "a\"b\n"}))),
+				Desired: setting.RulesetValue(rules(setting.NonFastForwardRule(), statusChecks(true, true, test, lint, setting.StatusCheck{Context: "a\"b\n"}))),
 				Result:  changeplan.Mismatch, Applicability: changeplan.Applicable(),
 			},
 			want: "  rulesets.protect: absent -> present\n" +
 				"    target: branch\n    enforcement: active\n    include: [\"~DEFAULT_BRANCH\"]\n    exclude: []\n    bypass_actors: [RepositoryRole 5 always]\n" +
 				"    rules: [non_fast_forward, required_status_checks (required_status_checks: [\"test\", \"lint\" (integration_id: 15368), \"a\\\"b\\n\"], " +
-				"strict_required_status_checks_policy: true)]\n",
+				"strict_required_status_checks_policy: true, do_not_enforce_on_create: true)]\n",
 		},
 		{
-			name: "creation shows a declared do_not_enforce_on_create and empty checks",
+			name: "creation shows do_not_enforce_on_create false and empty checks",
 			s: changeplan.SettingPlan{
 				Unit: protect, Observed: github.Observed(setting.Absent()),
-				Desired: setting.RulesetValue(rules(statusChecks(false, new(false)))),
+				Desired: setting.RulesetValue(rules(statusChecks(false, false))),
 				Result:  changeplan.Mismatch, Applicability: changeplan.Applicable(),
 			},
 			want: "  rulesets.protect: absent -> present\n" +
@@ -352,12 +345,12 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 		},
 		{
 			name: "removed required_status_checks rule is shown with its observed do_not_enforce_on_create",
-			s:    update(rules(deletion, statusChecks(false, new(true), test)), rules(deletion)),
+			s:    update(rules(deletion, statusChecks(false, true, test)), rules(deletion)),
 			want: header + "    Rules to remove: [required_status_checks (required_status_checks: [\"test\"], strict_required_status_checks_policy: false, do_not_enforce_on_create: true)]\n",
 		},
 		{
 			name: "changed checks and strict policy of the same rule are shown as check lines then the rule line",
-			s:    update(rules(statusChecks(false, new(false), test, test)), rules(statusChecks(true, nil, lint))),
+			s:    update(rules(statusChecks(false, false, test, test)), rules(statusChecks(true, false, lint))),
 			want: header +
 				"    Required status checks to remove: [\"test\"]\n" +
 				"    Required status checks to add: [\"lint\" (integration_id: 15368)]\n" +
@@ -365,94 +358,44 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 		},
 		{
 			name: "changed checks alone show no rule line",
-			s:    update(rules(statusChecks(true, new(true), test)), rules(statusChecks(true, nil, test, lint))),
+			s:    update(rules(statusChecks(true, true, test)), rules(statusChecks(true, true, test, lint))),
 			want: header + "    Required status checks to add: [\"lint\" (integration_id: 15368)]\n",
 		},
 		{
-			name: "declared do_not_enforce_on_create change is shown on the rule line",
-			s:    update(rules(statusChecks(false, new(false), test)), rules(statusChecks(true, new(true), test))),
+			name: "do_not_enforce_on_create change is shown on the rule line",
+			s:    update(rules(statusChecks(false, false, test)), rules(statusChecks(true, true, test))),
 			want: header + "    Rule required_status_checks: strict_required_status_checks_policy: false -> true, do_not_enforce_on_create: false -> true\n",
 		},
 		{
 			name: "changes of two paired rules are shown in the declared order of the rules",
 			s: update(
-				rules(statusChecks(false, new(false), test), observedPullRequest(setting.PullRequestParameters{})),
-				rules(pullRequest(setting.PullRequestParameters{RequiredApprovingReviewCount: 1}), statusChecks(true, nil, test)),
+				rules(statusChecks(false, false, test), pullRequest(setting.PullRequestParameters{})),
+				rules(pullRequest(setting.PullRequestParameters{RequiredApprovingReviewCount: 1}), statusChecks(true, false, test)),
 			),
 			want: header +
 				"    Rule pull_request: required_approving_review_count: 0 -> 1\n" +
 				"    Rule required_status_checks: strict_required_status_checks_policy: false -> true\n",
 		},
 		{
-			name: "creation shows declared pull_request optional parameters after the required ones in the declared order",
+			name: "creation shows allowed_merge_methods in the declared order and require_extra_approval_for_unattributed_changes true after the other parameters",
 			s: changeplan.SettingPlan{
 				Unit: protect, Observed: github.Observed(setting.Absent()),
-				Desired: setting.RulesetValue(rules(pullRequest(setting.PullRequestParameters{AllowedMergeMethods: []setting.AllowedMergeMethod{squash, rebase}, RequireExtraApprovalForUnattributedChanges: new(false)}))),
+				Desired: setting.RulesetValue(rules(pullRequest(setting.PullRequestParameters{AllowedMergeMethods: []setting.AllowedMergeMethod{squash, rebase}, RequireExtraApprovalForUnattributedChanges: true}))),
 				Result:  changeplan.Mismatch, Applicability: changeplan.Applicable(),
 			},
 			want: "  rulesets.protect: absent -> present\n" +
 				"    target: branch\n    enforcement: active\n    include: [\"~DEFAULT_BRANCH\"]\n    exclude: []\n    bypass_actors: [RepositoryRole 5 always]\n" +
-				"    rules: [" + pullRequestOfDefaultsWithout + ", allowed_merge_methods: [squash, rebase], require_extra_approval_for_unattributed_changes: false)]\n",
+				"    rules: [pull_request (required_approving_review_count: 0, dismiss_stale_reviews_on_push: false, require_code_owner_review: false, " +
+				"require_last_push_approval: false, required_review_thread_resolution: false, allowed_merge_methods: [squash, rebase], require_extra_approval_for_unattributed_changes: true)]\n",
 		},
 		{
-			name: "creation shows only the declared one of the pull_request optional parameters",
-			s: changeplan.SettingPlan{
-				Unit: protect, Observed: github.Observed(setting.Absent()),
-				Desired: setting.RulesetValue(rules(pullRequest(setting.PullRequestParameters{RequireExtraApprovalForUnattributedChanges: new(true)}))),
-				Result:  changeplan.Mismatch, Applicability: changeplan.Applicable(),
-			},
-			want: "  rulesets.protect: absent -> present\n" +
-				"    target: branch\n    enforcement: active\n    include: [\"~DEFAULT_BRANCH\"]\n    exclude: []\n    bypass_actors: [RepositoryRole 5 always]\n" +
-				"    rules: [" + pullRequestOfDefaultsWithout + ", require_extra_approval_for_unattributed_changes: true)]\n",
-		},
-		{
-			name: "declared pull_request optional parameter changes are shown after the required ones",
+			name: "allowed_merge_methods and require_extra_approval_for_unattributed_changes changes are shown after the other parameters",
 			s: update(
-				rules(pullRequest(setting.PullRequestParameters{AllowedMergeMethods: allMethods, RequireExtraApprovalForUnattributedChanges: new(true)})),
-				rules(pullRequest(setting.PullRequestParameters{RequiredApprovingReviewCount: 1, AllowedMergeMethods: []setting.AllowedMergeMethod{squash}, RequireExtraApprovalForUnattributedChanges: new(false)})),
+				rules(pullRequest(setting.PullRequestParameters{RequireExtraApprovalForUnattributedChanges: true})),
+				rules(pullRequest(setting.PullRequestParameters{RequiredApprovingReviewCount: 1, AllowedMergeMethods: []setting.AllowedMergeMethod{squash}})),
 			),
 			want: header + "    Rule pull_request: required_approving_review_count: 0 -> 1, allowed_merge_methods: [merge, squash, rebase] -> [squash], " +
 				"require_extra_approval_for_unattributed_changes: true -> false\n",
-		},
-		{
-			name: "omitted pull_request optional parameters are not shown on the rule line even when the observed values differ",
-			s: update(
-				rules(pullRequest(setting.PullRequestParameters{AllowedMergeMethods: []setting.AllowedMergeMethod{squash}, RequireExtraApprovalForUnattributedChanges: new(false)})),
-				rules(pullRequest(setting.PullRequestParameters{RequiredApprovingReviewCount: 1})),
-			),
-			want: header + "    Rule pull_request: required_approving_review_count: 0 -> 1\n",
-		},
-		{
-			name: "value change that resets omitted pull_request parameters lists each of them in order",
-			s: changeplan.SettingPlan{
-				Unit: protect, Observed: github.Observed(setting.RulesetValue(rules(pullRequest(setting.PullRequestParameters{AllowedMergeMethods: []setting.AllowedMergeMethod{squash}, RequireExtraApprovalForUnattributedChanges: new(false)})))),
-				Desired: setting.RulesetValue(rules(pullRequest(setting.PullRequestParameters{RequiredApprovingReviewCount: 1}))),
-				Result:  changeplan.Mismatch,
-				Applicability: changeplan.NotApplicableResetParameters([]setting.ResetParameter{
-					{Rule: setting.RulesetRulePullRequest, Name: "allowed_merge_methods", Value: "[squash]"},
-					{Rule: setting.RulesetRulePullRequest, Name: "require_extra_approval_for_unattributed_changes", Value: "false"},
-				}),
-			},
-			want: header +
-				"    Rule pull_request: required_approving_review_count: 0 -> 1\n" +
-				"    Applicability: not applicable (updating the ruleset would change parameters that the configuration omits to the values GitHub sets; declare them in the configuration)\n" +
-				"      pull_request.allowed_merge_methods: [squash]\n" +
-				"      pull_request.require_extra_approval_for_unattributed_changes: false\n",
-		},
-		{
-			name: "value change that resets an omitted parameter shows the applicability and each parameter with its observed value",
-			s: changeplan.SettingPlan{
-				Unit: protect, Observed: github.Observed(setting.RulesetValue(rules(statusChecks(false, new(true), test)))),
-				Desired: setting.RulesetValue(rules(statusChecks(true, nil, test))),
-				Result:  changeplan.Mismatch,
-				Applicability: changeplan.NotApplicableResetParameters([]setting.ResetParameter{
-					{Rule: setting.RulesetRuleRequiredStatusChecks, Name: "do_not_enforce_on_create", Value: "true"},
-				}),
-			},
-			want: header +
-				"    Rule required_status_checks: strict_required_status_checks_policy: false -> true\n" +
-				"    Applicability: not applicable (updating the ruleset would change parameters that the configuration omits to the values GitHub sets; declare them in the configuration)\n" +
-				"      required_status_checks.do_not_enforce_on_create: true\n",
 		},
 		{
 			name: "ruleset with uninterpreted parts shows the state, the whole declared value, the applicability, and each part in the observed order",
@@ -525,14 +468,14 @@ func TestPlannedChangeText_Rulesets(t *testing.T) {
 					Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementEvaluate,
 					Conditions:   setting.RulesetConditions{},
 					BypassActors: []setting.BypassActor{role(1, setting.BypassModeAlways), role(1, setting.BypassModeAlways)},
-					Rules:        []setting.RulesetRule{observedPullRequest(setting.PullRequestParameters{}), deletion},
+					Rules:        []setting.RulesetRule{pullRequest(setting.PullRequestParameters{}), deletion},
 				})),
 				Desired: setting.Absent(), Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 			},
 			want: header[:len(header)-2] + ": present -> absent\n" +
 				"    target: branch\n    enforcement: evaluate\n    conditions: {}\n" +
 				"    bypass_actors: [RepositoryRole 1 always, RepositoryRole 1 always]\n" +
-				"    rules: [" + pullRequestOfDefaultsWithout + observedDefaults + ", deletion]\n",
+				"    rules: [" + pullRequestOfDefaults + ", deletion]\n",
 		},
 		{
 			name: "declared absence with uninterpreted parts shows the state -> absent without value lines",
@@ -562,10 +505,10 @@ func TestPlannedChangeText_RulesetInvariantsPanic(t *testing.T) {
 	value := setting.Ruleset{
 		Target: setting.RulesetTargetBranch, Enforcement: setting.RulesetEnforcementActive,
 		Conditions:   refName([]string{"~DEFAULT_BRANCH"}, []string{}),
-		BypassActors: []setting.BypassActor{}, Rules: []setting.RulesetRule{setting.DeletionRule(), setting.PullRequestRule(setting.PullRequestParameters{})},
+		BypassActors: []setting.BypassActor{}, Rules: []setting.RulesetRule{setting.DeletionRule(), setting.NonFastForwardRule()},
 	}
 	reordered := value
-	reordered.Rules = []setting.RulesetRule{setting.PullRequestRule(setting.PullRequestParameters{}), setting.DeletionRule()}
+	reordered.Rules = []setting.RulesetRule{setting.NonFastForwardRule(), setting.DeletionRule()}
 	withoutRefName := value
 	withoutRefName.Conditions = setting.RulesetConditions{}
 	withUndefinedRule := value

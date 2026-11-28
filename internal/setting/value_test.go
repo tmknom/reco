@@ -509,7 +509,7 @@ func TestRulesetValue_IsolatesSlices(t *testing.T) {
 		{name: "exclude", change: func(r *Ruleset) { r.Conditions.RefName.Exclude[0] = "changed" }},
 		{name: "ref_name", change: func(r *Ruleset) { r.Conditions.RefName.Include = []string{"changed"} }},
 		{name: "bypass actors", change: func(r *Ruleset) { r.BypassActors[0].ActorID = 2 }},
-		{name: "rules", change: func(r *Ruleset) { r.Rules[0] = PullRequestRule(PullRequestParameters{}) }},
+		{name: "rules", change: func(r *Ruleset) { r.Rules[0] = NonFastForwardRule() }},
 	}
 	for _, c := range changes {
 		t.Run("writing to the "+c.name+" given to the constructor does not change the value", func(t *testing.T) {
@@ -625,15 +625,6 @@ func TestValue_WithItemsDeclaredIn(t *testing.T) {
 		got := BoolValue(true).WithItemsDeclaredIn(BoolValue(false))
 		if !got.Equal(BoolValue(true)) {
 			t.Errorf("WithItemsDeclaredIn() = %s, want true", got.String())
-		}
-	})
-
-	// 値の全体を置き換える更新が GitHub の決める値に変えるため、変更前提で比べる
-	t.Run("ruleset parameter omitted by the declaration is kept in the observed value", func(t *testing.T) {
-		observed := RulesetValue(newTestRuleset(withRules(statusChecksRule(false, new(true)))))
-		got := observed.WithItemsDeclaredIn(RulesetValue(newTestRuleset(withRules(statusChecksRule(false, nil)))))
-		if p := got.Ruleset().Rules[0].RequiredStatusChecks().DoNotEnforceOnCreate; p == nil || !*p {
-			t.Errorf("WithItemsDeclaredIn() do_not_enforce_on_create = %v, want true kept", p)
 		}
 	})
 }

@@ -30,8 +30,8 @@ const (
 	AllowedActions               Key = "actions.permissions.allowed_actions"
 	SelectedActions              Key = "actions.permissions.selected_actions"
 	SHAPinningRequired           Key = "actions.permissions.sha_pinning_required"
-	DefaultWorkflowPermissions   Key = "actions.workflow.default_workflow_permissions"
-	CanApprovePullRequestReviews Key = "actions.workflow.can_approve_pull_request_reviews"
+	DefaultWorkflowPermissions   Key = "actions.workflow_permissions.default_workflow_permissions"
+	CanApprovePullRequestReviews Key = "actions.workflow_permissions.can_approve_pull_request_reviews"
 	ActionsAccessLevel           Key = "actions.access.access_level"
 	// ForkPullRequestApproval は、Fork Pull Request ワークフローの承認ポリシー。
 	ForkPullRequestApproval Key = "actions.fork_pr_contributor_approval.approval_policy"
