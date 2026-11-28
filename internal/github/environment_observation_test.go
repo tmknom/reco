@@ -84,7 +84,7 @@ func TestEnvironmentObservation(t *testing.T) {
 		}
 	})
 
-	t.Run("existing environment observes its required reviewers with the same observation", func(t *testing.T) {
+	t.Run("existing environment observes its reviewer set with the same observation", func(t *testing.T) {
 		reviewers := setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}, {Type: setting.ReviewerTeam, ID: 2}})
 		withReviewerSet := func(reviewerSet SettingObservation[setting.ReviewerSet]) EnvironmentObservation {
 			return Environments{Existing: []Environment{{
@@ -105,8 +105,8 @@ func TestEnvironmentObservation(t *testing.T) {
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				if got := tc.observation.RequiredReviewers(); !reflect.DeepEqual(got, tc.want) {
-					t.Errorf("RequiredReviewers() = %+v, want %+v", got, tc.want)
+				if got := tc.observation.ReviewerSet(); !reflect.DeepEqual(got, tc.want) {
+					t.Errorf("ReviewerSet() = %+v, want %+v", got, tc.want)
 				}
 				// 担当者の集合だけが観測不能になり、同じ保護設定のほかの項目は観測値を持つ
 				if got, want := tc.observation.PreventSelfReview(), Observed(setting.BoolValue(true)); !reflect.DeepEqual(got, want) {
@@ -119,17 +119,17 @@ func TestEnvironmentObservation(t *testing.T) {
 		}
 	})
 
-	t.Run("absent environment makes its required reviewers unavailable as absent", func(t *testing.T) {
-		got, want := absent.RequiredReviewers(), Unavailable[setting.Value](UnavailableEnvironmentAbsent)
+	t.Run("absent environment makes its reviewer set unavailable as absent", func(t *testing.T) {
+		got, want := absent.ReviewerSet(), Unavailable[setting.Value](UnavailableEnvironmentAbsent)
 		if !reflect.DeepEqual(got, want) {
-			t.Errorf("RequiredReviewers() = %+v, want %+v", got, want)
+			t.Errorf("ReviewerSet() = %+v, want %+v", got, want)
 		}
 	})
 
-	t.Run("unavailable environment makes its required reviewers unavailable with the same reason", func(t *testing.T) {
-		got, want := unavailable.RequiredReviewers(), Unavailable[setting.Value](UnavailableNameUndetermined)
+	t.Run("unavailable environment makes its reviewer set unavailable with the same reason", func(t *testing.T) {
+		got, want := unavailable.ReviewerSet(), Unavailable[setting.Value](UnavailableNameUndetermined)
 		if !reflect.DeepEqual(got, want) {
-			t.Errorf("RequiredReviewers() = %+v, want %+v", got, want)
+			t.Errorf("ReviewerSet() = %+v, want %+v", got, want)
 		}
 	})
 

@@ -761,7 +761,7 @@ func TestObservationResult_SettingOfEnvironmentDeploymentBranchPolicy(t *testing
 // 担当者の異なる二つを並べ、ASCII の大小が違う宣言の名前で引く。
 //
 //trace:checks FR-004
-func TestObservationResult_SettingOfEnvironmentRequiredReviewers(t *testing.T) {
+func TestObservationResult_SettingOfEnvironmentReviewerSet(t *testing.T) {
 	reviewers := []setting.Reviewer{{Type: setting.ReviewerUser, ID: 2}}
 	observed := ObservationResult{Environments: &Environments{Existing: []Environment{
 		{ID: 1, Name: "staging", Protection: EnvironmentProtection{ReviewerSet: Observed(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}}))}},
@@ -774,12 +774,12 @@ func TestObservationResult_SettingOfEnvironmentRequiredReviewers(t *testing.T) {
 	}{
 		{
 			name: "declared name differing in ASCII case returns that environment's reviewers",
-			unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: mustEnvironmentName(t, "production")},
+			unit: setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: mustEnvironmentName(t, "production")},
 			want: Observed(setting.ReviewerSetValue(setting.ReviewerSetOf(reviewers))),
 		},
 		{
 			name: "absent environment returns UnavailableEnvironmentAbsent",
-			unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: mustEnvironmentName(t, "qa")},
+			unit: setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: mustEnvironmentName(t, "qa")},
 			want: Unavailable[setting.Value](UnavailableEnvironmentAbsent),
 		},
 	}

@@ -25,9 +25,9 @@ repositories:
         can_approve_pull_request_reviews: false
       access:
         access_level: none
-      fork_pull_requests:
+      fork_pr_contributor_approval:
         approval_policy: first_time_contributors
-      retention:
+      artifact_and_log_retention:
         days: 30
       oidc_subject:
         use_default: false
@@ -41,7 +41,7 @@ repositories:
       - name: production
         deployment_branch_policy:
           mode: protected_branches
-        required_reviewers:
+        reviewers:
           - type: User
             id: 1234567
         prevent_self_review: true
@@ -89,10 +89,10 @@ repositories:
 | `repositories` | シーケンス | 1件以上のリポジトリごとの宣言を含む |
 | `repositories[]` | マッピング | `name` と、少なくとも一つの管理設定を含む `general`、`actions`、`environments`、`security`、`rulesets` のいずれかを持つ |
 | `repositories[].name` | 文字列 | 必須。空でない `OWNER/REPO` 形式 |
-| `general`、`squash_merge_commit`、`merge_commit`、`actions`、`permissions`、`selected_actions`、`workflow`、`access`、`fork_pull_requests`、`private_repositories`、`retention`、`oidc_subject`、`security` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions`、`workflow`、`access`、`fork_pull_requests`、`retention`、`oidc_subject`、`variables` のうち一つ以上を含めばよい |
+| `general`、`squash_merge_commit`、`merge_commit`、`actions`、`permissions`、`selected_actions`、`workflow`、`access`、`fork_pr_contributor_approval`、`fork_pr_workflows_private_repos`、`artifact_and_log_retention`、`oidc_subject`、`security` | マッピング | 使用する場合は、その階層で定義された設定または子のマッピングを一つ以上含む。`actions` は `permissions`、`workflow`、`access`、`fork_pr_contributor_approval`、`fork_pr_workflows_private_repos`、`artifact_and_log_retention`、`oidc_subject`、`variables` のうち一つ以上を含めばよい |
 | `variables`（`actions` 配下） | シーケンス | 使用する場合は、1件以上の変数の宣言を含む（10章） |
 | `environments` | シーケンス | 使用する場合は、1件以上の Environment の宣言を含む（11章） |
-| `required_reviewers`（`environments[]` 配下） | シーケンス | 0件以上6件以下の担当者の宣言を含む（11.3節） |
+| `reviewers`（`environments[]` 配下） | シーケンス | 0件以上6件以下の担当者の宣言を含む（11.3節） |
 | `variables`（`environments[]` 配下） | シーケンス | 使用する場合は、1件以上の変数の宣言を含む（11.4節） |
 | `rulesets` | シーケンス | 使用する場合は、1件以上の Ruleset の宣言を含む（13章） |
 
@@ -294,11 +294,11 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 
 | YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
 |---|---|---|---|---|
-| `actions.fork_pull_requests.approval_policy` | 文字列 | `first_time_contributors_new_to_github` / `first_time_contributors` / `all_external_contributors` | Fork からの Pull Request のワークフローの実行に承認が要るユーザーの範囲 | 独立 |
-| `actions.fork_pull_requests.private_repositories.run_workflows_from_fork_pull_requests` | 真偽値 | `true` / `false` | Fork からの Pull Request で起動したワークフローを実行できるか | 非公開リポジトリの Fork Pull Request ワークフローの実行条件（設定グループ） |
-| `actions.fork_pull_requests.private_repositories.send_write_tokens_to_workflows` | 真偽値 | `true` / `false` | そのワークフローに、書き込み権限を持つ `GITHUB_TOKEN` を渡すか | 非公開リポジトリの Fork Pull Request ワークフローの実行条件（設定グループ） |
-| `actions.fork_pull_requests.private_repositories.send_secrets_and_variables` | 真偽値 | `true` / `false` | そのワークフローで、Secrets と Variables を使えるようにするか | 非公開リポジトリの Fork Pull Request ワークフローの実行条件（設定グループ） |
-| `actions.fork_pull_requests.private_repositories.require_approval_for_fork_pr_workflows` | 真偽値 | `true` / `false` | そのワークフローの実行に、書き込み権限を持つユーザーの承認を求めるか | 非公開リポジトリの Fork Pull Request ワークフローの実行条件（設定グループ） |
+| `actions.fork_pr_contributor_approval.approval_policy` | 文字列 | `first_time_contributors_new_to_github` / `first_time_contributors` / `all_external_contributors` | Fork からの Pull Request のワークフローの実行に承認が要るユーザーの範囲 | 独立 |
+| `actions.fork_pr_workflows_private_repos.run_workflows_from_fork_pull_requests` | 真偽値 | `true` / `false` | Fork からの Pull Request で起動したワークフローを実行できるか | 非公開リポジトリの Fork Pull Request ワークフローの実行条件（設定グループ） |
+| `actions.fork_pr_workflows_private_repos.send_write_tokens_to_workflows` | 真偽値 | `true` / `false` | そのワークフローに、書き込み権限を持つ `GITHUB_TOKEN` を渡すか | 非公開リポジトリの Fork Pull Request ワークフローの実行条件（設定グループ） |
+| `actions.fork_pr_workflows_private_repos.send_secrets_and_variables` | 真偽値 | `true` / `false` | そのワークフローで、Secrets と Variables を使えるようにするか | 非公開リポジトリの Fork Pull Request ワークフローの実行条件（設定グループ） |
+| `actions.fork_pr_workflows_private_repos.require_approval_for_fork_pr_workflows` | 真偽値 | `true` / `false` | そのワークフローの実行に、書き込み権限を持つユーザーの承認を求めるか | 非公開リポジトリの Fork Pull Request ワークフローの実行条件（設定グループ） |
 
 初めてのコントリビューターは、このリポジトリにコミットか Pull Request がマージされたことのないユーザーです。`first_time_contributors_new_to_github` では、初めてのコントリビューターのうち、GitHub に登録して間もないユーザーに承認が要ります。`first_time_contributors` では、初めてのコントリビューターすべてに承認が要ります。`all_external_contributors` では、リポジトリのメンバーか所有者でも Organization のメンバーでもない、すべてのユーザーに承認が要ります（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 7章）。
 
@@ -306,9 +306,7 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 
 `approval_policy` は公開リポジトリにだけ適用される設定です。`actions.permissions` の宣言によらず宣言でき、`actions.permissions.enabled: false` と同時にも宣言できます。
 
-`private_repositories` の4項目は、非公開リポジトリの Fork Pull Request ワークフローの実行条件を表し、 **一つの設定グループ** として扱います（同 8章）。非公開リポジトリにだけ適用される設定で、`approval_policy` と同じく、`actions.permissions` の宣言によらず、`actions.permissions.enabled: false` と同時にも宣言できます。
-
-`fork_pull_requests` は `approval_policy` と `private_repositories` のどちらか一つ以上を持ちます。
+`fork_pr_workflows_private_repos` の4項目は、非公開リポジトリの Fork Pull Request ワークフローの実行条件を表し、 **一つの設定グループ** として扱います（同 8章）。非公開リポジトリにだけ適用される設定で、`approval_policy` と同じく、`actions.permissions` の宣言によらず、`actions.permissions.enabled: false` と同時にも宣言できます。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -317,7 +315,7 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub Actions 権限 API 仕様](../research/actions-permissions.md) | Repository File |
 
-### 7.1 `private_repositories` の入力の組み合わせ
+### 7.1 `fork_pr_workflows_private_repos` の入力の組み合わせ
 
 | `run_workflows_from_fork_pull_requests` | ほかの3項目 | 判定 |
 |---|---|---|
@@ -334,7 +332,7 @@ GitHub の値には `organization` もありますが、reco は宣言として�
 
 | YAML パス（リポジトリ配下） | 型 | 許容値 | 意味 | 管理の単位 |
 |---|---|---|---|---|
-| `actions.retention.days` | 整数 | `1` 以上 | チェック、ワークフローの実行、コミットのステータス、Artifact、Log を保持する日数 | 独立 |
+| `actions.artifact_and_log_retention.days` | 整数 | `1` 以上 | チェック、ワークフローの実行、コミットのステータス、Artifact、Log を保持する日数 | 独立 |
 
 `0` を受け付けないのは、GitHub が `1` 未満の値を拒否するためです（[GitHub Actions 権限 API 仕様](../research/actions-permissions.md) 9.2）。
 
@@ -474,9 +472,9 @@ actions:
 | `environments[].deployment_branch_policy.patterns` | シーケンス | 個別パターンの要素を0件以上（`[]` 可）。`mode` が `selected` のときだけ必須で、ほかの方式では指定できない（11.2節） | デプロイを許可するブランチとタグのパターンの一覧の全体 | デプロイ元制限（設定グループ） |
 | `environments[].deployment_branch_policy.patterns[].type` | 文字列 | `branch` / `tag` | パターンがブランチとタグのどちらに一致するか | デプロイ元制限（設定グループ） |
 | `environments[].deployment_branch_policy.patterns[].name` | 文字列 | 11.2節の名前 | ブランチ名またはタグ名のパターン | デプロイ元制限（設定グループ） |
-| `environments[].required_reviewers` | シーケンス | 担当者の要素を0件以上6件以下（`[]` 可。11.3節） | その Environment を使うデプロイジョブの実行を承認できる担当者の一覧の全体 | 担当者の集合 |
-| `environments[].required_reviewers[].type` | 文字列 | `User` | 担当者の種類 | 担当者の集合 |
-| `environments[].required_reviewers[].id` | 整数 | 正の整数 | 担当者とする利用者の GitHub 上の ID | 担当者の集合 |
+| `environments[].reviewers` | シーケンス | 担当者の要素を0件以上6件以下（`[]` 可。11.3節） | その Environment を使うデプロイジョブの実行を承認できる担当者の一覧の全体 | 担当者の集合 |
+| `environments[].reviewers[].type` | 文字列 | `User` | 担当者の種類 | 担当者の集合 |
+| `environments[].reviewers[].id` | 整数 | 正の整数 | 担当者とする利用者の GitHub 上の ID | 担当者の集合 |
 | `environments[].prevent_self_review` | 真偽値 | `true` / `false`（11.5節） | デプロイジョブを起動した利用者が、自分のジョブを承認できないこと | 自己承認の禁止 |
 | `environments[].wait_timer` | 整数 | `0` 以上 `43199` 以下（11.5節） | ジョブが起動されてから実行されるまでデプロイを待たせる分数 | デプロイの待機時間 |
 | `environments[].variables` | シーケンス | 変数の宣言を1件以上（11.4節） | その Environment で管理する Environment Variable の一覧 | なし（要素ごとに定まる） |
@@ -485,7 +483,7 @@ actions:
 | `environments[].variables[].state` | 文字列 | `absent` | その Environment に、その名前の Environment Variable が存在しないこと | Environment Variable（関連リソースそのもの） |
 
 - **`name` は必須である**：`name` のない要素は、`deployment_branch_policy` や `variables` を書いていても入力不正として拒否する。どの Environment の宣言かを補わない
-- **要素は存在の宣言を兼ねる**：`environments[]` に書いた名前の Environment が存在しなければ、作成を計画する。`variables` だけを書いた Environment も同じである。`deployment_branch_policy`、`required_reviewers`、`prevent_self_review`、`wait_timer`、`variables` を省略した Environment は、存在だけを管理する
+- **要素は存在の宣言を兼ねる**：`environments[]` に書いた名前の Environment が存在しなければ、作成を計画する。`variables` だけを書いた Environment も同じである。`deployment_branch_policy`、`reviewers`、`prevent_self_review`、`wait_timer`、`variables` を省略した Environment は、存在だけを管理する
 - **存在しないことの宣言は受け付けない**：reco は Environment を削除しない
 - **`deployment_branch_policy` は `mode` を必須とする**：`all` はすべてのブランチとタグからのデプロイを許可する。`protected_branches` は、保護ルールのあるブランチからのデプロイだけを許可する。`protected_branches` の宣言は、Branch protection を管理することを意味しない。`selected` は、`patterns` に書いたパターンに一致するブランチとタグからのデプロイだけを許可する
 
@@ -551,21 +549,21 @@ environments:
 
 ### 11.3 担当者
 
-`required_reviewers` は、その Environment を使うデプロイジョブの実行を承認できる担当者の一覧です。
+`reviewers` は、その Environment を使うデプロイジョブの実行を承認できる担当者の一覧です。
 
 ```yaml
 environments:
   - name: production
-    required_reviewers:
+    reviewers:
       - type: User
         id: 1234567
 ```
 
 要素は、`type` と `id` の両方を持つマッピングです。`type` は `User` だけを受け付け、省略できません。省略を `User` と読まないのは、省略を GitHub が `User` と補う動作に依存しないためです。`Team` は受け付けません。個人アカウント所有のリポジトリでは GitHub が `type: Team` を受け付けず、Organization が所有するリポジトリでの動作は確かめていないためです（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 4.1）。`id` は利用者の GitHub 上の ID で、正の整数です。login では宣言できません。reco が login から ID を解決すると、解決した相手が意図した相手かを確かめる手段がないためです。ID は `show` の表示から書き写せます（[CLI 仕様](cli.md) 6章）。
 
-`required_reviewers` の値は `type` と `id` の組の **集合** です。要素の順序に意味はなく、順序だけが違う宣言は同じ期待値です。一覧の全体であり、宣言した一覧が適用後の一覧になります（2.1節）。
+`reviewers` の値は `type` と `id` の組の **集合** です。要素の順序に意味はなく、順序だけが違う宣言は同じ期待値です。一覧の全体であり、宣言した一覧が適用後の一覧になります（2.1節）。
 
-- **`required_reviewers: []` は、担当者がいないことの宣言である**：適用すると、担当者の承認を待たずにジョブが進むようになる。省略は管理対象外である
+- **`reviewers: []` は、担当者がいないことの宣言である**：適用すると、担当者の承認を待たずにジョブが進むようになる。省略は管理対象外である
 - **7件以上は入力不正である**：GitHub が受け付けるのは6件までである（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 4.1）
 - **`type` と `id` の組が同じ要素を二つ書けない**
 - **誤りを示す順**：件数の誤りを要素の誤りより先に示す。要素は先頭から順に、キーの過不足（`type` と `id` がそろい、ほかのキーがないこと）、`type`、`id`、先の要素との重複の順に確かめ、最初に見つかった誤りを示す
@@ -610,7 +608,7 @@ environments:
 ```yaml
 environments:
   - name: production
-    required_reviewers:
+    reviewers:
       - type: User
         id: 1234567
     prevent_self_review: true
@@ -618,10 +616,10 @@ environments:
 ```
 
 - **`prevent_self_review` は真偽値である**：表記は 14.1節の真偽値の規則に従う
-- **`required_reviewers: []` と `prevent_self_review: true` は同時に宣言できない**：GitHub は、担当者がいない Environment に `prevent_self_review` を保存しないためである（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 4.1）。`required_reviewers: []` と `prevent_self_review: false` は宣言できる
-- **`required_reviewers` を省略した `prevent_self_review` も受け付ける**：GitHub 上の担当者で適用できるかが決まるため、入力検証では確かめない。適用できない場合の扱いは [Environments の設計](../design/settings/environments.md) の適用可能性と副作用に従う
+- **`reviewers: []` と `prevent_self_review: true` は同時に宣言できない**：GitHub は、担当者がいない Environment に `prevent_self_review` を保存しないためである（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 4.1）。`reviewers: []` と `prevent_self_review: false` は宣言できる
+- **`reviewers` を省略した `prevent_self_review` も受け付ける**：GitHub 上の担当者で適用できるかが決まるため、入力検証では確かめない。適用できない場合の扱いは [Environments の設計](../design/settings/environments.md) の適用可能性と副作用に従う
 - **`wait_timer` は `0` から `43199` までの整数である**：`0` は待機時間がないことの宣言である。表記は 14.1節の整数の規則に従い、小数（`2.0` を含む）と負の値は受け付けない。`43200` 以上を受け付けないのは、GitHub の公式資料は 43,200 までとするが、`43200` を送ると GitHub が成功を応答して値を変えなかったためである（同 4.1）
-- **誤りを示す順**：`prevent_self_review` と `wait_timer` の値の誤りを、組み合わせの誤りより先に示す。`required_reviewers` の誤りがあれば、組み合わせより先にそれを示す
+- **誤りを示す順**：`prevent_self_review` と `wait_timer` の値の誤りを、組み合わせの誤りより先に示す。`reviewers` の誤りがあれば、組み合わせより先にそれを示す
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -879,7 +877,7 @@ rulesets:
 | 文字列 | 型が文字列と定められた場所では文字列を要求。数値・真偽値・`null` から暗黙に変換しない。変数の `value` では、引用符のない数値・真偽値・日付に、引用符で囲んだ表記を直し方として添える |
 | `null` と値なし | どの位置でも拒否 |
 | 同一マッピング内の重複キー | 拒否。`name` と `"name"` のように表記が違っても同じキーとみなし、後勝ちで上書きしない |
-| 空のシーケンス・マッピング | `repositories: []`、`environments: []`、`variables: []`、空のリポジトリごとの宣言、空の `general` などを拒否。`rulesets: []` も拒否する。`patterns_allowed: []`、`deployment_branch_policy.patterns: []`、`required_reviewers: []`、Ruleset の `include: []`、`exclude: []`、`bypass_actors: []`、`rules: []` は例外として有効 |
+| 空のシーケンス・マッピング | `repositories: []`、`environments: []`、`variables: []`、空のリポジトリごとの宣言、空の `general` などを拒否。`rulesets: []` も拒否する。`patterns_allowed: []`、`deployment_branch_policy.patterns: []`、`reviewers: []`、Ruleset の `include: []`、`exclude: []`、`bypass_actors: []`、`rules: []` は例外として有効 |
 | 関連する設定の欠落・矛盾 | 拒否。必要な設定の組み合わせを示す |
 | YAML 文書数 | 1ファイルに1文書だけを許可。文書がない場合（空のファイル、コメントだけのファイル）と複数文書を拒否 |
 | YAML のアンカー（anchor）、エイリアス（alias）、マージキー（merge key） | 拒否。宣言の共有・継承を認めない |
@@ -909,11 +907,11 @@ rulesets:
 | `days: "30"` | エラー（引用符付き） |
 | `days: 0` | エラー（正の整数ではない） |
 | `run_workflows_from_fork_pull_requests: false` と `send_secrets_and_variables: true` を同時に宣言 | エラー（実行を許可しないまま、Secrets と Variables の送信を有効にできない） |
-| `required_reviewers: []` | 有効（担当者がいないことの宣言） |
-| `required_reviewers: [{type: Team, id: 42}]` | エラー（`Team` は受け付けない） |
-| `required_reviewers: [{type: User, id: "1234567"}]` | エラー（引用符付き） |
-| `required_reviewers` に7件の要素 | エラー（6件まで） |
-| `required_reviewers: []` と `prevent_self_review: true` を同時に宣言 | エラー（担当者がいない Environment に `prevent_self_review` を設定できない） |
+| `reviewers: []` | 有効（担当者がいないことの宣言） |
+| `reviewers: [{type: Team, id: 42}]` | エラー（`Team` は受け付けない） |
+| `reviewers: [{type: User, id: "1234567"}]` | エラー（引用符付き） |
+| `reviewers` に7件の要素 | エラー（6件まで） |
+| `reviewers: []` と `prevent_self_review: true` を同時に宣言 | エラー（担当者がいない Environment に `prevent_self_review` を設定できない） |
 | `wait_timer: 0` | 有効（待機時間がないことの宣言） |
 | `wait_timer: 43200` | エラー（`43199` まで） |
 | `wait_timer: 2.0` | エラー（小数） |

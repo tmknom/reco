@@ -45,17 +45,17 @@ func TestDesiredState_ManagedSettings(t *testing.T) {
 		none := setting.ReviewerSetOf(nil)
 		desired := DesiredState{
 			Environments: []EnvironmentDeclaration{
-				{Name: staging, DeploymentBranchPolicy: &protected, RequiredReviewers: &reviewers, Variables: []VariableDeclaration{{Name: region, Desired: setting.VariableValue("us")}}},
-				{Name: production, RequiredReviewers: &none},
+				{Name: staging, DeploymentBranchPolicy: &protected, ReviewerSet: &reviewers, Variables: []VariableDeclaration{{Name: region, Desired: setting.VariableValue("us")}}},
+				{Name: production, ReviewerSet: &none},
 			},
 		}
 		want := []ManagedSetting{
 			{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, Desired: setting.Present()},
 			{Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}, Desired: setting.DeploymentBranchPolicyValue(protected)},
-			{Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: staging}, Desired: setting.ReviewerSetValue(reviewers)},
+			{Unit: setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: staging}, Desired: setting.ReviewerSetValue(reviewers)},
 			{Unit: setting.Unit{Key: setting.EnvironmentVariable, Environment: staging, Variable: region}, Desired: setting.VariableValue("us")},
 			{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Desired: setting.Present()},
-			{Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}, Desired: setting.ReviewerSetValue(none)},
+			{Unit: setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: production}, Desired: setting.ReviewerSetValue(none)},
 		}
 		if got := desired.ManagedSettings(); !reflect.DeepEqual(got, want) {
 			t.Errorf("ManagedSettings() =\n%+v\nwant\n%+v", got, want)
@@ -64,7 +64,7 @@ func TestDesiredState_ManagedSettings(t *testing.T) {
 
 	t.Run("omitted reviewers create no managed setting", func(t *testing.T) {
 		for _, m := range (DesiredState{Environments: []EnvironmentDeclaration{{Name: production}}}).ManagedSettings() {
-			if m.Unit.Key == setting.EnvironmentRequiredReviewers {
+			if m.Unit.Key == setting.EnvironmentReviewerSet {
 				t.Errorf("ManagedSettings() contains %+v, want no reviewers setting", m)
 			}
 		}
@@ -74,13 +74,13 @@ func TestDesiredState_ManagedSettings(t *testing.T) {
 		reviewers := setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}})
 		desired := DesiredState{
 			Environments: []EnvironmentDeclaration{
-				{Name: staging, RequiredReviewers: &reviewers, PreventSelfReview: new(true), WaitTimer: new(30), Variables: []VariableDeclaration{{Name: region, Desired: setting.VariableValue("us")}}},
+				{Name: staging, ReviewerSet: &reviewers, PreventSelfReview: new(true), WaitTimer: new(30), Variables: []VariableDeclaration{{Name: region, Desired: setting.VariableValue("us")}}},
 				{Name: production, PreventSelfReview: new(false), WaitTimer: new(0)},
 			},
 		}
 		want := []ManagedSetting{
 			{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: staging}, Desired: setting.Present()},
-			{Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: staging}, Desired: setting.ReviewerSetValue(reviewers)},
+			{Unit: setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: staging}, Desired: setting.ReviewerSetValue(reviewers)},
 			{Unit: setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: staging}, Desired: setting.BoolValue(true)},
 			{Unit: setting.Unit{Key: setting.EnvironmentWaitTimer, Environment: staging}, Desired: setting.WaitTimerValue(30)},
 			{Unit: setting.Unit{Key: setting.EnvironmentVariable, Environment: staging, Variable: region}, Desired: setting.VariableValue("us")},
@@ -163,8 +163,8 @@ func TestDesiredState_value(t *testing.T) {
 		{name: "declared access_level returns its desired value", desired: DesiredState{ActionsAccess: ActionsAccess{AccessLevel: new(setting.AccessNone)}}, key: setting.ActionsAccessLevel, want: setting.AccessLevelValue(setting.AccessNone), wantOK: true},
 		{name: "omitted access_level is outside the management scope", desired: DesiredState{WorkflowPermissions: WorkflowPermissions{CanApprovePullRequestReviews: new(true)}}, key: setting.ActionsAccessLevel, wantOK: false},
 		{name: "declared approval_policy returns its desired value", desired: DesiredState{ForkPullRequestApproval: ForkPullRequestApproval{ApprovalPolicy: new(setting.ForkPullRequestApprovalFirstTimeContributors)}}, key: setting.ForkPullRequestApproval, want: setting.ForkPullRequestApprovalPolicyValue(setting.ForkPullRequestApprovalFirstTimeContributors), wantOK: true},
-		{name: "declared private_repositories returns its desired value", desired: DesiredState{PrivateForkPullRequestWorkflows: PrivateForkPullRequestWorkflows{Conditions: &setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true}}}, key: setting.PrivateForkPullRequestWorkflows, want: setting.PrivateForkPullRequestWorkflowConditionsValue(setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true}), wantOK: true},
-		{name: "omitted private_repositories is outside the management scope", desired: DesiredState{ForkPullRequestApproval: ForkPullRequestApproval{ApprovalPolicy: new(setting.ForkPullRequestApprovalFirstTimeContributors)}}, key: setting.PrivateForkPullRequestWorkflows, wantOK: false},
+		{name: "declared fork_pr_workflows_private_repos returns its desired value", desired: DesiredState{PrivateForkPullRequestWorkflows: PrivateForkPullRequestWorkflows{Conditions: &setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true}}}, key: setting.PrivateForkPullRequestWorkflows, want: setting.PrivateForkPullRequestWorkflowConditionsValue(setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true}), wantOK: true},
+		{name: "omitted fork_pr_workflows_private_repos is outside the management scope", desired: DesiredState{ForkPullRequestApproval: ForkPullRequestApproval{ApprovalPolicy: new(setting.ForkPullRequestApprovalFirstTimeContributors)}}, key: setting.PrivateForkPullRequestWorkflows, wantOK: false},
 		{name: "declared retention days returns its desired value", desired: DesiredState{Retention: Retention{Days: new(30)}}, key: setting.RetentionDays, want: setting.RetentionDaysValue(30), wantOK: true},
 		{name: "omitted retention days is outside the management scope", desired: DesiredState{ActionsAccess: ActionsAccess{AccessLevel: new(setting.AccessNone)}}, key: setting.RetentionDays, wantOK: false},
 		{name: "declared oidc_subject returns its desired value", desired: DesiredState{OIDCSubject: OIDCSubject{Customization: &setting.OIDCSubjectCustomization{IncludeClaimKeys: []string{"repo"}, UseImmutableSubject: new(false)}}}, key: setting.OIDCSubject, want: setting.OIDCSubjectCustomizationValue(setting.OIDCSubjectCustomization{IncludeClaimKeys: []string{"repo"}, UseImmutableSubject: new(false)}), wantOK: true},
@@ -238,7 +238,7 @@ func TestDesiredState_valueCoversEveryDesiredValue(t *testing.T) {
 
 // 関連リソースに関わる管理の単位は名前との組で識別するため、value では引けない。
 func TestDesiredState_valueOfRelatedResourceSettingPanics(t *testing.T) {
-	for _, key := range []setting.Key{setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentRequiredReviewers, setting.EnvironmentPreventSelfReview, setting.EnvironmentWaitTimer, setting.EnvironmentVariable, setting.RulesetResource} {
+	for _, key := range []setting.Key{setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentReviewerSet, setting.EnvironmentPreventSelfReview, setting.EnvironmentWaitTimer, setting.EnvironmentVariable, setting.RulesetResource} {
 		t.Run(string(key), func(t *testing.T) {
 			defer func() {
 				if recover() == nil {

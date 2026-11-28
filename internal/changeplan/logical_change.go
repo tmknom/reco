@@ -28,7 +28,7 @@ type UpdateOperation struct {
 	// Unit は、この更新操作が更新要求を送る先の管理の単位。MergeMethodsUpdate では、送る管理設定の先頭である。
 	Unit setting.Unit
 	// Value は、SettingUpdate が送る設定の値と、Repository Variable と Environment Variable の作成と値の変更が送る変数の値と、Ruleset の作成と値の変更が送る Ruleset の値と、
-	// RequiredReviewersUpdate が送る担当者の集合と、PreventSelfReviewUpdate と WaitTimerUpdate が送る値。
+	// ReviewerSetUpdate が送る担当者の集合と、PreventSelfReviewUpdate と WaitTimerUpdate が送る値。
 	// 変数と Ruleset の削除は値を送らず、ゼロ値である。
 	Value setting.Value
 	// Mode は、EnvironmentCreationWithMode と DeploymentBranchPolicyModeUpdate が送るデプロイ元制限の方式。
@@ -61,8 +61,8 @@ const (
 	DeploymentPatternAddition
 	// DeploymentPatternRemoval は、個別パターンを一つ取り除く。
 	DeploymentPatternRemoval
-	// RequiredReviewersUpdate は、Environment の担当者の集合を送る。
-	RequiredReviewersUpdate
+	// ReviewerSetUpdate は、Environment の担当者の集合を送る。
+	ReviewerSetUpdate
 	// PreventSelfReviewUpdate は、Environment の自己承認の禁止を送る。
 	PreventSelfReviewUpdate
 	// WaitTimerUpdate は、Environment のデプロイの待機時間を送る。
@@ -137,7 +137,7 @@ func (o UpdateOperation) Endpoint() (github.UpdateEndpoint, bool) {
 	case SettingUpdate, MergeMethodsUpdate:
 		return github.UpdateEndpointOf(o.Unit.Key), true
 	case EnvironmentCreation, EnvironmentCreationWithMode, DeploymentBranchPolicyModeUpdate,
-		DeploymentPatternAddition, DeploymentPatternRemoval, RequiredReviewersUpdate, PreventSelfReviewUpdate, WaitTimerUpdate,
+		DeploymentPatternAddition, DeploymentPatternRemoval, ReviewerSetUpdate, PreventSelfReviewUpdate, WaitTimerUpdate,
 		RepositoryVariableCreation, RepositoryVariableValueUpdate, RepositoryVariableDeletion,
 		EnvironmentVariableCreation, EnvironmentVariableValueUpdate, EnvironmentVariableDeletion,
 		RulesetCreation, RulesetValueUpdate, RulesetDeletion:

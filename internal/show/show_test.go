@@ -61,10 +61,11 @@ func TestWriteObservationResult(t *testing.T) {
 		allPermissions                      = "    actions:\n      permissions:\n        enabled: true\n        allowed_actions: all\n        sha_pinning_required: true\n"
 		readOnlyWorkflow                    = "      workflow:\n        default_workflow_permissions: read\n        can_approve_pull_request_reviews: false\n"
 		notSharedAccess                     = "      access:\n        access_level: none\n"
-		privateForkPullRequestsAndRetention = "      fork_pull_requests:\n        # approval_policy: unavailable (the repository is private)\n        private_repositories:\n" +
-			"          run_workflows_from_fork_pull_requests: false\n          send_write_tokens_to_workflows: false\n" +
-			"          send_secrets_and_variables: false\n          require_approval_for_fork_pr_workflows: false\n" +
-			"      retention:\n        days: 30 # maximum allowed: 400\n"
+		privateForkPullRequestsAndRetention = "      # fork_pr_contributor_approval:\n      #   approval_policy: unavailable (the repository is private)\n" +
+			"      fork_pr_workflows_private_repos:\n" +
+			"        run_workflows_from_fork_pull_requests: false\n        send_write_tokens_to_workflows: false\n" +
+			"        send_secrets_and_variables: false\n        require_approval_for_fork_pr_workflows: false\n" +
+			"      artifact_and_log_retention:\n        days: 30 # maximum allowed: 400\n"
 		defaultOIDCSubjectLines = "      oidc_subject:\n        use_default: true\n        use_immutable_subject: false\n"
 		noVariable              = "      # variables: none\n"
 		noEnvironment           = "    # environments: none\n"
@@ -238,9 +239,9 @@ func TestWriteObservationResult(t *testing.T) {
 			},
 			want: header + generalLines + allPermissions + readOnlyWorkflow +
 				"      # access:\n      #   access_level: unavailable (the repository is public)\n" +
-				"      fork_pull_requests:\n        approval_policy: first_time_contributors\n" +
-				"        # private_repositories: unavailable (the repository is public)\n" +
-				"      retention:\n        days: 30 # maximum allowed: 400\n" +
+				"      fork_pr_contributor_approval:\n        approval_policy: first_time_contributors\n" +
+				"      # fork_pr_workflows_private_repos: unavailable (the repository is public)\n" +
+				"      artifact_and_log_retention:\n        days: 30 # maximum allowed: 400\n" +
 				defaultOIDCSubjectLines + noVariable + noEnvironment + enabledSecurity + noRulesets,
 		},
 		{
@@ -404,6 +405,75 @@ func TestWriteObservationResult(t *testing.T) {
 	})
 }
 
+//trace:checks FR-004 QR-002
+func TestWriteForkPullRequestApproval(t *testing.T) {
+	cases := []struct {
+		name     string
+		approval github.ForkPullRequestApproval
+		want     string
+	}{
+		{
+			name:     "observed approval policy is shown as a declarable value",
+			approval: github.ForkPullRequestApproval{ApprovalPolicy: github.Observed(setting.ForkPullRequestApprovalAllExternalContributors)},
+			want:     "      fork_pr_contributor_approval:\n        approval_policy: all_external_contributors\n",
+		},
+		{
+			name:     "private repository comments out the whole key so that no empty mapping remains",
+			approval: github.ForkPullRequestApproval{ApprovalPolicy: github.Unavailable[setting.ForkPullRequestApprovalPolicy](github.UnavailablePrivateRepository)},
+			want:     "      # fork_pr_contributor_approval:\n      #   approval_policy: unavailable (the repository is private)\n",
+		},
+		{
+			name:     "an unknown approval policy comments out the whole key with the unknown value text",
+			approval: github.ForkPullRequestApproval{ApprovalPolicy: github.Unavailable[setting.ForkPullRequestApprovalPolicy](github.UnavailableUnknownValue)},
+			want:     "      # fork_pr_contributor_approval:\n      #   approval_policy: unavailable (GitHub returned a value that reco does not know)\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var b strings.Builder
+			writeForkPullRequestApproval(&b, tc.approval)
+			if b.String() != tc.want {
+				t.Errorf("writeForkPullRequestApproval() wrote %q, want %q", b.String(), tc.want)
+			}
+		})
+	}
+}
+
+//trace:checks FR-004 QR-002
+func TestWritePrivateForkPullRequestWorkflows(t *testing.T) {
+	cases := []struct {
+		name      string
+		workflows github.PrivateForkPullRequestWorkflows
+		want      string
+	}{
+		{
+			name: "observed conditions are shown as declarable values in their own fields",
+			workflows: github.PrivateForkPullRequestWorkflows{Conditions: github.Observed(setting.PrivateForkPullRequestWorkflowConditions{
+				RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true,
+			})},
+			want: "      fork_pr_workflows_private_repos:\n" +
+				"        run_workflows_from_fork_pull_requests: true\n" +
+				"        send_write_tokens_to_workflows: false\n" +
+				"        send_secrets_and_variables: true\n" +
+				"        require_approval_for_fork_pr_workflows: false\n",
+		},
+		{
+			name:      "public repository shows the setting group as one comment line",
+			workflows: github.PrivateForkPullRequestWorkflows{Conditions: github.Unavailable[setting.PrivateForkPullRequestWorkflowConditions](github.UnavailablePublicRepository)},
+			want:      "      # fork_pr_workflows_private_repos: unavailable (the repository is public)\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var b strings.Builder
+			writePrivateForkPullRequestWorkflows(&b, tc.workflows)
+			if b.String() != tc.want {
+				t.Errorf("writePrivateForkPullRequestWorkflows() wrote %q, want %q", b.String(), tc.want)
+			}
+		})
+	}
+}
+
 // TestWriteActionsSettings_UndefinedReasonPanics は、観測が作らない理由の観測不能を、ほかの理由の文言で示さず、行を黙って省きもしないことを確かめる。
 // 対象の関数を直接呼び、ほかの行の書き込みが起こす panic と区別する。
 func TestWriteActionsSettings_UndefinedReasonPanics(t *testing.T) {
@@ -424,6 +494,12 @@ func TestWriteActionsSettings_UndefinedReasonPanics(t *testing.T) {
 		}},
 		{name: "access level unavailable for a reason other than public or an unknown value panics", write: func(b *strings.Builder) {
 			writeActionsAccess(b, github.ActionsAccess{AccessLevel: github.Unavailable[setting.AccessLevel](github.UnavailableActionsDisabled)})
+		}},
+		{name: "approval policy unavailable for a reason other than private or an unknown value panics", write: func(b *strings.Builder) {
+			writeForkPullRequestApproval(b, github.ForkPullRequestApproval{ApprovalPolicy: github.Unavailable[setting.ForkPullRequestApprovalPolicy](github.UnavailablePublicRepository)})
+		}},
+		{name: "private fork pull request workflow conditions unavailable for a reason other than public panic", write: func(b *strings.Builder) {
+			writePrivateForkPullRequestWorkflows(b, github.PrivateForkPullRequestWorkflows{Conditions: github.Unavailable[setting.PrivateForkPullRequestWorkflowConditions](github.UnavailablePrivateRepository)})
 		}},
 	}
 	for _, tc := range cases {
@@ -497,7 +573,7 @@ func TestRun(t *testing.T) {
 		}
 		for _, observed := range []string{
 			"default_workflow_permissions: write", `        - name: "GO_VERSION"`, `- name: "staging"`, `          - name: "REGION"`, "dependabot_security_updates: true # paused",
-			"        # approval_policy: unavailable (the repository is private)",
+			"      #   approval_policy: unavailable (the repository is private)",
 			"        days: 90 # maximum allowed: 400",
 			"        include_claim_keys:\n          - \"repo\"",
 			"# secret_scanning: unavailable (the repository is private)",

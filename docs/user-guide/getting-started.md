@@ -51,14 +51,14 @@ repositories:
         can_approve_pull_request_reviews: false
       access:
         access_level: none
-      fork_pull_requests:
-        # approval_policy: unavailable (the repository is private)
-        private_repositories:
-          run_workflows_from_fork_pull_requests: false
-          send_write_tokens_to_workflows: false
-          send_secrets_and_variables: false
-          require_approval_for_fork_pr_workflows: false
-      retention:
+      # fork_pr_contributor_approval:
+      #   approval_policy: unavailable (the repository is private)
+      fork_pr_workflows_private_repos:
+        run_workflows_from_fork_pull_requests: false
+        send_write_tokens_to_workflows: false
+        send_secrets_and_variables: false
+        require_approval_for_fork_pr_workflows: false
+      artifact_and_log_retention:
         days: 90 # maximum allowed: 400
       oidc_subject:
         use_default: true

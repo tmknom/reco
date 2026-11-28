@@ -42,7 +42,7 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.O
 			}
 			continue
 		case changeplan.EnvironmentCreation, changeplan.EnvironmentCreationWithMode, changeplan.DeploymentBranchPolicyModeUpdate,
-			changeplan.RequiredReviewersUpdate, changeplan.PreventSelfReviewUpdate, changeplan.WaitTimerUpdate:
+			changeplan.ReviewerSetUpdate, changeplan.PreventSelfReviewUpdate, changeplan.WaitTimerUpdate:
 			changes = append(changes, environmentPutOutsideChanges(operation.Unit.Environment, change.ExcludedFromOutsideSettings(), b, after)...)
 			continue
 		case changeplan.RulesetValueUpdate:
@@ -147,9 +147,9 @@ func environmentProtectionChanges(name setting.EnvironmentName, excluded []setti
 			Before:  setting.WaitTimerValue(before.WaitTimer).String(), After: setting.WaitTimerValue(after.WaitTimer).String(),
 		})
 	}
-	if compared(setting.EnvironmentRequiredReviewers) {
+	if compared(setting.EnvironmentReviewerSet) {
 		if b, a, changed := observationChange(before.ReviewerSet, after.ReviewerSet, sameReviewerSet, reviewerSetText); changed {
-			changes = append(changes, unexpectedOutsideChange{Setting: prefix + setting.EnvironmentRequiredReviewers.DeclaredKeyName(), Before: b, After: a})
+			changes = append(changes, unexpectedOutsideChange{Setting: prefix + setting.EnvironmentReviewerSet.DeclaredKeyName(), Before: b, After: a})
 		}
 	}
 	if compared(setting.EnvironmentPreventSelfReview) && before.PreventSelfReview != after.PreventSelfReview {

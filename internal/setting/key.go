@@ -34,11 +34,11 @@ const (
 	CanApprovePullRequestReviews Key = "actions.workflow.can_approve_pull_request_reviews"
 	ActionsAccessLevel           Key = "actions.access.access_level"
 	// ForkPullRequestApproval は、Fork Pull Request ワークフローの承認ポリシー。
-	ForkPullRequestApproval Key = "actions.fork_pull_requests.approval_policy"
+	ForkPullRequestApproval Key = "actions.fork_pr_contributor_approval.approval_policy"
 	// PrivateForkPullRequestWorkflows は、非公開リポジトリの Fork Pull Request ワークフローの実行条件。4項目の設定グループを一つの Key で表す。
-	PrivateForkPullRequestWorkflows Key = "actions.fork_pull_requests.private_repositories"
+	PrivateForkPullRequestWorkflows Key = "actions.fork_pr_workflows_private_repos"
 	// RetentionDays は、チェック、ワークフローの実行、コミットのステータス、Artifact、Log の保持日数。上限は設定ではなく、Key を持たない。
-	RetentionDays Key = "actions.retention.days"
+	RetentionDays Key = "actions.artifact_and_log_retention.days"
 	// OIDCSubject は、OIDC トークンの subject クレームのカスタマイズ。3項目の設定グループを一つの Key で表す。
 	OIDCSubject Key = "actions.oidc_subject"
 	// RepositoryVariable は、Repository Variable そのもの (期待値は存在し、値を伴うこと) の形。
@@ -53,8 +53,8 @@ const (
 	EnvironmentResource Key = "environments"
 	// EnvironmentDeploymentBranchPolicy は、Environment の中のデプロイ元制限の形。
 	EnvironmentDeploymentBranchPolicy Key = "environments.deployment_branch_policy"
-	// EnvironmentRequiredReviewers は、Environment の中の担当者の集合の形。
-	EnvironmentRequiredReviewers Key = "environments.required_reviewers"
+	// EnvironmentReviewerSet は、Environment の中の担当者の集合の形。
+	EnvironmentReviewerSet Key = "environments.reviewers"
 	// EnvironmentPreventSelfReview は、Environment の中の自己承認の禁止の形。
 	EnvironmentPreventSelfReview Key = "environments.prevent_self_review"
 	// EnvironmentWaitTimer は、Environment の中のデプロイの待機時間の形。
@@ -126,7 +126,7 @@ func (k Key) Area() Area {
 		return AreaOIDCSubject
 	case RepositoryVariable:
 		return AreaRepositoryVariables
-	case EnvironmentResource, EnvironmentDeploymentBranchPolicy, EnvironmentRequiredReviewers, EnvironmentPreventSelfReview, EnvironmentWaitTimer:
+	case EnvironmentResource, EnvironmentDeploymentBranchPolicy, EnvironmentReviewerSet, EnvironmentPreventSelfReview, EnvironmentWaitTimer:
 		return AreaEnvironments
 	case EnvironmentVariable:
 		return AreaEnvironmentVariables

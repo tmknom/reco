@@ -73,7 +73,7 @@ func TestKeyArea(t *testing.T) {
 		{key: RepositoryVariable, want: AreaRepositoryVariables},
 		{key: EnvironmentResource, want: AreaEnvironments},
 		{key: EnvironmentDeploymentBranchPolicy, want: AreaEnvironments},
-		{key: EnvironmentRequiredReviewers, want: AreaEnvironments},
+		{key: EnvironmentReviewerSet, want: AreaEnvironments},
 		{key: EnvironmentPreventSelfReview, want: AreaEnvironments},
 		{key: EnvironmentWaitTimer, want: AreaEnvironments},
 		{key: EnvironmentVariable, want: AreaEnvironmentVariables},
@@ -100,7 +100,7 @@ func TestKey_HasEnvironmentName(t *testing.T) {
 	}{
 		{key: EnvironmentResource, want: true},
 		{key: EnvironmentDeploymentBranchPolicy, want: true},
-		{key: EnvironmentRequiredReviewers, want: true},
+		{key: EnvironmentReviewerSet, want: true},
 		{key: EnvironmentVariable, want: true},
 		{key: RepositoryVariable, want: false},
 		{key: AllowAutoMerge, want: false},

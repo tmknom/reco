@@ -223,7 +223,7 @@ func TestJudgeApplicability(t *testing.T) {
 func TestJudgeApplicability_PreventSelfReview(t *testing.T) {
 	production := mustEnvironmentName(t, "production")
 	preventUnit := setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: production}
-	reviewersUnit := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}
+	reviewersUnit := setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: production}
 	user1 := setting.Reviewer{Type: setting.ReviewerUser, ID: 1}
 	observedWith := func(protection github.EnvironmentProtection) github.ObservationResult {
 		return github.ObservationResult{Environments: &github.Environments{Existing: []github.Environment{{ID: 7, Name: "production", Protection: protection}}}}
@@ -240,7 +240,7 @@ func TestJudgeApplicability_PreventSelfReview(t *testing.T) {
 		return newSettingPlan(reviewersUnit, observed.Setting(reviewersUnit), setting.ReviewerSetValue(setting.ReviewerSetOf(desired)))
 	}
 	creation := SettingPlan{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: production}, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch}
-	notApplicable := NotApplicable(NotApplicableNoRequiredReviewers)
+	notApplicable := NotApplicable(NotApplicableNoReviewers)
 	cases := []struct {
 		name     string
 		observed github.ObservationResult

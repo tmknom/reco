@@ -58,9 +58,9 @@ func (o EnvironmentObservation) DeploymentBranchPolicy() SettingObservation[sett
 	})
 }
 
-// RequiredReviewers は、その Environment の中の担当者の集合の設定の観測結果を返す。存在する Environment の担当者の集合が観測不能なら、同じ理由にする。
+// ReviewerSet は、その Environment の中の担当者の集合の設定の観測結果を返す。存在する Environment の担当者の集合が観測不能なら、同じ理由にする。
 // 存在しない Environment の中の設定は値として読めないため、存在しないことを理由にした観測不能にする。
-func (o EnvironmentObservation) RequiredReviewers() SettingObservation[setting.Value] {
+func (o EnvironmentObservation) ReviewerSet() SettingObservation[setting.Value] {
 	return o.observeSettingObservation(func(e Environment) SettingObservation[setting.Value] {
 		return valueObservation(e.Protection.ReviewerSet, setting.ReviewerSetValue)
 	})

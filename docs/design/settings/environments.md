@@ -11,7 +11,7 @@
 | デプロイ元制限 | Deployment Branch Policy | Environment にデプロイできるブランチとタグを限る設定グループ。方式（`all`、`protected_branches`、`selected`）と、方式が `selected` のときに限って持つ個別パターンの集合からなる |
 | 個別パターン | Deployment Pattern | デプロイ元制限の値の要素。種類（ブランチかタグか）と名前の組で、名前は大文字と小文字を区別する |
 | 担当者 | Reviewer | Environment を使うデプロイジョブの実行を承認できる利用者かチーム。種類と ID の組で一つに定まる。種類が利用者の担当者は、観測では login を伴うが、login は識別に含めない |
-| 担当者の集合 | Reviewer Set | Environment の中の設定で、YAML のキーは `required_reviewers`。`required_reviewers` の保護ルールが持つ担当者の集合を値とする。保護ルールがないことを空集合で表す |
+| 担当者の集合 | Reviewer Set | Environment の中の設定で、YAML のキーは `reviewers`。`required_reviewers` の保護ルールが持つ担当者の集合を値とする。保護ルールがないことを空集合で表す |
 | 担当者のいない保護ルール | Protection Rule without Reviewers | 担当者が1人もいない `required_reviewers` の保護ルール。担当者の集合の値の一つで、空集合とは別の値である。宣言では書けない |
 | 担当者がいない状態 | No Reviewers | 担当者の集合が、空集合か担当者のいない保護ルールであること |
 | 自己承認の禁止 | Prevent Self-Review | Environment の中の設定で、YAML のキーは `prevent_self_review`。デプロイジョブを起動した利用者が自分のジョブを承認できないかを表す真偽値。GitHub 上では `required_reviewers` の保護ルールが持つ |
@@ -78,7 +78,7 @@ Environment そのものと Environment Variables に固有の適用不能の条
 
 - **更新時点の担当者**：担当者の集合を宣言していればその期待値、宣言していなければ計画時の観測値で決める。宣言していない担当者の集合は管理範囲外で、reco は変えないためである。存在しない Environment で担当者の集合を宣言していなければ、担当者がいない。宣言していない担当者の集合が、値が知らない値であることを理由に観測不能なら、担当者がいる。観測不能になるのは、知らない種類の担当者が1人以上いるときに限るためである
 - **送らずに期待値になる場合**：期待値が `false` で、担当者の集合の宣言が `[]` か、Environment を作成する場合である。どちらも、更新後に `required_reviewers` の保護ルールがなく、`false` と読むため（論理的な設定変更と更新操作）
-- **`required_reviewers: []` と `prevent_self_review: true`**：期待値だけで成り立たないと決まるため、入力検証で拒否する（[YAML 設定仕様](../../spec/configuration.md) 11.5節）
+- **`reviewers: []` と `prevent_self_review: true`**：期待値だけで成り立たないと決まるため、入力検証で拒否する（[YAML 設定仕様](../../spec/configuration.md) 11.5節）
 
 値が知らない値であることを理由に比較不能になった担当者の集合とデプロイ元制限の変更予定は、適用不能です（[ドメインモデル](../domain.md) の照合結果と適用可能性）。
 
@@ -266,19 +266,19 @@ Environment の `PUT` に `wait_timer` だけを、分の整数で送ります�
 | Environment の方式の変更のあと、方式は期待値と同じで、その Environment の `wait_timer` が変わっていた | 変更対象外の設定の予期しない変化で、変更結果は失敗 | 期待状態が一致したので完了 |
 | 個別パターンだけを変える変更のあと、その Environment の `wait_timer` が変わっていた | 比べない。個別パターンの更新エンドポイントで reco が観測するのは個別パターンの集合だけである | Environment の保護設定なので、変更対象外の設定の予期しない変化 |
 | 存在しない Environment `staging` に、`variables` だけを書いた | Environment は不一致で作成、変数は属する先が存在しないことを理由とする比較不能で作成。論理的な設定変更は Environment の作成と変数ごとに一つずつ | `variables` だけでは Environment の存在を宣言しないので適用不能。または、作成と変数の作成を一つにまとめる |
-| GitHub 上に担当者のいない保護ルールがある Environment に、`required_reviewers: []` を宣言した | 不一致。保護ルールをなくす変更予定になる | 担当者が1人もいないので、空集合と同じで一致 |
+| GitHub 上に担当者のいない保護ルールがある Environment に、`reviewers: []` を宣言した | 不一致。保護ルールをなくす変更予定になる | 担当者が1人もいないので、空集合と同じで一致 |
 | 担当者の集合の観測が `[User 1, User 2]` で、宣言が `[User 2, User 1]` だった | 一致。順序は値に含めない | 並びが違うので不一致 |
 | GitHub 上の担当者に `type: Team` の要素があり、宣言は利用者だけだった | 不一致。Team の担当者を外す変更予定になる | 宣言で受け付けない種類なので比べない |
-| 存在しない Environment `preview` に、`required_reviewers: []` を書いた | Environment は不一致で作成、担当者の集合は属する先が存在しないことを理由とする比較不能。担当者の集合は作成の期待状態に加わり、更新操作を持たない | `reviewers: []` を送る更新操作を作成のあとに並べる |
-| 担当者が1人で `prevent_self_review: true` の Environment に、`prevent_self_review` を書かずに `required_reviewers: []` を宣言した | 担当者を外す変更予定に `Side effect:` で `prevent_self_review` が失われることを示し、承認すれば実行する。更新後に `prevent_self_review` がなくなっても予期しない変化ではない | 宣言していない設定が失われるので適用不能。または、更新後に値がなくなったので予期しない変化で失敗 |
+| 存在しない Environment `preview` に、`reviewers: []` を書いた | Environment は不一致で作成、担当者の集合は属する先が存在しないことを理由とする比較不能。担当者の集合は作成の期待状態に加わり、更新操作を持たない | `reviewers: []` を送る更新操作を作成のあとに並べる |
+| 担当者が1人で `prevent_self_review: true` の Environment に、`prevent_self_review` を書かずに `reviewers: []` を宣言した | 担当者を外す変更予定に `Side effect:` で `prevent_self_review` が失われることを示し、承認すれば実行する。更新後に `prevent_self_review` がなくなっても予期しない変化ではない | 宣言していない設定が失われるので適用不能。または、更新後に値がなくなったので予期しない変化で失敗 |
 | 担当者が1人で `prevent_self_review: false` の Environment の担当者を外す変更を承認したあと、外部主体が `prevent_self_review` を `true` にした | 副作用を示さなかった設定の変化で、変更前提は不成立。未実行 | 変えるのは担当者の集合だけなので、変更前提は成立する |
 | 担当者を `[User 1]` から `[User 2]` に変える更新のあと、`prevent_self_review` が `true` から `false` になっていた | 変更対象外の設定の予期しない変化で、変更結果は失敗 | 同じ保護ルールの項目なので、担当者の更新の結果として比べない |
 | 担当者のいない Environment に担当者を設定する更新のあと、`prevent_self_review: false` の保護ルールが作られた | 予期しない変化ではない。更新直前は保護ルールがなく `false` と読み、更新後も `false` である | 更新直前は値がなかったので、`false` になったことは予期しない変化 |
 | 担当者のいない Environment に担当者を設定する更新のあと、`prevent_self_review: true` の保護ルールが作られた | 変更対象外の設定の予期しない変化で、変更結果は失敗 | 更新直前に保護ルールがなく比べる値がないので、比べない |
-| 担当者が1人で `prevent_self_review: true` の Environment に、`required_reviewers: []` と `prevent_self_review: false` を宣言した | 担当者の集合と自己承認の禁止の二つの変更予定からなる、一つの論理的な設定変更。`reviewers: []` の `PUT` だけを送り、`Side effect:` は添えない | 自己承認の禁止を `false` にする `PUT` を別に送る。または、宣言していても副作用として示す |
-| 保護ルールのない Environment に、`required_reviewers` を書かずに `prevent_self_review: true` を宣言した | 自己承認の禁止の変更予定が適用不能。担当者がいない状態では GitHub が拒む | 入力検証で拒否する。または、`PUT` を送って `422` を待つ |
-| 保護ルールのない Environment に、`required_reviewers` を書かずに `prevent_self_review: false` を宣言した | 一致。保護ルールがない観測を `false` と読む | 値を観測できないので比較不能、または `PUT` を送る |
-| `prevent_self_review: true` の担当者のいない保護ルールがある Environment に、`required_reviewers` を書かずに `prevent_self_review: false` を宣言した | 不一致で、適用不能。GitHub はこの保護ルールの `true` を返し、担当者がいない状態では変えられない | 担当者がいないので `false` とみなし、一致 |
+| 担当者が1人で `prevent_self_review: true` の Environment に、`reviewers: []` と `prevent_self_review: false` を宣言した | 担当者の集合と自己承認の禁止の二つの変更予定からなる、一つの論理的な設定変更。`reviewers: []` の `PUT` だけを送り、`Side effect:` は添えない | 自己承認の禁止を `false` にする `PUT` を別に送る。または、宣言していても副作用として示す |
+| 保護ルールのない Environment に、`reviewers` を書かずに `prevent_self_review: true` を宣言した | 自己承認の禁止の変更予定が適用不能。担当者がいない状態では GitHub が拒む | 入力検証で拒否する。または、`PUT` を送って `422` を待つ |
+| 保護ルールのない Environment に、`reviewers` を書かずに `prevent_self_review: false` を宣言した | 一致。保護ルールがない観測を `false` と読む | 値を観測できないので比較不能、または `PUT` を送る |
+| `prevent_self_review: true` の担当者のいない保護ルールがある Environment に、`reviewers` を書かずに `prevent_self_review: false` を宣言した | 不一致で、適用不能。GitHub はこの保護ルールの `true` を返し、担当者がいない状態では変えられない | 担当者がいないので `false` とみなし、一致 |
 | 保護ルールのない Environment に、担当者1人と `prevent_self_review: true` を宣言した | 担当者の集合、自己承認の禁止の順に、別々の論理的な設定変更と `PUT` | 一つの `PUT` にまとめる。または、自己承認の禁止を先に送る |
 | 待機時間の保護ルールのない Environment に `wait_timer: 0` を宣言した | 一致。`PUT` を送らない | 値を観測できないので比較不能、または `wait_timer: 0` を送る |
 | 存在しない Environment に担当者を1人宣言し、作成は成功して担当者の `PUT` が `422` で拒否された | 作成は完了、担当者の設定は失敗。担当者のいない Environment が残るが、存在しなかった状態より保護を弱めない | 作成と担当者を一つの `PUT` にして、作成ごと拒否させる |
