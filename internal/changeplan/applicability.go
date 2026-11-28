@@ -39,7 +39,7 @@ const (
 	NotApplicableSecretScanningRemainsDisabled
 	// NotApplicableNoMergeMethodEnabled は、更新後に有効なマージ方式が一つも残らないこと。無効のまま残るマージ方式を伴う。
 	NotApplicableNoMergeMethodEnabled
-	// NotApplicableUninterpretedParts は、存在するリポジトリリソースの値が reco の解釈しない部分を含むこと。
+	// NotApplicableUninterpretedParts は、存在するリポジトリリソースの値か、削除で失われる中の設定が、reco の解釈しない部分を含むこと。
 	NotApplicableUninterpretedParts
 	// NotApplicableAboveMaximumAllowed は、期待値が、計画時に観測した設定できる値の範囲の上限を超えること。上限を伴う。
 	// この理由を持つのは保持日数の変更予定だけである。
@@ -106,7 +106,7 @@ func (a Applicability) MaximumAllowed() int {
 
 // judgeApplicability は、管理設定の計画 s の観測結果と、同じリポジトリの管理設定の計画 settings の期待値と、
 // 計画時の観測結果 observed (同じ設定の領域の未管理設定の値) から、変更予定を安全に適用できるかを判断する。
-// 不一致は、設定ごとの設計の更新方式で、前提の設定を持つ依存する設定を除いて追加の条件なしに適用できる。
+// 不一致は、設定ごとの設計の更新方式で、前提の設定を持つ依存する設定と、削除で失われる値の全体を示せない Environment の削除を除いて追加の条件なしに適用できる。
 // 比較不能は、知らない値の観測不能を設定によらず適用不能とし (ドメインモデルの照合結果と適用可能性)、ほかは設定ごとの設計の遷移表に挙がる観測不能に限って判断する。
 // 遷移表にない観測不能を適用可能として黙って通さないよう、不変条件の破れとして panic する。
 func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.ObservationResult) Applicability {
@@ -114,6 +114,10 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 	case Match:
 		return Applicability{}
 	case Mismatch:
+		// 削除は Environment の中の設定をすべて消すため、失われる値の全体を承認の前に示せなければ適用しない。同じリポジトリのほかの宣言では解消しない
+		if reason, ok := unshowableDeletedValue(s); ok {
+			return NotApplicable(reason)
+		}
 		// GitHub は Dependabot alerts が無効のあいだ、Dependabot security updates の更新を向きによらず拒否する
 		if s.Unit.Key == setting.DependabotSecurityUpdates && !enabledAtUpdate(setting.DependabotAlerts, settings, observed) {
 			return NotApplicable(NotApplicableDependabotAlertsRemainDisabled)
@@ -184,6 +188,21 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 		return NotApplicable(NotApplicablePrivateRepository)
 	}
 	panic(fmt.Sprintf("changeplan: %s is not comparable for an unexpected reason %d", s.Unit.String(), int(reason)))
+}
+
+// unshowableDeletedValue は、変更予定 s が Environment の削除で、計画時に観測した Environment の削除で失われる値の全体を示せないとき、
+// 適用不能の理由と真を返す。削除の変更予定でない計画と、失われる値を示せる削除では偽を返す。
+// 示せるかは reconcile が入れた削除で失われるもの (s.EnvironmentLoss) で決め、観測を引き直さない。同じ観測から二度導いて判断を食い違わせないため。
+// 理由は、解釈しなかったもの (s.UninterpretedParts) があれば解釈しない部分、なければ知らない値にする。
+// 失われる値は、知らない種類の保護ルールがなければ、知らない値のときだけ観測不能になるため。
+func unshowableDeletedValue(s SettingPlan) (NotApplicableReason, bool) {
+	if !s.IsEnvironmentDeletion() || s.EnvironmentLoss != nil {
+		return 0, false
+	}
+	if len(s.UninterpretedParts) > 0 {
+		return NotApplicableUninterpretedParts, true
+	}
+	return NotApplicableUnknownValue, true
 }
 
 // expectsActionsEnabled は、管理設定の計画 settings の期待状態が、Actions が有効であることを含むかを返す。

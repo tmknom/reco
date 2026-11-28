@@ -354,6 +354,41 @@ func TestConfirmDesiredState_RulesetDeletion(t *testing.T) {
 	}
 }
 
+// TestConfirmDesiredState_EnvironmentDeletion は、Environment の削除の期待状態を、更新後の観測で宣言の名前の Environment が存在しないと確かめたときだけ一致にすることを確かめる。
+// 成功応答だけで完了にせず、同じ名前の Environment があれば中の設定によらず不一致にし、存在しないと確かめられない観測を存在しないと読まない。
+//
+//trace:checks FR-012 QR-002
+func TestConfirmDesiredState_EnvironmentDeletion(t *testing.T) {
+	cases := []struct {
+		name       string
+		existing   []github.Environment
+		want       desiredStateConfirmation
+		wantReason github.UnavailableReason
+	}{
+		{name: "deletion matches when the list lacks the declared name", existing: []github.Environment{observedEnvironment(8, "staging", setting.DeploymentBranchPolicyAll)}, want: desiredStateMatches},
+		{
+			// 削除のあとにワークフローが作った、保護ルールのない Environment も不一致にする
+			name: "deletion is a mismatch when an environment of the declared name exists", existing: []github.Environment{observedEnvironment(9, "Production", setting.DeploymentBranchPolicyAll)},
+			want: desiredStateMismatch,
+		},
+		{
+			name: "deletion is not confirmed when only a name that cannot be compared exists", existing: []github.Environment{observedEnvironment(9, "prodüction", setting.DeploymentBranchPolicyAll)},
+			want: desiredStateUnavailable, wantReason: github.UnavailableNameUndetermined,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := github.ObservationResult{RepositoryID: 1, Environments: environments(tc.existing...)}
+
+			got, unavailable := confirmDesiredState(1, environmentDeletionChange(t, "production", deletableEnvironment(7, "production")), observed)
+
+			if got != tc.want || unavailable.reason != tc.wantReason {
+				t.Errorf("confirmDesiredState() = %v, %v, want %v with reason %v", got, unavailable, tc.want, tc.wantReason)
+			}
+		})
+	}
+}
+
 // TestConfirmDesiredState_EnvironmentVariables は、Environment Variable の期待状態を、宣言の名前で引いた Environment の変数の値で確かめ、
 // Environment がなければ存在しないことを理由に確認失敗にすることを確かめる。
 //

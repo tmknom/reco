@@ -62,17 +62,27 @@ func (c *Client) observeEnvironmentVariables(ctx context.Context, reference repo
 		if !scope.includesEnvironment(e.Name) {
 			continue
 		}
-		u, ok := c.environmentVariablesURL(reference, e.Name)
-		if !ok {
-			return fmt.Errorf("variables of environment %q: %w: the name cannot be sent as a path element", e.Name, ErrUnexpectedResponse)
-		}
-		variables, err := c.observeVariables(ctx, u, maxEnvironmentVariablesPages)
+		variables, err := c.observeVariablesOfEnvironment(ctx, reference, e.Name)
 		if err != nil {
-			return fmt.Errorf("variables of environment %q: %w", e.Name, err)
+			return err
 		}
 		e.Variables = &variables
 	}
 	return nil
+}
+
+// observeVariablesOfEnvironment は、name の Environment の Environment Variables の一覧の全ページを読む。
+// パスに組み込めない名前の Environment は、要求を送らずに失敗する。失敗の文言は、どの Environment の変数かを示す。
+func (c *Client) observeVariablesOfEnvironment(ctx context.Context, reference repository.Reference, name string) (Variables, error) {
+	u, ok := c.environmentVariablesURL(reference, name)
+	if !ok {
+		return Variables{}, fmt.Errorf("variables of environment %q: %w: the name cannot be sent as a path element", name, ErrUnexpectedResponse)
+	}
+	variables, err := c.observeVariables(ctx, u, maxEnvironmentVariablesPages)
+	if err != nil {
+		return Variables{}, fmt.Errorf("variables of environment %q: %w", name, err)
+	}
+	return variables, nil
 }
 
 // observeVariables は、u の変数の一覧の全ページを読む。一覧ごとに違うのはページ数の上限だけで、1ページの件数と本文の上限は導出の前提として対で固定する。

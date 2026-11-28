@@ -151,6 +151,7 @@ Repositories checked: 1
 | `Repository:` | 変える予定のあるリポジトリ。変える予定のないリポジトリは出ない |
 | `<設定>: <現在の値> -> <書いた値>` | GitHub の値が設定ファイルの値と違う設定。承認すると右の値に変える |
 | `environments.<名前>: absent -> present` | 設定ファイルに書いた Environment が GitHub 上にない。承認すると作成する |
+| `environments.<名前>: present -> absent` と、その下の `deployment_branch_policy:` から `can_admins_bypass:` までの行 | `state: absent` を書いた Environment が GitHub 上にある。承認すると削除する。下の行は、削除で失われる今の保護設定で、保護ルールのない Environment でも省かずに示す（`reviewers: []`、`wait_timer: 0 minutes` など）。`can_admins_bypass` は、管理者が保護ルールを迂回できるかの設定で、設定ファイルには書けないが、削除で失われるため示す。続く `Side effect:` の行は、一緒に消える Environment Variables の名前と値と、Environment Secrets の名前で、一つもない種類の行は出ない |
 | `actions.variables.<名前>: absent -> "<書いた値>"` | 設定ファイルに書いた Repository Variable が GitHub 上にない。値は引用符で囲み、改行などは `\n` のようなエスケープで1行に示す |
 | `actions.variables.<名前>: "<現在の値>" -> "<書いた値>"` | Repository Variable の値が設定ファイルの値と違う。値の示し方は `absent -> "<書いた値>"` の行と同じ |
 | `actions.variables.<名前>: "<現在の値>" -> absent` | `state: absent` を書いた Repository Variable が GitHub 上にある。承認すると削除する。左の値が、削除で失われる値である。引用符のない `absent` は「ない」ことを示し、値が文字列 `absent` の変数（`"absent"`）とは違う |
@@ -221,6 +222,32 @@ Repositories updated: 1
 変更計画に `Plan cannot be applied.` が出たときは、承認を求めず、どのリポジトリの設定も変えずにエラーで終わります。直し方は [Troubleshooting](troubleshooting.md#plan-cannot-be-applied-と表示された) にあります。
 
 `apply` は、設定ファイルに書いた Ruleset を、書いた順に一つずつ処理します。GitHub 上になければ作成し、あって内容が違えば、書いた内容で全体を置き換えます。`state: absent` を書いた Ruleset は、GitHub 上にあれば消します。置き換えと削除の直前の確認は [承認のあとで設定が変わったら止まる](safety.md#承認のあとで設定が変わったら止まる) にあります。
+
+`state: absent` を書いた Environment は、GitHub 上にあれば、ほかの Environment の変更と同じく設定ファイルに書いた順に消します。変更計画と結果は次のようになります。
+
+```text
+Repository: example/project-a
+  environments.legacy: present -> absent
+    deployment_branch_policy: all
+    reviewers: []
+    prevent_self_review: false
+    wait_timer: 3 minutes
+    can_admins_bypass: true
+    Side effect: GitHub also deletes the environment variables "REGION": "ap-northeast-1"
+    Side effect: GitHub also deletes the environment secrets "DEPLOY_KEY", "TOKEN" (reco cannot read their values)
+
+Plan: 1 repository to update, 1 change
+Repositories checked: 1
+
+Apply these changes? [y/N]: y
+Applying changes...
+  example/project-a: updated
+
+Apply complete.
+Repositories updated: 1
+```
+
+削除は、消える保護設定と変数と Secret の数によらず、1件の変更と数えます。結果には、消えた値も変数と Secret の名前も出ません。承認のあとにその Environment か、消える予定の保護設定、変数、Secret が変わっていたら、reco は消さずに止まります（[Troubleshooting](troubleshooting.md#environment-の削除が完了しなかった)）。
 
 リポジトリのすべての変更が完了すれば、結果はリポジトリの行の `updated` だけです。変更が2件以上あり、完了しなかったものがあるときは、リポジトリの行の下に変更ごとの結果が出ます。
 

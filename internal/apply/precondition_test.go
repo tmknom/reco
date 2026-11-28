@@ -306,6 +306,24 @@ func TestMatchesPreconditionBasis_EnvironmentExistence(t *testing.T) {
 		},
 		{name: "zero value at approval panics even if the environment exists", basis: changeplan.PreconditionBasis{Unit: unit}, current: []github.Environment{approved}},
 		{name: "existing at approval without an identity panics even if absent now", basis: changeplan.PreconditionBasis{Unit: unit, AnticipatedValue: changeplan.AnticipateValue(setting.Present())}},
+		{
+			// 作成した Environment の基準として受け付けると、失われるものを比べずに削除し得る
+			name: "loss shown at approval without an ID panics even if the created environment exists",
+			basis: func() changeplan.PreconditionBasis {
+				b := createdBasis
+				b.AnticipatedEnvironmentLoss = &changeplan.EnvironmentLoss{}
+				return b
+			}(),
+			current: []github.Environment{approved},
+		},
+		{
+			name: "loss shown at approval with absence panics even if still absent",
+			basis: func() changeplan.PreconditionBasis {
+				b := absentBasis
+				b.AnticipatedEnvironmentLoss = &changeplan.EnvironmentLoss{}
+				return b
+			}(),
+		},
 	}
 	for _, tc := range panicCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -315,6 +333,176 @@ func TestMatchesPreconditionBasis_EnvironmentExistence(t *testing.T) {
 				}
 			}()
 			matchesPreconditionBasis(tc.basis, github.ObservationResult{RepositoryID: 1, Environments: environments(tc.current...)}, github.EnvironmentObservation{})
+		})
+	}
+}
+
+// TestMatchesAnticipatedEnvironmentLoss は、承認の前に示した削除で失われるもの（失われる値、変数の一覧、Secret の一覧）が、更新直前に引いた Environment と同じかの規則を確かめる。
+// 失われる値の項目ごとの比べ方は setting の EnvironmentDeletedValue.Equal、観測不能の理由の導き方は github の Environment.DeletedValue が確かめる。
+//
+//trace:checks INV-001 INV-004 FR-010
+func TestMatchesAnticipatedEnvironmentLoss(t *testing.T) {
+	region := github.Variable{Name: "REGION", Value: "ap-northeast-1"}
+	tier := github.Variable{Name: "TIER", Value: "1"}
+	deployKey := github.EnvironmentSecret{Name: "DEPLOY_KEY", UpdatedAt: "2026-01-01T00:00:00Z"}
+	token := github.EnvironmentSecret{Name: "TOKEN", UpdatedAt: "2026-01-02T00:00:00Z"}
+	// with は、承認時の観測 deletableEnvironment を change で一か所だけ変えた現在の観測を作る
+	with := func(change func(e github.Environment) github.Environment) github.Environment {
+		return change(deletableEnvironment(7, "production"))
+	}
+	// empty は、変数も Secret もない以外は deletableEnvironment と同じ観測
+	empty := func() github.Environment {
+		return withSecrets(withVariables(deletableEnvironment(7, "production")))
+	}
+	cases := []struct {
+		name     string
+		approved github.Environment
+		current  github.Environment
+		want     bool
+	}{
+		{name: "same loss is the same", approved: deletableEnvironment(7, "production"), current: deletableEnvironment(7, "production"), want: true},
+		{
+			name: "variables and secrets differing only in order are the same", approved: deletableEnvironment(7, "production"),
+			current: with(func(e github.Environment) github.Environment {
+				return withSecrets(withVariables(e, tier, region), token, deployKey)
+			}), want: true,
+		},
+		{
+			name: "changed wait timer differs", approved: deletableEnvironment(7, "production"),
+			current: with(func(e github.Environment) github.Environment { e.Protection.WaitTimer = 31; return e }), want: false,
+		},
+		{
+			// 承認のあとに知らない種類の保護ルールが現れた Environment は、失われる値を示せないため、同じとしない
+			name: "deleted value that became unavailable differs", approved: deletableEnvironment(7, "production"),
+			current: with(func(e github.Environment) github.Environment {
+				e.UninterpretedProtectionRules = []github.UninterpretedPart{{Kind: github.UninterpretedProtectionRuleType, Name: "custom"}}
+				return e
+			}),
+			want: false,
+		},
+		{
+			name: "added variable differs", approved: deletableEnvironment(7, "production"),
+			current: with(func(e github.Environment) github.Environment {
+				return withVariables(e, region, tier, github.Variable{Name: "ZONE", Value: "a"})
+			}),
+			want: false,
+		},
+		{name: "removed variable differs", approved: deletableEnvironment(7, "production"), current: with(func(e github.Environment) github.Environment { return withVariables(e, region) }), want: false},
+		{
+			// 件数は同じで、予定した変数の一つが別の名前に置き換わった
+			name: "variable replaced by another name differs", approved: deletableEnvironment(7, "production"),
+			current: with(func(e github.Environment) github.Environment {
+				return withVariables(e, region, github.Variable{Name: "ZONE", Value: "1"})
+			}), want: false,
+		},
+		{
+			name: "variable with a changed value differs", approved: deletableEnvironment(7, "production"),
+			current: with(func(e github.Environment) github.Environment {
+				return withVariables(e, region, github.Variable{Name: "TIER", Value: "2"})
+			}), want: false,
+		},
+		{
+			name: "variable name differing only in case is the same", approved: deletableEnvironment(7, "production"),
+			current: with(func(e github.Environment) github.Environment {
+				return withVariables(e, github.Variable{Name: "region", Value: "ap-northeast-1"}, tier)
+			}), want: true,
+		},
+		{
+			name: "added secret differs", approved: deletableEnvironment(7, "production"),
+			current: with(func(e github.Environment) github.Environment {
+				return withSecrets(e, deployKey, token, github.EnvironmentSecret{Name: "NEW", UpdatedAt: "2026-01-03T00:00:00Z"})
+			}),
+			want: false,
+		},
+		{name: "removed secret differs", approved: deletableEnvironment(7, "production"), current: with(func(e github.Environment) github.Environment { return withSecrets(e, deployKey) }), want: false},
+		{
+			// 件数は同じで、予定した Secret の一つが別の名前に置き換わった
+			name: "secret replaced by another name differs", approved: deletableEnvironment(7, "production"),
+			current: with(func(e github.Environment) github.Environment {
+				return withSecrets(e, deployKey, github.EnvironmentSecret{Name: "OTHER", UpdatedAt: token.UpdatedAt})
+			}),
+			want: false,
+		},
+		{
+			// 登録し直された Secret は、値を読めなくても承認の前に示したものと同じとはいえない
+			name: "secret registered again differs", approved: deletableEnvironment(7, "production"),
+			current: with(func(e github.Environment) github.Environment {
+				return withSecrets(e, deployKey, github.EnvironmentSecret{Name: "TOKEN", UpdatedAt: "2026-01-03T00:00:00Z"})
+			}),
+			want: false,
+		},
+		{
+			name: "secret name differing only in case differs", approved: deletableEnvironment(7, "production"),
+			current: with(func(e github.Environment) github.Environment {
+				return withSecrets(e, github.EnvironmentSecret{Name: "deploy_key", UpdatedAt: deployKey.UpdatedAt}, token)
+			}),
+			want: false,
+		},
+		{name: "no variables or secrets at approval and none now is the same", approved: empty(), current: empty(), want: true},
+		{name: "no variables at approval and a variable now differs", approved: empty(), current: withVariables(empty(), region), want: false},
+		{name: "no secrets at approval and a secret now differs", approved: empty(), current: withSecrets(empty(), deployKey), want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := matchesAnticipatedEnvironmentLoss(lossOf(t, tc.approved), tc.current); got != tc.want {
+				t.Errorf("matchesAnticipatedEnvironmentLoss() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	// 読んでいない一覧を空として比べると、承認のあとに足された変数か Secret ごと消すため、更新直前の観測によらず読む範囲の破れとして止める。
+	// 承認時の一覧を空にし、失われる値も変えて、空として比べる実装と、失われる値の違いで一覧を引かずに偽を返す実装を失敗させる
+	unread := func(change func(e *github.Environment)) github.Environment {
+		e := empty()
+		e.Protection.WaitTimer = 31
+		change(&e)
+		return e
+	}
+	panicCases := []struct {
+		name    string
+		current github.Environment
+	}{
+		{name: "current without its variables read panics", current: unread(func(e *github.Environment) { e.Variables = nil })},
+		{name: "current without its secrets read panics", current: unread(func(e *github.Environment) { e.Secrets = nil })},
+	}
+	for _, tc := range panicCases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Error("matchesAnticipatedEnvironmentLoss() did not panic")
+				}
+			}()
+			matchesAnticipatedEnvironmentLoss(lossOf(t, empty()), tc.current)
+		})
+	}
+}
+
+// TestMatchesPreconditionBasis_EnvironmentDeletion は、Environment の削除の基準が、存在と ID に加えて、承認の前に示した削除で失われるものを比べる規則を確かめる。
+// 失われるものの比べ方は TestMatchesAnticipatedEnvironmentLoss が確かめる。
+//
+//trace:checks INV-001 INV-004 FR-010
+func TestMatchesPreconditionBasis_EnvironmentDeletion(t *testing.T) {
+	basis := environmentDeletionChange(t, "production", deletableEnvironment(7, "production")).Operations[0].PreconditionBases[0]
+	changed := deletableEnvironment(7, "production")
+	changed.Protection.CanAdminsBypass = false
+	cases := []struct {
+		name    string
+		current []github.Environment
+		want    bool
+	}{
+		{name: "same ID and the same loss is the same", current: []github.Environment{deletableEnvironment(7, "PRODUCTION")}, want: true},
+		{name: "same ID with a different loss differs", current: []github.Environment{changed}, want: false},
+		{name: "another ID with the same loss differs", current: []github.Environment{deletableEnvironment(8, "production")}, want: false},
+		// 存在しない Environment は失われるものを引かずに不成立にする。引けば読んでいない一覧で panic する
+		{name: "absent environment differs", current: []github.Environment{deletableEnvironment(9, "staging")}, want: false},
+		{name: "only an undetermined name differs", current: []github.Environment{deletableEnvironment(7, "prodüction")}, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			observed := github.ObservationResult{RepositoryID: 1, Environments: environments(tc.current...)}
+			if got := matchesPreconditionBasis(basis, observed, github.EnvironmentObservation{}); got != tc.want {
+				t.Errorf("matchesPreconditionBasis() = %v, want %v", got, tc.want)
+			}
 		})
 	}
 }
@@ -861,4 +1049,14 @@ func TestEnvironmentCreatedIn(t *testing.T) {
 		}()
 		environmentCreatedIn(change, []github.ObservationResult{observedWith(8)})
 	})
+}
+
+// lossOf は、削除で失われるものまで読んだ観測 e から、changeplan と同じく削除で失われるものを作る。
+func lossOf(t *testing.T, e github.Environment) changeplan.EnvironmentLoss {
+	t.Helper()
+	deletedValue, ok := e.DeletedValue().Value()
+	if !ok {
+		t.Fatalf("deleted value of %q is unavailable, want an observed value", e.Name)
+	}
+	return changeplan.EnvironmentLoss{DeletedValue: deletedValue, Variables: e.Variables.Existing, Secrets: e.Secrets.Existing}
 }

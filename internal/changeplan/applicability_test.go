@@ -216,6 +216,52 @@ func TestJudgeApplicability(t *testing.T) {
 	}
 }
 
+// TestJudgeApplicability_EnvironmentDeletion は、Environment の削除の変更予定を、削除で失われる値の全体を承認の前に示せないときだけ、
+// 示せない理由 (解釈しない部分か知らない値) で適用不能とすることを確かめる。
+// 示せるかと理由は、reconcile が計画に入れた削除で失われるものと解釈しなかったものから決める。
+// 計画時の観測は、計画と食い違う Environment (知らない種類の保護ルールを持つ) にし、観測を引き直す実装を失敗させる。
+//
+//trace:checks FR-006 INV-001
+func TestJudgeApplicability_EnvironmentDeletion(t *testing.T) {
+	production := mustEnvironmentName(t, "production")
+	unit := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
+	uninterpreted := github.UninterpretedPart{Kind: github.UninterpretedProtectionRuleType, Name: "custom"}
+	// deletion は、削除で失われるもの loss と解釈しなかったもの parts を持つ削除の変更予定
+	deletion := func(loss *EnvironmentLoss, parts ...github.UninterpretedPart) SettingPlan {
+		return SettingPlan{Unit: unit, Observed: github.Observed(setting.Present()), Desired: setting.Absent(), Result: Mismatch, EnvironmentLoss: loss, UninterpretedParts: parts}
+	}
+	withUnknownRule := github.Environment{ID: 7, Name: "production", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyAll, Protection: unprotected()}
+	withUnknownRule.UninterpretedProtectionRules = []github.UninterpretedPart{uninterpreted}
+	observed := github.ObservationResult{Environments: &github.Environments{Existing: []github.Environment{withUnknownRule}}}
+	cases := []struct {
+		name string
+		in   SettingPlan
+		want Applicability
+	}{
+		{name: "deletion that can show what it loses is applicable", in: deletion(&EnvironmentLoss{}), want: Applicable()},
+		{
+			name: "deletion without the loss with uninterpreted parts is not applicable because of the uninterpreted parts",
+			in:   deletion(nil, uninterpreted), want: NotApplicable(NotApplicableUninterpretedParts),
+		},
+		{
+			name: "deletion without the loss or uninterpreted parts is not applicable because of the unknown value",
+			in:   deletion(nil), want: NotApplicable(NotApplicableUnknownValue),
+		},
+		{
+			name: "creation without the loss is applicable",
+			in:   SettingPlan{Unit: unit, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch},
+			want: Applicable(),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := judgeApplicability(tc.in, []SettingPlan{tc.in}, observed); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("judgeApplicability() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestJudgeApplicability_PreventSelfReview は、自己承認の禁止の変更予定を、更新時点に担当者がいない状態になる見込みで、
 // prevent_self_review を送らずには期待値にならないときに適用不能とすることを確かめる。
 //

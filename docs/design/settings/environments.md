@@ -20,10 +20,14 @@
 | Environment の保護設定 | Environment Protection | デプロイの待機時間、`required_reviewers` の保護ルールの全体（担当者の集合と自己承認の禁止）、管理者による迂回の可否（`can_admins_bypass`）。reco はすべてを観測し、`can_admins_bypass` のほかは宣言を受け付ける |
 | Environment Variables | Environment Variables | Environment に属する Environment Variable からなる設定の領域。Environments とは別の設定の領域 |
 | Environment Variable | Environment Variable | Environment に属し、名前と値を持つリポジトリリソース。GitHub は ID を付けないため、名前だけで識別する種類として扱う |
+| Environment Secret | Environment Secret | Environment に属し、名前を持つリポジトリリソース。GitHub は値を誰にも返さない。reco は宣言を受け付けず、Environment の削除の副作用を示すためだけに、名前と `updated_at` を観測する |
+| 解釈しない保護ルール | Uninterpreted Protection Rule | `type` が `wait_timer`、`required_reviewers`、`branch_policy` のどれでもない保護ルール（GitHub App による保護ルールなど）。reco は `type` だけを観測し、保護設定の値には含めない |
 
 Environment は、一覧と個別取得の応答が ID を含み、同じ名前で作り直すと ID が変わることを確かめた種類です（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md)）。そのため、GitHub が ID を付ける種類として扱います（[ドメインモデル](../domain.md) のリポジトリリソースの同一性）。
 
 Environment Variable の管理の単位は、属する先の Environment の名前と変数の名前の組です。Environment の名前は Environment と同じ規則で、変数の名前と値は Repository Variable と同じ規則で比べます（[Actions の設計](actions.md) の設定と管理の単位）。
+
+Environment の削除で失われる値は、デプロイ元制限（方式と個別パターン）、担当者の集合、自己承認の禁止、デプロイの待機時間、`can_admins_bypass`、解釈しない保護ルールの全体です（[ドメインモデル](../domain.md) の削除で失われる値と副作用）。`can_admins_bypass` と解釈しない保護ルールは宣言を受け付けませんが、削除はそれらも失わせるため含めます。Environment Variable と Environment Secret は Environment に属するリポジトリリソースで、削除でそれらが消えることは変更に伴う副作用です。GitHub は削除で両方を消し、同じ名前で作り直しても戻しません（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 5.1）。デプロイの記録は削除のあとも残るため（同 5.1）、どちらにも数えません。
 
 デプロイ元制限は、方式の値によって個別パターンの集合を持つかどうかが決まる設定グループです（[ドメインモデル](../domain.md) の一覧の全体を宣言する設定との違い）。GitHub は方式が `selected` のあいだだけ個別パターンを受け付け、方式を `selected` から変えると個別パターンを残しません。そのため、方式が `selected` でないときの値は観測不能ではなく、方式だけの値です。
 
@@ -38,20 +42,27 @@ Environment Variable の管理の単位は、属する先の Environment の名�
 | `alignment` | `FR-010` | Functional Requirement |
 | `grounding` | [GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) | Repository File |
 | `grounding` | [GitHub Actions 変数 API 仕様](../../research/actions-variables.md) | Repository File |
+| `grounding` | [GitHub Actions シークレット API 仕様](../../research/actions-secrets.md) | Repository File |
 
 ## 観測
 
 Environments は、`GET /repos/{owner}/{repo}/environments` の全ページで読みます（[GitHub API 通信の設計](../github-access.md) 2.3節）。一覧の成功応答が、作成と削除の直後も含めて存在する Environment をすべて含むことと、GitHub が ASCII の英字の大文字小文字だけが違う名前を同じ Environment とみなすことを、実際の動作で確かめています（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 2章・3.1）。GitHub はほかの違い（アクセントの有無など）も同じとみなすため、宣言の名前は同一性を判定できる名前に限り（YAML 設定仕様 11.1節）、判定できない名前の扱いはドメインモデルの同一性を判定できる名前に従います。一覧に、Unicode の単純な大文字小文字の畳み込みで同じになる名前が二つ以上あれば、取得契約に適合しない応答とします。GitHub は二つを同じ Environment とみなすはずで、どちらを照合し更新するかが決まらないためです。一覧の要素は個別取得の本文と全フィールドが一致するため（同 3.1）、個別取得は送りません。
 
-Environment の取得契約は、`id`、`name`、`deployment_branch_policy`、`protection_rules`、`can_admins_bypass` がそろうことです。`can_admins_bypass` は公式のスキーマにありませんが、常に返ることを確かめています（同 3.2）。方式は `deployment_branch_policy` から、`null` を `all`、`protected_branches` だけが真を `protected_branches`、`custom_branch_policies` だけが真を `selected` と読みます。二つが同じ値の組は GitHub が更新で受け付けないため（同 1章）、取得で受けたら取得契約に適合しない応答とします。保護ルールは `type` で読み分け、`wait_timer` と `required_reviewers` の値だけを読みます。担当者の集合は `required_reviewers` の保護ルールから読み、保護ルールがなければ空集合、保護ルールの `reviewers` が空なら担当者のいない保護ルールとします。自己承認の禁止は同じ保護ルールの `prevent_self_review` から、デプロイの待機時間は `wait_timer` の保護ルールから読み、保護ルールがなければそれぞれ `false` と `0` とします（設定と管理の単位）。担当者の login は、種類が利用者の担当者についてだけ `reviewer.login` から読み（同 3.2）、表示にだけ使います。login が欠けているときと、ASCII の英数字と `-` と `_` だけからなる空でない文字列でないときは、login のない担当者とし、観測操作の失敗にはしません。login は値に含めないため、欠けても照合に影響しません。形を限るのは、API が返した文字列を表示の行にそのまま書かないためです。担当者の `type` は GitHub が値を足し得る列挙として読み（公式の OpenAPI 記述は `User` と `Team`）、どれか一つの担当者の `type` が reco の知らない文字列なら、その Environment の担当者の集合だけを、値が知らない値であることを理由とする観測不能にします。知らない種類の担当者を除いた集合は観測値にしません。`reviewer` の形は担当者の種類ごとに違い得るため、知らない種類の担当者には `type` のほかの項目を求めません。自己承認の禁止は同じ保護ルールの真偽値で、観測値を持ちます。デプロイの待機時間、デプロイ元制限、変数も観測値を持ちます。
+Environment の取得契約は、`id`、`name`、`deployment_branch_policy`、`protection_rules`、`can_admins_bypass` がそろうことです。`can_admins_bypass` は公式のスキーマにありませんが、常に返ることを確かめています（同 3.2）。方式は `deployment_branch_policy` から、`null` を `all`、`protected_branches` だけが真を `protected_branches`、`custom_branch_policies` だけが真を `selected` と読みます。二つが同じ値の組は GitHub が更新で受け付けないため（同 1章）、取得で受けたら取得契約に適合しない応答とします。保護ルールは `type` で読み分け、`wait_timer` と `required_reviewers` の値だけを読みます。`branch_policy` は、方式を `deployment_branch_policy` から読むため読み飛ばします。ほかの `type` の保護ルールは解釈しない保護ルールとし、`type` のほかの項目を求めず、`type` を応答の順に、同じ `type` は一つだけ、解釈しなかったものとして持ちます。保護設定の値には含めないため、存在を宣言した Environment の照合、更新の前後の比較、`show` には影響しません。宣言を受け付けない保護ルールで、reco の `PUT` はこれを送らないためです（[ドメインモデル](../domain.md) 4.3節）。`PUT` がこの保護ルールを保つかは、GitHub App が要るため確かめていません。解釈しなかったものを使うのは、削除で失われる値の全体を示せるかの判定だけです（適用可能性と副作用）。`type` の欠落は、取得契約に適合しない応答のままです。担当者の集合は `required_reviewers` の保護ルールから読み、保護ルールがなければ空集合、保護ルールの `reviewers` が空なら担当者のいない保護ルールとします。自己承認の禁止は同じ保護ルールの `prevent_self_review` から、デプロイの待機時間は `wait_timer` の保護ルールから読み、保護ルールがなければそれぞれ `false` と `0` とします（設定と管理の単位）。担当者の login は、種類が利用者の担当者についてだけ `reviewer.login` から読み（同 3.2）、表示にだけ使います。login が欠けているときと、ASCII の英数字と `-` と `_` だけからなる空でない文字列でないときは、login のない担当者とし、観測操作の失敗にはしません。login は値に含めないため、欠けても照合に影響しません。形を限るのは、API が返した文字列を表示の行にそのまま書かないためです。担当者の `type` は GitHub が値を足し得る列挙として読み（公式の OpenAPI 記述は `User` と `Team`）、どれか一つの担当者の `type` が reco の知らない文字列なら、その Environment の担当者の集合だけを、値が知らない値であることを理由とする観測不能にします。知らない種類の担当者を除いた集合は観測値にしません。`reviewer` の形は担当者の種類ごとに違い得るため、知らない種類の担当者には `type` のほかの項目を求めません。自己承認の禁止は同じ保護ルールの真偽値で、観測値を持ちます。デプロイの待機時間、デプロイ元制限、変数も観測値を持ちます。
 
 個別パターンは、`GET /repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies` の全ページで読み、方式を `selected` と観測した Environment にだけ送ります。`selected` でないときは GitHub が `404` を返すためです（[GitHub デプロイ元パターン API 仕様](../../research/deployment-branch-policies.md) 1章）。`selected` と観測したあとの `404` は観測操作の失敗です。個別パターンの取得契約は、`id`、`name`、`type` がそろうことです。`type` は GitHub が値を足し得る列挙として読み（公式の OpenAPI 記述は `branch` と `tag`）、どれか一つの個別パターンの `type` が reco の知らない文字列なら、その Environment のデプロイ元制限（方式と個別パターンの組）だけを、値が知らない値であることを理由とする観測不能にします（[GitHub API 通信の設計](../github-access.md) 2.1節）。方式は一覧の要素から読めているため、Environment の `PUT` の前後の比較にはそのまま使います。GitHub は先頭か末尾に ASCII 以外の空白（U+00A0 など）を持つ名前のパターンを受け付けますが（同 4.1）、宣言はこの名前を受け付けません（YAML 設定仕様 11.2節）。そのため、GitHub 上にこの名前のパターンがあると宣言で一致させられず、`plan` は毎回、取り除く個別パターンとして示します。
 
 Environment Variables は、`GET /repos/{owner}/{repo}/environments/{environment_name}/variables` の全ページで、すべての個別パターンを読んだあとに読みます。`per_page`、1ページの本文の上限、要素の取得契約、名前の重複の扱いは、Repository Variables と同じです（[Actions の設計](actions.md) の観測）。重複は一つの Environment の一覧の中で判定します。ページ数の上限は、GitHub が一つの Environment に保存できる100件（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 3章）を1ページ30件で読み切る4ページです。一覧にあった Environment への `404` は、二つの読み取りのあいだに Environment がなくなった可能性があるため、観測操作の失敗とします。
 
-個別パターンと Environment Variables は、Environment ごとに送る読み取り要求で、範囲は [GitHub API 通信の設計](../github-access.md) 2.4節に従います。Environment の名前は、パスの一つの要素として宛先に入れます（同 4章）。`show` は一覧にあるすべての Environment の変数を読むため、名前が `.` か `..` の Environment が一覧にあると、方式によらず観測操作の失敗で止まります。GitHub がこの名前の Environment を作れるかは確かめていません。`show` が読む総量（Environment ごとに最大4ページ × 9 MiB）は Environment の数に比例し、全体の上限はありません。`plan` と `apply` は宣言した Environment だけを読むため、宣言していない Environment のこの名前では止まらず、総量も宣言した Environment の数に比例します。
+Environment Secrets は、`GET /repos/{owner}/{repo}/environments/{environment_name}/secrets` の全ページで、その Environment の Environment Variables を読んだあとに読みます。送るのは、`plan` と `apply` で、存在しないことを宣言した Environment が一覧にあるときの、その Environment だけです。存在を宣言した Environment と `show` では読みません。宣言を受け付けない種類で、削除の副作用として名前を示し、変更前提で比べるためだけに読むためです。存在しないことを宣言した Environment の個別パターン（方式が `selected` のとき）と Environment Variables も、同じ理由で、ほかの宣言した Environment と同じく読みます。
 
-Environments と Environment Variables に、取得条件による観測不能はありません。非公開リポジトリでも一覧と個別パターンと変数を取得できたためです（GitHub デプロイ環境 API 仕様 1.1、GitHub Actions 変数 API 仕様 1.1）。
+Secret の名前を読むのは、公式資料の記載（Environment の削除がシークレットを消す）だけを根拠に Secret が消えることを毎回示す形では、Secret があるのか、どれを別の場所に登録し直せばよいのかを、利用者が承認の前に判断できないためです。値は GitHub が誰にも返さないため、名前と `updated_at` が、失われる Secret について確かめられることのすべてです。
+
+Environment Secrets の `per_page`、1ページの本文の上限、ページ数の上限は、[GitHub API 通信の設計](../github-access.md) 2.1節と 2.3節の一般の値です。要素の取得契約は、空でない文字列の `name` と、空でない文字列の `updated_at` がそろうことで、値のフィールドは求めません。`updated_at` は文字列のまま比べるだけで、日時として解釈しません。一つの Environment の一覧に、ASCII の大文字小文字だけが違う名前が二つ以上あれば、取得契約に適合しない応答とします。GitHub は名前を大文字にして保存し（[GitHub Actions シークレット API 仕様](../../research/actions-secrets.md) 2章）、二つは同じ Secret を指すはずで、変更前提でどちらと比べるかが決まらないためです。一覧にあった Environment への `404` は、Environment Variables と同じ理由で観測操作の失敗です。権限の不足による `403` も観測操作の失敗で、Secret がないとは読みません。Secret の一覧を読めないトークンでは、Environment の削除を宣言した `plan` と `apply` は観測操作の失敗で止まります。
+
+個別パターン、Environment Variables、Environment Secrets は、Environment ごとに送る読み取り要求で、範囲は [GitHub API 通信の設計](../github-access.md) 2.4節に従います。Environment の名前は、パスの一つの要素として宛先に入れます（同 4章）。`show` は一覧にあるすべての Environment の変数を読むため、名前が `.` か `..` の Environment が一覧にあると、方式によらず観測操作の失敗で止まります。GitHub がこの名前の Environment を作れるかは確かめていません。`show` が読む総量（Environment ごとに最大4ページ × 9 MiB）は Environment の数に比例し、全体の上限はありません。`plan` と `apply` は宣言した Environment だけを読むため、宣言していない Environment のこの名前では止まらず、総量も宣言した Environment の数に比例します。
+
+Environments、Environment Variables、Environment Secrets に、取得条件による観測不能はありません。非公開リポジトリでも一覧と個別パターンと変数と Secret の一覧を取得できたためです（GitHub デプロイ環境 API 仕様 1.1、GitHub Actions 変数 API 仕様 1.1、GitHub Actions シークレット API 仕様 1章）。
 
 担当者の login は、観測した担当者にだけ表示に添えます。変更計画の期待値の担当者のうち、現在の集合にいない担当者は ID だけで示します。reco は ID から login を解決しないためです。担当者のいない保護ルールは、変更計画では空集合と見分けられる現在値として示し、`show` では `reviewers` の行をコメントにして示します。`reviewers: []` と示すと、設定宣言として読んだときに観測した状態と一致しない宣言になるためです（設定と管理の単位）。
 
@@ -63,10 +74,19 @@ Environments と Environment Variables に、取得条件による観測不能�
 | `grounding` | [GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) | Repository File |
 | `grounding` | [GitHub デプロイ元パターン API 仕様](../../research/deployment-branch-policies.md) | Repository File |
 | `grounding` | [GitHub Actions 変数 API 仕様](../../research/actions-variables.md) | Repository File |
+| `grounding` | [GitHub Actions シークレット API 仕様](../../research/actions-secrets.md) | Repository File |
 
 ## 適用可能性と副作用
 
-Environment そのものと Environment Variables に固有の適用不能の条件はありません。名前の同一性を判定できないことと、属する先が存在しないことによる適用可能性は、ドメインモデルの照合と変更予定に従います。変数を書いた Environment は `environments[]` に書いた Environment で、存在することを宣言しているため（YAML 設定仕様 11.4節）、属する先が宣言されていないことによる適用不能は生じません。非公開リポジトリでも Environment Variables の一覧、作成、更新を利用できたため（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 1.1）、公開範囲による適用不能も設けません。一つの Environment の変数の件数の上限（100件）と値の長さの上限は、計画の時点で確かめません。
+Environment Variables と、存在を宣言した Environment そのものに固有の適用不能の条件はありません。名前の同一性を判定できないことと、属する先が存在しないことによる適用可能性は、ドメインモデルの照合と変更予定に従います。変数を書いた Environment は `environments[]` に書いた Environment で、存在することを宣言しているため（YAML 設定仕様 11.4節）、属する先が宣言されていないことによる適用不能は生じません。非公開リポジトリでも Environment Variables の一覧、作成、更新を利用できたため（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 1.1）、公開範囲による適用不能も設けません。一つの Environment の変数の件数の上限（100件）と値の長さの上限は、計画の時点で確かめません。
+
+存在しないことを宣言した Environment の削除は、削除で失われる値の全体を示せないときに適用不能です（[ドメインモデル](../domain.md) の削除で失われる値と副作用）。当たるのは次のどれかがあるときで、どれも照合は不一致のままです。
+
+- 解釈しない保護ルール。適用不能の理由の下に、解釈しなかった `type` を観測の順で示す
+- 知らない種類の担当者。担当者の集合が観測不能になる
+- 知らない種類の個別パターン。デプロイ元制限が観測不能になる
+
+解釈しない保護ルールと知らない値の両方があるときは、解釈しない保護ルールを理由にします。利用者に示せる情報（解釈しなかった `type`）が多いためです。適用不能の理由には、直し方としてその Environment を設定宣言から消すことを示します。どれも GitHub 上の Environment によるもので、宣言を直しても解消しないためです。変数や Secret があること、保護ルールがあること、担当者のいない保護ルールや種類が Team の担当者があることは、失われる値を示せるため、適用不能の理由にしません。非公開リポジトリでも `DELETE` が `204` を返したため（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 5.1）、公開範囲による適用不能も設けません。
 
 担当者の集合にも、固有の適用不能の条件はありません。存在しない利用者の ID と、リポジトリの権限を持たない利用者は、計画の時点で確かめません。GitHub はこれらを次のように扱います（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 4.1）。
 
@@ -97,12 +117,18 @@ Environment そのものと Environment Variables に固有の適用不能の条
 
 宣言した `false` に変わることを副作用として示さないのは、宣言した設定が期待値どおりになる変化は、未管理設定の変化ではなく管理設定の変更だからです（[ドメインモデル](../domain.md) 3.5節）。
 
-担当者をすべて外す変更予定を除き、Environment と Environment Variable の変更予定に、変更に伴う副作用と再開する設定はありません。方式を `selected` から変えて個別パターンがなくなることは、デプロイ元制限という管理設定の値の変更です（ドメインモデルの一覧の全体を宣言する設定との違い）。
+Environment の削除の変更予定は、属する Environment Variable と Environment Secret を消します（GitHub デプロイ環境 API 仕様 5.1）。計画時に観測した変数と Secret が一つ以上あれば、その種類ごとに `Side effect:` で示します（表示の形は表示仕様 3.4節）。変数は名前と値を、Secret は名前と、reco が値を読めないことを示します。順は変数、Secret で、一つもない種類の行は示しません。宣言していない変数と Secret も消えますが、副作用として示して承認後に実行し、適用不能にしません。存在しないことを宣言した Environment に属する変数と Secret は、その変更計画では未管理設定で、GitHub の仕様で避けられずに消えるためです（[ドメインモデル](../domain.md) 4.4節）。適用不能な削除には `Side effect:` を添えません。更新しないためです。
+
+削除の変更予定は、`present -> absent` の行の下に、削除で失われる値として、デプロイ元制限（方式と個別パターン）、担当者の集合、自己承認の禁止、デプロイの待機時間、`can_admins_bypass` の5項目を1行ずつ示します（表示仕様 3.3節）。値の表記は、同じ設定の変更予定の現在値と同じにし、担当者には観測した login を添えます。保護ルールのない Environment でも、項目を省かずに既定の値（担当者の集合は空集合、待機時間は `0` など）で示します。reco が確かめたうえで失われる設定がないことを、利用者が読み取れるようにするためです。省くと、確かめて値がないことと、reco が示さないことを区別できません。
+
+担当者をすべて外す変更予定と Environment の削除を除き、Environment と Environment Variable の変更予定に、変更に伴う副作用はありません。どの変更予定にも、再開する設定はありません。方式を `selected` から変えて個別パターンがなくなることは、デプロイ元制限という管理設定の値の変更です（ドメインモデルの一覧の全体を宣言する設定との違い）。削除で中の設定がなくなることは、削除の変更予定の内容で、副作用ではありません（ドメインモデルの削除で失われる値と副作用）。削除した Environment を名前で参照するワークフローは変えず、変更計画にも示しません（同）。
 
 | Relationship | Target | Target Type |
 |---|---|---|
 | `alignment` | `FR-006` | Functional Requirement |
+| `alignment` | `FR-007` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) | Repository File |
 
 ## 論理的な設定変更と更新操作
 
@@ -134,6 +160,23 @@ Environment とそのデプロイ元制限の変更予定は、次の表に従�
 
 方式の `PUT` か作成のあとの起点の値は、`selected` でパターンが一つもない値です。方式を `selected` に変えた直後と、`selected` を本文に含めて作った直後の一覧が空であることを確かめています（GitHub デプロイ環境 API 仕様 4.1）。
 
+Environment の削除は、一つの `DELETE /repos/{owner}/{repo}/environments/{environment_name}` からなる一つの論理的な設定変更です。存在しないことの宣言はほかのキーと並べられないため（YAML 設定仕様 11.6節）、同じ Environment の中の設定と変数の論理的な設定変更と、同じ変更計画に並ぶことはありません。
+
+削除の変更予定が承認の前に示すものは、削除で失われる値と、副作用として示す変数と Secret の一覧です。この三つをまとめて **削除で失われるもの** と呼びます。削除で失われる値は Environment の中の設定だけを指し、削除で失われるものは、それに属するリポジトリリソースの一覧を加えた範囲を指します。変更前提で比べる関係する現在値は次のとおりで、削除で失われるものは承認の前に示した観測と同じものから比べます。
+
+| 関係する現在値 | 承認時に予定した値 |
+|---|---|
+| Environment そのもの | 存在し、ID が計画時と同じ |
+| 削除で失われる値 | 計画時の観測結果の全体。解釈しない保護ルールと、知らない種類の担当者と個別パターンがないことを含む |
+| Environment Variables | 計画時に観測した名前と値の一覧。一つもなかった場合は、一つもないまま |
+| Environment Secrets | 計画時に観測した名前と `updated_at` の一覧。一つもなかった場合は、一つもないまま |
+
+- **一覧の比べ方**：変数は名前と値が同じ変数の、Secret は名前と `updated_at` が同じ Secret の集まりとして比べ、並びは比べない。名前は、変数は Repository Variable と同じ規則で、Secret は綴りのまま比べる。Secret の名前はどちらの観測も GitHub が保存した綴りで、綴りが変わるのは登録し直したときだけのためである
+- **Secret の `updated_at` を比べる理由**：承認のあとに Secret が登録し直されたことを観測できる唯一の項目だからである。値を示していない Secret でも、書き換えられた直後の Environment を消さない側に倒す。`updated_at` は表示しない。値の同一性を示す項目ではないため、`updated_at` が同じでも値が同じとは扱わない
+- **承認のあとに現れた解釈しない保護ルールと知らない値**：承認の前に示していない値を失わせるため、関係する現在値の変化とする
+
+`Precondition:` は、変わっていたものによらず Environment の名前で示し、どの中の設定か、変数か Secret かは示しません（[表示仕様](../../spec/output.md) 4.3節）。どれが変わっていても、利用者は `plan` で失われるものを示し直させて確かめることになり、とる行動が変わらないためです。
+
 Environment Variable の変更予定は、変数ごとに一つの更新操作からなる一つの論理的な設定変更で、作成は `POST .../environments/{environment_name}/variables`、値の変更は `PATCH .../variables/{name}`、削除は `DELETE .../variables/{name}` です。Environment の作成とまとめないのは、デプロイ元制限と違い、変数のない Environment が Environment の存在という期待状態を満たしており、変数の作成は別の更新要求だからです。存在しない Environment の中で存在しないことを宣言した変数は、作成の論理的な設定変更の期待状態に加え、更新操作を持ちません。作られたばかりの Environment の変数の一覧が空で返ることを確かめています（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 4.3）。
 
 担当者の集合、自己承認の禁止、デプロイの待機時間の変更予定は、次の表に従います。**作成直後の値** は、担当者の集合が空集合、自己承認の禁止が `false`、待機時間が `0` です。どの方式を本文に含めた作成の `PUT` も、本文のない作成の `PUT` も、`required_reviewers` と `wait_timer` の保護ルールを持たない Environment を作ることを確かめています（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 4.1）。
@@ -161,7 +204,7 @@ Environment Variable の変更予定は、変数ごとに一つの更新操作�
 
 変数の更新操作の変更前提で比べる関係する現在値は、Environment そのもの、変数の順です。計画時に存在した Environment では、Environment の ID も比べます。作り直された Environment の変数の一覧は空になるため（同 4.3）、変数だけを比べると、変数の作成を承認したあとに Environment が作り直されたことを検出できないためです。同じ変更計画が作成する Environment では ID が定まらず、変数が存在しないと観測できたことで Environment の存在もあわせて確かめます（[ドメインモデル](../domain.md) のリポジトリリソースの同一性）。
 
-論理的な設定変更は、Environment ごとに、存在（デプロイ元制限をまとめた作成を含む）、デプロイ元制限、担当者の集合、自己承認の禁止、デプロイの待機時間、変数（宣言の順）の順に並べ、Environment をまたいでは宣言の順に並べます。自己承認の禁止を担当者の集合のあとにするのは、担当者がいない状態で送ると GitHub が `422` で拒むためです。設定の領域の順（全 Environment のあとに全 Environment Variable）にしないのは、変更計画の行を設定ファイルの行と同じ順に並べ、作成から変数の更新直前の観測までのあいだを短くするためです。
+論理的な設定変更は、Environment ごとに、存在（作成と削除。デプロイ元制限をまとめた作成を含む）、デプロイ元制限、担当者の集合、自己承認の禁止、デプロイの待機時間、変数（宣言の順）の順に並べ、Environment をまたいでは宣言の順に並べます。自己承認の禁止を担当者の集合のあとにするのは、担当者がいない状態で送ると GitHub が `422` で拒むためです。設定の領域の順（全 Environment のあとに全 Environment Variable）にしないのは、変更計画の行を設定ファイルの行と同じ順に並べ、作成から変数の更新直前の観測までのあいだを短くするためです。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -185,7 +228,7 @@ Environment Variable の変更予定は、変数ごとに一つの更新操作�
 - 方式の両方 `true` と両方 `false` は `422` で、値は変わらなかった
 - 別の名前の Environment を作成、更新、削除した前後で、ほかの Environment が `updated_at` を含む全フィールドと個別パターンまで一致した
 
-更新後に比べるのは、宛先の Environment の保護設定（デプロイの待機時間、担当者の集合、自己承認の禁止、`can_admins_bypass`）です。待機時間と自己承認の禁止は、照合と同じく、保護ルールがない観測を `0` と `false` と読んで比べます（設定と管理の単位）。保護ルールのない状態から `prevent_self_review: true` の保護ルールが現れた変化も、自己承認の禁止の変化として示すためです。reco が種類を知らない保護ルールは観測しないため比べません。担当者の集合が、更新直前か更新後の片方で知らない値のために観測不能で、もう片方で観測値なら、予期しない変化とします。両方で観測不能なら、担当者の集合は比べません（[ドメインモデル](../domain.md) の変更計画・論理的な設定変更・変更結果）。比べないときの保全の根拠は、`wait_timer` だけ、`prevent_self_review` だけ、`deployment_branch_policy` だけの `PUT` が担当者を変えなかった確認結果です。変更対象外の設定の変化として示す担当者の集合には、login を添えません。login は値に含めず、login だけの違いは予期しない変化ではないためです。
+更新後に比べるのは、宛先の Environment の保護設定（デプロイの待機時間、担当者の集合、自己承認の禁止、`can_admins_bypass`）です。待機時間と自己承認の禁止は、照合と同じく、保護ルールがない観測を `0` と `false` と読んで比べます（設定と管理の単位）。保護ルールのない状態から `prevent_self_review: true` の保護ルールが現れた変化も、自己承認の禁止の変化として示すためです。解釈しない保護ルールは、保護設定の値に含めないため比べません（観測）。担当者の集合が、更新直前か更新後の片方で知らない値のために観測不能で、もう片方で観測値なら、予期しない変化とします。両方で観測不能なら、担当者の集合は比べません（[ドメインモデル](../domain.md) の変更計画・論理的な設定変更・変更結果）。比べないときの保全の根拠は、`wait_timer` だけ、`prevent_self_review` だけ、`deployment_branch_policy` だけの `PUT` が担当者を変えなかった確認結果です。変更対象外の設定の変化として示す担当者の集合には、login を添えません。login は値に含めず、login だけの違いは予期しない変化ではないためです。
 
 Environment の `PUT` の更新操作（作成、方式、担当者の集合、自己承認の禁止、デプロイの待機時間）は、どれも同じ範囲を更新後に比べます。デプロイ元制限の方式と保護設定のうち、その論理的な設定変更が変えない設定と、変更に伴う副作用として示した設定です。作成は更新直前に Environment がなく、比べる値がありません。
 
@@ -233,6 +276,14 @@ Environment の `PUT` に `wait_timer` だけを、分の整数で送ります�
 
 更新エンドポイントは変数ごとに別で、reco がそこで観測するのはその変数だけのため、更新後に比べる変更対象外の設定はありません。変数の作成、値の変更、削除の前後で、Environment の `id` と `updated_at`、同じ Environment のほかの変数、別の Environment とその変数、同じ名前の Repository Variable が変わらなかったことを確かめており（同 5.4）、これを保全の根拠とします。
 
+### Environment の削除
+
+`DELETE /repos/{owner}/{repo}/environments/{environment_name}` を本文なしで送ります。正常応答は本文のない `204` だけです。同じ名前への2回目の `DELETE` に GitHub が返す `404`（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 5.1）は、`4xx` の一般の扱いどおり更新操作の失敗で、存在しないことの確認に読み替えません。宛先の名前は、変更前提で ID を確かめた更新直前の観測の綴りにします。GitHub は大文字小文字の違う名前の `DELETE` でも同じ Environment を消し、`/` を含む名前にも `PUT` と同じ宛先で届くことを確かめています（同 5.1）。
+
+この更新エンドポイントで reco が観測するのは宛先の Environment と、それに属する変数と Secret だけで、どれも削除の変更予定が失わせると示したものです。そのため、更新後に比べる変更対象外の設定はなく、副作用として示した変数と Secret も比べません（[ドメインモデル](../domain.md) 4.5節）。別の名前の Environment を変えないことは、別の名前の Environment を作成、更新、削除した前後で、ほかの Environment が `updated_at` を含む全フィールドと個別パターンまで一致した確認結果（同 4.1、5.1）を保全の根拠とします。同じ名前の Environment Variable を持つ Environment を削除しても、Repository Variable は `updated_at` まで変わらないことを確かめています（同 5.1）。
+
+期待状態は、更新後の観測で、その名前の Environment が存在しないと確かめられることです。更新後の観測は Environment の一覧だけで存在を確かめ、削除した Environment の個別パターン、変数、Secret は読みません。比べるものがないうえ、GitHub の一覧が削除をまだ反映していないと、それらの読み取りが `404` になり、観測し直す前に観測操作の失敗で止まるためです。更新後の観測に同じ名前の Environment があった不一致には、`Possible cause:` に、その Environment を参照するワークフローが削除のあとに実行され、GitHub が同じ名前の Environment を作った可能性を挙げます。存在しない Environment を参照するワークフローを実行すると、GitHub はその名前で保護ルールのない Environment を作るためです（同 1.1）。作られたものかどうかは区別せず、中の設定によらず不一致です。
+
 ### 防げない競合
 
 更新直前の観測と更新要求のあいだの外部主体の変更は、次のとおり防げません。
@@ -240,6 +291,10 @@ Environment の `PUT` に `wait_timer` だけを、分の整数で送ります�
 - 同じ名前の Environment が作られた場合、本文のない作成はそれを何も変えず、方式を本文に含む作成はその方式を宣言した方式にする。外部主体が作った Environment の方式が `selected` で、宣言した方式が `selected` でなければ、個別パターンが失われる
 - 加えようとするパターンが先に加えられた場合は `303` で成否不明、取り除こうとするパターンが先に消された場合は `404` で更新操作の失敗になる
 - 方式、担当者の集合、デプロイの待機時間の `PUT` の前に Environment が削除された場合、`PUT` は宣言した方式、担当者、待機時間を持つ Environment を作る。自己承認の禁止の `PUT` は、担当者がいないため `422` になる。担当者の `PUT` は `422` で拒否されたときも Environment を作ることがある（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 4.1）。更新後の確認は Environment の ID を比べないため、作られた Environment の値が期待状態と変更対象外の設定の両方に一致すれば、完了と報告し得る
+- `DELETE` の前に外部主体が中の設定を変えるか、変数や Secret を足した場合、`DELETE` はその変更ごと Environment を消す。このあいだに Environment が消された場合は `404` で、削除は更新操作の失敗になる
+- `DELETE` の前に Environment が消されて同じ名前で作り直された場合、`DELETE` は作り直された Environment を消す。`DELETE` は名前でしか宛先を示せず、ID を条件にできないためである（[ドメインモデル](../domain.md) のリポジトリリソースの同一性）。更新後の観測では宣言の名前の Environment が存在しないため、完了と報告する。消えるのは、承認の前に示していない中身を持ち得る Environment である
+
+作り直された Environment を消す競合は受け入れます。reco が更新直前の観測で確かめたのは、宣言の名前と承認時の ID を持つ Environment で、そのあとの変化は検出できません。[アーキテクチャ設計](../architecture.md) 5.3節の保全が防ぐのは reco 自身の更新操作による変更で、外部主体による同時変更ではなく、存在する Environment の `PUT` と作成も、同じあいだの変化を防げないことを受け入れているためです。
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -285,6 +340,12 @@ Environment の `PUT` に `wait_timer` だけを、分の整数で送ります�
 | 待機時間の保護ルールのない Environment に `wait_timer: 0` を宣言した | 一致。`PUT` を送らない | 値を観測できないので比較不能、または `wait_timer: 0` を送る |
 | 存在しない Environment に担当者を1人宣言し、作成は成功して担当者の `PUT` が `422` で拒否された | 作成は完了、担当者の設定は失敗。担当者のいない Environment が残るが、存在しなかった状態より保護を弱めない | 作成と担当者を一つの `PUT` にして、作成ごと拒否させる |
 | 存在する Environment の変数 `REGION` の削除を承認したあと、Environment が同じ名前で作り直され、同じ名前と値の変数が作られていた | Environment の ID が違い、関係する現在値の変化。未実行で、作り直された Environment の変数を消さない | 変数の名前と値が承認時と同じなので削除する |
+| 保護ルールも変数も Secret もない Environment `legacy` に、存在しないことを宣言した | 削除の変更予定。失われる値の5項目を、担当者の集合は空集合、待機時間は `0` などで省かずに示し、`Side effect:` は添えない | 失われる設定がないので、`present -> absent` の行だけを示す |
+| 存在しないことを宣言した Environment に、変数と Secret があった | 適用可能。変数の名前と値、Secret の名前を `Side effect:` で示し、承認すれば削除する | 宣言していないリポジトリリソースが消えるので適用不能 |
+| 存在しないことを宣言した Environment に、解釈しない保護ルールがあった | 不一致で、適用不能。解釈しなかった `type` を示し、直し方としてその Environment を設定宣言から消すことを示す | 解釈できた保護設定だけを示して削除する。または、存在するので比較不能 |
+| 存在を宣言した Environment に、解釈しない保護ルールがあった | 照合と適用可能性に影響しない。保護設定の値に含めない | 値が解釈しない部分を含むので比較不能で適用不能 |
+| Environment の削除を承認したあと、Secret が同じ名前で登録し直された | `updated_at` が違い、関係する現在値の変化。未実行 | Secret の名前の一覧が承認時と同じなので削除する |
+| Environment の `DELETE` が `204` を返し、更新後の観測に同じ名前の Environment があった | 期待状態との不一致。`Possible cause:` に、参照が残ったワークフローが作った可能性を挙げる | `204` を受けたので完了。または、作り直されたものなので完了 |
 
 ## References
 

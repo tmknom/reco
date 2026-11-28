@@ -55,9 +55,12 @@ type SettingPlan struct {
 	SettingsExpectedUnaffected []SettingExpectedUnaffected
 	// ResumedSettings は、Actions を有効にする変更予定に添える再開する設定。当たらなければ nil。
 	ResumedSettings []setting.Key
-	// UninterpretedParts は、値が解釈しない部分を含むことを理由に比較不能な計画でだけ、その解釈しなかったものを観測の並びで持つ。ほかの計画では nil。
-	// 比較できない理由に伴うもので、適用可能性の判断の産物ではないため、Applicability ではなくここに置く。
+	// UninterpretedParts は、値が解釈しない部分を含むことを理由に比較不能な計画と、知らない種類の保護ルールを持つ Environment の削除の変更予定でだけ、
+	// その解釈しなかったものを観測の並びで持つ。ほかの計画では nil。
+	// 観測結果に伴うもので、適用可能性の判断の産物ではないため、Applicability ではなくここに置く。
 	UninterpretedParts []github.UninterpretedPart
+	// EnvironmentLoss は、失われる値の全体を示せる Environment の削除の変更予定でだけ持つ。ほかの計画では nil。
+	EnvironmentLoss *EnvironmentLoss
 }
 
 // Generate は、selection で選んだ対象の変更計画を生成する。selection が nil なら宣言された全リポジトリを選ぶ。
@@ -151,6 +154,12 @@ func (s SettingPlan) IsEnvironmentCreation() bool {
 	return s.Unit.Key == setting.EnvironmentResource && s.IsConfirmedCreation()
 }
 
+// IsEnvironmentDeletion は、この変更予定が Environment の削除 (存在しないことを宣言し、存在を観測した Environment の不一致) かを返す。
+// 期待値が存在しないことの不一致は、観測が存在することのときにだけ生じるため、観測値を読まない。
+func (s SettingPlan) IsEnvironmentDeletion() bool {
+	return declaresEnvironmentAbsent(s.Unit, s.Desired) && s.Result == Mismatch
+}
+
 // IsPlannedChange は、この管理設定が変更予定 (不一致か比較不能の管理設定) かを返す。
 // 変更予定かどうかを読む処理ごとに条件を組み立てると定義が食い違うため、ここだけで判定する。
 // 照合結果のない計画は、変更不要とも変更予定とも決められないため、不変条件の破れとして panic する。
@@ -163,7 +172,11 @@ func (s SettingPlan) IsPlannedChange() bool {
 
 // generateRepositoryPlan は、一つの対象リポジトリを計画時に観測し、リポジトリの計画を生成する。
 func generateRepositoryPlan(ctx context.Context, client *github.Client, target configuration.RepositoryDeclaration) (RepositoryPlan, error) {
-	named := github.NamedResources{Environments: managedEnvironments(target.DesiredState), Rulesets: managedRulesets(target.DesiredState)}
+	named := github.NamedResources{
+		Environments:                managedEnvironments(target.DesiredState),
+		EnvironmentsReadForDeletion: environmentsDeclaredAbsent(target.DesiredState),
+		Rulesets:                    managedRulesets(target.DesiredState),
+	}
 	observed, err := client.ObserveRepositoryForNamedResources(ctx, target.Reference, named, managedAreas(target.DesiredState)...)
 	if err != nil {
 		return RepositoryPlan{}, err
@@ -175,4 +188,10 @@ func generateRepositoryPlan(ctx context.Context, client *github.Client, target c
 		settings[i].ResumedSettings = resumedSettings(settings[i], settings)
 	}
 	return RepositoryPlan{Target: target.Reference, RepositoryID: observed.RepositoryID, Settings: settings}, nil
+}
+
+// declaresEnvironmentAbsent は、管理の単位 unit と期待値 desired が、存在しないことを宣言した Environment そのものかを返す。
+// 判定を呼び出し元ごとに組み立てて食い違わせないため、判定をここだけに置く。
+func declaresEnvironmentAbsent(unit setting.Unit, desired setting.Value) bool {
+	return unit.Key == setting.EnvironmentResource && desired.Equal(setting.Absent())
 }

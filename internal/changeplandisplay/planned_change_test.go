@@ -500,6 +500,24 @@ func TestNotApplicableReasonText_MergeMethodRemainsDisabledOfOtherSettingPanics(
 	})
 }
 
+// 一覧を持たない副作用の種類は、一覧を読む計画がなければ示せない。
+func TestSideEffectText_EnvironmentSideEffectWithoutLossPanics(t *testing.T) {
+	withoutLoss := changeplan.SettingPlan{
+		Unit:     setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "legacy")},
+		Observed: github.Observed(setting.Present()), Desired: setting.Absent(), Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
+	}
+	for _, kind := range []changeplan.SideEffectKind{changeplan.SideEffectEnvironmentVariablesDeleted, changeplan.SideEffectEnvironmentSecretsDeleted} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("sideEffectText() did not panic for kind %d without the environment loss", int(kind))
+				}
+			}()
+			_ = sideEffectText(withoutLoss, changeplan.SideEffect{Kind: kind})
+		}()
+	}
+}
+
 func squashMergeCommitValue(title setting.SquashMergeCommitTitle, message setting.SquashMergeCommitMessage) setting.Value {
 	return setting.SquashMergeCommitDefaultValue(setting.SquashMergeCommitDefault{Title: title, Message: message})
 }

@@ -286,6 +286,19 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 				github.ObservationResult{Rulesets: &github.Rulesets{Existing: github.Observed([]github.Ruleset{})}}),
 			want: nil,
 		},
+		{
+			// 削除は宛先の Environment の中の設定ごと消すと示しており、更新後に比べる値がない。
+			// 更新後にも同じ名前の Environment があり保護設定が違う観測にし、Environment の PUT と同じく比べる実装を失敗させる
+			name:   "environment deletion compares no setting even if the environment remains with other protection",
+			change: environmentDeletionChange(t, "production", deletableEnvironment(7, "production")),
+			before: []github.ObservationResult{{Environments: environments(deletableEnvironment(7, "production"))}},
+			after: github.ObservationResult{Environments: environments(func() github.Environment {
+				e := deletableEnvironment(7, "production")
+				e.Protection.CanAdminsBypass = false
+				return e
+			}())},
+			want: nil,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -302,7 +315,7 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			}
 		}()
 		change := allowAutoMergeChange()
-		change.Operations[0].Kind = changeplan.RulesetDeletion + 1
+		change.Operations[0].Kind = changeplan.EnvironmentDeletion + 1
 		unexpectedOutsideChanges(change, []github.ObservationResult{{}}, github.ObservationResult{})
 	})
 }

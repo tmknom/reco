@@ -8,11 +8,13 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// SideEffect は、変更予定に添える変更に伴う副作用で、GitHub が変える未管理設定と、起きる変化を表す。
+// SideEffect は、変更予定に添える変更に伴う副作用で、GitHub が変える未管理設定か、Environment の削除で一緒に消える観測した変数と Secret と、
+// それに起きる変化を表す。
 type SideEffect struct {
 	Kind SideEffectKind
 	// Observed は、Kind が reco の観測する設定に及ぶときだけ持つ、その設定の計画時の設定の観測結果。
 	// 観測値なら変わる前の値を、観測不能なら失われる可能性だけを表す。観測しない設定に及ぶ副作用ではゼロ値。
+	// 一緒に消える変数と Secret の副作用もゼロ値で、消える一覧は計画の削除で失われるもの (SettingPlan.EnvironmentLoss) が持つ。
 	Observed github.SettingObservation[setting.Value]
 }
 
@@ -34,6 +36,12 @@ const (
 	SideEffectPushProtectionDisabled
 	// SideEffectPreventSelfReviewDiscarded は、担当者をすべて外す変更で、Environment の自己承認の禁止が失われること。Observed は失われる前の値の真。
 	SideEffectPreventSelfReviewDiscarded
+	// SideEffectEnvironmentVariablesDeleted は、Environment の削除で、その Environment Variable が名前と値ごと消えること。
+	// 消える変数の一覧は SettingPlan.EnvironmentLoss が持つ。
+	SideEffectEnvironmentVariablesDeleted
+	// SideEffectEnvironmentSecretsDeleted は、Environment の削除で、その Environment Secret が消えること。
+	// 消える Secret の一覧は SettingPlan.EnvironmentLoss が持つ。
+	SideEffectEnvironmentSecretsDeleted
 )
 
 // SettingExpectedUnaffected は、副作用を示さなかった設定と、その計画時の設定の観測結果。
@@ -45,6 +53,7 @@ type SettingExpectedUnaffected struct {
 
 // ObservedSetting は、副作用が及ぶ設定のうち、reco が観測する設定の形を返す。Environment の名前を含む形は、変更予定と同じ Environment の中の設定を指す。
 // Dependency graph は観測しないため偽を返し、その副作用は変更前提にも更新後の比較にも含めない。
+// 一緒に消える変数と Secret は設定の識別を持たないため偽を返す。変更前提では、計画時の一覧を AnticipatedEnvironmentLoss で確かめる。
 // 未定義の種類は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
 func (k SideEffectKind) ObservedSetting() (setting.Key, bool) {
 	switch k {
@@ -56,7 +65,7 @@ func (k SideEffectKind) ObservedSetting() (setting.Key, bool) {
 		return setting.RepositoryPushProtection, true
 	case SideEffectPreventSelfReviewDiscarded:
 		return setting.EnvironmentPreventSelfReview, true
-	case SideEffectDependencyGraphEnabled, SideEffectDependencyGraphDisabled:
+	case SideEffectDependencyGraphEnabled, SideEffectDependencyGraphDisabled, SideEffectEnvironmentVariablesDeleted, SideEffectEnvironmentSecretsDeleted:
 		return "", false
 	}
 	panic(fmt.Sprintf("changeplan: undefined side effect kind %d", int(k)))
@@ -65,6 +74,7 @@ func (k SideEffectKind) ObservedSetting() (setting.Key, bool) {
 // sideEffects は、s の変更予定に伴う副作用と、副作用を示さなかった設定を、設定ごとの設計の遷移表と設定の依存関係に従って返す。
 // settings は s と同じリポジトリの管理設定の計画で、宣言した設定の変化は管理設定の変更として扱い、どちらにも数えない。
 // 比較不能な変更予定は、前提の設定では適用不能 (非公開リポジトリか知らない値の Secret scanning) に限られ、更新しないため副作用を添えない。
+// Environment の削除は、計画時に読んだ削除で失われるもの (SettingPlan.EnvironmentLoss) から副作用を決める。
 func sideEffects(s SettingPlan, observed github.ObservationResult, settings []SettingPlan) ([]SideEffect, []SettingExpectedUnaffected) {
 	if s.Unit.Key == setting.AllowedActions {
 		return selectedActionsSideEffects(s, observed), nil
@@ -74,6 +84,9 @@ func sideEffects(s SettingPlan, observed github.ObservationResult, settings []Se
 	}
 	if s.Result != Mismatch {
 		return nil, nil
+	}
+	if s.EnvironmentLoss != nil {
+		return environmentLossSideEffects(*s.EnvironmentLoss), nil
 	}
 	var effects []SideEffect
 	if s.Unit.Key == setting.DependabotAlerts {
@@ -114,6 +127,20 @@ func preventSelfReviewSideEffects(s SettingPlan, observed github.ObservationResu
 		return []SideEffect{{Kind: SideEffectPreventSelfReviewDiscarded, Observed: current}}, nil
 	}
 	return nil, []SettingExpectedUnaffected{{Key: setting.EnvironmentPreventSelfReview, Observed: current}}
+}
+
+// environmentLossSideEffects は、Environment の削除が失わせるもの loss のうち、一緒に消える変数と Secret を、計画時に一つ以上を観測した種類だけ、変数、Secret の順に副作用として返す。
+// 副作用は一覧を持たず、示す一覧と変更前提で比べる一覧は loss だけが持つ。示す内容と比べる内容を二か所で持たないため。
+// 適用不能な削除は loss を持たず、更新しないため副作用を添えない (呼び出し元が loss のある計画に限る)。
+func environmentLossSideEffects(loss EnvironmentLoss) []SideEffect {
+	var effects []SideEffect
+	if len(loss.Variables) > 0 {
+		effects = append(effects, SideEffect{Kind: SideEffectEnvironmentVariablesDeleted})
+	}
+	if len(loss.Secrets) > 0 {
+		effects = append(effects, SideEffect{Kind: SideEffectEnvironmentSecretsDeleted})
+	}
+	return effects
 }
 
 // dependencyGraphSideEffect は、Dependabot alerts の不一致 s に伴う Dependency graph の副作用を返す。

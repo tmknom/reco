@@ -3,6 +3,7 @@ package github
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/tmknom/reco/internal/setting"
@@ -51,15 +52,16 @@ func decodeEnvironment(data json.RawMessage) (Environment, error) {
 	if err != nil {
 		return Environment{}, err
 	}
-	protection, err := decodeEnvironmentProtection(*p.ProtectionRules, *p.CanAdminsBypass)
+	protection, uninterpreted, err := decodeEnvironmentProtection(*p.ProtectionRules, *p.CanAdminsBypass)
 	if err != nil {
 		return Environment{}, err
 	}
 	return Environment{
-		ID:                         EnvironmentID(*p.ID),
-		Name:                       *p.Name,
-		DeploymentBranchPolicyMode: mode,
-		Protection:                 protection,
+		ID:                           EnvironmentID(*p.ID),
+		Name:                         *p.Name,
+		DeploymentBranchPolicyMode:   mode,
+		Protection:                   protection,
+		UninterpretedProtectionRules: uninterpreted,
 	}, nil
 }
 
@@ -115,49 +117,57 @@ type reviewerPayload struct {
 	} `json:"reviewer"`
 }
 
-// decodeEnvironmentProtection は保護ルールの一覧を保護設定に変換する。
+// decodeEnvironmentProtection は保護ルールの一覧を、保護設定と、解釈しなかった保護ルールに変換する。
 // wait_timer と required_reviewers は、同じ種類が二つあれば契約外の応答とする。
 // branch_policy はデプロイ元制限として deployment_branch_policy から読むため、読み飛ばす。
-// それ以外の種類も読み飛ばす。GitHub が保護ルールの種類を足しても、reco が値を持たない種類のために観測を失敗させないため。
+// それ以外の種類も保護設定には読まず、type だけを解釈しなかったものとして応答の順に、同じ type は一つだけ返す。
+// GitHub が保護ルールの種類を足しても観測を失敗させず、削除がその保護ルールも消すことを示せないと判定できるようにするため。
 // wait_timer の保護ルールがなければ待機時間を 0 とする。GitHub は 0 を保存せず、保護ルールをなくして表すため。
 // required_reviewers の保護ルールがなければ、担当者の集合を空集合の観測値、自己承認の禁止を偽とする。
 // GitHub は担当者をすべて外すと保護ルールごと値をなくし、担当者だけを設定し直すと自己承認の禁止を偽で作るため。
 // 担当者のいない保護ルールは、自己承認の禁止を偽とみなさず保護ルールが持つ値にする。GitHub はこの保護ルールに真を残し、担当者を戻すと真のまま戻すため。
-func decodeEnvironmentProtection(rules []json.RawMessage, canAdminsBypass bool) (EnvironmentProtection, error) {
+func decodeEnvironmentProtection(rules []json.RawMessage, canAdminsBypass bool) (EnvironmentProtection, []UninterpretedPart, error) {
 	protection := EnvironmentProtection{ReviewerSet: Observed(setting.ReviewerSetOfRule(nil)), CanAdminsBypass: canAdminsBypass}
+	var uninterpreted []UninterpretedPart
 	var hasWaitTimer, hasRequiredReviewers bool
 	for _, raw := range rules {
 		var rule protectionRulePayload
 		if err := json.Unmarshal(raw, &rule); err != nil {
-			return EnvironmentProtection{}, fmt.Errorf("%w: protection_rules: %w", ErrUnexpectedResponse, err)
+			return EnvironmentProtection{}, nil, fmt.Errorf("%w: protection_rules: %w", ErrUnexpectedResponse, err)
 		}
 		if rule.Type == nil {
-			return EnvironmentProtection{}, fmt.Errorf("%w: missing fields: protection_rules.type", ErrUnexpectedResponse)
+			return EnvironmentProtection{}, nil, fmt.Errorf("%w: missing fields: protection_rules.type", ErrUnexpectedResponse)
 		}
 		switch *rule.Type {
 		case "wait_timer":
 			if rule.WaitTimer == nil {
-				return EnvironmentProtection{}, fmt.Errorf("%w: missing fields: protection_rules.wait_timer", ErrUnexpectedResponse)
+				return EnvironmentProtection{}, nil, fmt.Errorf("%w: missing fields: protection_rules.wait_timer", ErrUnexpectedResponse)
 			}
 			if hasWaitTimer {
-				return EnvironmentProtection{}, fmt.Errorf("%w: duplicate protection rule: wait_timer", ErrUnexpectedResponse)
+				return EnvironmentProtection{}, nil, fmt.Errorf("%w: duplicate protection rule: wait_timer", ErrUnexpectedResponse)
 			}
 			hasWaitTimer = true
 			protection.WaitTimer = *rule.WaitTimer
 		case "required_reviewers":
 			reviewerSet, preventSelfReview, err := decodeRequiredReviewers(rule)
 			if err != nil {
-				return EnvironmentProtection{}, err
+				return EnvironmentProtection{}, nil, err
 			}
 			if hasRequiredReviewers {
-				return EnvironmentProtection{}, fmt.Errorf("%w: duplicate protection rule: required_reviewers", ErrUnexpectedResponse)
+				return EnvironmentProtection{}, nil, fmt.Errorf("%w: duplicate protection rule: required_reviewers", ErrUnexpectedResponse)
 			}
 			hasRequiredReviewers = true
 			protection.ReviewerSet = reviewerSet
 			protection.PreventSelfReview = preventSelfReview
+		case "branch_policy":
+		default:
+			part := UninterpretedPart{Kind: UninterpretedProtectionRuleType, Name: *rule.Type}
+			if !slices.Contains(uninterpreted, part) {
+				uninterpreted = append(uninterpreted, part)
+			}
 		}
 	}
-	return protection, nil
+	return protection, uninterpreted, nil
 }
 
 // decodeRequiredReviewers は required_reviewers の保護ルールを、担当者の集合の観測結果と自己承認の禁止の値に変換する。

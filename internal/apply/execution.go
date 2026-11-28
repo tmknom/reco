@@ -135,7 +135,7 @@ func observeBeforeUpdate(ctx context.Context, client *github.Client, r changepla
 		return github.ObservationResult{}, operationRecord{precondition: preconditionUnconfirmed}, fmt.Errorf("wait for the interval between update requests before reading %s: %w", r.Target, err)
 	}
 	for i := 0; ; i++ {
-		observed, err := client.ObserveRepositoryForNamedResources(ctx, r.Target, observationResources(change), areas...)
+		observed, err := client.ObserveRepositoryForNamedResources(ctx, r.Target, observationResourcesBeforeUpdate(change), areas...)
 		if err != nil {
 			return github.ObservationResult{}, operationRecord{precondition: preconditionUnconfirmed}, err
 		}
@@ -197,6 +197,8 @@ func sendUpdate(ctx context.Context, client *github.Client, target repository.Re
 		return client.UpdateRulesetValue(ctx, target, operation.AnticipatedRulesetID(), operation.Unit.Ruleset, operation.Value.Ruleset())
 	case changeplan.RulesetDeletion:
 		return client.DeleteRuleset(ctx, target, operation.AnticipatedRulesetID(), operation.Unit.Ruleset)
+	case changeplan.EnvironmentDeletion:
+		return client.DeleteEnvironment(ctx, target, environmentDestination(operation.Unit.Environment, observed))
 	}
 	panic(fmt.Sprintf("apply: undefined kind %d of an update operation", int(operation.Kind)))
 }
@@ -244,12 +246,31 @@ func observationAreas(change changeplan.LogicalChange) []setting.Area {
 	return areas
 }
 
-// observationResources は、change の更新直前と更新後の観測で、リポジトリリソースごとの読み取りを送るリポジトリリソースの名前を返す。
+// observationResourcesBeforeUpdate は、change の更新直前の観測で、リポジトリリソースごとの読み取りを送るリポジトリリソースの名前を返す。
 // Environment は個別パターンと変数の一覧を、Ruleset は値の詳細を、名指したものにだけ読む。
-// 変更前提、期待状態の確認、変更対象外の設定の比較、更新要求の宛先は、どれもこの名前のリポジトリリソースしか引かないため、ほかのリポジトリリソースを読まなくても判断は変わらない。
-func observationResources(change changeplan.LogicalChange) github.NamedResources {
+// 変更前提と更新要求の宛先は、どれもこの名前のリポジトリリソースしか引かないため、ほかのリポジトリリソースを読まなくても判断は変わらない。
+// Environment の削除の宛先は、変更前提で削除で失われるものを比べるため、変数と Secret の一覧まで読む Environment に名指す。
+func observationResourcesBeforeUpdate(change changeplan.LogicalChange) github.NamedResources {
+	named := namedResourcesOf(comparedUnits(change))
+	named.EnvironmentsReadForDeletion = environmentDeletionDestinations(change)
+	return named
+}
+
+// observationResourcesAfterUpdate は、change の更新後の観測で、リポジトリリソースごとの読み取りを送るリポジトリリソースの名前を返す。
+// 期待状態の確認と変更対象外の設定の比較は、比べる管理の単位が指すリポジトリリソースしか引かない。
+// ただし Environment の削除の宛先は、期待状態を一覧での存在だけで確かめ、変更対象外の設定として比べるものもないため、どの読み取りの範囲にも入れない。
+// 一覧の反映が遅れて残った Environment の中を読むと、一覧にあった Environment への 404 が観測の失敗になり、観測し直しに進まないため。
+func observationResourcesAfterUpdate(change changeplan.LogicalChange) github.NamedResources {
+	deleted := environmentDeletionDestinations(change)
+	return namedResourcesOf(slices.DeleteFunc(comparedUnits(change), func(unit setting.Unit) bool {
+		return unit.Key.HasEnvironmentName() && slices.Contains(deleted, unit.Environment)
+	}))
+}
+
+// namedResourcesOf は、units が指すリポジトリリソースの名前を、種類ごとに重複を除いて返す。
+func namedResourcesOf(units []setting.Unit) github.NamedResources {
 	var named github.NamedResources
-	for _, unit := range comparedUnits(change) {
+	for _, unit := range units {
 		if unit.Key.HasEnvironmentName() && !slices.Contains(named.Environments, unit.Environment) {
 			named.Environments = append(named.Environments, unit.Environment)
 		}
@@ -260,8 +281,19 @@ func observationResources(change changeplan.LogicalChange) github.NamedResources
 	return named
 }
 
+// environmentDeletionDestinations は、change の Environment の削除の宛先の宣言の名前を返す。
+func environmentDeletionDestinations(change changeplan.LogicalChange) []setting.EnvironmentName {
+	var names []setting.EnvironmentName
+	for _, operation := range change.Operations {
+		if operation.Kind == changeplan.EnvironmentDeletion {
+			names = append(names, operation.Unit.Environment)
+		}
+	}
+	return names
+}
+
 // comparedUnits は、change の更新直前と更新後の観測で比べる管理の単位を、重複を除かずに返す。
-// observationAreas と observationResources が同じ単位から読む範囲を導き、片方だけに単位を足して範囲が食い違わないようにするため。
+// observationAreas と、更新直前と更新後のリポジトリリソースの名前が同じ単位から読む範囲を導き、片方だけに単位を足して範囲が食い違わないようにするため。
 func comparedUnits(change changeplan.LogicalChange) []setting.Unit {
 	var units []setting.Unit
 	for _, operation := range change.Operations {
@@ -285,7 +317,7 @@ func appendArea(areas []setting.Area, area setting.Area) []setting.Area {
 // retryDelays の時間ずつ待って、retryDelays を使い切るまで観測し直す。
 func observeAfterUpdate(ctx context.Context, client *github.Client, r changeplan.RepositoryPlan, change changeplan.LogicalChange, areas []setting.Area, retryDelays []time.Duration, after func(time.Duration) <-chan time.Time) (github.ObservationResult, desiredStateConfirmation, unavailableManagedSetting, error) {
 	for i := 0; ; i++ {
-		observed, err := client.ObserveRepositoryForNamedResources(ctx, r.Target, observationResources(change), areas...)
+		observed, err := client.ObserveRepositoryForNamedResources(ctx, r.Target, observationResourcesAfterUpdate(change), areas...)
 		if err != nil {
 			return github.ObservationResult{}, desiredStateObservationFailed, unavailableManagedSetting{}, err
 		}

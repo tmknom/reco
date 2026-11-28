@@ -18,11 +18,15 @@ type protectionRuleSetting struct {
 }
 
 // environmentChangeOf は、Environment の変更予定 s を、それを含む論理的な設定変更にして返す。
+// Environment そのものの変更予定は、削除なら削除の、そうでなければ作成の論理的な設定変更にする。存在しないことを宣言した Environment は中の設定の計画を持たない。
 // 存在しない Environment のデプロイ元制限の変更予定は、同じ名前の作成の論理的な設定変更にまとめ、単独の論理的な設定変更にしないため偽を返す。
 // 更新操作の並びと基準は Environments の設計の論理的な設定変更と更新操作に従う。
 // 対にならない形（作成のない存在しないことを理由にした方式、存在が一致でない方式の不一致）と適用可能な比較不能の存在は、
 // reconcile と judgeApplicability が作らないため、不変条件の破れとして panic する。
 func (r RepositoryPlan) environmentChangeOf(s SettingPlan) (LogicalChange, bool) {
+	if s.IsEnvironmentDeletion() {
+		return environmentDeletionOf(s), true
+	}
 	if s.Unit.Key == setting.EnvironmentResource {
 		return r.creationOf(s), true
 	}
@@ -38,6 +42,21 @@ func (r RepositoryPlan) environmentChangeOf(s SettingPlan) (LogicalChange, bool)
 		return LogicalChange{DesiredState: []configuration.ManagedSetting{{Unit: s.Unit, Desired: s.Desired}}, Operations: deploymentBranchPolicyOperations(s, environment)}, true
 	}
 	panic(fmt.Sprintf("changeplan: %s has no environment plan to pair with", s.Unit.String()))
+}
+
+// environmentDeletionOf は、Environment の削除の変更予定 s を、存在しないことを期待状態にし、値を送らない削除の更新操作一つからなる論理的な設定変更にして返す。
+// 基準は一つで、計画時の存在と ID に加えて、承認の前に示した削除で失われるものを載せる。示した内容と比べる内容を同じ値から取るため。
+// 削除で失われるもののない削除は、失われる値を示せずに適用不能のはずで (judgeApplicability)、ここに届けば不変条件の破れとして panic する。
+func environmentDeletionOf(s SettingPlan) LogicalChange {
+	if s.EnvironmentLoss == nil {
+		panic(fmt.Sprintf("changeplan: deletion of %s has no loss shown before approval", s.Unit.String()))
+	}
+	basis := s.existenceBasis()
+	basis.AnticipatedEnvironmentLoss = s.EnvironmentLoss
+	return LogicalChange{
+		DesiredState: []configuration.ManagedSetting{{Unit: s.Unit, Desired: s.Desired}},
+		Operations:   []UpdateOperation{{Kind: EnvironmentDeletion, Unit: s.Unit, PreconditionBases: []PreconditionBasis{basis}}},
+	}
 }
 
 // creationOf は、Environment の作成の変更予定 s と、同じ名前のデプロイ元制限の変更予定と、同じ名前の Environment の作成直後の値と同じ保護ルールの設定の宣言と、

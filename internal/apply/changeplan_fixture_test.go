@@ -425,6 +425,23 @@ func createdEnvironmentVariableChange(t *testing.T, environment, name, desired s
 	return changes[1]
 }
 
+// environmentDeletionChange は、計画時に approved と観測した、宣言の名前 name の Environment を、存在しないことの宣言に基づいて削除する論理的な設定変更。
+// approved は、削除で失われるもの（中の設定に加えて、変数と Secret の一覧）まで読んだ観測で、失われる値の全体を示せる Environment である。
+// 削除で失われるものを計画時の観測から作るのは、changeplan と同じく、示した内容と比べる内容を同じ値から取るため。
+// 変更前提の基準を手で写さず、changeplan が導いた論理的な設定変更を使う。
+func environmentDeletionChange(t *testing.T, name string, approved github.Environment) changeplan.LogicalChange {
+	t.Helper()
+	deletedValue, ok := approved.DeletedValue().Value()
+	if !ok || approved.Variables == nil || approved.Secrets == nil {
+		t.Fatalf("environment %q cannot show what its deletion loses", approved.Name)
+	}
+	return onlyLogicalChange(t, newRepositoryPlan(t, changeplan.SettingPlan{
+		Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, name)}, Observed: github.Observed(setting.Present()), Desired: setting.Absent(),
+		EnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(approved.ID), Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
+		EnvironmentLoss: &changeplan.EnvironmentLoss{DeletedValue: deletedValue, Variables: approved.Variables.Existing, Secrets: approved.Secrets.Existing},
+	}))
+}
+
 // protectRuleset は、全体を解釈できた Ruleset の値として、既定のブランチの削除を制限し、Repository の admin に常に迂回を許す値を返す。
 // 値の変更の前後は enforcement で作り分ける。
 func protectRuleset(enforcement setting.RulesetEnforcement) setting.Ruleset {

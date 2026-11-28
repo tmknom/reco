@@ -29,7 +29,7 @@ type UpdateOperation struct {
 	Unit setting.Unit
 	// Value は、SettingUpdate が送る設定の値と、Repository Variable と Environment Variable の作成と値の変更が送る変数の値と、Ruleset の作成と値の変更が送る Ruleset の値と、
 	// ReviewerSetUpdate が送る担当者の集合と、PreventSelfReviewUpdate と WaitTimerUpdate が送る値。
-	// 変数と Ruleset の削除は値を送らず、ゼロ値である。
+	// 変数、Ruleset、Environment の削除は値を送らず、ゼロ値である。
 	Value setting.Value
 	// Mode は、EnvironmentCreationWithMode と DeploymentBranchPolicyModeUpdate が送るデプロイ元制限の方式。
 	Mode setting.DeploymentBranchPolicyMode
@@ -85,6 +85,8 @@ const (
 	RulesetValueUpdate
 	// RulesetDeletion は、存在する Ruleset を消す。値を送らない。
 	RulesetDeletion
+	// EnvironmentDeletion は、存在する Environment を、中の設定と属する変数と Secret ごと消す。値を送らない。
+	EnvironmentDeletion
 )
 
 // PreconditionBasis は、変更前提の基準で、関係する現在値に当たる設定と、その承認時に予定した値の組。
@@ -96,6 +98,8 @@ type PreconditionBasis struct {
 	AnticipatedEnvironmentIdentity EnvironmentIdentity
 	// AnticipatedRulesetIdentity は、Ruleset が存在すると予定したときに、存在と値に加えて確かめる同一性の基準。ほかではゼロ値。
 	AnticipatedRulesetIdentity RulesetIdentity
+	// AnticipatedEnvironmentLoss は、Environment の削除の基準でだけ持つ、承認の前に示した削除で失われるもの。ほかでは nil。
+	AnticipatedEnvironmentLoss *EnvironmentLoss
 }
 
 // Units は、c が変える管理設定の管理の単位を、期待状態の並びで返す。
@@ -140,7 +144,7 @@ func (o UpdateOperation) Endpoint() (github.UpdateEndpoint, bool) {
 		DeploymentPatternAddition, DeploymentPatternRemoval, ReviewerSetUpdate, PreventSelfReviewUpdate, WaitTimerUpdate,
 		RepositoryVariableCreation, RepositoryVariableValueUpdate, RepositoryVariableDeletion,
 		EnvironmentVariableCreation, EnvironmentVariableValueUpdate, EnvironmentVariableDeletion,
-		RulesetCreation, RulesetValueUpdate, RulesetDeletion:
+		RulesetCreation, RulesetValueUpdate, RulesetDeletion, EnvironmentDeletion:
 		return 0, false
 	}
 	panic(fmt.Sprintf("changeplan: undefined kind %d of an update operation", int(o.Kind)))
@@ -377,6 +381,7 @@ func targetsSelectedPolicy(s SettingPlan) bool {
 // checkUpdateEndpoint は、operation の更新要求の宛先を承認の前に決められるかを確かめ、決められなければ panic する。どれも、承認のあと先行する変更を送ってから止まらないようにするため。
 // マージ方式は一つずつ送る更新要求を持たず、まとめた更新操作でだけ送るため、一つの設定の更新操作なら panic する。
 // Ruleset の値の変更と削除は宛先が計画時に観測した ID で決まるため、AnticipatedRulesetID を引けることを確かめる。
+// Environment の削除は、作り直された Environment と承認の前に示していない値を持つ Environment を消さないよう、checkEnvironmentDeletionBasis で基準を確かめる。
 // Endpoint の戻り値を使わないのは、引けることの検査だけを目的とするため。最後に引くのは、マージ方式の破れを宛先の破れより具体的な理由で示すため。
 func checkUpdateEndpoint(operation UpdateOperation) {
 	switch {
@@ -388,6 +393,19 @@ func checkUpdateEndpoint(operation UpdateOperation) {
 		panic("changeplan: merge methods update of " + operation.Unit.String() + " does not send only merge methods")
 	case operation.Kind == RulesetValueUpdate || operation.Kind == RulesetDeletion:
 		operation.AnticipatedRulesetID()
+	case operation.Kind == EnvironmentDeletion:
+		checkEnvironmentDeletionBasis(operation)
 	}
 	operation.Endpoint()
+}
+
+// checkEnvironmentDeletionBasis は、Environment の削除の更新操作 operation が、自分の管理の単位の基準に、計画時に観測した ID と削除で失われるものを持つかを確かめ、
+// 持たなければ不変条件の破れとして panic する。
+func checkEnvironmentDeletionBasis(operation UpdateOperation) {
+	for _, basis := range operation.PreconditionBases {
+		if _, ok := basis.AnticipatedEnvironmentIdentity.ID(); ok && basis.Unit.Same(operation.Unit) && basis.AnticipatedEnvironmentLoss != nil {
+			return
+		}
+	}
+	panic("changeplan: deletion of " + operation.Unit.String() + " has no observed ID and loss to check before it is sent")
 }

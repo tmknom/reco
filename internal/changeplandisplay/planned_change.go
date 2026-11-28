@@ -45,11 +45,13 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 	} else {
 		fmt.Fprintf(&b, "  %s: %s -> %s\n", s.Unit.String(), current, desired)
 	}
+	b.WriteString(environmentDeletedValueLines(s))
 	b.WriteString(deploymentPatternChangesText(s))
 	b.WriteString(reviewerChangesText(s))
 	if s.Applicability.IsNotApplicable() {
 		fmt.Fprintf(&b, "    Applicability: not applicable (%s)\n", notApplicableReasonText(s))
 	}
+	b.WriteString(uninterpretedPartsLines(s))
 	for _, note := range s.Notes() {
 		fmt.Fprintf(&b, "    Note: %s\n", plannedChangeNoteText(note))
 	}
@@ -57,7 +59,20 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 		fmt.Fprintf(&b, "    Previous settings: %s\n", resumedSettingsText(s.ResumedSettings))
 	}
 	for _, effect := range s.SideEffects {
-		fmt.Fprintf(&b, "    Side effect: %s\n", sideEffectText(effect))
+		fmt.Fprintf(&b, "    Side effect: %s\n", sideEffectText(s, effect))
+	}
+	return b.String()
+}
+
+// uninterpretedPartsLines は、解釈しなかったものを1行に一つずつ、適用不能の行の下の字下げで返す。
+// 解釈しなかったものは、理由が解釈しない部分であることと一つ以上あることが一致しなければ、扱えない部分を示さずに承認を求め得るため、不変条件の破れとして panic する。
+func uninterpretedPartsLines(s changeplan.SettingPlan) string {
+	if (s.Applicability.Reason() == changeplan.NotApplicableUninterpretedParts) != (len(s.UninterpretedParts) > 0) {
+		panic(fmt.Sprintf("changeplandisplay: %s has %d uninterpreted parts for not-applicable reason %d", s.Unit.String(), len(s.UninterpretedParts), int(s.Applicability.Reason())))
+	}
+	var b strings.Builder
+	for _, part := range s.UninterpretedParts {
+		fmt.Fprintf(&b, "      %s\n", part.String())
 	}
 	return b.String()
 }
@@ -118,6 +133,9 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 	case changeplan.NotApplicableNoMergeMethodEnabled:
 		return noMergeMethodEnabledText(s.Applicability.UnmanagedSettings())
 	case changeplan.NotApplicableUninterpretedParts:
+		if key == setting.EnvironmentResource {
+			return "the environment on GitHub has protection rules that reco does not interpret; remove this environment from the configuration"
+		}
 		return "the ruleset on GitHub contains parts that reco does not interpret; remove this ruleset from the configuration"
 	case changeplan.NotApplicableAboveMaximumAllowed:
 		maximum := s.Applicability.MaximumAllowed()
@@ -130,6 +148,9 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 			return methodName + " is disabled, and GitHub does not accept changes to " + name + " while it is disabled; declare " + methodName + ": true or remove " + name
 		}
 	case changeplan.NotApplicableUnknownValue:
+		if key == setting.EnvironmentResource {
+			return "the environment on GitHub has a value that reco does not know; remove this environment from the configuration"
+		}
 		return "GitHub returned a value that reco does not know; remove " + removalKeyName(key) + " from the configuration"
 	case changeplan.NotApplicableNotReturned:
 		return "GitHub did not return the value; remove " + key.DeclaredKeyName() + " from the configuration"
@@ -188,7 +209,8 @@ func resumedSettingsText(keys []setting.Key) string {
 // 失われる値を観測できなかったときは、値を推測せずに失われる可能性だけを示す。
 // Dependency graph は reco が観測しない設定のため、現在値を示さない。
 // 未定義の種類は不変条件の破れとして panic する。定数を足して case を足し忘れたことを lint の exhaustive が検出するよう、default を置かない。
-func sideEffectText(effect changeplan.SideEffect) string {
+// 変数と Secret の副作用は、一覧を持たない副作用の種類のため、s の失われるものから読む。持たない計画は不変条件の破れとして panic する。
+func sideEffectText(s changeplan.SettingPlan, effect changeplan.SideEffect) string {
 	switch effect.Kind {
 	case changeplan.SideEffectSelectedActionsDiscarded:
 		if lost, ok := effect.Observed.Value(); ok {
@@ -213,8 +235,21 @@ func sideEffectText(effect changeplan.SideEffect) string {
 			return "GitHub also disables secret_scanning_push_protection, which is currently " + current.String()
 		}
 		return "GitHub may also disable secret_scanning_push_protection (reco does not know its current value)"
+	case changeplan.SideEffectEnvironmentVariablesDeleted:
+		return "GitHub also deletes the environment variables " + environmentVariablesText(sideEffectEnvironmentLoss(s).Variables)
+	case changeplan.SideEffectEnvironmentSecretsDeleted:
+		return "GitHub also deletes the environment secrets " + environmentSecretsText(sideEffectEnvironmentLoss(s).Secrets) + " (reco cannot read their values)"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined side effect kind %d", int(effect.Kind)))
+}
+
+// sideEffectEnvironmentLoss は、一覧を持たない副作用の種類を示す計画 s から、一覧を読む削除で失われるものを返す。
+// 持たない計画の副作用は、一覧を示せないため不変条件の破れとして panic する。
+func sideEffectEnvironmentLoss(s changeplan.SettingPlan) changeplan.EnvironmentLoss {
+	if s.EnvironmentLoss == nil {
+		panic("changeplandisplay: " + s.Unit.String() + " has an environment side effect without the environment loss")
+	}
+	return *s.EnvironmentLoss
 }
 
 // plannedChangeNoteText は、変更予定の注記を Note: の行の文で返す。文言は設定の意味の事実だけを述べ、評価を含めない。

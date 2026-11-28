@@ -483,10 +483,11 @@ actions:
 | `environments[].variables[].name` | 文字列 | 10.1節の名前 | その Environment で管理する Environment Variable の名前 | Environment Variable（リポジトリリソースそのもの） |
 | `environments[].variables[].value` | 文字列 | 10.2節の値。`state` を書かない要素では必須 | その Environment に、その名前の Environment Variable が存在し、その値であること | Environment Variable（リポジトリリソースそのもの） |
 | `environments[].variables[].state` | 文字列 | `absent` | その Environment に、その名前の Environment Variable が存在しないこと | Environment Variable（リポジトリリソースそのもの） |
+| `environments[].state` | 文字列 | `absent`（11.6節） | その名前の Environment が存在しないこと | Environment（リポジトリリソースそのもの） |
 
 - **`name` は必須である**：`name` のない要素は、`deployment_branch_policy` や `variables` を書いていても入力不正として拒否する。どの Environment の宣言かを補わない
-- **要素は存在の宣言を兼ねる**：`environments[]` に書いた名前の Environment が存在しなければ、作成を計画する。`variables` だけを書いた Environment も同じである。`deployment_branch_policy`、`reviewers`、`prevent_self_review`、`wait_timer`、`variables` を省略した Environment は、存在だけを管理する
-- **存在しないことの宣言は受け付けない**：reco は Environment を削除しない
+- **`state` を書かない要素は存在の宣言を兼ねる**：`environments[]` に書いた名前の Environment が存在しなければ、作成を計画する。`variables` だけを書いた Environment も同じである。`deployment_branch_policy`、`reviewers`、`prevent_self_review`、`wait_timer`、`variables` を省略した Environment は、存在だけを管理する
+- **`state: absent` を書いた要素は、存在しないことの宣言である**：その名前の Environment が存在すれば、削除を計画する（11.6節）
 - **`deployment_branch_policy` は `mode` を必須とする**：`all` はすべてのブランチとタグからのデプロイを許可する。`protected_branches` は、保護ルールのあるブランチからのデプロイだけを許可する。`protected_branches` の宣言は、Branch protection を管理することを意味しない。`selected` は、`patterns` に書いたパターンに一致するブランチとタグからのデプロイだけを許可する
 
 | Relationship | Target | Target Type |
@@ -595,6 +596,7 @@ environments:
 - **`state: absent` を書いた要素は、存在しないことの宣言である**：その名前の Environment Variable が存在すれば削除を計画する。`state: absent` の変数だけを書いた Environment も、Environment の存在の宣言を兼ね、存在しなければ作成を計画する
 - **重複は一つの Environment の中で判定する**：同じ Environment の `variables` に同じ名前（10.1節の判定）が複数あれば、入力不正として拒否する。別の Environment の同じ名前と、`actions.variables` の同じ名前は、重複ではない
 - **同じ名前の Repository Variable とは別の管理設定である**：`actions.variables` と `environments[].variables` に同じ名前を書いても、値を同期しない
+- **存在しないことを宣言した Environment には書けない**：`state: absent` の Environment の `variables` は、中身が `state: absent` の変数だけでも入力不正である（11.6節）
 
 | Relationship | Target | Target Type |
 |---|---|---|
@@ -627,6 +629,38 @@ environments:
 |---|---|---|
 | `alignment` | `FR-001` | Functional Requirement |
 | `alignment` | `FR-005` | Functional Requirement |
+| `alignment` | `INV-001` | Invariant |
+| `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
+
+### 11.6 存在しないことの宣言
+
+`state` に書ける値は `absent` だけで、値の規則は 10.3節と同じです。`state: absent` を書いた要素が持てるキーは、`name` と `state` だけです。
+
+| `deployment_branch_policy`、`reviewers`、`prevent_self_review`、`wait_timer`、`variables` | `state` | 判定 |
+|---|---|---|
+| 省略または指定 | 省略 | 有効。存在の宣言（11章） |
+| すべて省略 | `absent` | 有効。存在しないことの宣言 |
+| 一つ以上指定（中身を問わない） | `absent` | エラー |
+| 省略または指定 | `absent` 以外 | エラー |
+
+誤りは、`name`、`state`、5つのキーとの組み合わせ、キーの中身の順に示します。組み合わせの誤りは、5つのキーのうち上の並びで最初に書かれたキーを示します。`variables` の中身が `state: absent` の変数だけでも、組み合わせの誤りです。存在しない Environment の中に、期待値を定められるものがないためです。
+
+`name` だけの要素は、存在の宣言です。Variables や Ruleset と違い、ほかのキーを書き忘れても入力不正にならず、削除にもなりません。
+
+```yaml
+environments:
+  - name: legacy
+    state: absent
+```
+
+同じ名前の要素を、存在の宣言と存在しないことの宣言に分けて書くことはできません。11.1節の名前の重複として拒否します。
+
+削除すると、その Environment の保護ルールとデプロイ元パターンに加えて、属する Environment Variable と Environment Secret も GitHub が消します。宣言していない変数と Secret も消えます。何が消えるかは承認の前に示します（[Environments の設計](../design/settings/environments.md)）。
+
+| Relationship | Target | Target Type |
+|---|---|---|
+| `alignment` | `FR-001` | Functional Requirement |
+| `alignment` | `FR-007` | Functional Requirement |
 | `alignment` | `INV-001` | Invariant |
 | `grounding` | [GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) | Repository File |
 

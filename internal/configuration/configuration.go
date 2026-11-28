@@ -52,9 +52,11 @@ type VariableDeclaration struct {
 	Desired setting.Value
 }
 
-// EnvironmentDeclaration は、一つの Environment の宣言。その名前の Environment が存在することの期待値を兼ねる。
+// EnvironmentDeclaration は、一つの Environment の宣言。その名前の Environment が存在すること、または存在しないことの期待値を兼ねる。
 type EnvironmentDeclaration struct {
 	Name setting.EnvironmentName
+	// DeclaredAbsent は state: absent を宣言したときだけ真で、存在しないことの期待値を指す。真のとき、ほかのフィールドは空である。
+	DeclaredAbsent bool
 	// DeploymentBranchPolicy は nil なら期待値の省略で、デプロイ元制限は管理範囲に含まれない。宣言したときは、方式が selected のときだけ、宣言の順の Patterns を持つ。
 	DeploymentBranchPolicy *setting.DeploymentBranchPolicy
 	// ReviewerSet は nil なら期待値の省略で、担当者の集合は管理範囲に含まれない。reviewers: [] は空の集合を指す非 nil。
@@ -163,6 +165,7 @@ type ManagedSetting struct {
 // ManagedSettings は、管理範囲の管理設定を期待値とともに返す。何も宣言していなければ nil を返す。
 // 並びは、リポジトリ設定 (setting.RepositorySettingUnits の並び)、Repository Variable (宣言の並び)、Environment ごと (宣言の並び) に存在、デプロイ元制限、担当者の集合、変数 (宣言の並び)、Ruleset (宣言の並び) である。
 // Environment の宣言は存在することの期待値を兼ねるため、名前だけの宣言も存在の管理設定になる。
+// 存在しないことを宣言した Environment は、存在しないことの管理設定だけを返す。
 // Ruleset の宣言は、存在し値が宣言と同じことの期待値を一つの管理設定にする。
 // 管理範囲を読む処理ごとに宣言を走査すると管理設定が食い違うため、ここでだけ列挙する。
 func (d DesiredState) ManagedSettings() []ManagedSetting {
@@ -176,6 +179,10 @@ func (d DesiredState) ManagedSettings() []ManagedSetting {
 		managed = append(managed, ManagedSetting{Unit: setting.Unit{Key: setting.RepositoryVariable, Variable: v.Name}, Desired: v.Desired})
 	}
 	for _, e := range d.Environments {
+		if e.DeclaredAbsent {
+			managed = append(managed, ManagedSetting{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: e.Name}, Desired: setting.Absent()})
+			continue
+		}
 		managed = append(managed, ManagedSetting{Unit: setting.Unit{Key: setting.EnvironmentResource, Environment: e.Name}, Desired: setting.Present()})
 		if e.DeploymentBranchPolicy != nil {
 			unit := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: e.Name}

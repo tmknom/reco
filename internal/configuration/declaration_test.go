@@ -1399,6 +1399,9 @@ func TestDocumentEnvironments(t *testing.T) {
 		{name: "same name as an earlier declaration is rejected at the later declaration", src: base + "- name: staging\n", wantPath: "E[2]", wantReason: `duplicate name "staging"; same as E[0] (compared ignoring letter case)`},
 		{name: "name differing only in letter case is rejected as a duplicate naming the earlier index", src: base + "- name: PRODUCTION\n", wantPath: "E[2]", wantReason: `duplicate name "PRODUCTION"; same as E[1] (compared ignoring letter case)`},
 		{name: "invalid item is rejected at the item", src: "- name: staging\n- deployment_branch_policy:\n    mode: all\n", wantPath: "E[1]", wantReason: `missing key "name"`},
+		{name: "declaration of absence is read in the declared order beside an existing environment", src: "- name: staging\n- name: production\n  state: absent\n", want: []EnvironmentDeclaration{declaration("staging"), {Name: mustEnvironmentName(t, "production"), DeclaredAbsent: true}}},
+		{name: "declaration of absence differing only in letter case from an earlier existence is rejected as a duplicate", src: "- name: staging\n- name: STAGING\n  state: absent\n", wantPath: "E[1]", wantReason: `duplicate name "STAGING"; same as E[0] (compared ignoring letter case)`},
+		{name: "existence differing only in letter case from an earlier declaration of absence is rejected as a duplicate", src: "- name: staging\n  state: absent\n- name: STAGING\n", wantPath: "E[1]", wantReason: `duplicate name "STAGING"; same as E[0] (compared ignoring letter case)`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1567,7 +1570,7 @@ func TestDocumentEnvironment(t *testing.T) {
 		{name: "missing name is rejected", src: "deployment_branch_policy:\n  mode: all\n", wantPath: "E", wantReason: `missing key "name"`},
 		{name: "non-string name is rejected", src: strings.Replace(base, "staging", "42", 1), wantPath: "E.name", wantReason: "must be a string"},
 		{name: "non-ASCII name is rejected at the name", src: strings.Replace(base, "staging", "café", 1), wantPath: "E.name", wantReason: `must consist of printable ASCII characters; got "café"`},
-		{name: "unknown key is rejected", src: base + "labels: {}\n", wantPath: "E", wantReason: `unknown key "labels"; expected name, deployment_branch_policy, reviewers, prevent_self_review, wait_timer, variables`},
+		{name: "unknown key is rejected", src: base + "labels: {}\n", wantPath: "E", wantReason: `unknown key "labels"; expected name, deployment_branch_policy, reviewers, prevent_self_review, wait_timer, variables, state`},
 		{
 			name: "prevent_self_review and wait_timer are read into pointers",
 			src:  "name: staging\nprevent_self_review: true\nwait_timer: 30\n",
@@ -1642,6 +1645,18 @@ func TestDocumentEnvironment(t *testing.T) {
 		{name: "duplicate variable name is rejected at the later variable", src: "name: staging\nvariables:\n  - name: A\n    value: x\n  - name: A\n    value: y\n", wantPath: "E.variables[1]", wantReason: `duplicate name "A"`},
 		{name: "variables without name is rejected for the missing name", src: "variables:\n  - name: A\n    value: x\n", wantPath: "E", wantReason: `missing key "name"`},
 		{name: "invalid deployment_branch_policy is rejected at deployment_branch_policy", src: strings.Replace(base, "mode: all", "mode: custom", 1), wantPath: "E.deployment_branch_policy.mode", wantReason: "must be all, protected_branches, or selected"},
+		{name: "name with state absent is read as the declaration of absence", src: "name: staging\nstate: absent\n", want: EnvironmentDeclaration{Name: mustEnvironmentName(t, "staging"), DeclaredAbsent: true}},
+		{name: "name without state is not the declaration of absence", src: "name: staging\n", want: EnvironmentDeclaration{Name: mustEnvironmentName(t, "staging")}},
+		{name: "deployment_branch_policy with state absent is rejected at the key", src: base + "state: absent\n", wantPath: "E.deployment_branch_policy", wantReason: `deployment_branch_policy is not allowed when state is "absent"`},
+		{name: "reviewers with state absent is rejected at the key", src: "name: staging\nreviewers: []\nstate: absent\n", wantPath: "E.reviewers", wantReason: `reviewers is not allowed when state is "absent"`},
+		{name: "prevent_self_review with state absent is rejected at the key", src: "name: staging\nprevent_self_review: false\nstate: absent\n", wantPath: "E.prevent_self_review", wantReason: `prevent_self_review is not allowed when state is "absent"`},
+		{name: "wait_timer with state absent is rejected at the key", src: "name: staging\nwait_timer: 0\nstate: absent\n", wantPath: "E.wait_timer", wantReason: `wait_timer is not allowed when state is "absent"`},
+		{name: "variables with state absent is rejected at the key", src: "name: staging\nvariables:\n  - name: A\n    value: x\nstate: absent\n", wantPath: "E.variables", wantReason: `variables is not allowed when state is "absent"`},
+		{name: "two keys with state absent show the earlier key in the fixed order, not the declared order", src: "name: staging\nwait_timer: 0\nreviewers: []\nstate: absent\n", wantPath: "E.reviewers", wantReason: `reviewers is not allowed when state is "absent"`},
+		{name: "variables of absent variables only with state absent is rejected at variables", src: "name: staging\nvariables:\n  - name: A\n    state: absent\nstate: absent\n", wantPath: "E.variables", wantReason: `variables is not allowed when state is "absent"`},
+		{name: "invalid state with wait_timer is rejected at the state before the combination", src: "name: staging\nwait_timer: 0\nstate: present\n", wantPath: "E.state", wantReason: `must be absent; got "present"`},
+		{name: "state absent with invalid wait_timer is rejected as the combination before the content", src: "name: staging\nwait_timer: -1\nstate: absent\n", wantPath: "E.wait_timer", wantReason: `wait_timer is not allowed when state is "absent"`},
+		{name: "invalid name with state absent is rejected at the name", src: "name: café\nstate: absent\n", wantPath: "E.name", wantReason: `must consist of printable ASCII characters; got "café"`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

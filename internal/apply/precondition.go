@@ -1,6 +1,9 @@
 package apply
 
 import (
+	"fmt"
+	"slices"
+
 	"github.com/tmknom/reco/internal/changeplan"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/repository"
@@ -72,11 +75,13 @@ func matchesAnticipatedValue(anticipated changeplan.AnticipatedValue, current gi
 // matchesAnticipatedEnvironment は、Environment そのものの基準 basis が、更新直前に引いた観測結果 current と同じかを返す。
 // 存在はリポジトリ設定と同じ判定で比べる。判定できない名前が現れた観測は、存在しないことを意味しないため、存在しないと予定した基準と同じにならない。
 // 存在すると予定したときは、さらに同じ実体かを確かめる。同じ名前で作り直された Environment は、承認した変更の相手ではないため、ID が違えば同じとしない。
-// 綴りと中の設定は比べない。
+// 綴りは比べない。中の設定は、削除の基準でだけ、承認の前に示した削除で失われるものとして、存在と同じ観測で比べる (matchesAnticipatedEnvironmentLoss)。
+// 削除は中の設定ごと Environment を消し、承認のあとに変わった中身を示さないまま失わせるためである。ほかの基準では比べない。
 // 同じ論理的な設定変更が作成した Environment は、作成に続く最初の更新操作では ID の基準がまだなく (created がゼロ値)、存在だけで足りる。
 // 承認の時点で ID が定まらないため。それより後の更新操作では、created の ID と比べる。
-// 存在するか存在しないかのどちらでもない基準 (観測不能、ゼロ値) は承認の前に適用不能として止め、存在すると予定した基準には changeplan が同一性の基準を必ず添える。
-// どちらかが破れた形を受け付けると、確かめていない Environment を更新し得るため、更新直前の観測によらず不変条件の破れとして panic する。
+// 存在するか存在しないかのどちらでもない基準 (観測不能、ゼロ値) は承認の前に適用不能として止め、存在すると予定した基準には changeplan が同一性の基準を必ず添え、
+// 削除で失われるものを載せた基準には計画時の ID の基準を必ず添える。
+// どれかが破れた形を受け付けると、確かめていない Environment を更新し得るため、更新直前の観測によらず不変条件の破れとして panic する。
 func matchesAnticipatedEnvironment(basis changeplan.PreconditionBasis, current github.EnvironmentObservation, created github.EnvironmentObservation) bool {
 	anticipated, ok := basis.AnticipatedValue.Value()
 	if !ok {
@@ -86,6 +91,9 @@ func matchesAnticipatedEnvironment(basis changeplan.PreconditionBasis, current g
 	if anticipated.Equal(setting.Present()) && !hasID && !basis.AnticipatedEnvironmentIdentity.IsCreatedByPrecedingOperation() {
 		panic("apply: " + basis.Unit.String() + " is anticipated to exist without an identity to check")
 	}
+	if basis.AnticipatedEnvironmentLoss != nil && !hasID {
+		panic("apply: " + basis.Unit.String() + " has the loss of its deletion anticipated without an ID to check")
+	}
 	if !matchesAnticipatedValue(basis.AnticipatedValue, current.Existence()) {
 		return false
 	}
@@ -94,10 +102,53 @@ func matchesAnticipatedEnvironment(basis changeplan.PreconditionBasis, current g
 		return true
 	}
 	if id, ok := basis.AnticipatedEnvironmentIdentity.ID(); ok {
-		return existing.ID == id
+		if existing.ID != id {
+			return false
+		}
+		return basis.AnticipatedEnvironmentLoss == nil || matchesAnticipatedEnvironmentLoss(*basis.AnticipatedEnvironmentLoss, existing)
 	}
 	base, hasBase := created.Existing()
 	return !hasBase || existing.ID == base.ID
+}
+
+// matchesAnticipatedEnvironmentLoss は、承認の前に示した削除で失われるもの anticipated が、更新直前に引いた Environment current と同じかを返す。
+// 失われる値は照合と同じ判定で比べる。承認のあとに知らない種類の保護ルールか知らない値が現れて失われる値を示せなくなった Environment は、同じとしない。
+// 変数と Secret の一覧は、件数が同じで、予定したどの要素にも同じ要素が現在の一覧にあれば同じとする。並びは GitHub の返す順で、承認の意味を持たないため比べない。
+// 変数は名前と値を、Secret は名前と updated_at の文字列を比べる。Secret は値を読めないため、登録し直されたことを updated_at で見分ける。
+// 変数か Secret の一覧を読んでいない Environment は、読む範囲の破れとして panic する。読んでいない一覧を空として比べると、承認のあとに足されたものごと消すため。
+func matchesAnticipatedEnvironmentLoss(anticipated changeplan.EnvironmentLoss, current github.Environment) bool {
+	if current.Variables == nil || current.Secrets == nil {
+		panic(fmt.Sprintf("apply: environment %q is checked for its deletion without its variables and secrets read", current.Name))
+	}
+	deletedValue, ok := current.DeletedValue().Value()
+	return ok && deletedValue.Equal(anticipated.DeletedValue) &&
+		sameElements(anticipated.Variables, current.Variables.Existing, sameVariable) &&
+		sameElements(anticipated.Secrets, current.Secrets.Existing, sameEnvironmentSecret)
+}
+
+// sameElements は、anticipated と current が、same で同じとする要素を並びによらず持つかを返す。
+// 名前の重複のない一覧どうしを比べるため、件数が同じで、anticipated のどの要素にも同じ要素が current にあれば同じとする。
+func sameElements[T any](anticipated, current []T, same func(T, T) bool) bool {
+	if len(anticipated) != len(current) {
+		return false
+	}
+	for _, a := range anticipated {
+		if !slices.ContainsFunc(current, func(c T) bool { return same(a, c) }) {
+			return false
+		}
+	}
+	return true
+}
+
+// sameVariable は、変数 a と b の名前と値が同じかを返す。名前は、GitHub が大文字にして保存するため、照合と同じ鍵で比べる。
+func sameVariable(a, b github.Variable) bool {
+	return setting.FoldVariableName(a.Name) == setting.FoldVariableName(b.Name) && a.Value == b.Value
+}
+
+// sameEnvironmentSecret は、Secret a と b の名前と updated_at が同じかを返す。
+// 名前は綴りのまま比べる。どちらも GitHub が保存した綴りで、綴りが変わるのは登録し直したときだけのため、大文字小文字を同一視する必要がない。
+func sameEnvironmentSecret(a, b github.EnvironmentSecret) bool {
+	return a.Name == b.Name && a.UpdatedAt == b.UpdatedAt
 }
 
 // matchesAnticipatedRuleset は、Ruleset そのものの基準 basis が、更新直前に名前で引いた観測結果 current と同じかを返す。

@@ -30,7 +30,8 @@ func reconcile(desired configuration.DesiredState, observed github.ObservationRe
 		plan := newSettingPlan(managed.Unit, observed.Setting(managed.Unit), managed.Desired)
 		plan.EnvironmentIdentity = environmentIdentityOf(managed.Unit, observed)
 		plan.RulesetIdentity = rulesetIdentityOf(managed.Unit, observed)
-		plan.UninterpretedParts = uninterpretedPartsOf(managed.Unit, observed)
+		plan.UninterpretedParts = uninterpretedPartsOf(managed.Unit, managed.Desired, observed)
+		plan.EnvironmentLoss = environmentLossOf(managed.Unit, managed.Desired, observed)
 		settings = append(settings, plan)
 	}
 	slices.SortStableFunc(settings, func(a, b SettingPlan) int { return cmp.Compare(planOrderArea(a.Unit.Key), planOrderArea(b.Unit.Key)) })
@@ -84,6 +85,18 @@ func managedRulesets(desired configuration.DesiredState) []setting.RulesetName {
 	return names
 }
 
+// environmentsDeclaredAbsent は、管理範囲内の管理設定のうち、存在しないことを期待値にした Environment の名前を、管理設定の列挙の並びで返す。
+// reconcile と同じ管理設定の列挙から決めるため、削除で失われるもの (environmentLossOf) を作る Environment は必ず変数と Secret まで読まれる。
+func environmentsDeclaredAbsent(desired configuration.DesiredState) []setting.EnvironmentName {
+	var names []setting.EnvironmentName
+	for _, managed := range desired.ManagedSettings() {
+		if declaresEnvironmentAbsent(managed.Unit, managed.Desired) {
+			names = append(names, managed.Unit.Environment)
+		}
+	}
+	return names
+}
+
 // newSettingPlan は、観測値があれば期待値と比べ、観測不能なら Equal に渡さずに比較不能とする。
 // 観測値があるときは、期待値が宣言した項目に限った値で Observed を組み立て直す。
 // 省略した項目を、表示の現在値にも、Observed から作る変更前提の基準にも持ち込まないため。
@@ -127,12 +140,20 @@ func rulesetIdentityOf(unit setting.Unit, observed github.ObservationResult) Rul
 	return ObservedRulesetIdentity(ruleset.ID)
 }
 
-// uninterpretedPartsOf は、Ruleset そのものの管理の単位 unit について、値が解釈しない部分を含むときだけ、その解釈しなかったものを返す。
+// uninterpretedPartsOf は、管理の単位 unit の計画が持つ解釈しなかったものを、観測の並びで返す。
+// Ruleset そのものの管理の単位では、値が解釈しない部分を含むときだけ、その解釈しなかったものを返す。
 // 比較できない理由と同じ観測結果から読むため、理由が解釈しない部分を含むことである計画だけが解釈しなかったものを持つ。
+// 存在しないことを期待値 desired にした Environment そのものの管理の単位では、存在を観測した Environment の知らない種類の保護ルールを返す。
+// 削除はその保護ルールも消し、削除で失われる値を示せない理由をこれで決めるためである (unshowableDeletedValue)。
+// 存在の宣言の照合と更新はその保護ルールに触れないため、存在の宣言では返さない。
 // ほかの管理の単位では nil を返す。
-func uninterpretedPartsOf(unit setting.Unit, observed github.ObservationResult) []github.UninterpretedPart {
-	if unit.Key != setting.RulesetResource {
+func uninterpretedPartsOf(unit setting.Unit, desired setting.Value, observed github.ObservationResult) []github.UninterpretedPart {
+	if unit.Key == setting.RulesetResource {
+		return observed.Rulesets.Lookup(unit.Ruleset).UninterpretedParts()
+	}
+	if !declaresEnvironmentAbsent(unit, desired) {
 		return nil
 	}
-	return observed.Rulesets.Lookup(unit.Ruleset).UninterpretedParts()
+	environment, _ := observed.Environments.Lookup(unit.Environment).Existing()
+	return environment.UninterpretedProtectionRules
 }

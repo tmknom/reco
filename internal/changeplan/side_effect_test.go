@@ -295,6 +295,43 @@ func TestSideEffects_ReviewerSet(t *testing.T) {
 	}
 }
 
+// TestSideEffects_EnvironmentDeletion は、Environment の削除の変更予定に、一緒に消える変数と Secret の副作用を、
+// 計画時に一つ以上を観測した種類だけ、変数、Secret の順に添えることを確かめる。
+//
+//trace:checks FR-007 INV-001
+func TestSideEffects_EnvironmentDeletion(t *testing.T) {
+	unit := setting.Unit{Key: setting.EnvironmentResource, Environment: mustEnvironmentName(t, "production")}
+	variables := []github.Variable{{Name: "REGION", Value: "eu"}}
+	secrets := []github.EnvironmentSecret{{Name: "TOKEN", UpdatedAt: "2026-01-02T03:04:05Z"}}
+	variablesDeleted, secretsDeleted := SideEffect{Kind: SideEffectEnvironmentVariablesDeleted}, SideEffect{Kind: SideEffectEnvironmentSecretsDeleted}
+	deletion := func(loss *EnvironmentLoss) SettingPlan {
+		return SettingPlan{Unit: unit, Observed: github.Observed(setting.Present()), Desired: setting.Absent(), Result: Mismatch, EnvironmentLoss: loss}
+	}
+	cases := []struct {
+		name string
+		plan SettingPlan
+		want []SideEffect
+	}{
+		{name: "deletion losing only variables deletes the variables", plan: deletion(&EnvironmentLoss{Variables: variables}), want: []SideEffect{variablesDeleted}},
+		{name: "deletion losing only secrets deletes the secrets", plan: deletion(&EnvironmentLoss{Secrets: secrets}), want: []SideEffect{secretsDeleted}},
+		{name: "deletion losing both deletes the variables and then the secrets", plan: deletion(&EnvironmentLoss{Variables: variables, Secrets: secrets}), want: []SideEffect{variablesDeleted, secretsDeleted}},
+		{name: "deletion losing neither has no side effect", plan: deletion(&EnvironmentLoss{Variables: []github.Variable{}, Secrets: []github.EnvironmentSecret{}})},
+		{name: "deletion that is not applicable has no loss and no side effect", plan: deletion(nil)},
+	}
+	// 変数と Secret を読んだ観測を渡し、副作用を観測からではなく計画の EnvironmentLoss から決めることを確かめる
+	observed := github.ObservationResult{Environments: &github.Environments{Existing: []github.Environment{
+		readForDeletion(github.Environment{Name: "production", Protection: unprotected()}, variables, secrets...),
+	}}}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, unaffected := sideEffects(tc.plan, observed, []SettingPlan{tc.plan})
+			if !reflect.DeepEqual(got, tc.want) || unaffected != nil {
+				t.Errorf("sideEffects() = %+v, %+v, want %+v, nil", got, unaffected, tc.want)
+			}
+		})
+	}
+}
+
 func TestSideEffects_DependentWithoutObservationPanics(t *testing.T) {
 	observed := github.ObservationResult{SecretScanning: &github.SecretScanning{
 		Enabled: github.Observed(true), PushProtection: github.Unavailable[bool](github.UnavailablePrivateRepository),
@@ -320,6 +357,9 @@ func TestSideEffectKind_ObservedSetting(t *testing.T) {
 		{kind: SideEffectPreventSelfReviewDiscarded, want: setting.EnvironmentPreventSelfReview, wantOK: true},
 		{kind: SideEffectDependencyGraphEnabled, wantOK: false},
 		{kind: SideEffectDependencyGraphDisabled, wantOK: false},
+		// 一緒に消える変数と Secret は設定の識別を持たず、変更前提では AnticipatedEnvironmentLoss で確かめる
+		{kind: SideEffectEnvironmentVariablesDeleted, wantOK: false},
+		{kind: SideEffectEnvironmentSecretsDeleted, wantOK: false},
 	}
 	for _, tc := range cases {
 		if got, ok := tc.kind.ObservedSetting(); got != tc.want || ok != tc.wantOK {
