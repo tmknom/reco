@@ -21,12 +21,18 @@ func TestDecodeWorkflowPermissions(t *testing.T) {
 		{
 			name: "read and true are read",
 			body: `{"default_workflow_permissions": "read", "can_approve_pull_request_reviews": true}`,
-			want: WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: true},
+			want: WorkflowPermissions{DefaultWorkflowPermissions: Observed(setting.PermissionRead), CanApprovePullRequestReviews: true},
 		},
 		{
 			name: "write and false are read",
 			body: `{"default_workflow_permissions": "write", "can_approve_pull_request_reviews": false}`,
-			want: WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: false},
+			want: WorkflowPermissions{DefaultWorkflowPermissions: Observed(setting.PermissionWrite), CanApprovePullRequestReviews: false},
+		},
+		{
+			// GitHub が列挙に値を足しても、その設定だけを観測不能にし、同じ応答のほかの設定は観測値を持つ
+			name: "unknown default_workflow_permissions is unavailable as an unknown value while can_approve_pull_request_reviews is read",
+			body: `{"default_workflow_permissions": "admin", "can_approve_pull_request_reviews": true}`,
+			want: WorkflowPermissions{DefaultWorkflowPermissions: Unavailable[setting.PermissionLevel](UnavailableUnknownValue), CanApprovePullRequestReviews: true},
 		},
 	}
 	for _, tc := range successes {
@@ -42,10 +48,9 @@ func TestDecodeWorkflowPermissions(t *testing.T) {
 	}
 
 	failures := []struct {
-		name           string
-		body           string
-		errContains    []string
-		errNotContains string
+		name        string
+		body        string
+		errContains []string
 	}{
 		{
 			name:        "missing default_workflow_permissions is unexpected response",
@@ -68,10 +73,9 @@ func TestDecodeWorkflowPermissions(t *testing.T) {
 			errContains: []string{"default_workflow_permissions", "can_approve_pull_request_reviews"},
 		},
 		{
-			name:           "unknown default_workflow_permissions is unexpected response without the value",
-			body:           `{"default_workflow_permissions": "admin", "can_approve_pull_request_reviews": true}`,
-			errContains:    []string{"default_workflow_permissions"},
-			errNotContains: "admin",
+			name:        "non-string default_workflow_permissions is unexpected response",
+			body:        `{"default_workflow_permissions": 1, "can_approve_pull_request_reviews": true}`,
+			errContains: []string{"default_workflow_permissions"},
 		},
 		{name: "non-JSON body is unexpected response", body: `<html>`},
 	}
@@ -85,9 +89,6 @@ func TestDecodeWorkflowPermissions(t *testing.T) {
 				if !strings.Contains(err.Error(), s) {
 					t.Errorf("decodeWorkflowPermissions() error = %q, want it to contain %q", err, s)
 				}
-			}
-			if tc.errNotContains != "" && strings.Contains(err.Error(), tc.errNotContains) {
-				t.Errorf("decodeWorkflowPermissions() error = %q, must not contain %q", err, tc.errNotContains)
 			}
 		})
 	}

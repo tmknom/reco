@@ -43,3 +43,32 @@ func TestSettingObservation(t *testing.T) {
 		_ = o.UnavailableReason()
 	})
 }
+
+func TestSettingObservation_HasUnknownValue(t *testing.T) {
+	cases := []struct {
+		name string
+		in   SettingObservation[bool]
+		want bool
+	}{
+		{name: "observed value is not an unknown value", in: Observed(false), want: false},
+		{name: "unavailable because of an unknown value is an unknown value", in: Unavailable[bool](UnavailableUnknownValue), want: true},
+		{name: "unavailable for another reason is not an unknown value", in: Unavailable[bool](UnavailableActionsDisabled), want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.in.HasUnknownValue(); got != tc.want {
+				t.Errorf("HasUnknownValue() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("zero value panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("HasUnknownValue() did not panic for the zero value")
+			}
+		}()
+		var o SettingObservation[bool]
+		_ = o.HasUnknownValue()
+	})
+}

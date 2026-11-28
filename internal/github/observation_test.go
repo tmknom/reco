@@ -102,7 +102,7 @@ func TestObserveRepositoryFailure(t *testing.T) {
 }
 
 // TestObserveRepositoryAreas は、選んだ設定の領域に応じて送る要求と、観測結果への詰め方を確かめる。
-// Selected actions を送らない3件は selectedActionsUnavailability の単体テストと条件が重なるが、
+// Selected actions を送らない4件は selectedActionsUnavailability の単体テストと条件が重なるが、
 // 取得条件に当たるときに要求そのものを送らないことは、要求の列でしか確かめられない。
 //
 //trace:checks FR-004 QR-002
@@ -173,6 +173,19 @@ func TestObserveRepositoryAreas(t *testing.T) {
 			},
 		},
 		{
+			name:        "unknown policy does not send the selected actions GET and reads the next area",
+			areas:       []setting.Area{setting.AreaActionsPermissions, setting.AreaWorkflowPermissions},
+			actionsBody: actionsPermissionsBody("none"),
+			wantPaths:   []string{repositoryPath, actionsPermissionsPath, workflowPermissionsPath},
+			wantAP: &ActionsPermissions{
+				Enabled:            true,
+				AllowedActions:     Unavailable[setting.AllowedActionsPolicy](UnavailableUnknownValue),
+				SHAPinningRequired: Observed(true),
+				SelectedActions:    Unavailable[setting.SelectedActionsCriteria](UnavailableUnknownValue),
+			},
+			wantWP: &WorkflowPermissions{DefaultWorkflowPermissions: Observed(setting.PermissionRead), CanApprovePullRequestReviews: false},
+		},
+		{
 			name:        "both areas are read in the fixed order regardless of the given order",
 			areas:       []setting.Area{setting.AreaWorkflowPermissions, setting.AreaActionsPermissions},
 			actionsBody: actionsPermissionsBody("selected"),
@@ -183,13 +196,13 @@ func TestObserveRepositoryAreas(t *testing.T) {
 				SHAPinningRequired: Observed(true),
 				SelectedActions:    Observed(selectedCriteria),
 			},
-			wantWP: &WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: false},
+			wantWP: &WorkflowPermissions{DefaultWorkflowPermissions: Observed(setting.PermissionRead), CanApprovePullRequestReviews: false},
 		},
 		{
 			name:      "workflow permissions area sends the second GET after the repository",
 			areas:     []setting.Area{setting.AreaWorkflowPermissions},
 			wantPaths: []string{repositoryPath, workflowPermissionsPath},
-			wantWP:    &WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: false},
+			wantWP:    &WorkflowPermissions{DefaultWorkflowPermissions: Observed(setting.PermissionRead), CanApprovePullRequestReviews: false},
 		},
 		{
 			name:      "no area observes the repository only",
@@ -207,7 +220,7 @@ func TestObserveRepositoryAreas(t *testing.T) {
 				SHAPinningRequired: Observed(true),
 				SelectedActions:    Unavailable[setting.SelectedActionsCriteria](UnavailableNotSelected),
 			},
-			wantWP: &WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead, CanApprovePullRequestReviews: false},
+			wantWP: &WorkflowPermissions{DefaultWorkflowPermissions: Observed(setting.PermissionRead), CanApprovePullRequestReviews: false},
 			wantAA: &ActionsAccess{AccessLevel: Observed(setting.AccessUser)},
 		},
 		{
@@ -352,19 +365,21 @@ func TestObservationResult_Setting(t *testing.T) {
 	// 観測結果ごとに真偽値の設定を一つだけ真にし、どの設定も観測結果を通した値の並びがほかの設定とも定数とも異なるようにする。
 	// 別の設定の値や定数を返す誤りを検出するため。
 	observations := []ObservationResult{
-		{General: General{DeleteBranchOnMerge: true}, WorkflowPermissions: &WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite}},
-		{General: General{AllowAutoMerge: true}, WorkflowPermissions: &WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionRead}},
-		{WorkflowPermissions: &WorkflowPermissions{DefaultWorkflowPermissions: setting.PermissionWrite, CanApprovePullRequestReviews: true}},
+		{General: General{DeleteBranchOnMerge: true}, WorkflowPermissions: &WorkflowPermissions{DefaultWorkflowPermissions: Observed(setting.PermissionWrite)}},
+		{General: General{AllowAutoMerge: true}, WorkflowPermissions: &WorkflowPermissions{DefaultWorkflowPermissions: Observed(setting.PermissionRead)}},
+		// 観測不能の default_workflow_permissions は同じ理由で写す
+		{WorkflowPermissions: &WorkflowPermissions{DefaultWorkflowPermissions: Unavailable[setting.PermissionLevel](UnavailableUnknownValue), CanApprovePullRequestReviews: true}},
 	}
 	yes, no := Observed(setting.BoolValue(true)), Observed(setting.BoolValue(false))
 	write, read := Observed(setting.PermissionLevelValue(setting.PermissionWrite)), Observed(setting.PermissionLevelValue(setting.PermissionRead))
+	unknown := Unavailable[setting.Value](UnavailableUnknownValue)
 	cases := []struct {
 		key  setting.Key
 		want []SettingObservation[setting.Value]
 	}{
 		{key: setting.DeleteBranchOnMerge, want: []SettingObservation[setting.Value]{yes, no, no}},
 		{key: setting.AllowAutoMerge, want: []SettingObservation[setting.Value]{no, yes, no}},
-		{key: setting.DefaultWorkflowPermissions, want: []SettingObservation[setting.Value]{write, read, write}},
+		{key: setting.DefaultWorkflowPermissions, want: []SettingObservation[setting.Value]{write, read, unknown}},
 		{key: setting.CanApprovePullRequestReviews, want: []SettingObservation[setting.Value]{no, no, yes}},
 	}
 	for _, tc := range cases {
@@ -712,9 +727,10 @@ func TestObservationResult_SettingOfEnvironmentDeploymentBranchPolicy(t *testing
 	// 方式の異なる二つを並べ、ASCII の大小が違う宣言の名前で引く。
 	patterns := []setting.DeploymentPattern{{Type: setting.DeploymentPatternBranch, Name: "main"}, {Type: setting.DeploymentPatternTag, Name: "v*"}}
 	selected := setting.DeploymentBranchPolicy{Mode: setting.DeploymentBranchPolicySelected, Patterns: patterns}
+	readPatterns := Observed(DeploymentPatterns{Existing: patterns})
 	observed := ObservationResult{Environments: &Environments{Existing: []Environment{
-		{ID: 1, Name: "staging", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyAll},
-		{ID: 2, Name: "Production", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected, DeploymentPatterns: &DeploymentPatterns{Existing: patterns}},
+		{ID: 1, Name: "staging", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyAll, Protection: unprotectedEnvironment()},
+		{ID: 2, Name: "Production", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected, DeploymentPatterns: &readPatterns, Protection: unprotectedEnvironment()},
 	}}}
 	cases := []struct {
 		name string
@@ -748,8 +764,8 @@ func TestObservationResult_SettingOfEnvironmentDeploymentBranchPolicy(t *testing
 func TestObservationResult_SettingOfEnvironmentRequiredReviewers(t *testing.T) {
 	reviewers := []setting.Reviewer{{Type: setting.ReviewerUser, ID: 2}}
 	observed := ObservationResult{Environments: &Environments{Existing: []Environment{
-		{ID: 1, Name: "staging", Protection: setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{Reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}}}}},
-		{ID: 2, Name: "Production", Protection: setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{Reviewers: reviewers}}},
+		{ID: 1, Name: "staging", Protection: EnvironmentProtection{ReviewerSet: Observed(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}}))}},
+		{ID: 2, Name: "Production", Protection: EnvironmentProtection{ReviewerSet: Observed(setting.ReviewerSetOf(reviewers))}},
 	}}}
 	cases := []struct {
 		name string
@@ -782,8 +798,10 @@ func TestObservationResult_SettingOfEnvironmentRequiredReviewers(t *testing.T) {
 //trace:checks FR-004
 func TestObservationResult_SettingOfPreventSelfReviewAndWaitTimer(t *testing.T) {
 	observed := ObservationResult{Environments: &Environments{Existing: []Environment{
-		{ID: 1, Name: "staging", Protection: setting.EnvironmentProtection{WaitTimer: 5}},
-		{ID: 2, Name: "Production", Protection: setting.EnvironmentProtection{WaitTimer: 30, RequiredReviewers: &setting.RequiredReviewers{PreventSelfReview: true, Reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}}}}},
+		{ID: 1, Name: "staging", Protection: EnvironmentProtection{WaitTimer: 5, ReviewerSet: Observed(setting.ReviewerSetOfRule(nil))}},
+		{ID: 2, Name: "Production", Protection: EnvironmentProtection{
+			WaitTimer: 30, ReviewerSet: Observed(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}})), PreventSelfReview: true,
+		}},
 	}}}
 	cases := []struct {
 		name string

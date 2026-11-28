@@ -66,9 +66,11 @@ subject のカスタマイズは `GET /repos/{owner}/{repo}/actions/oidc/customi
 
 ワークフロー権限、保持日数、subject のカスタマイズ、Repository Variables は取得条件を持たず、`access_level`、承認ポリシー、実行条件の取得条件は公開範囲だけです。ワークフロー権限、`access_level`、承認ポリシー、実行条件、保持日数は Actions が無効でも取得でき（GitHub Actions 権限 API 仕様 5.1・6〜9章）、subject のカスタマイズも同じで（[GitHub Actions OIDC API 仕様](../../research/actions-oidc.md) 1章）、Repository Variables は非公開リポジトリでも一覧を読めます（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 1.1）。`selected` と観測したあとの Selected actions の取得の `409` と、公開範囲が合うと観測したあとの `access_level`、承認ポリシー、実行条件の取得の `422` は、観測不能にせず観測操作の失敗とします（[ドメインモデル](../domain.md) の現在状態・観測結果・観測失敗）。
 
-Actions が有効のときに `allowed_actions` か `sha_pinning_required` が欠けた応答、3項目のいずれかが欠けた Selected actions の応答、定義にない値か欠けた `access_level` の応答は、取得契約に適合しない応答です。`sha_pinning_required` と Selected actions の3項目は公式ドキュメント上は任意のフィールドですが、欠落の理由を確認できないため、既定値で補いません。
+`allowed_actions`、`default_workflow_permissions`、`access_level`、`approval_policy` は、GitHub が値を足し得る列挙として読みます（[GitHub API 通信の設計](../github-access.md) 2.1節）。公式の OpenAPI 記述が、どれも列挙として定義しているためです。reco の知らない文字列なら、その設定だけを、値が知らない値であることを理由とする観測不能にします。`allowed_actions` が知らない値のとき、`sha_pinning_required` は同じ応答の真偽値で、Actions の有効状態だけを取得条件とするため、観測値を持ちます。選択方式の Actions 許可条件は、ポリシーが `selected` かを判断できないため、取得を送らず、ポリシーと同じ理由の観測不能にします。`selected` でないときの取得は `409` で、送れば観測操作の失敗になり得るためです（ドメインモデルの現在状態・観測結果・観測失敗）。
 
-定義にない値か欠けた `approval_policy` の応答、4項目のいずれかが欠けた実行条件の応答、`days` か `maximum_allowed_days` が欠けたか整数でない保持期間の応答も、取得契約に適合しない応答です。`run_workflows_from_fork_pull_requests` が `false` のとき、GitHub はほかの3項目を `false` で返しますが（GitHub Actions 権限 API 仕様 8.2）、reco はこの関係を取得契約にせず、返った4項目をそのまま観測値とし、宣言した4項目の組とそのまま比べます。保持日数は、上限を超えていても、`1` 未満でも、観測値としてそのまま持ちます（ドメインモデルの現在状態・観測結果・観測失敗）。上限は公開範囲と、管理する Organization か Enterprise で決まります（同 9章）。
+Actions が有効のときに `allowed_actions` か `sha_pinning_required` が欠けた応答、3項目のいずれかが欠けた Selected actions の応答、欠けた `access_level` の応答は、取得契約に適合しない応答です。`sha_pinning_required` と Selected actions の3項目は公式ドキュメント上は任意のフィールドですが、欠落の理由を確認できないため、既定値で補いません。
+
+欠けた `approval_policy` の応答、4項目のいずれかが欠けた実行条件の応答、`days` か `maximum_allowed_days` が欠けたか整数でない保持期間の応答も、取得契約に適合しない応答です。`run_workflows_from_fork_pull_requests` が `false` のとき、GitHub はほかの3項目を `false` で返しますが（GitHub Actions 権限 API 仕様 8.2）、reco はこの関係を取得契約にせず、返った4項目をそのまま観測値とし、宣言した4項目の組とそのまま比べます。保持日数は、上限を超えていても、`1` 未満でも、観測値としてそのまま持ちます（ドメインモデルの現在状態・観測結果・観測失敗）。上限は公開範囲と、管理する Organization か Enterprise で決まります（同 9章）。
 
 `use_default` か `use_immutable_subject` が欠けたか真偽値でない応答と、`include_claim_keys` が配列でないか、文字列でない要素を含む応答は、取得契約に適合しない応答です。`use_immutable_subject` は公式ドキュメント上は任意のフィールドですが、欠落の理由を確認できないため、既定値で補いません。`include_claim_keys` の欠落は取得契約に適合し、`null` も欠落と同じに扱います。GitHub は、既定の形を使うときと、既定の形を使わず key が一つも保存されていないときに、このフィールドを返さないためです（[GitHub Actions OIDC API 仕様](../../research/actions-oidc.md) 3章）。`use_default` が `false` で `include_claim_keys` が欠けているか `null` なら、空の並びとします。`use_default` が `true` のときは、応答が `include_claim_keys` を含んでいても、並びを観測値に含めません。公式資料が、`use_default` が `true` なら `include_claim_keys` は無視されるとしており、その値は設定の状態を示さないためです（ドメインモデルの現在状態・観測結果・観測失敗）。key の形式と重複は確かめず、返った文字列をそのまま持ちます。`sub_claim_prefix` は、`use_immutable_subject` と、リポジトリと所有者の名前と ID から決まる値で（GitHub Actions OIDC API 仕様 3章）、設定ではないため読みません。
 
@@ -105,6 +107,8 @@ Actions が無効のために比較不能になった Actions 許可ポリシー
 | 無効 | どちらもない | 比較不能 | 適用不能。理由は Actions が無効のままであること |
 
 Actions が無効のあいだ、`sha_pinning_required` の取得は保存された値を示さず（[GitHub Actions 権限 API 仕様](../../research/actions-permissions.md) 3.1）、送った値は成功の応答が返っても保存されません（同 3.2）。有効にする宣言がなければ、更新のあとに期待状態を確かめられず、reco が Actions を有効にすれば宣言していない設定を変えることになります。
+
+値が知らない値であることを理由に比較不能になった Actions 許可ポリシー、選択方式の Actions 許可条件、`default_workflow_permissions`、`access_level`、承認ポリシーの変更予定は、適用不能です（[ドメインモデル](../domain.md) の照合結果と適用可能性）。副作用も再開する設定も添えません。ポリシーが知らない値でも、Actions の有効状態と `sha_pinning_required` の変更予定は、ポリシーを併送しないため（更新方式）、上の表のとおり判断します。
 
 `access_level` の適用可能性は、公開範囲だけで決まります。非公開リポジトリの不一致（宣言できない `organization` の観測値を含む）は、Actions の有効状態によらず適用可能です。公開リポジトリのために比較不能になった `access_level` は、常に適用不能で、理由はリポジトリが公開であることです。公開リポジトリには `access_level` が適用されず、取得は値を返さず（GitHub Actions 権限 API 仕様 6章）、更新のあとに期待状態を確かめる手段がないためです。公開範囲は管理設定ではないため、`sha_pinning_required` と違い、ほかの宣言では解消しません。
 
@@ -227,13 +231,15 @@ Repository Variable の変更予定は、変数ごとに一つの更新操作か
 - Actions を無効にする更新と有効に戻す更新で、両者が保持された（同 3.2）
 - 無効の状態から有効化と同時にポリシーを変えても、`sha_pinning_required` が保持された（同 3.2）
 
+Actions 許可ポリシーが更新直前と更新後の両方で知らない値なら、ポリシーは観測不能で比べられません。片方が知らない値で、もう片方が観測値なら、予期しない変化とします（ドメインモデルの変更計画・論理的な設定変更・変更結果）。両方で知らない値のときの保全の根拠も、`enabled` だけを送る更新と、`enabled: true` と `sha_pinning_required` だけを送る更新が、省略した `allowed_actions` を保持した確認結果です。知らない値のポリシーで同じ保持が成り立つかは、確かめていません。
+
 ### 選択方式の Actions 許可条件
 
 `PUT /repos/{owner}/{repo}/actions/permissions/selected-actions` に3項目をすべて送ります。3項目は一つの設定グループで、どれも期待値を持つためです。省略したフィールドの保持は確かめていますが（GitHub Actions 権限 API 仕様 4章）、この方式は保持に依拠しません。空の許可パターンは、`null` の扱いが公開ドキュメントにないため、空の配列として送ります。この更新エンドポイントで観測する設定はこの設定グループだけで、更新後に比べる変更対象外の設定はありません。この更新が `allowed_actions` と `sha_pinning_required` を変えないことを確かめています（同 4.2）。
 
 ### ワークフロー権限
 
-`PUT /repos/{owner}/{repo}/actions/permissions/workflow` に管理する値だけを送ります。省略したフィールドが保持されることを、公開・非公開のリポジトリで確かめています（GitHub Actions 権限 API 仕様 5.2）。観測したもう一方の値を併送しないのは、観測から更新までのあいだに外部主体がその値を変えた場合に、古い値で上書きするためです。更新後には、`default_workflow_permissions` と `can_approve_pull_request_reviews` のうち、その論理的な設定変更が変えないほうを比べます。
+`PUT /repos/{owner}/{repo}/actions/permissions/workflow` に管理する値だけを送ります。省略したフィールドが保持されることを、公開・非公開のリポジトリで確かめています（GitHub Actions 権限 API 仕様 5.2）。観測したもう一方の値を併送しないのは、観測から更新までのあいだに外部主体がその値を変えた場合に、古い値で上書きするためです。更新後には、`default_workflow_permissions` と `can_approve_pull_request_reviews` のうち、その論理的な設定変更が変えないほうを比べます。`default_workflow_permissions` が更新直前と更新後の両方で知らない値なら比べられず、省略したフィールドが保持された確認結果を保全の根拠とします。片方が知らない値で、もう片方が観測値なら、予期しない変化とします（ドメインモデルの変更計画・論理的な設定変更・変更結果）。
 
 ### リポジトリ外のワークフローからのアクセス
 

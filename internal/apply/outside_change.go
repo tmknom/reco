@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/tmknom/reco/internal/changeplan"
+	"github.com/tmknom/reco/internal/changeplandisplay"
 	"github.com/tmknom/reco/internal/github"
 	"github.com/tmknom/reco/internal/setting"
 )
@@ -61,7 +62,7 @@ func unexpectedOutsideChanges(change changeplan.LogicalChange, before []github.O
 // outsideChangesAt は、更新要求を送った endpoint で観測する設定のうち、変更対象外の設定から除く excluded に含まれないものについて、
 // 更新直前と更新後の観測値の差を返す。
 // 観測は設定の領域の単位で読むが、同じ設定の領域でも別の更新エンドポイントの設定は更新操作の影響を受けないため比べない。
-// 予期しない変化は観測値どうしの差のため、片方でも観測不能な設定は、比べる観測値がなく返さない。
+// 片方でも観測不能な設定の比べ方は observationChange に従う。
 func outsideChangesAt(endpoint github.UpdateEndpoint, excluded []setting.Unit, before, after github.ObservationResult) []unexpectedOutsideChange {
 	var changes []unexpectedOutsideChange
 	for _, key := range endpoint.ObservedSettings() {
@@ -69,13 +70,8 @@ func outsideChangesAt(endpoint github.UpdateEndpoint, excluded []setting.Unit, b
 		if slices.Contains(excluded, unit) {
 			continue
 		}
-		b, beforeOK := before.Setting(unit).Value()
-		a, afterOK := after.Setting(unit).Value()
-		if !beforeOK || !afterOK {
-			continue
-		}
-		if !b.Equal(a) {
-			changes = append(changes, unexpectedOutsideChange{Setting: unit.String(), Before: b.String(), After: a.String()})
+		if b, a, changed := observationChange(before.Setting(unit), after.Setting(unit), setting.Value.Equal, setting.Value.String); changed {
+			changes = append(changes, unexpectedOutsideChange{Setting: unit.String(), Before: b, After: a})
 		}
 	}
 	return changes
@@ -132,12 +128,68 @@ func environmentPutOutsideChanges(name setting.EnvironmentName, excluded []setti
 	if !slices.Contains(excluded, policy) && b.DeploymentBranchPolicyMode != a.DeploymentBranchPolicyMode {
 		changes = append(changes, unexpectedOutsideChange{Setting: policy.String(), Before: string(b.DeploymentBranchPolicyMode), After: string(a.DeploymentBranchPolicyMode)})
 	}
-	prefix := setting.Unit{Key: setting.EnvironmentResource, Environment: name}.String()
-	for _, d := range b.Protection.DifferencesTo(a.Protection) {
-		if slices.Contains(excluded, setting.Unit{Key: d.Key, Environment: name}) {
-			continue
+	return append(changes, environmentProtectionChanges(name, excluded, b.Protection, a.Protection)...)
+}
+
+// environmentProtectionChanges は、宣言の名前 name の Environment の保護設定の項目のうち、変更対象外の設定から除く excluded に含まれないものについて、
+// 更新直前 before と更新後 after の差を、CLI 仕様の変更対象外の設定の名前と値の表記で、待機時間、担当者の集合、自己承認の禁止、can_admins_bypass の順に返す。
+// 担当者の集合は、管理設定の照合と同じ判定で比べ、login を示さない。片方でも観測不能なときの比べ方は observationChange に従う。
+// can_admins_bypass は宣言を受け付けない項目で、管理の単位に当たらないため、excluded によらず比べる。
+func environmentProtectionChanges(name setting.EnvironmentName, excluded []setting.Unit, before, after github.EnvironmentProtection) []unexpectedOutsideChange {
+	prefix := setting.Unit{Key: setting.EnvironmentResource, Environment: name}.String() + "."
+	compared := func(key setting.Key) bool {
+		return !slices.Contains(excluded, setting.Unit{Key: key, Environment: name})
+	}
+	var changes []unexpectedOutsideChange
+	if compared(setting.EnvironmentWaitTimer) && before.WaitTimer != after.WaitTimer {
+		changes = append(changes, unexpectedOutsideChange{
+			Setting: prefix + setting.EnvironmentWaitTimer.DeclaredKeyName(),
+			Before:  setting.WaitTimerValue(before.WaitTimer).String(), After: setting.WaitTimerValue(after.WaitTimer).String(),
+		})
+	}
+	if compared(setting.EnvironmentRequiredReviewers) {
+		if b, a, changed := observationChange(before.ReviewerSet, after.ReviewerSet, sameReviewerSet, reviewerSetText); changed {
+			changes = append(changes, unexpectedOutsideChange{Setting: prefix + setting.EnvironmentRequiredReviewers.DeclaredKeyName(), Before: b, After: a})
 		}
-		changes = append(changes, unexpectedOutsideChange{Setting: prefix + "." + d.Item, Before: d.Before, After: d.After})
+	}
+	if compared(setting.EnvironmentPreventSelfReview) && before.PreventSelfReview != after.PreventSelfReview {
+		changes = append(changes, unexpectedOutsideChange{
+			Setting: prefix + setting.EnvironmentPreventSelfReview.DeclaredKeyName(),
+			Before:  strconv.FormatBool(before.PreventSelfReview), After: strconv.FormatBool(after.PreventSelfReview),
+		})
+	}
+	if before.CanAdminsBypass != after.CanAdminsBypass {
+		changes = append(changes, unexpectedOutsideChange{
+			Setting: prefix + "can_admins_bypass", Before: strconv.FormatBool(before.CanAdminsBypass), After: strconv.FormatBool(after.CanAdminsBypass),
+		})
 	}
 	return changes
+}
+
+// observationChange は、変更対象外の設定の更新直前 before と更新後 after の観測結果が予期しない変化かを判定し、変化なら両側の表記と真を返す。
+// 両方が観測値なら equal で比べ、text で示す。片方が知らない値で、もう片方が観測値なら、知らない値は reco の知るどの値とも異なり、値が変わったことは確かなため変化とし、
+// 知らない値の側を変更予定の現在値と同じ表記で示す。上位の設定から理由を引き継いだ観測不能は、その設定の値が知らない値とは限らないため、比べる設定に含めない。
+// それ以外の観測不能を含む組は、比べる値がなく変化としない。知らない値どうしも、同じ値かを判断できないため比べない。
+func observationChange[T any](before, after github.SettingObservation[T], equal func(T, T) bool, text func(T) string) (string, string, bool) {
+	b, beforeOK := before.Value()
+	a, afterOK := after.Value()
+	switch {
+	case beforeOK && afterOK:
+		return text(b), text(a), !equal(b, a)
+	case beforeOK && after.HasUnknownValue():
+		return text(b), changeplandisplay.UnknownValueText, true
+	case afterOK && before.HasUnknownValue():
+		return changeplandisplay.UnknownValueText, text(a), true
+	}
+	return "", "", false
+}
+
+// sameReviewerSet は、担当者の集合 a と b が、管理設定の照合と同じ判定で同じかを返す。
+func sameReviewerSet(a, b setting.ReviewerSet) bool {
+	return setting.ReviewerSetValue(a).Equal(setting.ReviewerSetValue(b))
+}
+
+// reviewerSetText は、担当者の集合を、CLI 仕様が変更対象外の設定に示す login のない表記で返す。
+func reviewerSetText(s setting.ReviewerSet) string {
+	return s.WithoutLogins().String()
 }

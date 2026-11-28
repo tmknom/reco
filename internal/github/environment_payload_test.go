@@ -62,7 +62,7 @@ func TestDecodeEnvironment(t *testing.T) {
 		{
 			name: "null policy and no rules is all without protection",
 			body: environmentJSON(nil),
-			want: Environment{ID: 161088068, Name: "production", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyAll},
+			want: Environment{ID: 161088068, Name: "production", DeploymentBranchPolicyMode: setting.DeploymentBranchPolicyAll, Protection: unprotectedEnvironment()},
 		},
 		{
 			name: "actual shape with unread fields is read",
@@ -71,14 +71,14 @@ func TestDecodeEnvironment(t *testing.T) {
 				ID:                         161088068,
 				Name:                       "Prod/Eu",
 				DeploymentBranchPolicyMode: setting.DeploymentBranchPolicySelected,
-				Protection: setting.EnvironmentProtection{
+				Protection: EnvironmentProtection{
 					WaitTimer: 30,
-					RequiredReviewers: &setting.RequiredReviewers{
-						PreventSelfReview: true,
-						Reviewers:         []setting.Reviewer{{Type: setting.ReviewerUser, ID: 583231}, {Type: setting.ReviewerTeam, ID: 42}},
-						Logins:            map[setting.Reviewer]string{{Type: setting.ReviewerUser, ID: 583231}: "octocat"},
-					},
-					CanAdminsBypass: true,
+					ReviewerSet: Observed(setting.ReviewerSetOfRule(&setting.RequiredReviewers{
+						Reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 583231}, {Type: setting.ReviewerTeam, ID: 42}},
+						Logins:    map[setting.Reviewer]string{{Type: setting.ReviewerUser, ID: 583231}: "octocat"},
+					})),
+					PreventSelfReview: true,
+					CanAdminsBypass:   true,
 				},
 			},
 		},
@@ -199,67 +199,88 @@ func TestDecodeEnvironmentProtection(t *testing.T) {
 		return raws
 	}
 
+	user1 := setting.Reviewer{Type: setting.ReviewerUser, ID: 1}
+	user2 := setting.Reviewer{Type: setting.ReviewerUser, ID: 2}
+	team2 := setting.Reviewer{Type: setting.ReviewerTeam, ID: 2}
+	// unprotected は、保護ルールがないときの保護設定。担当者の集合は空集合の観測値で、自己承認の禁止は偽。
+	unprotected := EnvironmentProtection{ReviewerSet: Observed(setting.ReviewerSetOfRule(nil))}
+	// withRule は、自己承認の禁止 preventSelfReview と、担当者 reviewers と login logins を持つ required_reviewers の保護ルールだけを持つ保護設定。
+	withRule := func(preventSelfReview bool, reviewers []setting.Reviewer, logins map[setting.Reviewer]string) EnvironmentProtection {
+		return EnvironmentProtection{
+			ReviewerSet:       Observed(setting.ReviewerSetOfRule(&setting.RequiredReviewers{Reviewers: reviewers, Logins: logins})),
+			PreventSelfReview: preventSelfReview,
+		}
+	}
+	// withWaitTimer は、p の待機時間を minutes 分にした保護設定。
+	withWaitTimer := func(p EnvironmentProtection, minutes int) EnvironmentProtection {
+		p.WaitTimer = minutes
+		return p
+	}
 	successes := []struct {
 		name            string
 		rules           []string
 		canAdminsBypass bool
-		want            setting.EnvironmentProtection
+		want            EnvironmentProtection
 	}{
-		{name: "no rules is no protection", rules: nil, want: setting.EnvironmentProtection{}},
-		{name: "can_admins_bypass is carried over", rules: nil, canAdminsBypass: true, want: setting.EnvironmentProtection{CanAdminsBypass: true}},
-		{name: "wait_timer rule is the wait timer", rules: []string{waitTimerRule}, want: setting.EnvironmentProtection{WaitTimer: 30}},
-		{name: "wait_timer 0 is a wait timer of 0", rules: []string{`{"type": "wait_timer", "wait_timer": 0}`}, want: setting.EnvironmentProtection{}},
+		{name: "no rules is an empty reviewer set without prevent_self_review", rules: nil, want: unprotected},
+		{name: "can_admins_bypass is carried over", rules: nil, canAdminsBypass: true, want: EnvironmentProtection{ReviewerSet: unprotected.ReviewerSet, CanAdminsBypass: true}},
+		{name: "wait_timer rule is the wait timer", rules: []string{waitTimerRule}, want: withWaitTimer(unprotected, 30)},
+		{name: "wait_timer 0 is a wait timer of 0", rules: []string{`{"type": "wait_timer", "wait_timer": 0}`}, want: unprotected},
+		{name: "required_reviewers rule keeps the reviewers in order", rules: []string{reviewersRule}, want: withRule(true, []setting.Reviewer{user1, team2}, nil)},
 		{
-			name:  "required_reviewers rule keeps the reviewers in order",
-			rules: []string{reviewersRule},
-			want: setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{
-				PreventSelfReview: true,
-				Reviewers:         []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}, {Type: setting.ReviewerTeam, ID: 2}},
-			}},
-		},
-		{
-			name:  "empty reviewers is an empty list, not no rule",
+			name:  "empty reviewers is a rule without reviewers, not no rule",
 			rules: []string{`{"type": "required_reviewers", "prevent_self_review": false, "reviewers": []}`},
-			want:  setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{Reviewers: []setting.Reviewer{}}},
+			want:  withRule(false, []setting.Reviewer{}, nil),
 		},
 		{
-			name:  "both rules are read",
-			rules: []string{reviewersRule, waitTimerRule},
-			want: setting.EnvironmentProtection{
-				WaitTimer: 30,
-				RequiredReviewers: &setting.RequiredReviewers{
-					PreventSelfReview: true,
-					Reviewers:         []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}, {Type: setting.ReviewerTeam, ID: 2}},
-				},
-			},
+			// GitHub はこの保護ルールに真を残し、担当者を戻すと真のまま戻すため、偽とみなさない
+			name:  "a rule without reviewers keeps its prevent_self_review",
+			rules: []string{`{"type": "required_reviewers", "prevent_self_review": true, "reviewers": []}`},
+			want:  withRule(true, []setting.Reviewer{}, nil),
 		},
+		{name: "both rules are read", rules: []string{reviewersRule, waitTimerRule}, want: withWaitTimer(withRule(true, []setting.Reviewer{user1, team2}, nil), 30)},
 		{
 			name:  "user login is kept for display",
 			rules: []string{`{"type": "required_reviewers", "prevent_self_review": false, "reviewers": [{"type": "User", "reviewer": {"id": 1, "login": "octo-cat_1"}}]}`},
-			want: setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{
-				Reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}},
-				Logins:    map[setting.Reviewer]string{{Type: setting.ReviewerUser, ID: 1}: "octo-cat_1"},
-			}},
+			want:  withRule(false, []setting.Reviewer{user1}, map[setting.Reviewer]string{user1: "octo-cat_1"}),
 		},
 		{
 			name:  "team login is not kept",
 			rules: []string{`{"type": "required_reviewers", "prevent_self_review": false, "reviewers": [{"type": "Team", "reviewer": {"id": 2, "login": "core"}}]}`},
-			want:  setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{Reviewers: []setting.Reviewer{{Type: setting.ReviewerTeam, ID: 2}}}},
+			want:  withRule(false, []setting.Reviewer{team2}, nil),
 		},
 		{
 			name:  "missing and null logins are not failures and not kept",
 			rules: []string{`{"type": "required_reviewers", "prevent_self_review": false, "reviewers": [{"type": "User", "reviewer": {"id": 1}}, {"type": "User", "reviewer": {"id": 2, "login": null}}]}`},
-			want: setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{
-				Reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}, {Type: setting.ReviewerUser, ID: 2}},
-			}},
+			want:  withRule(false, []setting.Reviewer{user1, user2}, nil),
 		},
 		{
 			name:  "login with a line break is not kept",
 			rules: []string{`{"type": "required_reviewers", "prevent_self_review": false, "reviewers": [{"type": "User", "reviewer": {"id": 1, "login": "octo\ncat"}}]}`},
-			want:  setting.EnvironmentProtection{RequiredReviewers: &setting.RequiredReviewers{Reviewers: []setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}}}},
+			want:  withRule(false, []setting.Reviewer{user1}, nil),
 		},
-		{name: "branch_policy rule is skipped", rules: []string{`{"type": "branch_policy"}`}, want: setting.EnvironmentProtection{}},
-		{name: "rule of a type reco does not know is skipped", rules: []string{`{"type": "custom_rule", "id": 9}`, waitTimerRule}, want: setting.EnvironmentProtection{WaitTimer: 30}},
+		{
+			// 知らない種類の担当者を除いた残りを担当者の集合にせず、同じ保護設定のほかの項目は観測値にする
+			name: "a reviewer of an unknown type makes only the reviewer set unavailable as an unknown value",
+			rules: []string{
+				`{"type": "required_reviewers", "prevent_self_review": true, "reviewers": [{"type": "User", "reviewer": {"id": 1}}, {"type": "Bot", "reviewer": {"id": 9}}]}`,
+				waitTimerRule,
+			},
+			want: EnvironmentProtection{WaitTimer: 30, ReviewerSet: Unavailable[setting.ReviewerSet](UnavailableUnknownValue), PreventSelfReview: true},
+		},
+		{
+			name:  "a single reviewer of an unknown type makes the reviewer set unavailable rather than a rule without reviewers",
+			rules: []string{`{"type": "required_reviewers", "prevent_self_review": false, "reviewers": [{"type": "Bot", "reviewer": {"id": 9}}]}`},
+			want:  EnvironmentProtection{ReviewerSet: Unavailable[setting.ReviewerSet](UnavailableUnknownValue)},
+		},
+		{
+			// reviewer の形は種類ごとに違い得るため、知らない種類の担当者には type のほかの項目を求めない
+			name:  "a reviewer of an unknown type without reviewer id makes the reviewer set unavailable",
+			rules: []string{`{"type": "required_reviewers", "prevent_self_review": false, "reviewers": [{"type": "App", "reviewer": {"app_id": 9}}, {"type": "Bot"}]}`},
+			want:  EnvironmentProtection{ReviewerSet: Unavailable[setting.ReviewerSet](UnavailableUnknownValue)},
+		},
+		{name: "branch_policy rule is skipped", rules: []string{`{"type": "branch_policy"}`}, want: unprotected},
+		{name: "rule of a type reco does not know is skipped", rules: []string{`{"type": "custom_rule", "id": 9}`, waitTimerRule}, want: withWaitTimer(unprotected, 30)},
 	}
 	for _, tc := range successes {
 		t.Run(tc.name, func(t *testing.T) {
@@ -288,7 +309,18 @@ func TestDecodeEnvironmentProtection(t *testing.T) {
 		{name: "required_reviewers rule without prevent_self_review names only prevent_self_review", body: `{"type": "required_reviewers", "reviewers": []}`, contains: []string{"missing fields", "protection_rules.prevent_self_review"}, notContains: []string{"protection_rules.reviewers"}},
 		{name: "required_reviewers rule with null prevent_self_review names only prevent_self_review", body: `{"type": "required_reviewers", "prevent_self_review": null, "reviewers": []}`, contains: []string{"missing fields", "protection_rules.prevent_self_review"}, notContains: []string{"protection_rules.reviewers"}},
 		{name: "required_reviewers rule without either names both", body: `{"type": "required_reviewers"}`, contains: []string{"missing fields", "protection_rules.reviewers", "protection_rules.prevent_self_review"}},
-		{name: "reviewer of an unsupported type is unexpected response without the value", body: `{"type": "required_reviewers", "prevent_self_review": true, "reviewers": [{"type": "Bot-MARKER", "reviewer": {"id": 1}}]}`, contains: []string{"unsupported value", "protection_rules.reviewers.type"}, notContains: []string{"Bot-MARKER"}},
+		// 全要素を取得契約と照らしてから観測不能にするため、知らない種類の担当者のあとの契約外の要素も失敗にする
+		{
+			name:     "reviewer without reviewer id after a reviewer of an unknown type is unexpected response",
+			body:     `{"type": "required_reviewers", "prevent_self_review": true, "reviewers": [{"type": "Bot", "reviewer": {"id": 1}}, {"type": "User"}]}`,
+			contains: []string{"missing fields", "protection_rules.reviewers.reviewer.id"},
+		},
+		{
+			name:        "null reviewer element after a reviewer of an unknown type is an unsupported value",
+			body:        `{"type": "required_reviewers", "prevent_self_review": true, "reviewers": [{"type": "Bot", "reviewer": {"id": 1}}, null]}`,
+			contains:    []string{"unsupported value", "protection_rules.reviewers"},
+			notContains: []string{"reviewers.type"},
+		},
 		{name: "reviewer without type names only type", body: `{"type": "required_reviewers", "prevent_self_review": true, "reviewers": [{"reviewer": {"id": 1}}]}`, contains: []string{"missing fields", "protection_rules.reviewers.type"}, notContains: []string{"reviewer.id"}},
 		{name: "reviewer with null type names only type", body: `{"type": "required_reviewers", "prevent_self_review": true, "reviewers": [{"type": null, "reviewer": {"id": 1}}]}`, contains: []string{"missing fields", "protection_rules.reviewers.type"}, notContains: []string{"reviewer.id"}},
 		{name: "reviewer without reviewer names only reviewer id", body: `{"type": "required_reviewers", "prevent_self_review": true, "reviewers": [{"type": "User"}]}`, contains: []string{"missing fields", "protection_rules.reviewers.reviewer.id"}, notContains: []string{"reviewers.type"}},
@@ -350,28 +382,34 @@ func TestDecodeDeploymentPattern(t *testing.T) {
 		body        string
 		wantPattern setting.DeploymentPattern
 		wantID      DeploymentPatternID
+		wantKnown   bool
 	}{
-		{name: "branch pattern is read with its id", body: `{"id": 11, "node_id": "x", "name": "release/*", "type": "branch"}`, wantPattern: setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "release/*"}, wantID: 11},
-		{name: "tag pattern is read with its id", body: `{"id": 12, "name": "v*", "type": "tag"}`, wantPattern: setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: "v*"}, wantID: 12},
-		{name: "empty name is kept as it is", body: `{"id": 13, "name": "", "type": "branch"}`, wantPattern: setting.DeploymentPattern{Type: setting.DeploymentPatternBranch}, wantID: 13},
+		{
+			name:        "branch pattern is read with its id",
+			body:        `{"id": 11, "node_id": "x", "name": "release/*", "type": "branch"}`,
+			wantPattern: setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "release/*"}, wantID: 11, wantKnown: true,
+		},
+		{name: "tag pattern is read with its id", body: `{"id": 12, "name": "v*", "type": "tag"}`, wantPattern: setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: "v*"}, wantID: 12, wantKnown: true},
+		{name: "empty name is kept as it is", body: `{"id": 13, "name": "", "type": "branch"}`, wantPattern: setting.DeploymentPattern{Type: setting.DeploymentPatternBranch}, wantID: 13, wantKnown: true},
+		// GitHub が列挙に値を足しても失敗にせず、知る種類でないことを返す。知らない種類は値に含めない
+		{name: "unknown type is not a known pattern without its value", body: `{"id": 14, "name": "a", "type": "commit"}`, wantID: 14},
 	}
 	for _, tc := range successes {
 		t.Run(tc.name, func(t *testing.T) {
-			pattern, id, err := decodeDeploymentPattern(json.RawMessage(tc.body))
+			pattern, id, known, err := decodeDeploymentPattern(json.RawMessage(tc.body))
 			if err != nil {
 				t.Fatalf("decodeDeploymentPattern() error = %v", err)
 			}
-			if pattern != tc.wantPattern || id != tc.wantID {
-				t.Errorf("decodeDeploymentPattern() = %+v, %d, want %+v, %d", pattern, id, tc.wantPattern, tc.wantID)
+			if pattern != tc.wantPattern || id != tc.wantID || known != tc.wantKnown {
+				t.Errorf("decodeDeploymentPattern() = %+v, %d, %t, want %+v, %d, %t", pattern, id, known, tc.wantPattern, tc.wantID, tc.wantKnown)
 			}
 		})
 	}
 
 	failures := []struct {
-		name        string
-		body        string
-		contains    []string
-		notContains string
+		name     string
+		body     string
+		contains []string
 	}{
 		{name: "missing id is unexpected response", body: `{"name": "a", "type": "branch"}`, contains: []string{"missing fields", "id"}},
 		{name: "null id is unexpected response", body: `{"id": null, "name": "a", "type": "branch"}`, contains: []string{"missing fields", "id"}},
@@ -380,13 +418,12 @@ func TestDecodeDeploymentPattern(t *testing.T) {
 		{name: "missing type is unexpected response", body: `{"id": 1, "name": "a"}`, contains: []string{"missing fields", "type"}},
 		{name: "null type is unexpected response", body: `{"id": 1, "name": "a", "type": null}`, contains: []string{"missing fields", "type"}},
 		{name: "empty object names every missing field", body: `{}`, contains: []string{"id", "name", "type"}},
-		{name: "unsupported type is unexpected response without the value", body: `{"id": 1, "name": "a", "type": "commit-MARKER"}`, contains: []string{"unsupported value", "type"}, notContains: "commit-MARKER"},
 		{name: "null element is unexpected response", body: `null`, contains: []string{"missing fields"}},
 		{name: "non-JSON element is unexpected response", body: `<html>`},
 	}
 	for _, tc := range failures {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := decodeDeploymentPattern(json.RawMessage(tc.body))
+			_, _, _, err := decodeDeploymentPattern(json.RawMessage(tc.body))
 			if !errors.Is(err, ErrUnexpectedResponse) {
 				t.Fatalf("decodeDeploymentPattern() error = %v, want %v", err, ErrUnexpectedResponse)
 			}
@@ -395,8 +432,83 @@ func TestDecodeDeploymentPattern(t *testing.T) {
 					t.Errorf("decodeDeploymentPattern() error = %q, want it to contain %q", err, s)
 				}
 			}
-			if tc.notContains != "" && strings.Contains(err.Error(), tc.notContains) {
-				t.Errorf("decodeDeploymentPattern() error = %q, must not contain %q", err, tc.notContains)
+		})
+	}
+}
+
+//trace:checks FR-004 QR-002
+func TestDecodeDeploymentPatterns(t *testing.T) {
+	mainBranch := setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "main"}
+	versionTag := setting.DeploymentPattern{Type: setting.DeploymentPatternTag, Name: "v*"}
+	toItems := func(items ...string) []json.RawMessage {
+		raws := make([]json.RawMessage, len(items))
+		for i, item := range items {
+			raws[i] = json.RawMessage(item)
+		}
+		return raws
+	}
+	successes := []struct {
+		name  string
+		items []json.RawMessage
+		want  SettingObservation[DeploymentPatterns]
+	}{
+		{
+			name:  "patterns are kept in the list order with their ids",
+			items: toItems(`{"id": 2, "name": "v*", "type": "tag"}`, `{"id": 1, "name": "main", "type": "branch"}`),
+			want: Observed(DeploymentPatterns{
+				Existing: []setting.DeploymentPattern{versionTag, mainBranch},
+				IDs:      map[setting.DeploymentPattern]DeploymentPatternID{versionTag: 2, mainBranch: 1},
+			}),
+		},
+		{
+			name:  "empty list is an empty set of patterns",
+			items: toItems(),
+			want:  Observed(DeploymentPatterns{Existing: []setting.DeploymentPattern{}, IDs: map[setting.DeploymentPattern]DeploymentPatternID{}}),
+		},
+		{
+			// 知らない種類の個別パターンを除いた残りを観測値にすると、照合と変更前提がその個別パターンを見落とすため
+			name:  "a pattern of an unknown type makes the patterns unavailable as an unknown value",
+			items: toItems(`{"id": 1, "name": "main", "type": "branch"}`, `{"id": 3, "name": "abc", "type": "commit"}`),
+			want:  Unavailable[DeploymentPatterns](UnavailableUnknownValue),
+		},
+	}
+	for _, tc := range successes {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := decodeDeploymentPatterns(tc.items)
+			if err != nil {
+				t.Fatalf("decodeDeploymentPatterns() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("decodeDeploymentPatterns() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+
+	failures := []struct {
+		name     string
+		items    []json.RawMessage
+		contains string
+	}{
+		{
+			// 全要素を取得契約と照らしてから観測不能にする
+			name:     "a pattern without id after a pattern of an unknown type is unexpected response",
+			items:    toItems(`{"id": 3, "name": "abc", "type": "commit"}`, `{"name": "main", "type": "branch"}`),
+			contains: "missing fields: id",
+		},
+		{
+			name:     "two patterns of the same type and name are unexpected response",
+			items:    toItems(`{"id": 1, "name": "main", "type": "branch"}`, `{"id": 2, "name": "main", "type": "branch"}`),
+			contains: "duplicate deployment pattern",
+		},
+	}
+	for _, tc := range failures {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := decodeDeploymentPatterns(tc.items)
+			if !errors.Is(err, ErrUnexpectedResponse) {
+				t.Fatalf("decodeDeploymentPatterns() error = %v, want %v", err, ErrUnexpectedResponse)
+			}
+			if !strings.Contains(err.Error(), tc.contains) {
+				t.Errorf("decodeDeploymentPatterns() error = %q, want it to contain %q", err, tc.contains)
 			}
 		})
 	}

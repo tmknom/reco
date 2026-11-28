@@ -39,8 +39,7 @@ func writeObservationResult(w io.Writer, target repository.Reference, observed g
 	writeGeneral(&b, observed.General)
 	b.WriteString("    actions:\n")
 	writeActionsPermissions(&b, *observed.ActionsPermissions)
-	fmt.Fprintf(&b, "      workflow:\n        default_workflow_permissions: %s\n        can_approve_pull_request_reviews: %t\n",
-		observed.WorkflowPermissions.DefaultWorkflowPermissions, observed.WorkflowPermissions.CanApprovePullRequestReviews)
+	writeWorkflowPermissions(&b, *observed.WorkflowPermissions)
 	writeActionsAccess(&b, *observed.ActionsAccess)
 	writeForkPullRequests(&b, *observed.ForkPullRequestApproval, *observed.PrivateForkPullRequestWorkflows)
 	writeRetention(&b, *observed.Retention)
@@ -59,6 +58,8 @@ func writeActionsPermissions(b *strings.Builder, p github.ActionsPermissions) {
 	fmt.Fprintf(b, "      permissions:\n        enabled: %t\n", p.Enabled)
 	if policy, ok := p.AllowedActions.Value(); ok {
 		fmt.Fprintf(b, "        allowed_actions: %s\n", policy)
+	} else {
+		writeUnavailableAllowedActions(b, p.AllowedActions.UnavailableReason())
 	}
 	if criteria, ok := p.SelectedActions.Value(); ok {
 		fmt.Fprintf(b, "        selected_actions:\n          github_owned_allowed: %t\n          verified_allowed: %t\n",
@@ -67,6 +68,20 @@ func writeActionsPermissions(b *strings.Builder, p github.ActionsPermissions) {
 	}
 	if required, ok := p.SHAPinningRequired.Value(); ok {
 		fmt.Fprintf(b, "        sha_pinning_required: %t\n", required)
+	}
+}
+
+// writeUnavailableAllowedActions は、観測不能の Actions 許可ポリシーを、理由 reason に応じて書く。
+// Actions が無効なら、その状態が enabled の行から分かるため、行を示さない。知らない値なら、行をコメントにする。
+// selected_actions は、どちらの理由でも確認できない理由が上の行から分かるため、示さない。
+// ほかの理由はこの設定に当たらず、行を黙って省かないよう不変条件の破れとして panic する。
+func writeUnavailableAllowedActions(b *strings.Builder, reason github.UnavailableReason) {
+	switch reason {
+	case github.UnavailableActionsDisabled:
+	case github.UnavailableUnknownValue:
+		fmt.Fprintf(b, "        # allowed_actions: %s\n", unknownValueText)
+	default:
+		panic(fmt.Sprintf("show: undefined unavailable reason %d for allowed_actions", int(reason)))
 	}
 }
 
@@ -82,17 +97,33 @@ func writePatternsAllowed(b *strings.Builder, patterns []string) {
 	}
 }
 
+// writeWorkflowPermissions は actions.workflow を書く。
+func writeWorkflowPermissions(b *strings.Builder, w github.WorkflowPermissions) {
+	b.WriteString("      workflow:\n")
+	if level, ok := w.DefaultWorkflowPermissions.Value(); ok {
+		fmt.Fprintf(b, "        default_workflow_permissions: %s\n", level)
+	} else {
+		requireUnknownValue("default_workflow_permissions", w.DefaultWorkflowPermissions.UnavailableReason())
+		fmt.Fprintf(b, "        # default_workflow_permissions: %s\n", unknownValueText)
+	}
+	fmt.Fprintf(b, "        can_approve_pull_request_reviews: %t\n", w.CanApprovePullRequestReviews)
+}
+
 // writeActionsAccess は actions.access を書く。
-// 公開以外の理由はこの設定に当たらず、公開の文言で黙って示さないよう不変条件の破れとして panic する。
+// 公開と知らない値以外の理由はこの設定に当たらず、それらの文言で黙って示さないよう不変条件の破れとして panic する。
 func writeActionsAccess(b *strings.Builder, a github.ActionsAccess) {
 	if level, ok := a.AccessLevel.Value(); ok {
 		fmt.Fprintf(b, "      access:\n        access_level: %s\n", level)
 		return
 	}
-	if reason := a.AccessLevel.UnavailableReason(); reason != github.UnavailablePublicRepository {
+	switch reason := a.AccessLevel.UnavailableReason(); reason {
+	case github.UnavailablePublicRepository:
+		b.WriteString("      # access:\n      #   access_level: unavailable (the repository is public)\n")
+	case github.UnavailableUnknownValue:
+		fmt.Fprintf(b, "      # access:\n      #   access_level: %s\n", unknownValueText)
+	default:
 		panic(fmt.Sprintf("show: undefined unavailable reason %d for access_level", int(reason)))
 	}
-	b.WriteString("      # access:\n      #   access_level: unavailable (the repository is public)\n")
 }
 
 // writeRetention は actions.retention を書く。

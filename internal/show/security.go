@@ -13,8 +13,8 @@ func writeSecurity(b *strings.Builder, d github.Dependabot, s github.SecretScann
 	b.WriteString("    security:\n")
 	fmt.Fprintf(b, "      dependabot_alerts: %t\n", d.Alerts)
 	b.WriteString("      dependabot_security_updates: " + securityUpdatesText(d.SecurityUpdates) + "\n")
-	b.WriteString(publicRepositorySettingLine("secret_scanning", s.Enabled))
-	b.WriteString(publicRepositorySettingLine("secret_scanning_push_protection", s.PushProtection))
+	b.WriteString(secretScanningSettingLine("secret_scanning", s.Enabled))
+	b.WriteString(secretScanningSettingLine("secret_scanning_push_protection", s.PushProtection))
 	b.WriteString(publicRepositorySettingLine("private_vulnerability_reporting", p.Enabled))
 }
 
@@ -30,6 +30,15 @@ func securityUpdatesText(v setting.DependabotSecurityUpdatesState) string {
 		return "true # paused by GitHub (still enabled)"
 	}
 	panic(fmt.Sprintf("show: undefined dependabot security updates value %d", int(v)))
+}
+
+// secretScanningSettingLine は、非公開に加えて GitHub が知らない値を返したときも観測不能になる真偽値の設定 key の行を返す。
+// 知らない値のときはその行だけを YAML のコメントにし、ほかの理由は publicRepositorySettingLine が扱う。
+func secretScanningSettingLine(key string, o github.SettingObservation[bool]) string {
+	if o.HasUnknownValue() {
+		return "      # " + key + ": " + unknownValueText + "\n"
+	}
+	return publicRepositorySettingLine(key, o)
 }
 
 // publicRepositorySettingLine は、非公開リポジトリでは観測不能になる真偽値の設定 key の行を返す。観測不能の値は期待値として読ませないよう、YAML のコメントにする。

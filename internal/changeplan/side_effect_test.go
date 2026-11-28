@@ -24,6 +24,10 @@ func TestSideEffects(t *testing.T) {
 		AllowedActions:  github.Unavailable[setting.AllowedActionsPolicy](github.UnavailableActionsDisabled),
 		SelectedActions: github.Unavailable[setting.SelectedActionsCriteria](github.UnavailableActionsDisabled),
 	}}
+	unknownPolicy := github.ObservationResult{ActionsPermissions: &github.ActionsPermissions{
+		Enabled: true, AllowedActions: github.Unavailable[setting.AllowedActionsPolicy](github.UnavailableUnknownValue),
+		SelectedActions: github.Unavailable[setting.SelectedActionsCriteria](github.UnavailableUnknownValue),
+	}}
 	// policyPlan は、observed を計画時に観測して期待値を desired とした Actions 許可ポリシーの計画を作る。
 	policyPlan := func(observed github.ObservationResult, desired setting.AllowedActionsPolicy) SettingPlan {
 		return newSettingPlan(setting.Unit{Key: setting.AllowedActions}, observed.Setting(setting.Unit{Key: setting.AllowedActions}), policyValue(desired))
@@ -51,6 +55,12 @@ func TestSideEffects(t *testing.T) {
 			plan:     policyPlan(disabled, setting.AllowedActionsAll),
 			observed: disabled,
 			want:     []SideEffect{{Kind: SideEffectSelectedActionsDiscarded, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled)}},
+		},
+		{
+			name:     "unknown policy to all has no side effect because the change is not applicable",
+			plan:     policyPlan(unknownPolicy, setting.AllowedActionsAll),
+			observed: unknownPolicy,
+			want:     nil,
 		},
 		{
 			name:     "all to local_only has no side effect because no criteria exist",
@@ -162,6 +172,9 @@ func TestSideEffects_SecretScanning(t *testing.T) {
 		Enabled:        github.Unavailable[bool](github.UnavailablePrivateRepository),
 		PushProtection: github.Unavailable[bool](github.UnavailablePrivateRepository),
 	}}
+	unknownPushProtection := github.ObservationResult{SecretScanning: &github.SecretScanning{
+		Enabled: github.Observed(true), PushProtection: github.Unavailable[bool](github.UnavailableUnknownValue),
+	}}
 	cases := []struct {
 		name     string
 		observed github.ObservationResult
@@ -184,6 +197,16 @@ func TestSideEffects_SecretScanning(t *testing.T) {
 		{
 			name:                   "disabling secret scanning leaves declared push protection to the plan",
 			observed:               public(true, true),
+			declaresPushProtection: true,
+		},
+		{
+			name:     "disabling secret scanning may disable the undeclared push protection of an unknown value",
+			observed: unknownPushProtection,
+			want:     []SideEffect{{Kind: SideEffectPushProtectionDisabled, Observed: github.Unavailable[setting.Value](github.UnavailableUnknownValue)}},
+		},
+		{
+			name:                   "disabling secret scanning leaves declared push protection of an unknown value to the plan",
+			observed:               unknownPushProtection,
 			declaresPushProtection: true,
 		},
 		{
@@ -216,11 +239,11 @@ func TestSideEffects_RequiredReviewers(t *testing.T) {
 	production := mustEnvironmentName(t, "production")
 	unit := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}
 	octocat := setting.Reviewer{Type: setting.ReviewerUser, ID: 583231}
-	protection := func(preventSelfReview bool, reviewers ...setting.Reviewer) *setting.RequiredReviewers {
-		return &setting.RequiredReviewers{PreventSelfReview: preventSelfReview, Reviewers: reviewers}
+	protection := func(preventSelfReview bool, reviewers ...setting.Reviewer) github.EnvironmentProtection {
+		return protectedByRule(setting.RequiredReviewers{Reviewers: reviewers}, preventSelfReview)
 	}
-	observation := func(rule *setting.RequiredReviewers) github.ObservationResult {
-		return github.ObservationResult{Environments: &github.Environments{Existing: []github.Environment{{Name: "production", Protection: setting.EnvironmentProtection{RequiredReviewers: rule}}}}}
+	observation := func(protection github.EnvironmentProtection) github.ObservationResult {
+		return github.ObservationResult{Environments: &github.Environments{Existing: []github.Environment{{Name: "production", Protection: protection}}}}
 	}
 	absent := github.ObservationResult{Environments: &github.Environments{}}
 	none := setting.ReviewerSetValue(setting.ReviewerSetOf(nil))
@@ -254,7 +277,7 @@ func TestSideEffects_RequiredReviewers(t *testing.T) {
 		},
 		{name: "keeping a reviewer has no side effect when prevent_self_review is true", observed: observation(protection(true, octocat)), desired: one},
 		{name: "emptying a protection rule without reviewers discards prevent_self_review that is true", observed: observation(protection(true)), desired: none, want: preventSelfReviewDiscarded},
-		{name: "environment without a protection rule matches no reviewers and has no side effect", observed: observation(nil), desired: none},
+		{name: "environment without a protection rule matches no reviewers and has no side effect", observed: observation(unprotected()), desired: none},
 		{name: "absent environment has no side effect", observed: absent, desired: none},
 	}
 	for _, tc := range cases {

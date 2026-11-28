@@ -4,13 +4,13 @@
 
 reco が変えるのは、設定ファイルに書いた設定だけです。
 
-Environment も同じです。reco が作成するのも、`deployment_branch_policy` を変えるのも、設定ファイルに名前を書いた Environment だけです。Environment を削除することはありません。Ruleset も同じです。reco が作成するのも、内容を変えるのも、設定ファイルに名前を書いた Ruleset だけで、書いていない Ruleset は変更も削除もしません。
+Environment も同じです。reco が作成するのも、`deployment_branch_policy` や `required_reviewers` などの設定を変えるのも、設定ファイルに名前を書いた Environment だけです。Environment を削除することはありません。Ruleset も同じです。reco が作成するのも、内容を変えるのも、設定ファイルに名前を書いた Ruleset だけで、書いていない Ruleset は変更も削除もしません。
 
 reco が削除するのは、設定ファイルに `state: absent` と書いた名前の Repository Variable、Environment Variable、Ruleset だけです。行を消した変数や Ruleset、書いていない変数や Ruleset は消しません。消す変数の値は、変更計画に `"<今の値>" -> absent` と示し、消す Ruleset は `present -> absent` と内容の全体を示して、承認を求めます。
 
-書いた設定だけを変えるという原則の例外は、書いた設定を変えると GitHub の仕様でほかの値が消えるか変わる場合です。たとえば、`allowed_actions` を `selected` から `all` や `local_only` に変えると、GitHub が `selected_actions` の値を消します。`dependabot_alerts` を変えると、GitHub は Dependency graph も同じ値（有効か無効）に変えます。`dependabot_alerts` を無効にすると、GitHub は設定ファイルに書いていない Dependabot security updates も、有効だったなら無効にします。`secret_scanning` を無効にすると、GitHub は設定ファイルに書いていないリポジトリの push protection を、有効だったなら無効にします。reco はこれらを変更計画の `Side effect:` の行に示し、その内容も含めて承認を求めます。
+書いた設定だけを変えるという原則の例外は、書いた設定を変えると GitHub の仕様でほかの値が消えるか変わる場合です。たとえば、`allowed_actions` を `selected` から `all` や `local_only` に変えると、GitHub が `selected_actions` の値を消します。`dependabot_alerts` を変えると、GitHub は Dependency graph も同じ値（有効か無効）に変えます。`dependabot_alerts` を無効にすると、GitHub は設定ファイルに書いていない Dependabot security updates も、有効だったなら無効にします。`secret_scanning` を無効にすると、GitHub は設定ファイルに書いていないリポジトリの push protection を、有効だったなら無効にします。Environment の `required_reviewers` から担当者をすべて外すと、GitHub は設定ファイルに書いていない `prevent_self_review` を、有効だったなら無効にします。reco はこれらを変更計画の `Side effect:` の行に示し、その内容も含めて承認を求めます。
 
-`deployment_branch_policy.patterns` のように一覧を値とする設定では、書いた一覧が全体になり、GitHub 上の一覧にあって書いていない要素はなくなります。
+`deployment_branch_policy.patterns` や `required_reviewers` のように一覧を値とする設定では、書いた一覧が全体になり、GitHub 上の一覧にあって書いていない要素はなくなります。
 
 ## すべてのリポジトリを読み取ってから更新を始める
 

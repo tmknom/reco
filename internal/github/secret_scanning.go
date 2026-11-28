@@ -24,7 +24,7 @@ type securityStatusPayload struct {
 }
 
 // decodeSecretScanning は、リポジトリの応答の security_and_analysis を Secret scanning の観測結果に変換する。
-// 定義外の値は応答本文の一部のため、文言に入れない。
+// 二つの status は別々に判定し、片方が知らない値でも、もう片方は観測値にする。依存する設定と前提の設定は、もう一方の状態によらず観測できるため。
 func decodeSecretScanning(private bool, securityAndAnalysis json.RawMessage) (SecretScanning, error) {
 	if private {
 		return SecretScanning{
@@ -56,15 +56,20 @@ func decodeSecretScanning(private bool, securityAndAnalysis json.RawMessage) (Se
 	if len(missing) > 0 {
 		return SecretScanning{}, fmt.Errorf("%w: missing fields: %s", ErrUnexpectedResponse, strings.Join(missing, ", "))
 	}
-	enabled, ok := parseSecurityStatus(*p.SecretScanning.Status)
+	return SecretScanning{
+		Enabled:        securityStatusObservation(*p.SecretScanning.Status),
+		PushProtection: securityStatusObservation(*p.SecretScanningPushProtection.Status),
+	}, nil
+}
+
+// securityStatusObservation は security_and_analysis の項目の status を有効状態の観測結果にする。
+// status は GitHub が値を足し得る列挙として読み、知らない値ならその項目の設定だけを観測不能にする。
+func securityStatusObservation(status string) SettingObservation[bool] {
+	enabled, ok := parseSecurityStatus(status)
 	if !ok {
-		return SecretScanning{}, fmt.Errorf("%w: unsupported value: %s", ErrUnexpectedResponse, secretScanningField)
+		return Unavailable[bool](UnavailableUnknownValue)
 	}
-	pushProtection, ok := parseSecurityStatus(*p.SecretScanningPushProtection.Status)
-	if !ok {
-		return SecretScanning{}, fmt.Errorf("%w: unsupported value: %s", ErrUnexpectedResponse, pushProtectionField)
-	}
-	return SecretScanning{Enabled: Observed(enabled), PushProtection: Observed(pushProtection)}, nil
+	return Observed(enabled)
 }
 
 // securityStatus は、有効状態を security_and_analysis の項目の status にする。parseSecurityStatus の逆である。

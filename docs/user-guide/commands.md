@@ -106,7 +106,7 @@ repositories:
 
 | 行 | 意味 |
 |---|---|
-| `# squash_merge_commit: unavailable (GitHub returned a value that reco does not know)` / `# merge_commit: unavailable (GitHub returned a value that reco does not know)` | GitHub が、reco のまだ知らない選び方（GitHub が新しく足したものなど）をマージ時のコミットメッセージに返したため、その方式のコミットメッセージを読み取れない。値は GitHub の設定画面で確かめる。ほかの設定はいつもどおり使える |
+| `# <キー>: unavailable (GitHub returned a value that reco does not know)` | GitHub が、reco のまだ知らない値（GitHub が新しく足した選択肢など）をその設定に返したため、その設定を読み取れない。当たるのは、マージ時のコミットメッセージ（`squash_merge_commit`、`merge_commit`）、`allowed_actions`、`default_workflow_permissions`、`access_level`、`approval_policy`、`secret_scanning`、`secret_scanning_push_protection`、Environment の `deployment_branch_policy` と `required_reviewers`。`access_level` と `approval_policy` は、`# access:` や `# fork_pull_requests:` から下がまとめてコメントになる。`allowed_actions` のときは `selected_actions` を示さない。値は GitHub の設定画面で確かめる。ほかの設定はいつもどおり使える |
 | `# web_commit_signoff_required: unavailable (GitHub did not return the value)` | GitHub がこの設定の値を返さなかったため、読み取れない。設定ファイルに `web_commit_signoff_required` を書くと、`plan` が `Plan cannot be applied.` を表示する。ほかの設定はいつもどおり使える |
 | `# variables: none` | `actions` の下では Repository Variables が、Environment の下ではその Environment の変数（Environment Variables）が一つもない |
 | `# environments: none` | Environment が一つもない |
@@ -121,7 +121,7 @@ repositories:
 | `# secret_scanning: unavailable (the repository is private)` / `# secret_scanning_push_protection: unavailable (the repository is private)` / `# private_vulnerability_reporting: unavailable (the repository is private)` | 非公開リポジトリのため、Secret scanning、リポジトリの push protection、Private vulnerability reporting の値を読み取れない |
 | `# rulesets: none` | Ruleset が一つもない |
 | `# rulesets: unavailable (the repository is private)` | 非公開リポジトリのため、Ruleset を読み取れない |
-| `# unavailable (the ruleset contains parts that reco does not interpret)` | 直前の `- name:` の行の Ruleset が、reco の解釈しない部分（ルール型、キー、パラメータなど）を含む。続くコメントの行が、解釈しなかったものを1行に一つずつ示す |
+| `# unavailable (the ruleset contains parts that reco does not interpret)` | 直前の `- name:` の行の Ruleset が、reco の解釈しない部分（ルール型、キー、パラメータ、reco の知らない `enforcement` の値など）を含む。続くコメントの行が、解釈しなかったものを1行に一つずつ示す |
 
 Environment の `can_admins_bypass` のように、設定ファイルに書けない設定は、上のコメントで示す設定を除いて表示しません。
 
@@ -167,7 +167,9 @@ Repositories checked: 1
 | `rulesets.<名前>: present -> absent` と、その下の `target:` から `rules:` までの行 | `state: absent` を書いた Ruleset が GitHub 上にある。承認すると削除する。下の行は、削除で失われる今の内容の全体で、GitHub が返した順に示す。対象のブランチの条件を持たない Ruleset は、`include:` と `exclude:` の代わりに `conditions: {}` の行が出る |
 | `rulesets.<名前>:` と、その下の変わる部分の行 | Ruleset の内容が設定ファイルと違う。`... to remove:` の行は、設定ファイルにないためなくなるパターン、迂回できる主体、ルール。`... to add:` の行は加わるもの。`enforcement: disabled -> active` や `Rule pull_request: ...` の行は、値が変わる項目。`Required status checks to remove:` と `Required status checks to add:` の行は、`required_status_checks` のルールでなくなるチェックと加わるチェック。`conditions: {} -> ref_name` の行は、GitHub 上の Ruleset が対象のブランチの条件を持たないことを示す |
 | `actions.fork_pull_requests.private_repositories:` の下に、今の値の行と `-> <書いた値>` の行 | 非公開リポジトリの Fork からの Pull Request のワークフローの実行条件。4項目をまとめて一つの変更として示す |
-| `general.squash_merge_commit:` / `general.merge_commit:` の下に、今の値の行と `-> <書いた値>` の行 | マージ時のコミットメッセージの形。`title: PR_TITLE, message: PR_BODY` のように、タイトルと本文をまとめて一つの変更として示す。今の値が `(unknown value)` のときは、GitHub が reco のまだ知らない選び方を返している |
+| `general.squash_merge_commit:` / `general.merge_commit:` の下に、今の値の行と `-> <書いた値>` の行 | マージ時のコミットメッセージの形。`title: PR_TITLE, message: PR_BODY` のように、タイトルと本文をまとめて一つの変更として示す |
+| 今の値が `(unknown value)` の変更 | GitHub が、その設定に reco のまだ知らない値を返している。この変更は適用できない |
+| `general.web_commit_signoff_required: (not returned) -> <書いた値>` | GitHub が `web_commit_signoff_required` の値を返していない。この変更は適用できない |
 | `actions.oidc_subject:` の下に、今の値の行と `-> <書いた値>` の行 | OIDC トークンの subject の形の設定。`use_default`、`include_claim_keys`、`use_immutable_subject` をまとめて一つの変更として示す。設定ファイルに `use_immutable_subject` を書いていなければ、どちらの行にも出ない |
 | `Note:` | すぐ上の変更が GitHub 上で何を意味するか。Fork からの Pull Request で起動したワークフローに、書き込み権限を持つ `GITHUB_TOKEN` が渡るようになること、Secrets と Variables が使えるようになることや、OIDC トークンの subject の形が変わり、外部のクラウドなどの信頼の条件と一致しなくなり得ることを示す。変更を止めるものではなく、承認の前に読むための行である |
 | `Side effect:` | この変更に伴って GitHub が消すか変える値 |
@@ -224,7 +226,7 @@ Repositories updated: 1
 
 マージ方式（`general.allow_squash_merge`、`general.allow_merge_commit`、`general.allow_rebase_merge`）の変更は、変更計画では設定ごとに出ますが、`apply` は変えるマージ方式をまとめて1回の更新で GitHub に送ります。結果が変更ごとに出るときは、`general.allow_squash_merge + general.allow_merge_commit: updated` のように、まとめた設定を ` + ` でつないだ1行になります。マージ方式を無効にする変更と、そのマージ方式のコミットメッセージ（`general.squash_merge_commit` か `general.merge_commit`）の変更があるときは、GitHub が無効のマージ方式のコミットメッセージを変えさせないため、コミットメッセージを先に変えます。
 
-Repository Variables と Environment Variables は、設定ファイルに書いた順に一つずつ作成するか、値を変えるか、削除します。Environment Variables は、その Environment の作成と `deployment_branch_policy` の変更のあとに変えます。変数の変更ごとの結果は、`actions.variables.<名前>: updated` や `environments.<Environment の名前>.variables.<名前>: not attempted` のように出ます。
+Repository Variables と Environment Variables は、設定ファイルに書いた順に一つずつ作成するか、値を変えるか、削除します。Environment Variables は、その Environment の作成と、`deployment_branch_policy`、`required_reviewers`、`prevent_self_review`、`wait_timer` の変更のあとに変えます。変数の変更ごとの結果は、`actions.variables.<名前>: updated` や `environments.<Environment の名前>.variables.<名前>: not attempted` のように出ます。
 
 どこかの変更が完了しなかったら、reco は残りの変更を始めずに止まります。すでに反映した変更は元に戻りません。`failed` や `not attempted` が出たときにすることは [Troubleshooting](troubleshooting.md#apply-が途中で止まった) にあります。
 

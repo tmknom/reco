@@ -339,10 +339,7 @@ func unavailableConfirmationText(u unavailableManagedSetting) string {
 			return "not confirmed (the ruleset contains parts that reco does not interpret)"
 		}
 	case github.UnavailableUnknownValue:
-		// 知らない値で観測不能になるのは、対応するマージ方式を持つマージメッセージだけである
-		if _, ok := u.unit.Key.CorrespondingMergeMethod(); ok {
-			return "not confirmed (GitHub returned a value that reco does not know)"
-		}
+		return "not confirmed (GitHub returned a value that reco does not know)"
 	case github.UnavailableNotReturned:
 		// 値が返らなかったことで観測不能になるのは、web_commit_signoff_required だけである
 		if u.unit.Key == setting.WebCommitSignoffRequired {

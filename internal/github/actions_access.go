@@ -29,7 +29,7 @@ func (c *Client) observeActionsAccess(ctx context.Context, reference repository.
 	if err != nil {
 		return ActionsAccess{}, err
 	}
-	return ActionsAccess{AccessLevel: Observed(level)}, nil
+	return ActionsAccess{AccessLevel: level}, nil
 }
 
 // accessLevelUnavailability は、観測した公開範囲から、access_level が取得条件により観測不能になる理由を返す。
@@ -46,19 +46,19 @@ type actionsAccessPayload struct {
 	AccessLevel *string `json:"access_level"`
 }
 
-// decodeActionsAccess はリポジトリ外のワークフローからのアクセスの応答本文を access_level の観測値に変換する。
-// 定義外の値は応答本文の一部のため、文言に入れない。
-func decodeActionsAccess(data []byte) (setting.AccessLevel, error) {
+// decodeActionsAccess はリポジトリ外のワークフローからのアクセスの応答本文を access_level の観測結果に変換する。
+// access_level は GitHub が値を足し得る列挙として読み、知らない値なら観測不能にする。
+func decodeActionsAccess(data []byte) (SettingObservation[setting.AccessLevel], error) {
 	var p actionsAccessPayload
 	if err := json.Unmarshal(data, &p); err != nil {
-		return "", fmt.Errorf("%w: %w", ErrUnexpectedResponse, err)
+		return SettingObservation[setting.AccessLevel]{}, fmt.Errorf("%w: %w", ErrUnexpectedResponse, err)
 	}
 	if p.AccessLevel == nil {
-		return "", fmt.Errorf("%w: missing fields: access_level", ErrUnexpectedResponse)
+		return SettingObservation[setting.AccessLevel]{}, fmt.Errorf("%w: missing fields: access_level", ErrUnexpectedResponse)
 	}
 	level, ok := setting.ParseAccessLevel(*p.AccessLevel)
 	if !ok {
-		return "", fmt.Errorf("%w: unsupported value: access_level", ErrUnexpectedResponse)
+		return Unavailable[setting.AccessLevel](UnavailableUnknownValue), nil
 	}
-	return level, nil
+	return Observed(level), nil
 }

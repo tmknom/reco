@@ -152,6 +152,7 @@ func TestUninterpretedPart_String(t *testing.T) {
 		want string
 	}{
 		{part: UninterpretedPart{Kind: UninterpretedTarget, Name: "tag"}, want: `target: "tag"`},
+		{part: UninterpretedPart{Kind: UninterpretedEnforcement, Name: "enforced\n"}, want: `enforcement: "enforced\n"`},
 		{part: UninterpretedPart{Kind: UninterpretedConditionsKey, Name: "ref_name.extra"}, want: `conditions key: "ref_name.extra"`},
 		{part: UninterpretedPart{Kind: UninterpretedBypassActorType, Name: "Team"}, want: `bypass actor type: "Team"`},
 		{part: UninterpretedPart{Kind: UninterpretedBypassMode, Name: "never"}, want: `bypass mode: "never"`},

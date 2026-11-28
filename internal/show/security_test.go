@@ -64,6 +64,30 @@ func TestWriteSecurity(t *testing.T) {
 				"      # secret_scanning_push_protection: unavailable (the repository is private)\n" +
 				"      # private_vulnerability_reporting: unavailable (the repository is private)\n",
 		},
+		{
+			name:       "an unknown secret scanning value is a comment and the push protection is shown",
+			dependabot: github.Dependabot{Alerts: true, SecurityUpdates: setting.DependabotSecurityUpdatesEnabled},
+			secretScanning: github.SecretScanning{
+				Enabled:        github.Unavailable[bool](github.UnavailableUnknownValue),
+				PushProtection: github.Observed(false),
+			},
+			privateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
+			want: header + "      dependabot_alerts: true\n      dependabot_security_updates: true\n" +
+				"      # secret_scanning: unavailable (GitHub returned a value that reco does not know)\n" +
+				"      secret_scanning_push_protection: false\n" + disabledPrivateVulnerabilityReportingLine,
+		},
+		{
+			name:       "an unknown push protection value is a comment and the secret scanning is shown",
+			dependabot: github.Dependabot{Alerts: true, SecurityUpdates: setting.DependabotSecurityUpdatesEnabled},
+			secretScanning: github.SecretScanning{
+				Enabled:        github.Observed(true),
+				PushProtection: github.Unavailable[bool](github.UnavailableUnknownValue),
+			},
+			privateVulnerabilityReporting: disabledPrivateVulnerabilityReporting,
+			want: header + "      dependabot_alerts: true\n      dependabot_security_updates: true\n" +
+				"      secret_scanning: true\n" +
+				"      # secret_scanning_push_protection: unavailable (GitHub returned a value that reco does not know)\n" + disabledPrivateVulnerabilityReportingLine,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -82,6 +106,16 @@ func TestWriteSecurity(t *testing.T) {
 			}
 		}()
 		writeSecurity(&strings.Builder{}, github.Dependabot{Alerts: true}, enabledSecretScanning, disabledPrivateVulnerabilityReporting)
+	})
+
+	t.Run("private vulnerability reporting unavailable for an unknown value panics", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("writeSecurity() did not panic for private vulnerability reporting unavailable because of an unknown value")
+			}
+		}()
+		writeSecurity(&strings.Builder{}, github.Dependabot{Alerts: true, SecurityUpdates: setting.DependabotSecurityUpdatesEnabled}, enabledSecretScanning,
+			github.PrivateVulnerabilityReporting{Enabled: github.Unavailable[bool](github.UnavailableUnknownValue)})
 	})
 
 	t.Run("secret scanning unavailable for a reason other than private panics", func(t *testing.T) {

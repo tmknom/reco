@@ -41,6 +41,24 @@ func TestDecodeSecretScanning(t *testing.T) {
 			want:                SecretScanning{Enabled: Unavailable[bool](UnavailablePrivateRepository), PushProtection: Unavailable[bool](UnavailablePrivateRepository)},
 		},
 		{
+			// 二つは別々に判定し、片方が知らない値でも、もう片方は観測値を持つ
+			name:                "public unknown secret scanning status makes only secret scanning unavailable as an unknown value",
+			securityAndAnalysis: json.RawMessage(`{"secret_scanning": {"status": "on"}, "secret_scanning_push_protection": {"status": "enabled"}}`),
+			want:                SecretScanning{Enabled: Unavailable[bool](UnavailableUnknownValue), PushProtection: Observed(true)},
+		},
+		{
+			name:                "public unknown push protection status makes only push protection unavailable as an unknown value",
+			securityAndAnalysis: json.RawMessage(`{"secret_scanning": {"status": "disabled"}, "secret_scanning_push_protection": {"status": "Enabled"}}`),
+			want:                SecretScanning{Enabled: Observed(false), PushProtection: Unavailable[bool](UnavailableUnknownValue)},
+		},
+		{
+			// 公開範囲の判定が先に打ち切るため、知らない値も読まず、理由はリポジトリが非公開であること
+			name:                "private with unknown statuses is unavailable for the private repository",
+			private:             true,
+			securityAndAnalysis: json.RawMessage(`{"secret_scanning": {"status": "on"}, "secret_scanning_push_protection": {"status": "on"}}`),
+			want:                SecretScanning{Enabled: Unavailable[bool](UnavailablePrivateRepository), PushProtection: Unavailable[bool](UnavailablePrivateRepository)},
+		},
+		{
 			name:                "private with a non-object security_and_analysis is unavailable without interpreting it",
 			private:             true,
 			securityAndAnalysis: json.RawMessage(`"text"`),
@@ -63,7 +81,6 @@ func TestDecodeSecretScanning(t *testing.T) {
 		name                string
 		securityAndAnalysis json.RawMessage
 		errContains         string
-		errExcludes         string
 	}{
 		{name: "public without security_and_analysis is unexpected response", errContains: "missing fields: security_and_analysis"},
 		{name: "public null security_and_analysis is unexpected response", securityAndAnalysis: json.RawMessage(`null`), errContains: "missing fields: security_and_analysis"},
@@ -93,15 +110,14 @@ func TestDecodeSecretScanning(t *testing.T) {
 			errContains:         "missing fields: security_and_analysis.secret_scanning_push_protection.status",
 		},
 		{
-			name:                "public undefined secret scanning status is unsupported without the value",
-			securityAndAnalysis: json.RawMessage(`{"secret_scanning": {"status": "on"}, "secret_scanning_push_protection": {"status": "enabled"}}`),
-			errContains:         "unsupported value: security_and_analysis.secret_scanning.status",
-			errExcludes:         `"on"`,
+			// 知らない値でも、もう一方の項目が取得契約に適合しなければ観測を続けない
+			name:                "public unknown secret scanning status with a missing push protection item is unexpected response",
+			securityAndAnalysis: json.RawMessage(`{"secret_scanning": {"status": "on"}}`),
+			errContains:         "missing fields: security_and_analysis.secret_scanning_push_protection.status",
 		},
 		{
-			name:                "public push protection status is case-sensitive",
-			securityAndAnalysis: json.RawMessage(`{"secret_scanning": {"status": "enabled"}, "secret_scanning_push_protection": {"status": "Enabled"}}`),
-			errContains:         "unsupported value: security_and_analysis.secret_scanning_push_protection.status",
+			name:                "public non-string secret scanning status is unexpected response",
+			securityAndAnalysis: json.RawMessage(`{"secret_scanning": {"status": 1}, "secret_scanning_push_protection": {"status": "enabled"}}`),
 		},
 		{name: "public non-object security_and_analysis is unexpected response", securityAndAnalysis: json.RawMessage(`[]`)},
 	}
@@ -113,9 +129,6 @@ func TestDecodeSecretScanning(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.errContains) {
 				t.Errorf("decodeSecretScanning() error = %q, want it to contain %q", err, tc.errContains)
-			}
-			if tc.errExcludes != "" && strings.Contains(err.Error(), tc.errExcludes) {
-				t.Errorf("decodeSecretScanning() error = %q, want it not to contain %q", err, tc.errExcludes)
 			}
 		})
 	}

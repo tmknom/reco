@@ -507,14 +507,16 @@ func TestCheckPrecondition_Environments(t *testing.T) {
 	approvedStaging := observedEnvironment(7, "Staging", setting.DeploymentBranchPolicyAll)
 	selected := func(id github.EnvironmentID, patterns ...string) github.Environment {
 		e := observedEnvironment(id, "Staging", setting.DeploymentBranchPolicySelected)
-		e.DeploymentPatterns = &github.DeploymentPatterns{}
+		var read github.DeploymentPatterns
 		for _, p := range patterns {
-			e.DeploymentPatterns.Existing = append(e.DeploymentPatterns.Existing, setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: p})
+			read.Existing = append(read.Existing, setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: p})
 		}
+		observedPatterns := github.Observed(read)
+		e.DeploymentPatterns = &observedPatterns
 		return e
 	}
 	protectedStaging := approvedStaging
-	protectedStaging.Protection = setting.EnvironmentProtection{WaitTimer: 30, CanAdminsBypass: true}
+	protectedStaging.Protection = github.EnvironmentProtection{WaitTimer: 30, ReviewerSet: github.Observed(setting.ReviewerSetOfRule(nil)), CanAdminsBypass: true}
 	main, feature := branchPattern("main"), branchPattern("feature/*")
 	// 外す DELETE feature/*（基準 [main, feature/*]）、足す POST release/*（基準 [main]）の順
 	replacement := deploymentPatternsChange(t, "staging", selectedEnvironment(7, "Staging", []setting.DeploymentPattern{main, feature}, 10, 11), selectedPolicy(main, branchPattern("release/*")))

@@ -38,6 +38,14 @@ func TestWriteForkPullRequests(t *testing.T) {
 				"          send_secrets_and_variables: true\n" +
 				"          require_approval_for_fork_pr_workflows: false\n",
 		},
+		{
+			name:      "an unknown approval policy comments out the whole key and the unavailable conditions",
+			approval:  github.ForkPullRequestApproval{ApprovalPolicy: github.Unavailable[setting.ForkPullRequestApprovalPolicy](github.UnavailableUnknownValue)},
+			workflows: github.PrivateForkPullRequestWorkflows{Conditions: github.Unavailable[setting.PrivateForkPullRequestWorkflowConditions](github.UnavailablePublicRepository)},
+			want: "      # fork_pull_requests:\n" +
+				"      #   approval_policy: unavailable (GitHub returned a value that reco does not know)\n" +
+				"      #   private_repositories: unavailable (the repository is public)\n",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -68,6 +76,16 @@ func TestWriteForkPullRequests(t *testing.T) {
 			name:      "unavailable conditions on a private repository panic",
 			approval:  github.ForkPullRequestApproval{ApprovalPolicy: github.Unavailable[setting.ForkPullRequestApprovalPolicy](github.UnavailablePrivateRepository)},
 			workflows: github.PrivateForkPullRequestWorkflows{Conditions: github.Unavailable[setting.PrivateForkPullRequestWorkflowConditions](github.UnavailablePublicRepository)},
+		},
+		{
+			name:      "an unknown approval policy with conditions unavailable for a reason other than public panics",
+			approval:  github.ForkPullRequestApproval{ApprovalPolicy: github.Unavailable[setting.ForkPullRequestApprovalPolicy](github.UnavailableUnknownValue)},
+			workflows: github.PrivateForkPullRequestWorkflows{Conditions: github.Unavailable[setting.PrivateForkPullRequestWorkflowConditions](github.UnavailablePrivateRepository)},
+		},
+		{
+			name:      "an unknown approval policy with observed conditions panics",
+			approval:  github.ForkPullRequestApproval{ApprovalPolicy: github.Unavailable[setting.ForkPullRequestApprovalPolicy](github.UnavailableUnknownValue)},
+			workflows: github.PrivateForkPullRequestWorkflows{Conditions: github.Observed(setting.PrivateForkPullRequestWorkflowConditions{})},
 		},
 		{
 			name:      "observed conditions on a public repository panic",

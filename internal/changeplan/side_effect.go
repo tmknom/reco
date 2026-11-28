@@ -30,6 +30,7 @@ const (
 	// SideEffectSecurityUpdatesDisabled は、Dependabot security updates が無効になること。
 	SideEffectSecurityUpdatesDisabled
 	// SideEffectPushProtectionDisabled は、リポジトリの push protection が無効になること。
+	// push protection が知らない値なら、Observed は観測不能で、無効になる可能性を表す。
 	SideEffectPushProtectionDisabled
 	// SideEffectPreventSelfReviewDiscarded は、担当者をすべて外す変更で、Environment の自己承認の禁止が失われること。Observed は失われる前の値の真。
 	SideEffectPreventSelfReviewDiscarded
@@ -63,7 +64,7 @@ func (k SideEffectKind) ObservedSetting() (setting.Key, bool) {
 
 // sideEffects は、s の変更予定に伴う副作用と、副作用を示さなかった設定を、設定ごとの設計の遷移表と設定の依存関係に従って返す。
 // settings は s と同じリポジトリの管理設定の計画で、宣言した設定の変化は管理設定の変更として扱い、どちらにも数えない。
-// 比較不能な変更予定は、前提の設定では適用不能 (非公開リポジトリの Secret scanning) に限られ、更新しないため副作用を添えない。
+// 比較不能な変更予定は、前提の設定では適用不能 (非公開リポジトリか知らない値の Secret scanning) に限られ、更新しないため副作用を添えない。
 func sideEffects(s SettingPlan, observed github.ObservationResult, settings []SettingPlan) ([]SideEffect, []SettingExpectedUnaffected) {
 	if s.Unit.Key == setting.AllowedActions {
 		return selectedActionsSideEffects(s, observed), nil
@@ -83,9 +84,10 @@ func sideEffects(s SettingPlan, observed github.ObservationResult, settings []Se
 }
 
 // selectedActionsSideEffects は、Actions 許可ポリシーの変更予定 s が選択方式の Actions 許可条件を失わせるときの副作用を返す。
-// 現在のポリシーを観測できないとき (Actions が無効) も、無効にする前が selected だった可能性があるため副作用にする。
+// 現在のポリシーを Actions が無効のために観測できないときも、無効にする前が selected だった可能性があるため副作用にする。
+// 知らない値のために観測できないポリシーの変更予定は適用不能で更新しないため、副作用を添えない。
 func selectedActionsSideEffects(s SettingPlan, observed github.ObservationResult) []SideEffect {
-	if s.Desired.AllowedActionsPolicy() == setting.AllowedActionsSelected {
+	if s.Observed.HasUnknownValue() || s.Desired.AllowedActionsPolicy() == setting.AllowedActionsSelected {
 		return nil
 	}
 	if current, ok := s.Observed.Value(); ok && current.AllowedActionsPolicy() != setting.AllowedActionsSelected {
@@ -126,13 +128,17 @@ func dependencyGraphSideEffect(s SettingPlan) SideEffect {
 // dependentSideEffects は、前提の設定を無効にする不一致 s に伴う、依存する設定の副作用と、副作用を示さなかった設定を返す。
 // 宣言していない依存する設定は、有効なら副作用として示し、無効なら示さずに変更前提で無効のままであることを確かめる。
 // 承認のあとに外部主体が有効にした依存する設定を、示さないまま無効にしないため。
-// 前提の設定を観測できて依存する設定を観測できない形は、同じ領域の取得から生じないため、不変条件の破れとして panic する。
+// 依存する設定が知らない値で観測不能なら、無効になる可能性を、観測不能の観測結果つきの副作用として示す。値を観測できないことは、副作用がないことを意味しないため。
+// 前提の設定を観測できて依存する設定をほかの理由で観測できない形は、同じ領域の取得から生じないため、不変条件の破れとして panic する。
 func dependentSideEffects(s SettingPlan, observed github.ObservationResult, settings []SettingPlan) ([]SideEffect, []SettingExpectedUnaffected) {
 	d, ok := dependencyOnPrerequisite(s.Unit.Key)
 	if !ok || s.Desired.Bool() || declares(settings, d.Dependent) {
 		return nil, nil
 	}
 	dependent := observed.Setting(setting.Unit{Key: d.Dependent})
+	if dependent.HasUnknownValue() {
+		return []SideEffect{{Kind: dependentDisabledSideEffect(d.Dependent), Observed: dependent}}, nil
+	}
 	current, ok := dependent.Value()
 	if !ok {
 		panic(fmt.Sprintf("changeplan: %s is observed without %s", s.Unit.Key, d.Dependent))

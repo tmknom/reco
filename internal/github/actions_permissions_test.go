@@ -39,11 +39,22 @@ func TestDecodeActionsPermissions(t *testing.T) {
 			},
 		},
 		{
-			name: "disabled ignores an included allowed_actions",
+			// 無効の判定が先に打ち切るため、知らない値も読まず、理由は Actions が無効であること
+			name: "disabled ignores an included unknown allowed_actions",
 			body: `{"enabled": false, "allowed_actions": "none", "sha_pinning_required": false}`,
 			want: ActionsPermissions{
 				AllowedActions:     Unavailable[setting.AllowedActionsPolicy](UnavailableActionsDisabled),
 				SHAPinningRequired: Unavailable[bool](UnavailableActionsDisabled),
+			},
+		},
+		{
+			// sha_pinning_required は Actions の有効状態だけを取得条件とするため、ポリシーが知らない値でも観測値を持つ
+			name: "enabled with an unknown allowed_actions makes only the policy unavailable as an unknown value",
+			body: `{"enabled": true, "allowed_actions": "none", "sha_pinning_required": true}`,
+			want: ActionsPermissions{
+				Enabled:            true,
+				AllowedActions:     Unavailable[setting.AllowedActionsPolicy](UnavailableUnknownValue),
+				SHAPinningRequired: Observed(true),
 			},
 		},
 	}
@@ -60,10 +71,9 @@ func TestDecodeActionsPermissions(t *testing.T) {
 	}
 
 	failures := []struct {
-		name           string
-		body           string
-		errContains    []string
-		errNotContains string
+		name        string
+		body        string
+		errContains []string
 	}{
 		{
 			name:        "missing enabled is unexpected response",
@@ -91,10 +101,9 @@ func TestDecodeActionsPermissions(t *testing.T) {
 			errContains: []string{"allowed_actions", "sha_pinning_required"},
 		},
 		{
-			name:           "unknown allowed_actions is unexpected response without the value",
-			body:           `{"enabled": true, "allowed_actions": "none", "sha_pinning_required": false}`,
-			errContains:    []string{"allowed_actions"},
-			errNotContains: "none",
+			name:        "enabled with a non-string allowed_actions is unexpected response",
+			body:        `{"enabled": true, "allowed_actions": 1, "sha_pinning_required": false}`,
+			errContains: []string{"allowed_actions"},
 		},
 		{name: "non-JSON body is unexpected response", body: `<html>`},
 	}
@@ -108,9 +117,6 @@ func TestDecodeActionsPermissions(t *testing.T) {
 				if !strings.Contains(err.Error(), s) {
 					t.Errorf("decodeActionsPermissions() error = %q, want it to contain %q", err, s)
 				}
-			}
-			if tc.errNotContains != "" && strings.Contains(err.Error(), tc.errNotContains) {
-				t.Errorf("decodeActionsPermissions() error = %q, must not contain %q", err, tc.errNotContains)
 			}
 		})
 	}
@@ -128,6 +134,13 @@ func TestSelectedActionsUnavailability(t *testing.T) {
 			name:            "disabled keeps the reason of the policy",
 			allowed:         Unavailable[setting.AllowedActionsPolicy](UnavailableActionsDisabled),
 			wantReason:      UnavailableActionsDisabled,
+			wantUnavailable: true,
+		},
+		{
+			// ポリシーが selected かを判断できないため、取得を送らず、ポリシーと同じ理由にする
+			name:            "unknown policy keeps the reason of the policy",
+			allowed:         Unavailable[setting.AllowedActionsPolicy](UnavailableUnknownValue),
+			wantReason:      UnavailableUnknownValue,
 			wantUnavailable: true,
 		},
 		{name: "all is not selected", allowed: Observed(setting.AllowedActionsAll), wantReason: UnavailableNotSelected, wantUnavailable: true},

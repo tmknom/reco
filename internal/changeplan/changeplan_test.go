@@ -792,6 +792,32 @@ func TestGenerate_Rulesets(t *testing.T) {
 		}
 	})
 
+	t.Run("ruleset declared absent with an unknown enforcement is not applicable because of the uninterpreted enforcement", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo":          githubtest.OK(githubtest.RepositoryBody{ID: 7}.JSON()),
+			"GET /repos/owner/repo/rulesets": githubtest.OK(githubtest.RulesetsBody{{ID: 1, Name: "Legacy"}}.JSON()),
+			"GET /repos/owner/repo/rulesets/1": githubtest.OK(githubtest.RulesetBody{
+				ID: 1, Name: "Legacy", Target: "branch", Enforcement: "enforced", Include: []string{"~DEFAULT_BRANCH"},
+				BypassActors: []githubtest.BypassActorBody{{ActorType: "RepositoryRole", ActorID: 5, BypassMode: "always"}}, Rules: []string{githubtest.DeletionRuleBody},
+			}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+		const src = "repositories:\n  - name: owner/repo\n    rulesets:\n      - name: legacy\n        state: absent\n"
+
+		got, err := Generate(context.Background(), client, file(src), nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		want := []planned{{"rulesets.legacy", NotComparable, NotApplicable(NotApplicableUninterpretedParts)}}
+		if got := plansOf(got); !reflect.DeepEqual(got, want) {
+			t.Errorf("plans = %+v, want %+v", got, want)
+		}
+		wantParts := []github.UninterpretedPart{{Kind: github.UninterpretedEnforcement, Name: "enforced"}}
+		if parts := got.Repositories[0].Settings[0].UninterpretedParts; !reflect.DeepEqual(parts, wantParts) {
+			t.Errorf("UninterpretedParts = %+v, want %+v", parts, wantParts)
+		}
+	})
+
 	// 判断の理由は Rulesets の設計の適用可能性と副作用にある
 	t.Run("ruleset allowing only a merge method the repository disables stays applicable without notes", func(t *testing.T) {
 		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
@@ -989,6 +1015,52 @@ func TestGenerate_ActionsPermissions(t *testing.T) {
 			},
 			{Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: github.Unavailable[setting.Value](github.UnavailableActionsDisabled), Desired: setting.BoolValue(true), Result: NotComparable, Applicability: Applicable()},
 		}
+		if len(got.Repositories) != 1 {
+			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
+		}
+		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
+			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
+		}
+	})
+
+	t.Run("sha_pinning_required alone with an unknown policy is observed and judged applicable", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo":                     githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/actions/permissions": githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "future_policy"}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+		shaFile := configuration.File{Dir: fstest.MapFS{"reco.yaml": {Data: []byte(strings.Replace(actionsPermissionsSource, "allowed_actions: all", "sha_pinning_required: true", 1))}}, Name: "reco.yaml", Path: "./reco.yaml"}
+
+		got, err := Generate(context.Background(), client, shaFile, nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		want := []SettingPlan{{
+			Unit: setting.Unit{Key: setting.SHAPinningRequired}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true), Result: Mismatch, Applicability: Applicable(),
+		}}
+		if len(got.Repositories) != 1 {
+			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
+		}
+		if !reflect.DeepEqual(got.Repositories[0].Settings, want) {
+			t.Errorf("Settings = %+v, want %+v", got.Repositories[0].Settings, want)
+		}
+	})
+
+	t.Run("declared policy of an unknown value is judged not applicable without a side effect", func(t *testing.T) {
+		server := githubtest.NewServer(t, githubtest.Routes(t, map[string]githubtest.Response{
+			"GET /repos/owner/repo":                     githubtest.OK(repositoryBody),
+			"GET /repos/owner/repo/actions/permissions": githubtest.OK(githubtest.ActionsPermissionsBody{AllowedActions: "future_policy"}.JSON()),
+		}))
+		client := github.New("test-token", github.WithBaseURL(server.URL()))
+
+		got, err := Generate(context.Background(), client, file, nil)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		want := []SettingPlan{{
+			Unit: setting.Unit{Key: setting.AllowedActions}, Observed: github.Unavailable[setting.Value](github.UnavailableUnknownValue),
+			Desired: setting.AllowedActionsPolicyValue(setting.AllowedActionsAll), Result: NotComparable, Applicability: NotApplicable(NotApplicableUnknownValue),
+		}}
 		if len(got.Repositories) != 1 {
 			t.Fatalf("Repositories = %+v, want one repository plan", got.Repositories)
 		}

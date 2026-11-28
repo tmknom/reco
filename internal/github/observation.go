@@ -105,7 +105,7 @@ func (o ObservationResult) Setting(unit setting.Unit) SettingObservation[setting
 	case setting.SelectedActions:
 		return valueObservation(o.ActionsPermissions.SelectedActions, setting.SelectedActionsCriteriaValue)
 	case setting.DefaultWorkflowPermissions:
-		return Observed(setting.PermissionLevelValue(o.WorkflowPermissions.DefaultWorkflowPermissions))
+		return valueObservation(o.WorkflowPermissions.DefaultWorkflowPermissions, setting.PermissionLevelValue)
 	case setting.CanApprovePullRequestReviews:
 		return Observed(setting.BoolValue(o.WorkflowPermissions.CanApprovePullRequestReviews))
 	case setting.ActionsAccessLevel:

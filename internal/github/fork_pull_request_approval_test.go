@@ -35,30 +35,38 @@ func TestForkPullRequestApprovalUnavailability(t *testing.T) {
 //trace:checks FR-004 QR-002
 func TestDecodeForkPullRequestApproval(t *testing.T) {
 	// 受け付ける値の規則は setting.ParseForkPullRequestApprovalPolicy が持つため、ここでは読み取りの経路を1つの値で確かめる
-	t.Run("defined approval_policy is read", func(t *testing.T) {
-		got, err := decodeForkPullRequestApproval([]byte(`{"approval_policy": "all_external_contributors"}`))
-		if err != nil {
-			t.Fatalf("decodeForkPullRequestApproval() error = %v", err)
-		}
-		if got != setting.ForkPullRequestApprovalAllExternalContributors {
-			t.Errorf("decodeForkPullRequestApproval() = %q, want %q", got, setting.ForkPullRequestApprovalAllExternalContributors)
-		}
-	})
+	successes := []struct {
+		name string
+		body string
+		want SettingObservation[setting.ForkPullRequestApprovalPolicy]
+	}{
+		{name: "defined approval_policy is read", body: `{"approval_policy": "all_external_contributors"}`, want: Observed(setting.ForkPullRequestApprovalAllExternalContributors)},
+		// GitHub が列挙に値を足しても、観測操作を失敗させず、この設定だけを観測不能にする
+		{
+			name: "unknown approval_policy is unavailable as an unknown value",
+			body: `{"approval_policy": "everyone"}`,
+			want: Unavailable[setting.ForkPullRequestApprovalPolicy](UnavailableUnknownValue),
+		},
+	}
+	for _, tc := range successes {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := decodeForkPullRequestApproval([]byte(tc.body))
+			if err != nil {
+				t.Fatalf("decodeForkPullRequestApproval() error = %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("decodeForkPullRequestApproval() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
 
 	failures := []struct {
-		name           string
-		body           string
-		errContains    string
-		errNotContains string
+		name        string
+		body        string
+		errContains string
 	}{
 		{name: "missing approval_policy is unexpected response", body: `{}`, errContains: "missing fields: approval_policy"},
 		{name: "null approval_policy is unexpected response", body: `{"approval_policy": null}`, errContains: "missing fields: approval_policy"},
-		{
-			name:           "undefined approval_policy is unexpected response without the value",
-			body:           `{"approval_policy": "everyone"}`,
-			errContains:    "unsupported value: approval_policy",
-			errNotContains: "everyone",
-		},
 		{name: "non-string approval_policy is unexpected response", body: `{"approval_policy": 1}`},
 	}
 	for _, tc := range failures {
@@ -69,9 +77,6 @@ func TestDecodeForkPullRequestApproval(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.errContains) {
 				t.Errorf("decodeForkPullRequestApproval() error = %q, want it to contain %q", err, tc.errContains)
-			}
-			if tc.errNotContains != "" && strings.Contains(err.Error(), tc.errNotContains) {
-				t.Errorf("decodeForkPullRequestApproval() error = %q, must not contain %q", err, tc.errNotContains)
 			}
 		})
 	}
@@ -130,7 +135,7 @@ func TestObserveRepositoryForkPullRequestApproval(t *testing.T) {
 		{name: "403 is forbidden", response: githubtest.Response{Status: http.StatusForbidden, Body: bodyMarker}, want: ErrForbidden},
 		{name: "404 is not found", response: githubtest.Response{Status: http.StatusNotFound, Body: bodyMarker}, want: ErrNotFound},
 		{name: "301 is redirect", response: githubtest.Response{Status: http.StatusMovedPermanently}, want: ErrRedirect},
-		{name: "undefined approval_policy is unexpected response", response: githubtest.OK(`{"approval_policy": "everyone"}`), want: ErrUnexpectedResponse},
+		{name: "missing approval_policy is unexpected response", response: githubtest.OK(`{}`), want: ErrUnexpectedResponse},
 	}
 	for _, tc := range failures {
 		t.Run(tc.name, func(t *testing.T) {

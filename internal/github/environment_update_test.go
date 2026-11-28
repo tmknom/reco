@@ -493,6 +493,32 @@ func TestUpdateEnvironmentOutcome(t *testing.T) {
 	}
 }
 
+// TestUpdateEnvironmentResponseWithUnknownValues は、更新操作の応答が reco の知らない列挙値を含んでも、取得契約に適合する応答として更新を成功とすることを確かめる。
+// 知らない値の設定は、更新後の観測が観測不能にし、期待状態の確認が扱う。
+//
+//trace:checks FR-013
+func TestUpdateEnvironmentResponseWithUnknownValues(t *testing.T) {
+	respond := func(body string) *Client {
+		return newTestClient(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(body)) })
+	}
+	t.Run("a created pattern of an unknown type succeeds", func(t *testing.T) {
+		c := respond(githubtest.DeploymentPatternBody{ID: 5, Name: "release/*", Type: "commit"}.JSON())
+		outcome, err := c.AddDeploymentPattern(t.Context(), mustReference(t, "owner/repo"), "production", setting.DeploymentPattern{Type: setting.DeploymentPatternBranch, Name: "release/*"})
+		if err != nil || outcome != UpdateSucceeded {
+			t.Errorf("AddDeploymentPattern() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+		}
+	})
+	t.Run("an environment with a reviewer of an unknown type succeeds", func(t *testing.T) {
+		c := respond(githubtest.EnvironmentBody{
+			ID: 7, Name: "production", RequiredReviewers: &githubtest.RequiredReviewersBody{Reviewers: []githubtest.ReviewerBody{{Type: "Bot", ID: 9}}},
+		}.JSON())
+		outcome, err := c.CreateEnvironment(t.Context(), mustReference(t, "owner/repo"), "production")
+		if err != nil || outcome != UpdateSucceeded {
+			t.Errorf("CreateEnvironment() = %v, %v, want %v without error", outcome, err, UpdateSucceeded)
+		}
+	})
+}
+
 // TestAddDeploymentPattern は、個別パターン一つを加える POST を、名前と種類を本文にして一度だけ送ることを確かめる。
 //
 //trace:checks INV-001 FR-011

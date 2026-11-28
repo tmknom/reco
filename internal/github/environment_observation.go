@@ -50,19 +50,19 @@ func (o EnvironmentObservation) Existence() SettingObservation[setting.Value] {
 	}
 }
 
-// DeploymentBranchPolicy は、その Environment の中のデプロイ元制限の設定の観測結果を返す。
+// DeploymentBranchPolicy は、その Environment の中のデプロイ元制限の設定の観測結果を返す。存在する Environment のデプロイ元制限が観測不能なら、同じ理由にする。
 // 存在しない Environment の中の設定は値として読めないため、存在しないことを理由にした観測不能にする。
 func (o EnvironmentObservation) DeploymentBranchPolicy() SettingObservation[setting.Value] {
-	return o.observeSetting(func(e Environment) setting.Value {
-		return setting.DeploymentBranchPolicyValue(e.DeploymentBranchPolicy())
+	return o.observeSettingObservation(func(e Environment) SettingObservation[setting.Value] {
+		return valueObservation(e.DeploymentBranchPolicy(), setting.DeploymentBranchPolicyValue)
 	})
 }
 
-// RequiredReviewers は、その Environment の中の担当者の集合の設定の観測結果を返す。
+// RequiredReviewers は、その Environment の中の担当者の集合の設定の観測結果を返す。存在する Environment の担当者の集合が観測不能なら、同じ理由にする。
 // 存在しない Environment の中の設定は値として読めないため、存在しないことを理由にした観測不能にする。
 func (o EnvironmentObservation) RequiredReviewers() SettingObservation[setting.Value] {
-	return o.observeSetting(func(e Environment) setting.Value {
-		return setting.ReviewerSetValue(setting.ReviewerSetOfRule(e.Protection.RequiredReviewers))
+	return o.observeSettingObservation(func(e Environment) SettingObservation[setting.Value] {
+		return valueObservation(e.Protection.ReviewerSet, setting.ReviewerSetValue)
 	})
 }
 
@@ -70,7 +70,7 @@ func (o EnvironmentObservation) RequiredReviewers() SettingObservation[setting.V
 // 存在しない Environment の中の設定は値として読めないため、存在しないことを理由にした観測不能にする。
 func (o EnvironmentObservation) PreventSelfReview() SettingObservation[setting.Value] {
 	return o.observeSetting(func(e Environment) setting.Value {
-		return setting.BoolValue(e.Protection.PreventSelfReview())
+		return setting.BoolValue(e.Protection.PreventSelfReview)
 	})
 }
 
@@ -85,9 +85,17 @@ func (o EnvironmentObservation) WaitTimer() SettingObservation[setting.Value] {
 // observeSetting は、存在する Environment の設定の値を read で取り出して観測値にする。
 // 存在しなければ存在しないことを理由にした観測不能に、観測不能なら同じ理由にする。
 func (o EnvironmentObservation) observeSetting(read func(Environment) setting.Value) SettingObservation[setting.Value] {
+	return o.observeSettingObservation(func(e Environment) SettingObservation[setting.Value] {
+		return Observed(read(e))
+	})
+}
+
+// observeSettingObservation は、存在する Environment の設定の観測結果を read で取り出す。
+// 存在しなければ存在しないことを理由にした観測不能に、観測不能なら同じ理由にする。
+func (o EnvironmentObservation) observeSettingObservation(read func(Environment) SettingObservation[setting.Value]) SettingObservation[setting.Value] {
 	switch o.state {
 	case resourceExisting:
-		return Observed(read(o.environment))
+		return read(o.environment)
 	case resourceAbsent:
 		return Unavailable[setting.Value](UnavailableEnvironmentAbsent)
 	default:

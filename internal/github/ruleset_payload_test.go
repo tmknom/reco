@@ -292,6 +292,12 @@ func TestDecodeRulesetUninterpreted(t *testing.T) {
 			want:   []UninterpretedPart{{Kind: UninterpretedTarget, Name: "tag"}},
 		},
 		{
+			// GitHub が値を足し得る列挙で、足された値の意味を reco は知らないため、失敗にせず解釈しない部分にする
+			name:   "enforcement other than disabled, active, and evaluate is uninterpreted",
+			change: func(b map[string]any) { b["enforcement"] = "enforced" },
+			want:   []UninterpretedPart{{Kind: UninterpretedEnforcement, Name: "enforced"}},
+		},
+		{
 			name:   "conditions key other than ref_name is uninterpreted by its name",
 			change: func(b map[string]any) { b["conditions"].(map[string]any)["repository_name"] = map[string]any{} },
 			want:   []UninterpretedPart{{Kind: UninterpretedConditionsKey, Name: "repository_name"}},
@@ -527,15 +533,17 @@ func TestDecodeRulesetUninterpreted(t *testing.T) {
 			want:   []UninterpretedPart{parameter("automatic_copilot_code_review_enabled")},
 		},
 		{
-			name: "uninterpreted parts are ordered target, conditions, bypass actors, rules even when target is not branch",
+			name: "uninterpreted parts are ordered target, enforcement, conditions, bypass actors, rules even when target is not branch",
 			change: func(b map[string]any) {
 				b["target"] = "push"
+				b["enforcement"] = "enforced"
 				refName(b)["match"] = "exact"
 				bypassActor(b, 0)["bypass_mode"] = "sometimes"
 				b["rules"] = append(b["rules"].([]any), map[string]any{"type": "file_path_restriction"})
 			},
 			want: []UninterpretedPart{
 				{Kind: UninterpretedTarget, Name: "push"},
+				{Kind: UninterpretedEnforcement, Name: "enforced"},
 				{Kind: UninterpretedConditionsKey, Name: "ref_name.match"},
 				{Kind: UninterpretedBypassMode, Name: "sometimes"},
 				{Kind: UninterpretedRuleType, Name: "file_path_restriction"},
@@ -624,7 +632,15 @@ func TestDecodeRulesetUnexpectedResponse(t *testing.T) {
 		{name: "missing target", body: rulesetDetail(t, func(b map[string]any) { delete(b, "target") }), errContains: "missing fields: target"},
 		{name: "non-string target", body: rulesetDetail(t, func(b map[string]any) { b["target"] = 1 }), errContains: "target"},
 		{name: "missing enforcement", body: rulesetDetail(t, func(b map[string]any) { delete(b, "enforcement") }), errContains: "missing fields: enforcement"},
-		{name: "unknown enforcement", body: rulesetDetail(t, func(b map[string]any) { b["enforcement"] = "enforced" }), errContains: "unsupported value: enforcement"},
+		{
+			// 解釈しない部分を見つけても、応答の全体を取得契約と照らす
+			name: "unknown enforcement with null rules",
+			body: rulesetDetail(t, func(b map[string]any) {
+				b["enforcement"] = "enforced"
+				b["rules"] = nil
+			}),
+			errContains: "missing fields: rules",
+		},
 		{name: "non-string enforcement", body: rulesetDetail(t, func(b map[string]any) { b["enforcement"] = true }), errContains: "enforcement"},
 		{name: "missing conditions", body: rulesetDetail(t, func(b map[string]any) { delete(b, "conditions") }), errContains: "missing fields: conditions"},
 		{name: "null conditions", body: rulesetDetail(t, func(b map[string]any) { b["conditions"] = nil }), errContains: "missing fields: conditions"},

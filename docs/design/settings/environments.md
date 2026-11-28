@@ -43,13 +43,13 @@ Environment Variable の管理の単位は、属する先の Environment の名�
 
 Environments は、`GET /repos/{owner}/{repo}/environments` の全ページで読みます（[GitHub API 通信の設計](../github-access.md) 2.3節）。一覧の成功応答が、作成と削除の直後も含めて存在する Environment をすべて含むことと、GitHub が ASCII の英字の大文字小文字だけが違う名前を同じ Environment とみなすことを、実際の動作で確かめています（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 2章・3.1）。GitHub はほかの違い（アクセントの有無など）も同じとみなすため、宣言の名前は同一性を判定できる名前に限り（YAML 設定仕様 11.1節）、判定できない名前の扱いはドメインモデルの同一性を判定できる名前に従います。一覧に、Unicode の単純な大文字小文字の畳み込みで同じになる名前が二つ以上あれば、取得契約に適合しない応答とします。GitHub は二つを同じ Environment とみなすはずで、どちらを照合し更新するかが決まらないためです。一覧の要素は個別取得の本文と全フィールドが一致するため（同 3.1）、個別取得は送りません。
 
-Environment の取得契約は、`id`、`name`、`deployment_branch_policy`、`protection_rules`、`can_admins_bypass` がそろうことです。`can_admins_bypass` は公式のスキーマにありませんが、常に返ることを確かめています（同 3.2）。方式は `deployment_branch_policy` から、`null` を `all`、`protected_branches` だけが真を `protected_branches`、`custom_branch_policies` だけが真を `selected` と読みます。二つが同じ値の組は GitHub が更新で受け付けないため（同 1章）、取得で受けたら取得契約に適合しない応答とします。保護ルールは `type` で読み分け、`wait_timer` と `required_reviewers` の値だけを読みます。担当者の集合は `required_reviewers` の保護ルールから読み、保護ルールがなければ空集合、保護ルールの `reviewers` が空なら担当者のいない保護ルールとします。自己承認の禁止は同じ保護ルールの `prevent_self_review` から、デプロイの待機時間は `wait_timer` の保護ルールから読み、保護ルールがなければそれぞれ `false` と `0` とします（設定と管理の単位）。担当者の login は、種類が利用者の担当者についてだけ `reviewer.login` から読み（同 3.2）、表示にだけ使います。login が欠けているときと、ASCII の英数字と `-` と `_` だけからなる空でない文字列でないときは、login のない担当者とし、観測操作の失敗にはしません。login は値に含めないため、欠けても照合に影響しません。形を限るのは、API が返した文字列を表示の行にそのまま書かないためです。
+Environment の取得契約は、`id`、`name`、`deployment_branch_policy`、`protection_rules`、`can_admins_bypass` がそろうことです。`can_admins_bypass` は公式のスキーマにありませんが、常に返ることを確かめています（同 3.2）。方式は `deployment_branch_policy` から、`null` を `all`、`protected_branches` だけが真を `protected_branches`、`custom_branch_policies` だけが真を `selected` と読みます。二つが同じ値の組は GitHub が更新で受け付けないため（同 1章）、取得で受けたら取得契約に適合しない応答とします。保護ルールは `type` で読み分け、`wait_timer` と `required_reviewers` の値だけを読みます。担当者の集合は `required_reviewers` の保護ルールから読み、保護ルールがなければ空集合、保護ルールの `reviewers` が空なら担当者のいない保護ルールとします。自己承認の禁止は同じ保護ルールの `prevent_self_review` から、デプロイの待機時間は `wait_timer` の保護ルールから読み、保護ルールがなければそれぞれ `false` と `0` とします（設定と管理の単位）。担当者の login は、種類が利用者の担当者についてだけ `reviewer.login` から読み（同 3.2）、表示にだけ使います。login が欠けているときと、ASCII の英数字と `-` と `_` だけからなる空でない文字列でないときは、login のない担当者とし、観測操作の失敗にはしません。login は値に含めないため、欠けても照合に影響しません。形を限るのは、API が返した文字列を表示の行にそのまま書かないためです。担当者の `type` は GitHub が値を足し得る列挙として読み（公式の OpenAPI 記述は `User` と `Team`）、どれか一つの担当者の `type` が reco の知らない文字列なら、その Environment の担当者の集合だけを、値が知らない値であることを理由とする観測不能にします。知らない種類の担当者を除いた集合は観測値にしません。`reviewer` の形は担当者の種類ごとに違い得るため、知らない種類の担当者には `type` のほかの項目を求めません。自己承認の禁止は同じ保護ルールの真偽値で、観測値を持ちます。デプロイの待機時間、デプロイ元制限、変数も観測値を持ちます。
 
-個別パターンは、`GET /repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies` の全ページで読み、方式を `selected` と観測した Environment にだけ送ります。`selected` でないときは GitHub が `404` を返すためです（[GitHub デプロイ元パターン API 仕様](../../research/deployment-branch-policies.md) 1章）。`selected` と観測したあとの `404` は観測操作の失敗です。個別パターンの取得契約は、`id`、`name`、`type` がそろい、`type` が `branch` か `tag` であることです。
+個別パターンは、`GET /repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies` の全ページで読み、方式を `selected` と観測した Environment にだけ送ります。`selected` でないときは GitHub が `404` を返すためです（[GitHub デプロイ元パターン API 仕様](../../research/deployment-branch-policies.md) 1章）。`selected` と観測したあとの `404` は観測操作の失敗です。個別パターンの取得契約は、`id`、`name`、`type` がそろうことです。`type` は GitHub が値を足し得る列挙として読み（公式の OpenAPI 記述は `branch` と `tag`）、どれか一つの個別パターンの `type` が reco の知らない文字列なら、その Environment のデプロイ元制限（方式と個別パターンの組）だけを、値が知らない値であることを理由とする観測不能にします（[GitHub API 通信の設計](../github-access.md) 2.1節）。方式は一覧の要素から読めているため、Environment の `PUT` の前後の比較にはそのまま使います。GitHub は先頭か末尾に ASCII 以外の空白（U+00A0 など）を持つ名前のパターンを受け付けますが（同 4.1）、宣言はこの名前を受け付けません（YAML 設定仕様 11.2節）。そのため、GitHub 上にこの名前のパターンがあると宣言で一致させられず、`plan` は毎回、取り除く個別パターンとして示します。
 
 Environment Variables は、`GET /repos/{owner}/{repo}/environments/{environment_name}/variables` の全ページで、すべての個別パターンを読んだあとに読みます。`per_page`、1ページの本文の上限、要素の取得契約、名前の重複の扱いは、Repository Variables と同じです（[Actions の設計](actions.md) の観測）。重複は一つの Environment の一覧の中で判定します。ページ数の上限は、GitHub が一つの Environment に保存できる100件（[GitHub Actions 変数 API 仕様](../../research/actions-variables.md) 3章）を1ページ30件で読み切る4ページです。一覧にあった Environment への `404` は、二つの読み取りのあいだに Environment がなくなった可能性があるため、観測操作の失敗とします。
 
-個別パターンと Environment Variables は、Environment ごとに送る読み取り要求で、範囲は [GitHub API 通信の設計](../github-access.md) 2.4節に従います。Environment の名前は、パスの一つの要素として宛先に入れます（同 4章）。
+個別パターンと Environment Variables は、Environment ごとに送る読み取り要求で、範囲は [GitHub API 通信の設計](../github-access.md) 2.4節に従います。Environment の名前は、パスの一つの要素として宛先に入れます（同 4章）。`show` は一覧にあるすべての Environment の変数を読むため、名前が `.` か `..` の Environment が一覧にあると、方式によらず観測操作の失敗で止まります。GitHub がこの名前の Environment を作れるかは確かめていません。`show` が読む総量（Environment ごとに最大4ページ × 9 MiB）は Environment の数に比例し、全体の上限はありません。`plan` と `apply` は宣言した Environment だけを読むため、宣言していない Environment のこの名前では止まらず、総量も宣言した Environment の数に比例します。
 
 Environments と Environment Variables に、取得条件による観測不能はありません。非公開リポジトリでも一覧と個別パターンと変数を取得できたためです（GitHub デプロイ環境 API 仕様 1.1、GitHub Actions 変数 API 仕様 1.1）。
 
@@ -76,9 +76,11 @@ Environment そのものと Environment Variables に固有の適用不能の条
 
 自己承認の禁止には、固有の適用不能の条件があります。自己承認の禁止の変更予定は、更新時点に担当者がいない状態になる見込みで、`prevent_self_review` を送らずには期待値にならないとき、適用不能です。GitHub は、担当者がいない状態への `prevent_self_review` の `PUT` を、`true` も `false` も `422` で拒むためです（[GitHub デプロイ環境 API 仕様](../../research/deployment-environments.md) 4.1）。
 
-- **更新時点の担当者**：担当者の集合を宣言していればその期待値、宣言していなければ計画時の観測値で決める。宣言していない担当者の集合は管理範囲外で、reco は変えないためである。存在しない Environment で担当者の集合を宣言していなければ、担当者がいない
+- **更新時点の担当者**：担当者の集合を宣言していればその期待値、宣言していなければ計画時の観測値で決める。宣言していない担当者の集合は管理範囲外で、reco は変えないためである。存在しない Environment で担当者の集合を宣言していなければ、担当者がいない。宣言していない担当者の集合が、値が知らない値であることを理由に観測不能なら、担当者がいる。観測不能になるのは、知らない種類の担当者が1人以上いるときに限るためである
 - **送らずに期待値になる場合**：期待値が `false` で、担当者の集合の宣言が `[]` か、Environment を作成する場合である。どちらも、更新後に `required_reviewers` の保護ルールがなく、`false` と読むため（論理的な設定変更と更新操作）
 - **`required_reviewers: []` と `prevent_self_review: true`**：期待値だけで成り立たないと決まるため、入力検証で拒否する（[YAML 設定仕様](../../spec/configuration.md) 11.5節）
+
+値が知らない値であることを理由に比較不能になった担当者の集合とデプロイ元制限の変更予定は、適用不能です（[ドメインモデル](../domain.md) の照合結果と適用可能性）。
 
 デプロイの待機時間に固有の適用不能の条件はありません。GitHub Free の非公開リポジトリでは、`wait_timer` を含む `PUT` は `0` も含めて `422` になり何も変えませんが、担当者と同じ理由で適用不能にせず、更新操作の失敗として報告します。
 
@@ -181,7 +183,7 @@ Environment Variable の変更予定は、変数ごとに一つの更新操作�
 - 方式の両方 `true` と両方 `false` は `422` で、値は変わらなかった
 - 別の名前の Environment を作成、更新、削除した前後で、ほかの Environment が `updated_at` を含む全フィールドと個別パターンまで一致した
 
-更新後に比べるのは、宛先の Environment の保護設定（デプロイの待機時間、担当者の集合、自己承認の禁止、`can_admins_bypass`）です。待機時間と自己承認の禁止は、照合と同じく、保護ルールがない観測を `0` と `false` と読んで比べます（設定と管理の単位）。保護ルールのない状態から `prevent_self_review: true` の保護ルールが現れた変化も、自己承認の禁止の変化として示すためです。reco が種類を知らない保護ルールは観測しないため比べません。
+更新後に比べるのは、宛先の Environment の保護設定（デプロイの待機時間、担当者の集合、自己承認の禁止、`can_admins_bypass`）です。待機時間と自己承認の禁止は、照合と同じく、保護ルールがない観測を `0` と `false` と読んで比べます（設定と管理の単位）。保護ルールのない状態から `prevent_self_review: true` の保護ルールが現れた変化も、自己承認の禁止の変化として示すためです。reco が種類を知らない保護ルールは観測しないため比べません。担当者の集合が、更新直前か更新後の片方で知らない値のために観測不能で、もう片方で観測値なら、予期しない変化とします。両方で観測不能なら、担当者の集合は比べません（[ドメインモデル](../domain.md) の変更計画・論理的な設定変更・変更結果）。比べないときの保全の根拠は、`wait_timer` だけ、`prevent_self_review` だけ、`deployment_branch_policy` だけの `PUT` が担当者を変えなかった確認結果です。
 
 Environment の `PUT` の更新操作（作成、方式、担当者の集合、自己承認の禁止、デプロイの待機時間）は、どれも同じ範囲を更新後に比べます。デプロイ元制限の方式と保護設定のうち、その論理的な設定変更が変えない設定と、変更に伴う副作用として示した設定です。作成は更新直前に Environment がなく、比べる値がありません。
 

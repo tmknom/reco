@@ -50,6 +50,8 @@ type UninterpretedKind int
 const (
 	// UninterpretedTarget は、branch 以外の target の値。
 	UninterpretedTarget UninterpretedKind = iota + 1
+	// UninterpretedEnforcement は、disabled、active、evaluate 以外の enforcement の値。GitHub が値を足し得る列挙で、足された値の意味を reco は知らない。
+	UninterpretedEnforcement
 	// UninterpretedConditionsKey は、conditions か ref_name の reco が読まないキー。ref_name の中のキーは ref_name.<キー> の名前で持つ。
 	UninterpretedConditionsKey
 	// UninterpretedBypassActorType は、reco が扱わない actor_type の値。
@@ -137,6 +139,8 @@ func (p UninterpretedPart) String() string {
 	switch p.Kind {
 	case UninterpretedTarget:
 		return "target: " + name
+	case UninterpretedEnforcement:
+		return "enforcement: " + name
 	case UninterpretedConditionsKey:
 		return "conditions key: " + name
 	case UninterpretedBypassActorType:
