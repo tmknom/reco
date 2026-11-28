@@ -549,10 +549,10 @@ func TestApplyPlan_RulesetValueUpdateAndCreation(t *testing.T) {
 	}
 }
 
-// TestApplyPlan_RequiredReviewers は、担当者の集合の変更予定を含む変更計画を、承認を一度だけ求めてから実行するつなぎ目を確かめる。
+// TestApplyPlan_ReviewerSet は、担当者の集合の変更予定を含む変更計画を、承認を一度だけ求めてから実行するつなぎ目を確かめる。
 //
 //trace:checks INV-001 INV-004 INV-005 FR-011
-func TestApplyPlan_RequiredReviewers(t *testing.T) {
+func TestApplyPlan_ReviewerSet(t *testing.T) {
 	approve := func(calls *int) func(context.Context) error {
 		return func(context.Context) error {
 			*calls++
@@ -576,7 +576,7 @@ func TestApplyPlan_RequiredReviewers(t *testing.T) {
 		var out bytes.Buffer
 		calls := 0
 
-		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, requiredReviewersMismatch(t, "production")...))
+		err := applyPlan(context.Background(), Config{Out: &out, Approve: approve(&calls), After: elapsedAtOnce}, newClient(baseURL), newPlan(t, reviewerSetMismatch(t, "production")...))
 
 		if err != nil {
 			t.Fatalf("applyPlan() error = %v", err)
@@ -624,10 +624,10 @@ func TestApplyPlan_RequiredReviewers(t *testing.T) {
 	})
 }
 
-// TestRun_RequiredReviewers は、担当者の集合の宣言を、計画の生成から実行と結果の表示までつなぐことを確かめる。
+// TestRun_ReviewerSet は、担当者の集合の宣言を、計画の生成から実行と結果の表示までつなぐことを確かめる。
 //
 //trace:checks INV-001 INV-004 INV-005 FR-011 FR-013
-func TestRun_RequiredReviewers(t *testing.T) {
+func TestRun_ReviewerSet(t *testing.T) {
 	newConfig := func(source string, out *bytes.Buffer, baseURL *url.URL) Config {
 		return Config{
 			Token:         "test-token",
@@ -676,7 +676,7 @@ func TestRun_RequiredReviewers(t *testing.T) {
       - name: production
         deployment_branch_policy:
           mode: protected_branches
-        required_reviewers:
+        reviewers:
           - type: User
             id: 2
 `, &out, baseURL))
@@ -714,7 +714,7 @@ func TestRun_RequiredReviewers(t *testing.T) {
   - name: owner/repo
     environments:
       - name: production
-        required_reviewers:
+        reviewers:
           - type: User
             id: 2
 `, &out, baseURL))
@@ -729,7 +729,7 @@ func TestRun_RequiredReviewers(t *testing.T) {
 		if bodies := putBodies(server); !reflect.DeepEqual(bodies, wantBodies) {
 			t.Errorf("update request bodies = %v, want %v", bodies, wantBodies)
 		}
-		for _, line := range []string{"environments.production: updated", "environments.production.required_reviewers: failed", "Update request: rejected"} {
+		for _, line := range []string{"environments.production: updated", "environments.production.reviewers: failed", "Update request: rejected"} {
 			if !strings.Contains(out.String(), line) {
 				t.Errorf("Out = %q, want it to contain %q", out.String(), line)
 			}
@@ -748,7 +748,7 @@ func TestRun_RequiredReviewers(t *testing.T) {
   - name: owner/repo
     environments:
       - name: production
-        required_reviewers:
+        reviewers:
           - type: User
             id: 2
       - name: staging
@@ -788,7 +788,7 @@ func TestRun_RequiredReviewers(t *testing.T) {
   - name: owner/repo
     environments:
       - name: production
-        required_reviewers:
+        reviewers:
           - type: User
             id: 2
           - type: User
@@ -842,7 +842,7 @@ func TestRun_PreventSelfReviewAndWaitTimer(t *testing.T) {
   - name: owner/repo
     environments:
       - name: production
-        required_reviewers:
+        reviewers:
           - type: User
             id: 1
         prevent_self_review: true
@@ -995,7 +995,7 @@ func TestRun(t *testing.T) {
 			okRepository(1, false, false), okForkPullRequestApproval("all_external_contributors"))
 		var out bytes.Buffer
 		calls := 0
-		files := fstest.MapFS{"reco.yaml": {Data: []byte("repositories:\n  - name: owner/repo\n    actions:\n      fork_pull_requests:\n        approval_policy: all_external_contributors\n")}}
+		files := fstest.MapFS{"reco.yaml": {Data: []byte("repositories:\n  - name: owner/repo\n    actions:\n      fork_pr_contributor_approval:\n        approval_policy: all_external_contributors\n")}}
 
 		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
 			t.Fatalf("Run() error = %v", err)
@@ -1005,13 +1005,13 @@ func TestRun(t *testing.T) {
 		if !slices.Equal(server.RequestLines(), want) {
 			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}
-		if calls != 1 || !strings.Contains(out.String(), "actions.fork_pull_requests.approval_policy: first_time_contributors -> all_external_contributors") || !strings.Contains(out.String(), "owner/repo: updated") {
+		if calls != 1 || !strings.Contains(out.String(), "actions.fork_pr_contributor_approval.approval_policy: first_time_contributors -> all_external_contributors") || !strings.Contains(out.String(), "owner/repo: updated") {
 			t.Errorf("approve calls = %d, Out = %q, want one approval, the approval policy change, and the repository updated", calls, out.String())
 		}
 	})
 
 	// 変更予定の注記を添える実行条件の変更も、承認を一度求めて実行し、観測が承認ポリシーの領域を読まないことを確かめる
-	t.Run("private_repositories of a private repository is applied after a single approval", func(t *testing.T) {
+	t.Run("fork_pr_workflows_private_repos of a private repository is applied after a single approval", func(t *testing.T) {
 		declared := githubtest.PrivateForkPullRequestWorkflowsBody{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true, RequireApprovalForForkPullRequestWorkflows: true}
 		baseURL, server := newSequenceServer(t,
 			okPrivateRepository(1), okPrivateForkPullRequestWorkflows(githubtest.PrivateForkPullRequestWorkflowsBody{}),
@@ -1019,9 +1019,9 @@ func TestRun(t *testing.T) {
 			okPrivateRepository(1), okPrivateForkPullRequestWorkflows(declared))
 		var out bytes.Buffer
 		calls := 0
-		files := fstest.MapFS{"reco.yaml": {Data: []byte("repositories:\n  - name: owner/repo\n    actions:\n      fork_pull_requests:\n        private_repositories:\n" +
-			"          run_workflows_from_fork_pull_requests: true\n          send_write_tokens_to_workflows: false\n" +
-			"          send_secrets_and_variables: true\n          require_approval_for_fork_pr_workflows: true\n")}}
+		files := fstest.MapFS{"reco.yaml": {Data: []byte("repositories:\n  - name: owner/repo\n    actions:\n      fork_pr_workflows_private_repos:\n" +
+			"        run_workflows_from_fork_pull_requests: true\n        send_write_tokens_to_workflows: false\n" +
+			"        send_secrets_and_variables: true\n        require_approval_for_fork_pr_workflows: true\n")}}
 
 		if err := Run(context.Background(), newConfig(files, &out, baseURL, &calls)); err != nil {
 			t.Fatalf("Run() error = %v", err)
@@ -1031,7 +1031,7 @@ func TestRun(t *testing.T) {
 		if !slices.Equal(server.RequestLines(), want) {
 			t.Errorf("requests = %v, want %v", server.RequestLines(), want)
 		}
-		if calls != 1 || !strings.Contains(out.String(), "actions.fork_pull_requests.private_repositories:") || !strings.Contains(out.String(), "owner/repo: updated") {
+		if calls != 1 || !strings.Contains(out.String(), "actions.fork_pr_workflows_private_repos:") || !strings.Contains(out.String(), "owner/repo: updated") {
 			t.Errorf("approve calls = %d, Out = %q, want one approval, the execution conditions change, and the repository updated", calls, out.String())
 		}
 	})
@@ -1665,8 +1665,8 @@ func toSelectedChange() changeplan.LogicalChange {
 	}
 }
 
-// requiredReviewersMismatch は、存在する Environment name の一致した存在の計画と、その担当者の集合を User 1 から User 2 に変える適用可能な変更予定。
-func requiredReviewersMismatch(t *testing.T, name string) []changeplan.SettingPlan {
+// reviewerSetMismatch は、存在する Environment name の一致した存在の計画と、その担当者の集合を User 1 から User 2 に変える適用可能な変更予定。
+func reviewerSetMismatch(t *testing.T, name string) []changeplan.SettingPlan {
 	t.Helper()
 	environment := mustEnvironmentName(t, name)
 	return []changeplan.SettingPlan{
@@ -1675,7 +1675,7 @@ func requiredReviewersMismatch(t *testing.T, name string) []changeplan.SettingPl
 			EnvironmentIdentity: changeplan.ObservedEnvironmentIdentity(7), Result: changeplan.Match,
 		},
 		{
-			Unit:     setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: environment},
+			Unit:     setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: environment},
 			Observed: github.Observed(setting.ReviewerSetValue(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}}))),
 			Desired:  setting.ReviewerSetValue(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 2}})), Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 		},
@@ -1692,7 +1692,7 @@ func noReviewersOfCreation(t *testing.T, name string) []changeplan.SettingPlan {
 			Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 		},
 		{
-			Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: environment}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
+			Unit: setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: environment}, Observed: github.Unavailable[setting.Value](github.UnavailableEnvironmentAbsent),
 			Desired: setting.ReviewerSetValue(setting.ReviewerSetOf(nil)), Result: changeplan.NotComparable, Applicability: changeplan.Applicable(),
 		},
 	}

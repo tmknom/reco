@@ -530,7 +530,7 @@ func TestReconcile_RepositoryVariablesOrder(t *testing.T) {
 		units = append(units, s.Unit.String())
 	}
 	// YAML 設定仕様の章の並びで Fork pull requests と Environments のあいだに、宣言の並びで続き、宣言していない変数は現れない
-	want := []string{"actions.access.access_level", "actions.fork_pull_requests.approval_policy", "actions.variables.ZETA", "actions.variables.ALPHA", "environments.production"}
+	want := []string{"actions.access.access_level", "actions.fork_pr_contributor_approval.approval_policy", "actions.variables.ZETA", "actions.variables.ALPHA", "environments.production"}
 	if !reflect.DeepEqual(units, want) {
 		t.Errorf("reconcile() units = %v, want %v", units, want)
 	}
@@ -631,7 +631,7 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 	undeterminedExistence := SettingPlan{
 		Unit: existence, Observed: github.Unavailable[setting.Value](github.UnavailableNameUndetermined), Desired: setting.Present(), Result: NotComparable,
 	}
-	reviewersUnit := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}
+	reviewersUnit := setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: production}
 	user1, user2 := setting.Reviewer{Type: setting.ReviewerUser, ID: 1}, setting.Reviewer{Type: setting.ReviewerUser, ID: 2}
 	declaredReviewers := setting.ReviewerSetOf([]setting.Reviewer{user1, user2})
 	noReviewers := setting.ReviewerSetOf(nil)
@@ -727,7 +727,7 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 		{
 			name: "reviewers of an existing environment follow the mode and precede the variables and match regardless of order and logins",
 			declared: configuration.EnvironmentDeclaration{
-				Name: production, DeploymentBranchPolicy: &protected, RequiredReviewers: &declaredReviewers,
+				Name: production, DeploymentBranchPolicy: &protected, ReviewerSet: &declaredReviewers,
 				Variables: []configuration.VariableDeclaration{{Name: region, Desired: setting.VariableValue("eu")}},
 			},
 			observed: []github.Environment{withVariables(withProtection(existing("production", protected.Mode), observedRule), github.Variable{Name: "REGION", Value: "eu"})},
@@ -740,7 +740,7 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 		},
 		{
 			name:     "no reviewers declared for an environment with a protection rule without reviewers mismatch",
-			declared: configuration.EnvironmentDeclaration{Name: production, RequiredReviewers: &noReviewers},
+			declared: configuration.EnvironmentDeclaration{Name: production, ReviewerSet: &noReviewers},
 			observed: []github.Environment{withProtection(existing("production", all.Mode), setting.RequiredReviewers{})},
 			want: []SettingPlan{
 				matchedExistence,
@@ -749,7 +749,7 @@ func TestReconcile_EnvironmentSettings(t *testing.T) {
 		},
 		{
 			name:     "reviewers of an absent environment are not comparable because the environment is absent",
-			declared: configuration.EnvironmentDeclaration{Name: production, RequiredReviewers: &declaredReviewers},
+			declared: configuration.EnvironmentDeclaration{Name: production, ReviewerSet: &declaredReviewers},
 			observed: nil,
 			want: []SettingPlan{
 				creation,

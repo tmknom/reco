@@ -131,23 +131,42 @@ func TestPlannedChangeText(t *testing.T) {
 				"    Applicability: not applicable (GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it)\n",
 		},
 		{
-			name: "access_level of a public repository shows the repository state and the reason to remove the declaration",
+			name: "access_level of a public repository names the whole access mapping to remove because it is its only key",
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.ActionsAccessLevel}, Observed: github.Unavailable[setting.Value](github.UnavailablePublicRepository), Desired: setting.AccessLevelValue(setting.AccessNone),
 				Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable(changeplan.NotApplicablePublicRepository),
 			},
 			want: "  actions.access.access_level: (public repository) -> none\n" +
-				"    Applicability: not applicable (the repository is public; remove access_level, which applies only to private repositories)\n",
+				"    Applicability: not applicable (the repository is public; remove access, which applies only to private repositories)\n",
 		},
 		{
-			name: "approval_policy of a private repository shows the repository state and that it applies only to public repositories",
+			name: "an unknown access_level names the whole access mapping to remove because it is its only key",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.ActionsAccessLevel}, Observed: github.Unavailable[setting.Value](github.UnavailableUnknownValue), Desired: setting.AccessLevelValue(setting.AccessNone),
+				Result: changeplan.NotComparable, Applicability: changeplan.NotApplicable(changeplan.NotApplicableUnknownValue),
+			},
+			want: "  actions.access.access_level: (unknown value) -> none\n" +
+				"    Applicability: not applicable (GitHub returned a value that reco does not know; remove access from the configuration)\n",
+		},
+		{
+			name: "an unknown approval_policy names the whole fork_pr_contributor_approval mapping to remove because it is its only key",
+			s: changeplan.SettingPlan{
+				Unit: setting.Unit{Key: setting.ForkPullRequestApproval}, Observed: github.Unavailable[setting.Value](github.UnavailableUnknownValue),
+				Desired: setting.ForkPullRequestApprovalPolicyValue(setting.ForkPullRequestApprovalAllExternalContributors),
+				Result:  changeplan.NotComparable, Applicability: changeplan.NotApplicable(changeplan.NotApplicableUnknownValue),
+			},
+			want: "  actions.fork_pr_contributor_approval.approval_policy: (unknown value) -> all_external_contributors\n" +
+				"    Applicability: not applicable (GitHub returned a value that reco does not know; remove fork_pr_contributor_approval from the configuration)\n",
+		},
+		{
+			name: "approval_policy of a private repository names the whole fork_pr_contributor_approval mapping to remove because it is its only key",
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.ForkPullRequestApproval}, Observed: github.Unavailable[setting.Value](github.UnavailablePrivateRepository),
 				Desired: setting.ForkPullRequestApprovalPolicyValue(setting.ForkPullRequestApprovalAllExternalContributors),
 				Result:  changeplan.NotComparable, Applicability: changeplan.NotApplicable(changeplan.NotApplicablePrivateRepository),
 			},
-			want: "  actions.fork_pull_requests.approval_policy: (private repository) -> all_external_contributors\n" +
-				"    Applicability: not applicable (the repository is private; remove approval_policy, which applies only to public repositories)\n",
+			want: "  actions.fork_pr_contributor_approval.approval_policy: (private repository) -> all_external_contributors\n" +
+				"    Applicability: not applicable (the repository is private; remove fork_pr_contributor_approval, which applies only to public repositories)\n",
 		},
 		{
 			name: "shortening retention days shows one line without a side effect or a note",
@@ -155,7 +174,7 @@ func TestPlannedChangeText(t *testing.T) {
 				Unit: setting.Unit{Key: setting.RetentionDays}, Observed: github.Observed(setting.RetentionDaysValue(90)), Desired: setting.RetentionDaysValue(30),
 				Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 			},
-			want: "  actions.retention.days: 90 -> 30\n",
+			want: "  actions.artifact_and_log_retention.days: 90 -> 30\n",
 		},
 		{
 			name: "retention days over the maximum shows the declared days and the maximum",
@@ -163,17 +182,17 @@ func TestPlannedChangeText(t *testing.T) {
 				Unit: setting.Unit{Key: setting.RetentionDays}, Observed: github.Observed(setting.RetentionDaysValue(90)), Desired: setting.RetentionDaysValue(120),
 				Result: changeplan.Mismatch, Applicability: changeplan.NotApplicableAboveMaximum(90),
 			},
-			want: "  actions.retention.days: 90 -> 120\n" +
+			want: "  actions.artifact_and_log_retention.days: 90 -> 120\n" +
 				"    Applicability: not applicable (120 days exceeds the maximum of 90 days that GitHub allows for this repository; declare days: 90 or less)\n",
 		},
 		{
 			name: "prevent_self_review without reviewers shows the reason and how to fix it",
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: mustEnvironmentName(t, "production")}, Observed: github.Observed(setting.BoolValue(false)), Desired: setting.BoolValue(true),
-				Result: changeplan.Mismatch, Applicability: changeplan.NotApplicable(changeplan.NotApplicableNoRequiredReviewers),
+				Result: changeplan.Mismatch, Applicability: changeplan.NotApplicable(changeplan.NotApplicableNoReviewers),
 			},
 			want: "  environments.production.prevent_self_review: false -> true\n" +
-				"    Applicability: not applicable (the environment would have no required reviewers, which GitHub requires to set prevent_self_review; declare required_reviewers with at least one reviewer or remove prevent_self_review)\n",
+				"    Applicability: not applicable (the environment would have no required reviewers, which GitHub requires to set prevent_self_review; declare reviewers with at least one reviewer or remove prevent_self_review)\n",
 		},
 		{
 			name: "wait_timer mismatch shows the minutes on one line",
@@ -193,7 +212,7 @@ func TestPlannedChangeText(t *testing.T) {
 				}),
 				Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 			},
-			want: "  actions.fork_pull_requests.private_repositories:\n" +
+			want: "  actions.fork_pr_workflows_private_repos:\n" +
 				"    run_workflows_from_fork_pull_requests: false, send_write_tokens_to_workflows: false, send_secrets_and_variables: false, require_approval_for_fork_pr_workflows: false\n" +
 				"    -> run_workflows_from_fork_pull_requests: true, send_write_tokens_to_workflows: true, send_secrets_and_variables: true, require_approval_for_fork_pr_workflows: true\n" +
 				"    Note: Workflows triggered by pull requests from forks get a GITHUB_TOKEN with write permissions\n" +
@@ -213,16 +232,16 @@ func TestPlannedChangeText(t *testing.T) {
 				"    Note: This changes how the subject claim of OIDC tokens is composed; trust conditions in external cloud providers that match the current subject claim may stop matching\n",
 		},
 		{
-			name: "private fork pull request workflows of a public repository show the repository state and the reason to remove private_repositories",
+			name: "private fork pull request workflows of a public repository show the repository state and the reason to remove fork_pr_workflows_private_repos",
 			s: changeplan.SettingPlan{
 				Unit: setting.Unit{Key: setting.PrivateForkPullRequestWorkflows}, Observed: github.Unavailable[setting.Value](github.UnavailablePublicRepository),
 				Desired: setting.PrivateForkPullRequestWorkflowConditionsValue(setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true}),
 				Result:  changeplan.NotComparable, Applicability: changeplan.NotApplicable(changeplan.NotApplicablePublicRepository),
 			},
-			want: "  actions.fork_pull_requests.private_repositories:\n" +
+			want: "  actions.fork_pr_workflows_private_repos:\n" +
 				"    (public repository)\n" +
 				"    -> run_workflows_from_fork_pull_requests: true, send_write_tokens_to_workflows: false, send_secrets_and_variables: false, require_approval_for_fork_pr_workflows: false\n" +
-				"    Applicability: not applicable (the repository is public; remove private_repositories, which applies only to private repositories)\n",
+				"    Applicability: not applicable (the repository is public; remove fork_pr_workflows_private_repos, which applies only to private repositories)\n",
 		},
 		{
 			name: "applicable not-comparable sha_pinning_required shows no applicability",
@@ -570,7 +589,7 @@ func TestPlannedChangeText_EnvironmentVariables(t *testing.T) {
 // 期待値は CLI 仕様 4章の Environment の表示例から導く。
 //
 //trace:checks FR-005 FR-006 FR-007
-func TestPlannedChangeText_EnvironmentRequiredReviewers(t *testing.T) {
+func TestPlannedChangeText_EnvironmentReviewerSet(t *testing.T) {
 	production := mustEnvironmentName(t, "production")
 	octocat := setting.Reviewer{Type: setting.ReviewerUser, ID: 583231}
 	hubot := setting.Reviewer{Type: setting.ReviewerUser, ID: 1234567}
@@ -584,11 +603,11 @@ func TestPlannedChangeText_EnvironmentRequiredReviewers(t *testing.T) {
 	logins := map[setting.Reviewer]string{octocat: "octocat", hubot: "hubot"}
 	plan := func(observed github.SettingObservation[setting.Value], desired setting.Value, result changeplan.ReconciliationResult) changeplan.SettingPlan {
 		return changeplan.SettingPlan{
-			Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}, Observed: observed,
+			Unit: setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: production}, Observed: observed,
 			Desired: desired, Result: result, Applicability: changeplan.Applicable(),
 		}
 	}
-	const head = "  environments.production.required_reviewers:\n"
+	const head = "  environments.production.reviewers:\n"
 	cases := []struct {
 		name string
 		s    changeplan.SettingPlan

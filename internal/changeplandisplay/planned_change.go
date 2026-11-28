@@ -34,7 +34,7 @@ func PlannedChangeText(s changeplan.SettingPlan) string {
 		current = repositoryStateText(s.Observed.UnavailableReason())
 	}
 	desired := s.Desired.String()
-	if s.Unit.Key == setting.EnvironmentRequiredReviewers {
+	if s.Unit.Key == setting.EnvironmentReviewerSet {
 		desired = desiredReviewersWithLogins(s).String()
 	}
 	if s.EnablesActionsByPolicy() {
@@ -97,7 +97,7 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 	case changeplan.NotApplicableActionsRemainDisabled:
 		return "GitHub Actions is disabled; declare enabled: true or allowed_actions to enable it"
 	case changeplan.NotApplicablePublicRepository:
-		return "the repository is public; remove " + key.DeclaredKeyName() + ", which applies only to private repositories"
+		return "the repository is public; remove " + removalKeyName(key) + ", which applies only to private repositories"
 	case changeplan.NotApplicableNameUndetermined:
 		if key == setting.RulesetResource {
 			return "a ruleset on GitHub has a name reco cannot compare, such as one with non-ASCII characters; remove this ruleset from the configuration"
@@ -108,7 +108,7 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 	case changeplan.NotApplicablePrivateRepository:
 		// GitHub が非公開リポジトリに適用しない設定は、reco が管理しないのではなく、適用されないことを示す
 		if key == setting.ForkPullRequestApproval {
-			return "the repository is private; remove approval_policy, which applies only to public repositories"
+			return "the repository is private; remove " + removalKeyName(key) + ", which applies only to public repositories"
 		}
 		return "the repository is private; remove " + key.DeclaredKeyName() + ", which reco manages only on public repositories"
 	case changeplan.NotApplicableSecretScanningRemainsDisabled:
@@ -122,21 +122,32 @@ func notApplicableReasonText(s changeplan.SettingPlan) string {
 	case changeplan.NotApplicableAboveMaximumAllowed:
 		maximum := s.Applicability.MaximumAllowed()
 		return fmt.Sprintf("%d days exceeds the maximum of %d days that GitHub allows for this repository; declare %s: %d or less", s.Desired.RetentionDays(), maximum, key.DeclaredKeyName(), maximum)
-	case changeplan.NotApplicableNoRequiredReviewers:
-		return "the environment would have no required reviewers, which GitHub requires to set prevent_self_review; declare required_reviewers with at least one reviewer or remove prevent_self_review"
+	case changeplan.NotApplicableNoReviewers:
+		return "the environment would have no required reviewers, which GitHub requires to set prevent_self_review; declare reviewers with at least one reviewer or remove prevent_self_review"
 	case changeplan.NotApplicableMergeMethodRemainsDisabled:
 		if method, ok := key.CorrespondingMergeMethod(); ok {
 			methodName, name := method.DeclaredKeyName(), key.DeclaredKeyName()
 			return methodName + " is disabled, and GitHub does not accept changes to " + name + " while it is disabled; declare " + methodName + ": true or remove " + name
 		}
 	case changeplan.NotApplicableUnknownValue:
-		return "GitHub returned a value that reco does not know; remove " + key.DeclaredKeyName() + " from the configuration"
+		return "GitHub returned a value that reco does not know; remove " + removalKeyName(key) + " from the configuration"
 	case changeplan.NotApplicableNotReturned:
 		return "GitHub did not return the value; remove " + key.DeclaredKeyName() + " from the configuration"
 	case changeplan.NotApplicableOmittedParametersReset:
 		return "updating the ruleset would change parameters that the configuration omits to the values GitHub sets; declare them in the configuration"
 	}
 	panic(fmt.Sprintf("changeplandisplay: undefined not-applicable reason %d", int(s.Applicability.Reason())))
+}
+
+// removalKeyName は、key の宣言を消すときに消すキーの名前を返す。
+func removalKeyName(key setting.Key) string {
+	if key == setting.ActionsAccessLevel {
+		return "access"
+	}
+	if key == setting.ForkPullRequestApproval {
+		return "fork_pr_contributor_approval"
+	}
+	return key.DeclaredKeyName()
 }
 
 // noMergeMethodEnabledText は、更新後に有効なマージ方式が残らない理由を、無効のまま残るマージ方式と、そのどれかを有効にする宣言で返す。
@@ -225,7 +236,7 @@ func plannedChangeNoteText(note changeplan.PlannedChangeNote) string {
 // showsValuesOnSeparateLines は、現在と期待値を別の行に書くかを返す。
 // 選択方式の Actions 許可条件、非公開リポジトリの Fork Pull Request ワークフローの実行条件、OIDC subject のカスタマイズ、マージメッセージ、個別パターンを並べる selected のデプロイ元制限、Environment の担当者の集合は値が長く、1 行では -> を見つけにくい。
 func showsValuesOnSeparateLines(s changeplan.SettingPlan) bool {
-	if slices.Contains([]setting.Key{setting.SelectedActions, setting.PrivateForkPullRequestWorkflows, setting.OIDCSubject, setting.SquashMergeCommit, setting.MergeCommit, setting.EnvironmentRequiredReviewers}, s.Unit.Key) {
+	if slices.Contains([]setting.Key{setting.SelectedActions, setting.PrivateForkPullRequestWorkflows, setting.OIDCSubject, setting.SquashMergeCommit, setting.MergeCommit, setting.EnvironmentReviewerSet}, s.Unit.Key) {
 		return true
 	}
 	if s.Unit.Key != setting.EnvironmentDeploymentBranchPolicy {
@@ -274,7 +285,7 @@ func desiredReviewersWithLogins(s changeplan.SettingPlan) setting.ReviewerSet {
 // reviewerChangesText は、なくなる担当者と加わる担当者の行を返す。
 // 比較不能な設定予定には添えない。現在の担当者を確かめておらず、差を示せないため。
 func reviewerChangesText(s changeplan.SettingPlan) string {
-	if s.Unit.Key != setting.EnvironmentRequiredReviewers {
+	if s.Unit.Key != setting.EnvironmentReviewerSet {
 		return ""
 	}
 	observedValue, ok := s.Observed.Value()

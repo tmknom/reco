@@ -1127,7 +1127,7 @@ func TestGenerate_ActionsAccess(t *testing.T) {
 const forkPullRequestApprovalSource = `repositories:
   - name: owner/repo
     actions:
-      fork_pull_requests:
+      fork_pr_contributor_approval:
         approval_policy: all_external_contributors
 `
 
@@ -1194,13 +1194,13 @@ func TestGenerate_ForkPullRequestApproval(t *testing.T) {
 const forkPullRequestsSource = `repositories:
   - name: owner/repo
     actions:
-      fork_pull_requests:
+      fork_pr_contributor_approval:
         approval_policy: all_external_contributors
-        private_repositories:
-          run_workflows_from_fork_pull_requests: true
-          send_write_tokens_to_workflows: false
-          send_secrets_and_variables: true
-          require_approval_for_fork_pr_workflows: true
+      fork_pr_workflows_private_repos:
+        run_workflows_from_fork_pull_requests: true
+        send_write_tokens_to_workflows: false
+        send_secrets_and_variables: true
+        require_approval_for_fork_pr_workflows: true
 `
 
 // TestGenerate_PrivateForkPullRequestWorkflows は、承認ポリシーと実行条件を両方宣言したとき、
@@ -1335,7 +1335,7 @@ func TestGenerate_OIDCSubject(t *testing.T) {
 const retentionSource = `repositories:
   - name: owner/repo
     actions:
-      retention:
+      artifact_and_log_retention:
         days: 120
 `
 

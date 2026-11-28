@@ -57,8 +57,8 @@ type EnvironmentDeclaration struct {
 	Name setting.EnvironmentName
 	// DeploymentBranchPolicy は nil なら期待値の省略で、デプロイ元制限は管理範囲に含まれない。宣言したときは、方式が selected のときだけ、宣言の順の Patterns を持つ。
 	DeploymentBranchPolicy *setting.DeploymentBranchPolicy
-	// RequiredReviewers は nil なら期待値の省略で、担当者の集合は管理範囲に含まれない。required_reviewers: [] は空の集合を指す非 nil。
-	RequiredReviewers *setting.ReviewerSet
+	// ReviewerSet は nil なら期待値の省略で、担当者の集合は管理範囲に含まれない。reviewers: [] は空の集合を指す非 nil。
+	ReviewerSet *setting.ReviewerSet
 	// PreventSelfReview は nil なら期待値の省略で、自己承認の禁止は管理範囲に含まれない。
 	PreventSelfReview *bool
 	// WaitTimer は nil なら期待値の省略で、デプロイの待機時間 (分) は管理範囲に含まれない。0 は待機時間がないことの宣言を指す非 nil。
@@ -181,9 +181,9 @@ func (d DesiredState) ManagedSettings() []ManagedSetting {
 			unit := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: e.Name}
 			managed = append(managed, ManagedSetting{Unit: unit, Desired: setting.DeploymentBranchPolicyValue(*e.DeploymentBranchPolicy)})
 		}
-		if e.RequiredReviewers != nil {
-			unit := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: e.Name}
-			managed = append(managed, ManagedSetting{Unit: unit, Desired: setting.ReviewerSetValue(*e.RequiredReviewers)})
+		if e.ReviewerSet != nil {
+			unit := setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: e.Name}
+			managed = append(managed, ManagedSetting{Unit: unit, Desired: setting.ReviewerSetValue(*e.ReviewerSet)})
 		}
 		if e.PreventSelfReview != nil {
 			unit := setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: e.Name}
@@ -297,7 +297,7 @@ func (d DesiredState) value(key setting.Key) (value setting.Value, ok bool) {
 		return optionalBoolValue(d.SecretScanning.PushProtection)
 	case setting.PrivateVulnerabilityReportingEnabled:
 		return optionalBoolValue(d.PrivateVulnerabilityReporting.Enabled)
-	case setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentRequiredReviewers, setting.EnvironmentPreventSelfReview, setting.EnvironmentWaitTimer, setting.EnvironmentVariable, setting.RulesetResource:
+	case setting.RepositoryVariable, setting.EnvironmentResource, setting.EnvironmentDeploymentBranchPolicy, setting.EnvironmentReviewerSet, setting.EnvironmentPreventSelfReview, setting.EnvironmentWaitTimer, setting.EnvironmentVariable, setting.RulesetResource:
 		// 関連リソースに関わる管理の単位は名前との組で識別するため、この関数では引けない。
 	}
 	panic(fmt.Sprintf("unknown setting %q", key))

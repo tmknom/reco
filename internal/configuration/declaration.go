@@ -11,8 +11,8 @@ import (
 	"github.com/tmknom/reco/internal/setting"
 )
 
-// maxRequiredReviewers は、GitHub が受け付ける担当者の件数の上限。
-const maxRequiredReviewers = 6
+// maxReviewers は、GitHub が受け付ける担当者の件数の上限。
+const maxReviewers = 6
 
 // maxWaitTimerMinutes は、デプロイの待機時間として受け付ける分数の上限。
 // GitHub の公式資料は 43200 までとするが、43200 を送ると GitHub は成功を応答して値を変えなかった。
@@ -116,7 +116,7 @@ func (d document) environments(n *yaml.Node, path string) ([]EnvironmentDeclarat
 }
 
 func (d document) environment(n *yaml.Node, path string) (EnvironmentDeclaration, error) {
-	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"deployment_branch_policy", "required_reviewers", "prevent_self_review", "wait_timer", "variables"})
+	entries, err := d.mappingEntries(n, path, []string{"name"}, []string{"deployment_branch_policy", "reviewers", "prevent_self_review", "wait_timer", "variables"})
 	if err != nil {
 		return EnvironmentDeclaration{}, err
 	}
@@ -137,12 +137,12 @@ func (d document) environment(n *yaml.Node, path string) (EnvironmentDeclaration
 		}
 		declaration.DeploymentBranchPolicy = &policy
 	}
-	if value, ok := entries["required_reviewers"]; ok {
-		reviewers, err := d.requiredReviewers(value, path+".required_reviewers")
+	if value, ok := entries["reviewers"]; ok {
+		reviewers, err := d.reviewerSet(value, path+".reviewers")
 		if err != nil {
 			return EnvironmentDeclaration{}, err
 		}
-		declaration.RequiredReviewers = &reviewers
+		declaration.ReviewerSet = &reviewers
 	}
 	if value, ok := entries["prevent_self_review"]; ok {
 		preventSelfReview, err := d.boolValue(value, path+".prevent_self_review")
@@ -158,8 +158,8 @@ func (d document) environment(n *yaml.Node, path string) (EnvironmentDeclaration
 		}
 		declaration.WaitTimer = &waitTimer
 	}
-	if declaration.RequiredReviewers != nil && declaration.RequiredReviewers.HasNoReviewers() && declaration.PreventSelfReview != nil && *declaration.PreventSelfReview {
-		return EnvironmentDeclaration{}, invalid(entries["prevent_self_review"], path+".prevent_self_review", "must not be true when required_reviewers is []; GitHub keeps prevent_self_review only while the environment has reviewers")
+	if declaration.ReviewerSet != nil && declaration.ReviewerSet.HasNoReviewers() && declaration.PreventSelfReview != nil && *declaration.PreventSelfReview {
+		return EnvironmentDeclaration{}, invalid(entries["prevent_self_review"], path+".prevent_self_review", "must not be true when reviewers is []; GitHub keeps prevent_self_review only while the environment has reviewers")
 	}
 	if value, ok := entries["variables"]; ok {
 		if declaration.Variables, err = d.variables(value, path+".variables"); err != nil {
@@ -182,15 +182,15 @@ func (d document) waitTimerValue(n *yaml.Node, path string) (int, error) {
 	return minutes, nil
 }
 
-// requiredReviewers は、担当者の宣言の並びを宣言の順のまま、集合として読む。
+// reviewerSet は、担当者の宣言の並びを宣言の順のまま、集合として読む。
 // 空のシーケンスは「担当者がいない」期待値で、省略と区別するため、空でも読み取りに成功する。
-func (d document) requiredReviewers(n *yaml.Node, path string) (setting.ReviewerSet, error) {
+func (d document) reviewerSet(n *yaml.Node, path string) (setting.ReviewerSet, error) {
 	items, err := d.sequenceContent(n, path)
 	if err != nil {
 		return setting.ReviewerSet{}, err
 	}
-	if len(items) > maxRequiredReviewers {
-		return setting.ReviewerSet{}, invalid(n, path, "must have at most %d reviewers; got %d", maxRequiredReviewers, len(items))
+	if len(items) > maxReviewers {
+		return setting.ReviewerSet{}, invalid(n, path, "must have at most %d reviewers; got %d", maxReviewers, len(items))
 	}
 	var reviewers []setting.Reviewer
 	for i, item := range items {
@@ -319,12 +319,12 @@ func (d document) deploymentPattern(n *yaml.Node, path string) (setting.Deployme
 	return setting.DeploymentPattern{Type: patternType, Name: name}, nil
 }
 
-// actions は、Actions の階層のうち reco が受け付ける permissions、workflow、access、fork_pull_requests、retention、oidc_subject、variables だけを読み、desired の該当する領域を埋める。
+// actions は、Actions の階層のうち reco が受け付けるまとまりと variables だけを読み、desired の該当する領域を埋める。
 // 領域ごとの戻り値を並べず desired を埋めるのは、Actions の領域が多く、領域を足すたびに戻り値とその受け取りを直さずに済ませるため。
 // 失敗したときに途中まで埋まった desired は、呼び出し元が捨てる。
 // どれも任意のキーだが、空のマッピングは拒否されるため、成功すればどれかは必ずある。
 func (d document) actions(n *yaml.Node, path string, desired *DesiredState) error {
-	entries, err := d.mappingEntries(n, path, nil, []string{"permissions", "workflow", "access", "fork_pull_requests", "retention", "oidc_subject", "variables"})
+	entries, err := d.mappingEntries(n, path, nil, []string{"permissions", "workflow", "access", "fork_pr_contributor_approval", "fork_pr_workflows_private_repos", "artifact_and_log_retention", "oidc_subject", "variables"})
 	if err != nil {
 		return err
 	}
@@ -343,13 +343,20 @@ func (d document) actions(n *yaml.Node, path string, desired *DesiredState) erro
 			return err
 		}
 	}
-	if value, ok := entries["fork_pull_requests"]; ok {
-		if desired.ForkPullRequestApproval, desired.PrivateForkPullRequestWorkflows, err = d.forkPullRequests(value, path+".fork_pull_requests"); err != nil {
+	if value, ok := entries["fork_pr_contributor_approval"]; ok {
+		if desired.ForkPullRequestApproval, err = d.forkPullRequestApproval(value, path+".fork_pr_contributor_approval"); err != nil {
 			return err
 		}
 	}
-	if value, ok := entries["retention"]; ok {
-		if desired.Retention, err = d.retention(value, path+".retention"); err != nil {
+	if value, ok := entries["fork_pr_workflows_private_repos"]; ok {
+		conditions, err := d.privateForkPullRequestWorkflows(value, path+".fork_pr_workflows_private_repos")
+		if err != nil {
+			return err
+		}
+		desired.PrivateForkPullRequestWorkflows = PrivateForkPullRequestWorkflows{Conditions: &conditions}
+	}
+	if value, ok := entries["artifact_and_log_retention"]; ok {
+		if desired.Retention, err = d.retention(value, path+".artifact_and_log_retention"); err != nil {
 			return err
 		}
 	}
@@ -657,31 +664,18 @@ func isClaimKey(s string) bool {
 	})
 }
 
-// forkPullRequests は、Fork からの Pull Request のワークフローの設定を、承認ポリシーと実行条件の二つの領域に分けて読む。
-// どちらのキーも任意だが、空のマッピングは mappingEntries が拒否するため、成功すればどちらかは必ずある。
-// 公開範囲に合わない側の宣言は、観測のあとに適用不能として扱うため、ここでは拒否しない。
-func (d document) forkPullRequests(n *yaml.Node, path string) (ForkPullRequestApproval, PrivateForkPullRequestWorkflows, error) {
-	entries, err := d.mappingEntries(n, path, nil, []string{"approval_policy", "private_repositories"})
+// forkPullRequestApproval は、Fork Pull Request ワークフローの承認ポリシーを読む。キーは approval_policy だけのため必須として渡す。
+// 非公開リポジトリへの宣言は、観測のあとに適用不能として扱うため、ここでは拒否しない。
+func (d document) forkPullRequestApproval(n *yaml.Node, path string) (ForkPullRequestApproval, error) {
+	entries, err := d.mappingEntries(n, path, []string{"approval_policy"}, nil)
 	if err != nil {
-		return ForkPullRequestApproval{}, PrivateForkPullRequestWorkflows{}, err
+		return ForkPullRequestApproval{}, err
 	}
-	var approval ForkPullRequestApproval
-	if value, ok := entries["approval_policy"]; ok {
-		policy, err := d.forkPullRequestApprovalPolicyValue(value, path+".approval_policy")
-		if err != nil {
-			return ForkPullRequestApproval{}, PrivateForkPullRequestWorkflows{}, err
-		}
-		approval.ApprovalPolicy = &policy
+	policy, err := d.forkPullRequestApprovalPolicyValue(entries["approval_policy"], path+".approval_policy")
+	if err != nil {
+		return ForkPullRequestApproval{}, err
 	}
-	var workflows PrivateForkPullRequestWorkflows
-	if value, ok := entries["private_repositories"]; ok {
-		conditions, err := d.privateForkPullRequestWorkflows(value, path+".private_repositories")
-		if err != nil {
-			return ForkPullRequestApproval{}, PrivateForkPullRequestWorkflows{}, err
-		}
-		workflows.Conditions = &conditions
-	}
-	return approval, workflows, nil
+	return ForkPullRequestApproval{ApprovalPolicy: &policy}, nil
 }
 
 // privateForkPullRequestWorkflows は、4項目がそろった実行条件を読む。
@@ -700,7 +694,7 @@ func (d document) privateForkPullRequestWorkflows(n *yaml.Node, path string) (se
 		}
 	}
 	if len(missing) > 0 {
-		return setting.PrivateForkPullRequestWorkflowConditions{}, invalid(n, path, "missing %s; private_repositories requires all of %s", strings.Join(missing, ", "), strings.Join(keys, ", "))
+		return setting.PrivateForkPullRequestWorkflowConditions{}, invalid(n, path, "missing %s; fork_pr_workflows_private_repos requires all of %s", strings.Join(missing, ", "), strings.Join(keys, ", "))
 	}
 	values := make(map[string]bool, len(keys))
 	for _, k := range keys {

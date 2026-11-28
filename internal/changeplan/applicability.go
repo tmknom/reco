@@ -45,8 +45,8 @@ const (
 	// NotApplicableAboveMaximumAllowed は、期待値が、計画時に観測した設定できる値の範囲の上限を超えること。上限を伴う。
 	// この理由を持つのは保持日数の変更予定だけである。
 	NotApplicableAboveMaximumAllowed
-	// NotApplicableNoRequiredReviewers は、更新時点に Environment の担当者がいない状態になる見込みで、自己承認の禁止を送らずには期待値にならないこと。
-	NotApplicableNoRequiredReviewers
+	// NotApplicableNoReviewers は、更新時点に Environment の担当者がいない状態になる見込みで、自己承認の禁止を送らずには期待値にならないこと。
+	NotApplicableNoReviewers
 	// NotApplicableMergeMethodRemainsDisabled は、マージメッセージに対応するマージ方式が無効で、同じリポジトリの期待状態がその有効を含まないこと。
 	NotApplicableMergeMethodRemainsDisabled
 	// NotApplicableUnknownValue は、現在の値が reco の知らない値であること。
@@ -154,7 +154,7 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 			return NotApplicable(NotApplicableNoMergeMethodEnabled, left...)
 		}
 		if s.Unit.Key == setting.EnvironmentPreventSelfReview && !preventSelfReviewReachable(s, settings, observed) {
-			return NotApplicable(NotApplicableNoRequiredReviewers)
+			return NotApplicable(NotApplicableNoReviewers)
 		}
 		// GitHub は rules を置き換える更新で、送らなかったパラメータを決まった値にする。reco は宣言していない値を変えず、観測値も併送しない
 		if reset := parametersResetBy(s); len(reset) > 0 {
@@ -183,7 +183,7 @@ func judgeApplicability(s SettingPlan, settings []SettingPlan, observed github.O
 			panic(fmt.Sprintf("changeplan: %s is not comparable without the creation of its environment", s.Unit.String()))
 		}
 		if s.Unit.Key == setting.EnvironmentPreventSelfReview && !preventSelfReviewReachable(s, settings, observed) {
-			return NotApplicable(NotApplicableNoRequiredReviewers)
+			return NotApplicable(NotApplicableNoReviewers)
 		}
 		return Applicable()
 	case s.Unit.Key == setting.AllowedActions && reason == github.UnavailableActionsDisabled:
@@ -223,7 +223,7 @@ func expectsActionsEnabled(settings []SettingPlan) bool {
 // 宣言していない担当者の集合が知らない値で観測不能なら、担当者がいる。観測不能になるのは、知らない種類の担当者が一人以上いるときに限るため。
 // ほかに担当者の集合を観測できないのは作成する Environment だけで、そのときの担当者は作成直後の値 (担当者がいない) とする。
 func preventSelfReviewReachable(s SettingPlan, settings []SettingPlan, observed github.ObservationResult) bool {
-	reviewersUnit := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: s.Unit.Environment}
+	reviewersUnit := setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: s.Unit.Environment}
 	reviewers, declared := RepositoryPlan{Settings: settings}.settingPlanOf(reviewersUnit)
 	atUpdate := reviewers.Desired
 	if !declared {
@@ -233,7 +233,7 @@ func preventSelfReviewReachable(s SettingPlan, settings []SettingPlan, observed 
 		}
 		current, ok := observedReviewers.Value()
 		if !ok {
-			current = createdValueOf(setting.EnvironmentRequiredReviewers)
+			current = createdValueOf(setting.EnvironmentReviewerSet)
 		}
 		atUpdate = current
 	}

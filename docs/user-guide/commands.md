@@ -59,14 +59,14 @@ repositories:
         can_approve_pull_request_reviews: false
       access:
         access_level: none
-      fork_pull_requests:
-        # approval_policy: unavailable (the repository is private)
-        private_repositories:
-          run_workflows_from_fork_pull_requests: false
-          send_write_tokens_to_workflows: false
-          send_secrets_and_variables: false
-          require_approval_for_fork_pr_workflows: false
-      retention:
+      # fork_pr_contributor_approval:
+      #   approval_policy: unavailable (the repository is private)
+      fork_pr_workflows_private_repos:
+        run_workflows_from_fork_pull_requests: false
+        send_write_tokens_to_workflows: false
+        send_secrets_and_variables: false
+        require_approval_for_fork_pr_workflows: false
+      artifact_and_log_retention:
         days: 90 # maximum allowed: 400
       oidc_subject:
         use_default: true
@@ -83,7 +83,7 @@ repositories:
               name: "main"
             - type: tag
               name: "v*"
-        required_reviewers:
+        reviewers:
           - type: User
             id: 583231 # octocat
         prevent_self_review: false
@@ -106,15 +106,15 @@ repositories:
 
 | 行 | 意味 |
 |---|---|
-| `# <キー>: unavailable (GitHub returned a value that reco does not know)` | GitHub が、reco のまだ知らない値（GitHub が新しく足した選択肢など）をその設定に返したため、その設定を読み取れない。当たるのは、マージ時のコミットメッセージ（`squash_merge_commit`、`merge_commit`）、`allowed_actions`、`default_workflow_permissions`、`access_level`、`approval_policy`、`secret_scanning`、`secret_scanning_push_protection`、Environment の `deployment_branch_policy` と `required_reviewers`。`access_level` と `approval_policy` は、`# access:` や `# fork_pull_requests:` から下がまとめてコメントになる。`allowed_actions` のときは `selected_actions` を示さない。値は GitHub の設定画面で確かめる。ほかの設定はいつもどおり使える |
+| `# <キー>: unavailable (GitHub returned a value that reco does not know)` | GitHub が、reco のまだ知らない値（GitHub が新しく足した選択肢など）をその設定に返したため、その設定を読み取れない。当たるのは、マージ時のコミットメッセージ（`squash_merge_commit`、`merge_commit`）、`allowed_actions`、`default_workflow_permissions`、`access_level`、`approval_policy`、`secret_scanning`、`secret_scanning_push_protection`、Environment の `deployment_branch_policy` と `reviewers`。`access_level` と `approval_policy` は、`# access:` や `# fork_pr_contributor_approval:` から下がまとめてコメントになる。`allowed_actions` のときは `selected_actions` を示さない。値は GitHub の設定画面で確かめる。ほかの設定はいつもどおり使える |
 | `# web_commit_signoff_required: unavailable (GitHub did not return the value)` | GitHub がこの設定の値を返さなかったため、読み取れない。設定ファイルに `web_commit_signoff_required` を書くと、`plan` が `Plan cannot be applied.` を表示する。ほかの設定はいつもどおり使える |
 | `# variables: none` | `actions` の下では Repository Variables が、Environment の下ではその Environment の変数（Environment Variables）が一つもない |
 | `# environments: none` | Environment が一つもない |
 | `# access:` と `#   access_level: unavailable (the repository is public)` | 公開リポジトリのため、`access_level` を読み取れない。この設定は非公開リポジトリにだけ書ける |
-| `# approval_policy: unavailable (the repository is private)` / `# private_repositories: unavailable (the repository is public)` | Fork からの Pull Request のワークフローの承認ポリシー（`approval_policy`）は公開リポジトリにだけ、実行条件（`private_repositories`）は非公開リポジトリにだけあるため、非公開リポジトリでは `approval_policy` を、公開リポジトリでは `private_repositories` を読み取れない。読み取れた側は、`fork_pull_requests` とともに設定ファイルに書ける行として表示する |
+| `# fork_pr_contributor_approval:` と `#   approval_policy: unavailable (the repository is private)` / `# fork_pr_workflows_private_repos: unavailable (the repository is public)` | Fork からの Pull Request のワークフローの承認ポリシー（`fork_pr_contributor_approval`）は公開リポジトリにだけ、実行条件（`fork_pr_workflows_private_repos`）は非公開リポジトリにだけあるため、非公開リポジトリでは承認ポリシーを、公開リポジトリでは実行条件を読み取れない。読み取れた側は、設定ファイルに書ける行として表示する |
 | `id: 583231 # octocat` | Environment のデプロイを承認できる担当者の ID が583231で、その利用者の login が `octocat`。設定ファイルには `id` の数値を書く |
-| `required_reviewers: []` | Environment にデプロイを承認できる担当者がいない |
-| `# required_reviewers: no reviewers (a protection rule without reviewers remains)` | 担当者が1人もいない承認の設定が GitHub 上に残っている。設定ファイルに `required_reviewers: []` と書くと、この設定をなくす差分が `plan` に出る |
+| `reviewers: []` | Environment にデプロイを承認できる担当者がいない |
+| `# reviewers: no reviewers (a protection rule without reviewers remains)` | 担当者が1人もいない承認の設定が GitHub 上に残っている。設定ファイルに `reviewers: []` と書くと、この設定をなくす差分が `plan` に出る |
 | `wait_timer: 30 # minutes` | Environment のデプロイを30分待たせる。設定ファイルには待機時間を分で書く。待機時間がなければ `wait_timer: 0 # minutes` |
 | `days: 90 # maximum allowed: 400` | 保持日数は90日で、このリポジトリで設定できる上限は400日 |
 | `dependabot_security_updates: true # paused by GitHub (still enabled)` | Dependabot security updates は有効だが、GitHub が一時停止している。設定ファイルでは `true` と書いたのと同じ |
@@ -157,7 +157,7 @@ Repositories checked: 1
 | `environments.<Environment の名前>.variables.<名前>: ...` | Environment Variable の作成、値の変更、削除。読み方は `actions.variables.<名前>` の行と同じ。Environment がまだないときは `(environment absent) -> "<書いた値>"` と出て、承認すると Environment を作成してから変数を作る。`state: absent` の変数は `(environment absent) -> absent` と出て、Environment を作成したあとに変数がないことを確かめるだけで、削除はしない |
 | `<設定>: (<今の状態>) -> <書いた値>` | 今の値と比べられない設定。括弧の中は、比べられない理由となる今の状態（Actions が無効、Environment がまだない、Environment があるかを確かめられない、など）。承認すると右の値に変える |
 | `environments.<名前>.deployment_branch_policy:` の下に、今の値の行と `-> <書いた値>` の行 | 今の値か書いた値が `selected` の `deployment_branch_policy`。読み方は1行の形と同じで、`selected` のパターンは `selected [branch "main"]` のように角括弧の中に並ぶ |
-| `environments.<名前>.required_reviewers:` の下に、今の値の行と `-> <書いた値>` の行 | Environment のデプロイを承認できる担当者が、設定ファイルと違う。担当者は `[User 583231 (octocat), User 1234567]` のように並び、括弧の中は GitHub 上の担当者の login。設定ファイルに書いた利用者のうち、まだ担当者でない利用者は ID だけが出る。`[]` は担当者がいないこと、`[] (protection rule without reviewers)` は担当者が1人もいない承認の設定が GitHub 上に残っていること。承認すると `->` の行の担当者に変える |
+| `environments.<名前>.reviewers:` の下に、今の値の行と `-> <書いた値>` の行 | Environment のデプロイを承認できる担当者が、設定ファイルと違う。担当者は `[User 583231 (octocat), User 1234567]` のように並び、括弧の中は GitHub 上の担当者の login。設定ファイルに書いた利用者のうち、まだ担当者でない利用者は ID だけが出る。`[]` は担当者がいないこと、`[] (protection rule without reviewers)` は担当者が1人もいない承認の設定が GitHub 上に残っていること。承認すると `->` の行の担当者に変える |
 | `Reviewers to remove:`、`Reviewers to add:` | 外れる担当者（GitHub 上にいて設定ファイルにない利用者）と、加わる担当者（設定ファイルにあって GitHub 上でまだ担当者でない利用者） |
 | `environments.<名前>.prevent_self_review: false -> true` | デプロイジョブを起動した利用者が自分のジョブを承認できないようにするかが、設定ファイルと違う。担当者の承認の設定がない Environment の今の値は `false` |
 | `environments.<名前>.wait_timer: 0 minutes -> 30 minutes` | デプロイを待たせる時間（分）が、設定ファイルと違う。待機時間のない Environment の今の値は `0 minutes` |
@@ -166,7 +166,7 @@ Repositories checked: 1
 | `rulesets.<名前>: absent -> present` と、その下の `target:` から `rules:` までの行 | 設定ファイルに書いた Ruleset が GitHub 上にない。下の行は、作成する Ruleset の内容 |
 | `rulesets.<名前>: present -> absent` と、その下の `target:` から `rules:` までの行 | `state: absent` を書いた Ruleset が GitHub 上にある。承認すると削除する。下の行は、削除で失われる今の内容の全体で、GitHub が返した順に示す。対象のブランチの条件を持たない Ruleset は、`include:` と `exclude:` の代わりに `conditions: {}` の行が出る |
 | `rulesets.<名前>:` と、その下の変わる部分の行 | Ruleset の内容が設定ファイルと違う。`... to remove:` の行は、設定ファイルにないためなくなるパターン、迂回できる主体、ルール。`... to add:` の行は加わるもの。`enforcement: disabled -> active` や `Rule pull_request: ...` の行は、値が変わる項目。`Required status checks to remove:` と `Required status checks to add:` の行は、`required_status_checks` のルールでなくなるチェックと加わるチェック。`conditions: {} -> ref_name` の行は、GitHub 上の Ruleset が対象のブランチの条件を持たないことを示す |
-| `actions.fork_pull_requests.private_repositories:` の下に、今の値の行と `-> <書いた値>` の行 | 非公開リポジトリの Fork からの Pull Request のワークフローの実行条件。4項目をまとめて一つの変更として示す |
+| `actions.fork_pr_workflows_private_repos:` の下に、今の値の行と `-> <書いた値>` の行 | 非公開リポジトリの Fork からの Pull Request のワークフローの実行条件。4項目をまとめて一つの変更として示す |
 | `general.squash_merge_commit:` / `general.merge_commit:` の下に、今の値の行と `-> <書いた値>` の行 | マージ時のコミットメッセージの形。`title: PR_TITLE, message: PR_BODY` のように、タイトルと本文をまとめて一つの変更として示す |
 | 今の値が `(unknown value)` の変更 | GitHub が、その設定に reco のまだ知らない値を返している。この変更は適用できない |
 | `general.web_commit_signoff_required: (not returned) -> <書いた値>` | GitHub が `web_commit_signoff_required` の値を返していない。この変更は適用できない |
@@ -226,7 +226,7 @@ Repositories updated: 1
 
 マージ方式（`general.allow_squash_merge`、`general.allow_merge_commit`、`general.allow_rebase_merge`）の変更は、変更計画では設定ごとに出ますが、`apply` は変えるマージ方式をまとめて1回の更新で GitHub に送ります。結果が変更ごとに出るときは、`general.allow_squash_merge + general.allow_merge_commit: updated` のように、まとめた設定を ` + ` でつないだ1行になります。マージ方式を無効にする変更と、そのマージ方式のコミットメッセージ（`general.squash_merge_commit` か `general.merge_commit`）の変更があるときは、GitHub が無効のマージ方式のコミットメッセージを変えさせないため、コミットメッセージを先に変えます。
 
-Repository Variables と Environment Variables は、設定ファイルに書いた順に一つずつ作成するか、値を変えるか、削除します。Environment Variables は、その Environment の作成と、`deployment_branch_policy`、`required_reviewers`、`prevent_self_review`、`wait_timer` の変更のあとに変えます。変数の変更ごとの結果は、`actions.variables.<名前>: updated` や `environments.<Environment の名前>.variables.<名前>: not attempted` のように出ます。
+Repository Variables と Environment Variables は、設定ファイルに書いた順に一つずつ作成するか、値を変えるか、削除します。Environment Variables は、その Environment の作成と、`deployment_branch_policy`、`reviewers`、`prevent_self_review`、`wait_timer` の変更のあとに変えます。変数の変更ごとの結果は、`actions.variables.<名前>: updated` や `environments.<Environment の名前>.variables.<名前>: not attempted` のように出ます。
 
 どこかの変更が完了しなかったら、reco は残りの変更を始めずに止まります。すでに反映した変更は元に戻りません。`failed` や `not attempted` が出たときにすることは [Troubleshooting](troubleshooting.md#apply-が途中で止まった) にあります。
 

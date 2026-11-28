@@ -243,7 +243,7 @@ func reviewersChange(t *testing.T, name string, approved github.Environment, des
 	environment := mustEnvironmentName(t, name)
 	observed := github.ObservationResult{Environments: environments(approved)}
 	reviewers := changeplan.SettingPlan{
-		Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: environment}, Observed: observed.Environments.Lookup(environment).RequiredReviewers(),
+		Unit: setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: environment}, Observed: observed.Environments.Lookup(environment).ReviewerSet(),
 		Desired: setting.ReviewerSetValue(desired), Result: changeplan.Mismatch, Applicability: changeplan.Applicable(),
 	}
 	if desired.HasNoReviewers() {

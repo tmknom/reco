@@ -319,14 +319,14 @@ func TestMatchesPreconditionBasis_EnvironmentExistence(t *testing.T) {
 	}
 }
 
-// TestCheckPrecondition_RequiredReviewersRemoval は、担当者をすべて外す更新操作の変更前提が、担当者の集合のあとに同じ Environment の自己承認の禁止を
+// TestCheckPrecondition_ReviewerSetRemoval は、担当者をすべて外す更新操作の変更前提が、担当者の集合のあとに同じ Environment の自己承認の禁止を
 // 計画時の値と比べ、変わっていた設定のうち基準の並びで最初のものを返す規則を確かめる。
 //
 //trace:checks INV-001 INV-004 FR-010
-func TestCheckPrecondition_RequiredReviewersRemoval(t *testing.T) {
+func TestCheckPrecondition_ReviewerSetRemoval(t *testing.T) {
 	staging := observedEnvironment(7, "staging", setting.DeploymentBranchPolicyAll)
 	name := mustEnvironmentName(t, "staging")
-	reviewers := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: name}
+	reviewers := setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: name}
 	preventSelfReview := setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: name}
 	cases := []struct {
 		name              string
@@ -345,7 +345,7 @@ func TestCheckPrecondition_RequiredReviewersRemoval(t *testing.T) {
 			desired: reviewerSet(), want: preconditionCurrentValueChanged, wantChanged: preventSelfReview,
 		},
 		{
-			name: "removal with both reviewers and prevent_self_review changed is a change of required_reviewers", approved: withReviewers(staging, true, 1), current: withReviewers(staging, false, 2),
+			name: "removal with both reviewers and prevent_self_review changed is a change of reviewers", approved: withReviewers(staging, true, 1), current: withReviewers(staging, false, 2),
 			desired: reviewerSet(), want: preconditionCurrentValueChanged, wantChanged: reviewers,
 		},
 		{name: "update keeping reviewers does not compare prevent_self_review", approved: withReviewers(staging, true, 1), current: withReviewers(staging, false, 1), desired: reviewerSet(2), want: preconditionHolds},
@@ -652,7 +652,7 @@ func TestCheckPrecondition_Environments(t *testing.T) {
 			change:      reviewersChange(t, "staging", withReviewers(approvedStaging, false, 1), reviewerSet(2)),
 			observed:    github.ObservationResult{RepositoryID: 1, Environments: environments(withReviewers(approvedStaging, false, 1, 3))},
 			want:        preconditionCurrentValueChanged,
-			wantChanged: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: staging},
+			wantChanged: setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: staging},
 		},
 		{
 			name:     "pattern addition after a creation reads only that the preceding update created the environment",

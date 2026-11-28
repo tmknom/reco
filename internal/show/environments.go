@@ -19,7 +19,7 @@ func writeEnvironments(b *strings.Builder, e github.Environments) {
 		// 名前は任意の文字を含み得るため、制御文字をエスケープして一行に収める
 		fmt.Fprintf(b, "      - name: %s\n", quote(environment.Name))
 		writeDeploymentBranchPolicy(b, environment.DeploymentBranchPolicy())
-		writeRequiredReviewers(b, environment.Protection.ReviewerSet)
+		writeReviewerSet(b, environment.Protection.ReviewerSet)
 		writePreventSelfReviewAndWaitTimer(b, environment.Protection)
 		writeEnvironmentVariables(b, *environment.Variables)
 	}
@@ -40,26 +40,26 @@ func writeDeploymentBranchPolicy(b *strings.Builder, o github.SettingObservation
 	}
 }
 
-// writeRequiredReviewers は担当者の集合を書く。担当者がいなければ [] で書く。
+// writeReviewerSet は担当者の集合を書く。担当者がいなければ [] で書く。
 // 担当者のいない保護ルールは、設定宣言として読むと [] と一致しないため、コメントで示す。
 // 知らない値のときは、その行だけをコメントにする。
-func writeRequiredReviewers(b *strings.Builder, o github.SettingObservation[setting.ReviewerSet]) {
+func writeReviewerSet(b *strings.Builder, o github.SettingObservation[setting.ReviewerSet]) {
 	reviewers, ok := o.Value()
 	if !ok {
-		requireUnknownValue("required_reviewers", o.UnavailableReason())
-		fmt.Fprintf(b, "        # required_reviewers: %s\n", unknownValueText)
+		requireUnknownValue("reviewers", o.UnavailableReason())
+		fmt.Fprintf(b, "        # reviewers: %s\n", unknownValueText)
 		return
 	}
 	if reviewers.IsRuleWithoutReviewers() {
-		b.WriteString("        # required_reviewers: no reviewers (a protection rule without reviewers remains)\n")
+		b.WriteString("        # reviewers: no reviewers (a protection rule without reviewers remains)\n")
 		return
 	}
 	list := reviewers.Reviewers()
 	if len(list) == 0 {
-		b.WriteString("        required_reviewers: []\n")
+		b.WriteString("        reviewers: []\n")
 		return
 	}
-	b.WriteString("        required_reviewers:\n")
+	b.WriteString("        reviewers:\n")
 	for _, reviewer := range list {
 		fmt.Fprintf(b, "          - type: %s\n            id: %d", reviewer.Type, reviewer.ID)
 		if login, ok := reviewers.Login(reviewer); ok {

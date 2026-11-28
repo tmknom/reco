@@ -107,7 +107,7 @@ func TestClientUpdate(t *testing.T) {
 			wantRequest: "PUT /repos/owner/repo/actions/permissions/fork-pr-contributor-approval", wantBody: map[string]any{"approval_policy": "all_external_contributors"},
 		},
 		{
-			name: "private_repositories sends all four items", key: setting.PrivateForkPullRequestWorkflows,
+			name: "fork_pr_workflows_private_repos sends all four items", key: setting.PrivateForkPullRequestWorkflows,
 			value: setting.PrivateForkPullRequestWorkflowConditionsValue(setting.PrivateForkPullRequestWorkflowConditions{
 				RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true, RequireApprovalForForkPullRequestWorkflows: true,
 			}),
@@ -203,7 +203,7 @@ func TestClientUpdate(t *testing.T) {
 	})
 
 	// 担当者、自己承認の禁止、待機時間の更新要求は名前との組で引くため、設定の識別だけでは引けず、要求を送る前に止まる。
-	for _, key := range []setting.Key{setting.EnvironmentRequiredReviewers, setting.EnvironmentPreventSelfReview, setting.EnvironmentWaitTimer} {
+	for _, key := range []setting.Key{setting.EnvironmentReviewerSet, setting.EnvironmentPreventSelfReview, setting.EnvironmentWaitTimer} {
 		t.Run(string(key)+" panics before sending a request", func(t *testing.T) {
 			defer func() {
 				if message, ok := recover().(string); !ok || !strings.Contains(message, string(key)) {

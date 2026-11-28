@@ -8,6 +8,7 @@ Find the sections that match the task below, then pick documents within them by 
 
 - Judging whether a feature belongs to reco, or settling a design tradeoff → **Project Overview**, then **Specifications**
 - Changing a command, option, output line, exit code, or configuration key or validation rule → **Specifications**
+- Naming a new or renamed configuration key or value, or reviewing one → **Contributing** (Configuration Policy), then **Specifications**
 - Changing Go code, naming a domain type, or adding or changing a supported setting → **Design**, then **Specifications**
 - Checking what the GitHub API specifies or actually returned → **Research**
 - Changing what users are told, or explaining reco to a user → **User Guide**
@@ -69,6 +70,7 @@ Written for reco users, not implementers. When behavior users rely on changes, c
 ## Contributing
 
 - [Documentation Policy](docs/contributing/docs-policy.md): Responsibility of each document, IDs and Relationships, `sdlc validate` and `sdlc trace`, and user guide writing rules - Use when creating, editing, or moving a document, deciding which document owns a statement, declaring `//trace:checks` on a test, or fixing an `sdlc validate` finding
+- [Configuration Policy](docs/contributing/configuration-policy.md): How configuration keys, values, and nesting are named, preferring GitHub REST API field names and endpoint paths, when a name may depart from the API, and where each current non-API name comes from - Use when adding, renaming, or reviewing a configuration key or value, such as a grouping key, a reco-specific key like `state`, or an enum that replaces an API `null` or a pair of API fields
 - [Release Workflow](docs/contributing/release.md): Tag-triggered release to GitHub Releases and GHCR - Use when cutting a release, or changing `.github/workflows/release.yml`, `.goreleaser.yaml`, or `Dockerfile`
 
 ## Tooling

@@ -98,7 +98,7 @@ func (r RepositoryPlan) protectionRuleSettingChangeOf(s SettingPlan, p protectio
 			return LogicalChange{}, false
 		}
 		change := protectionRuleSettingChange(p, s, existence.existenceBasis(), PreconditionBasis{Unit: s.Unit, AnticipatedValue: AnticipateUnchanged(s.Observed)})
-		if s.Unit.Key == setting.EnvironmentRequiredReviewers && s.Desired.ReviewerSet().HasNoReviewers() {
+		if s.Unit.Key == setting.EnvironmentReviewerSet && s.Desired.ReviewerSet().HasNoReviewers() {
 			return r.withPreventSelfReviewOfRemoval(change, s), true
 		}
 		return change, true
@@ -123,7 +123,7 @@ func protectionRuleSettingChange(p protectionRuleSetting, s SettingPlan, bases .
 // 重なるとき、担当者をすべて外す更新が自己承認の禁止を偽にし、期待値 (宣言できるのは偽だけ) に届く。
 // 担当者がいないことを宣言して一致したまま自己承認の禁止だけが違う形は、観測から生じず、送れば GitHub が拒むため、不変条件の破れとして panic する。
 func (r RepositoryPlan) removesEveryReviewer(s SettingPlan) bool {
-	reviewers, declared := r.settingPlanOf(setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: s.Unit.Environment})
+	reviewers, declared := r.settingPlanOf(setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: s.Unit.Environment})
 	if !declared || !reviewers.Desired.ReviewerSet().HasNoReviewers() {
 		return false
 	}
@@ -156,7 +156,7 @@ func (r RepositoryPlan) withPreventSelfReviewOfRemoval(change LogicalChange, s S
 // 呼び出し側が要素を書き換えても共有されないよう、呼び出すたびに新しいスライスを返す。
 func protectionRuleSettings() []protectionRuleSetting {
 	return []protectionRuleSetting{
-		{key: setting.EnvironmentRequiredReviewers, kind: RequiredReviewersUpdate, created: setting.ReviewerSetValue(setting.ReviewerSetOf(nil))},
+		{key: setting.EnvironmentReviewerSet, kind: ReviewerSetUpdate, created: setting.ReviewerSetValue(setting.ReviewerSetOf(nil))},
 		{key: setting.EnvironmentPreventSelfReview, kind: PreventSelfReviewUpdate, created: setting.BoolValue(false)},
 		{key: setting.EnvironmentWaitTimer, kind: WaitTimerUpdate, created: setting.WaitTimerValue(0)},
 	}

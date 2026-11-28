@@ -55,7 +55,7 @@ func TestUpdateOperation_Endpoint(t *testing.T) {
 		{name: "environment update has no endpoint of a setting", operation: UpdateOperation{Kind: DeploymentBranchPolicyModeUpdate, Unit: setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}}},
 		{name: "ruleset creation has no endpoint of a setting", operation: UpdateOperation{Kind: RulesetCreation, Unit: rulesetUnit(t, "protect")}},
 		{name: "ruleset deletion has no endpoint of a setting", operation: UpdateOperation{Kind: RulesetDeletion, Unit: rulesetUnit(t, "protect")}},
-		{name: "required reviewers update has no endpoint of a setting", operation: UpdateOperation{Kind: RequiredReviewersUpdate, Unit: setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}}},
+		{name: "reviewer set update has no endpoint of a setting", operation: UpdateOperation{Kind: ReviewerSetUpdate, Unit: setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: production}}},
 		{name: "prevent self-review update has no endpoint of a setting", operation: UpdateOperation{Kind: PreventSelfReviewUpdate, Unit: setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: production}}},
 		{name: "wait timer update has no endpoint of a setting", operation: UpdateOperation{Kind: WaitTimerUpdate, Unit: setting.Unit{Key: setting.EnvironmentWaitTimer, Environment: production}}},
 	}
@@ -632,10 +632,10 @@ func TestRepositoryPlan_LogicalChangesOfEnvironmentVariables(t *testing.T) {
 	}
 }
 
-// TestRepositoryPlan_LogicalChangesOfRequiredReviewers は、担当者の集合の変更予定から導く論理的な設定変更と、その変更前提の基準を確かめる。
+// TestRepositoryPlan_LogicalChangesOfReviewerSet は、担当者の集合の変更予定から導く論理的な設定変更と、その変更前提の基準を確かめる。
 //
 //trace:checks INV-001 INV-004 FR-010
-func TestRepositoryPlan_LogicalChangesOfRequiredReviewers(t *testing.T) {
+func TestRepositoryPlan_LogicalChangesOfReviewerSet(t *testing.T) {
 	production, staging := mustEnvironmentName(t, "production"), mustEnvironmentName(t, "staging")
 	region := mustVariableName(t, "REGION")
 	stagingExistence := SettingPlan{
@@ -646,8 +646,8 @@ func TestRepositoryPlan_LogicalChangesOfRequiredReviewers(t *testing.T) {
 	productionUnit := setting.Unit{Key: setting.EnvironmentResource, Environment: production}
 	productionCreation := SettingPlan{Unit: productionUnit, Observed: github.Observed(setting.Absent()), Desired: setting.Present(), Result: Mismatch, Applicability: Applicable()}
 	creationBasis := PreconditionBasis{Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Absent())}
-	stagingReviewers := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: staging}
-	productionReviewers := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}
+	stagingReviewers := setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: staging}
+	productionReviewers := setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: production}
 	productionPolicy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: production}
 	stagingPolicy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}
 	user1 := setting.ReviewerSetValue(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}}))
@@ -661,7 +661,7 @@ func TestRepositoryPlan_LogicalChangesOfRequiredReviewers(t *testing.T) {
 	reviewersChange := func(unit setting.Unit, desired setting.Value, bases ...PreconditionBasis) LogicalChange {
 		return LogicalChange{
 			DesiredState: []configuration.ManagedSetting{{Unit: unit, Desired: desired}},
-			Operations:   []UpdateOperation{{Kind: RequiredReviewersUpdate, Unit: unit, Value: desired, PreconditionBases: bases}},
+			Operations:   []UpdateOperation{{Kind: ReviewerSetUpdate, Unit: unit, Value: desired, PreconditionBases: bases}},
 		}
 	}
 	cases := []struct {
@@ -689,7 +689,7 @@ func TestRepositoryPlan_LogicalChangesOfRequiredReviewers(t *testing.T) {
 			want: []LogicalChange{{
 				DesiredState: []configuration.ManagedSetting{{Unit: stagingReviewers, Desired: noReviewers}},
 				Operations: []UpdateOperation{{
-					Kind: RequiredReviewersUpdate, Unit: stagingReviewers, Value: noReviewers,
+					Kind: ReviewerSetUpdate, Unit: stagingReviewers, Value: noReviewers,
 					PreconditionBases: []PreconditionBasis{stagingEnvironment, {Unit: stagingReviewers, AnticipatedValue: AnticipateValue(user1)}, {Unit: stagingPrevent, AnticipatedValue: AnticipateValue(selfReviewPrevented)}},
 				}},
 				SideEffectSettings: []setting.Unit{stagingPrevent},
@@ -716,7 +716,7 @@ func TestRepositoryPlan_LogicalChangesOfRequiredReviewers(t *testing.T) {
 			want: []LogicalChange{{
 				DesiredState: []configuration.ManagedSetting{{Unit: stagingReviewers, Desired: noReviewers}, {Unit: stagingPrevent, Desired: selfReviewAllowed}},
 				Operations: []UpdateOperation{{
-					Kind: RequiredReviewersUpdate, Unit: stagingReviewers, Value: noReviewers,
+					Kind: ReviewerSetUpdate, Unit: stagingReviewers, Value: noReviewers,
 					PreconditionBases: []PreconditionBasis{stagingEnvironment, {Unit: stagingReviewers, AnticipatedValue: AnticipateValue(user1)}, {Unit: stagingPrevent, AnticipatedValue: AnticipateValue(selfReviewPrevented)}},
 				}},
 			}},
@@ -867,10 +867,10 @@ func TestRepositoryPlan_LogicalChangesOfPreventSelfReviewAndWaitTimer(t *testing
 		DesiredState: []configuration.ManagedSetting{{Unit: productionUnit, Desired: setting.Present()}},
 		Operations:   []UpdateOperation{{Kind: EnvironmentCreation, Unit: productionUnit, PreconditionBases: []PreconditionBasis{{Unit: productionUnit, AnticipatedValue: AnticipateValue(setting.Absent())}}}},
 	}
-	stagingReviewers := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: staging}
+	stagingReviewers := setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: staging}
 	stagingPrevent := setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: staging}
 	stagingWait := setting.Unit{Key: setting.EnvironmentWaitTimer, Environment: staging}
-	productionReviewers := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}
+	productionReviewers := setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: production}
 	productionPrevent := setting.Unit{Key: setting.EnvironmentPreventSelfReview, Environment: production}
 	productionWait := setting.Unit{Key: setting.EnvironmentWaitTimer, Environment: production}
 	stagingVariable := environmentVariableUnit(staging, mustVariableName(t, "REGION"))
@@ -916,7 +916,7 @@ func TestRepositoryPlan_LogicalChangesOfPreventSelfReviewAndWaitTimer(t *testing
 				{Unit: stagingVariable, Observed: github.Observed(setting.Absent()), Desired: setting.VariableValue("value"), Result: Mismatch, Applicability: Applicable()},
 			},
 			want: []LogicalChange{
-				change(RequiredReviewersUpdate, stagingReviewers, user1, stagingEnvironment, PreconditionBasis{Unit: stagingReviewers, AnticipatedValue: AnticipateValue(noReviewers)}),
+				change(ReviewerSetUpdate, stagingReviewers, user1, stagingEnvironment, PreconditionBasis{Unit: stagingReviewers, AnticipatedValue: AnticipateValue(noReviewers)}),
 				change(PreventSelfReviewUpdate, stagingPrevent, prevented, stagingEnvironment, PreconditionBasis{Unit: stagingPrevent, AnticipatedValue: AnticipateValue(allowed)}),
 				change(WaitTimerUpdate, stagingWait, setting.WaitTimerValue(0), stagingEnvironment, PreconditionBasis{Unit: stagingWait, AnticipatedValue: AnticipateValue(setting.WaitTimerValue(5))}),
 				{
@@ -951,7 +951,7 @@ func TestRepositoryPlan_LogicalChangesOfPreventSelfReviewAndWaitTimer(t *testing
 			},
 			want: []LogicalChange{
 				creation,
-				change(RequiredReviewersUpdate, productionReviewers, user1, PreconditionBasis{Unit: productionReviewers, AnticipatedValue: AnticipateValue(noReviewers)}),
+				change(ReviewerSetUpdate, productionReviewers, user1, PreconditionBasis{Unit: productionReviewers, AnticipatedValue: AnticipateValue(noReviewers)}),
 				change(PreventSelfReviewUpdate, productionPrevent, prevented, PreconditionBasis{Unit: productionPrevent, AnticipatedValue: AnticipateValue(allowed)}),
 				change(WaitTimerUpdate, productionWait, setting.WaitTimerValue(30), PreconditionBasis{Unit: productionWait, AnticipatedValue: AnticipateValue(setting.WaitTimerValue(0))}),
 			},

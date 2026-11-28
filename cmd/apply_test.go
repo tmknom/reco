@@ -352,12 +352,11 @@ func TestApply_PlannedChangeNoteOnStdoutBeforeApprovalPrompt(t *testing.T) {
 	writeConfig(t, workDir, "reco.yaml", `repositories:
   - name: owner/repo
     actions:
-      fork_pull_requests:
-        private_repositories:
-          run_workflows_from_fork_pull_requests: true
-          send_write_tokens_to_workflows: false
-          send_secrets_and_variables: true
-          require_approval_for_fork_pr_workflows: true
+      fork_pr_workflows_private_repos:
+        run_workflows_from_fork_pull_requests: true
+        send_write_tokens_to_workflows: false
+        send_secrets_and_variables: true
+        require_approval_for_fork_pr_workflows: true
 `)
 	server, opts := newGitHubServer(t, githubtest.Routes(t, map[string]githubtest.Response{
 		"GET /repos/owner/repo": {Status: http.StatusOK, Body: githubtest.RepositoryBody{ID: 1, Private: true}.JSON()},

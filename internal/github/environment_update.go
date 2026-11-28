@@ -31,14 +31,14 @@ func (c *Client) UpdateEnvironmentDeploymentBranchPolicy(ctx context.Context, re
 	return c.putEnvironment(ctx, "set deployment branch policy of environment", reference, name, encodeDeploymentBranchPolicyMode(mode))
 }
 
-// UpdateEnvironmentRequiredReviewers は、reference のリポジトリの name の Environment の担当者を reviewers にする PUT を一度だけ送る。再送はしない。
+// UpdateEnvironmentReviewerSet は、reference のリポジトリの name の Environment の担当者を reviewers にする PUT を一度だけ送る。再送はしない。
 // 本文は reviewers だけで、ほかの保護設定とデプロイ元制限を併送しない。GitHub は本文にない設定を保つ。
 // 空の集合は、担当者をすべて外す。担当者のいない保護ルールは宣言できない値で、空の集合として送ると保護ルールを外す要求になるため、不変条件の破れとして panic する。
-func (c *Client) UpdateEnvironmentRequiredReviewers(ctx context.Context, reference repository.Reference, name string, reviewers setting.ReviewerSet) (UpdateOutcome, error) {
+func (c *Client) UpdateEnvironmentReviewerSet(ctx context.Context, reference repository.Reference, name string, reviewers setting.ReviewerSet) (UpdateOutcome, error) {
 	if reviewers.IsRuleWithoutReviewers() {
 		panic(fmt.Sprintf("github: cannot send a rule without reviewers as the reviewers of environment %q", name))
 	}
-	return c.putEnvironment(ctx, "set required reviewers of environment", reference, name, encodeRequiredReviewers(reviewers))
+	return c.putEnvironment(ctx, "set required reviewers of environment", reference, name, encodeReviewerSet(reviewers))
 }
 
 // UpdateEnvironmentPreventSelfReview は、reference のリポジトリの name の Environment の自己承認の禁止を prevent にする PUT を一度だけ送る。再送はしない。
@@ -122,8 +122,8 @@ func encodeDeploymentBranchPolicyMode(mode setting.DeploymentBranchPolicyMode) [
 	panic(fmt.Sprintf("github: no request body for deployment branch policy %q", mode))
 }
 
-// encodeRequiredReviewers は reviewers を Environment の PUT の本文にする。担当者は宣言の順のまま、種類と ID だけを送る。
-func encodeRequiredReviewers(reviewers setting.ReviewerSet) []byte {
+// encodeReviewerSet は reviewers を Environment の PUT の本文にする。担当者は宣言の順のまま、種類と ID だけを送る。
+func encodeReviewerSet(reviewers setting.ReviewerSet) []byte {
 	type reviewer struct {
 		Type string `json:"type"`
 		ID   int64  `json:"id"`

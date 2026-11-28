@@ -41,7 +41,8 @@ func writeObservationResult(w io.Writer, target repository.Reference, observed g
 	writeActionsPermissions(&b, *observed.ActionsPermissions)
 	writeWorkflowPermissions(&b, *observed.WorkflowPermissions)
 	writeActionsAccess(&b, *observed.ActionsAccess)
-	writeForkPullRequests(&b, *observed.ForkPullRequestApproval, *observed.PrivateForkPullRequestWorkflows)
+	writeForkPullRequestApproval(&b, *observed.ForkPullRequestApproval)
+	writePrivateForkPullRequestWorkflows(&b, *observed.PrivateForkPullRequestWorkflows)
 	writeRetention(&b, *observed.Retention)
 	writeOIDCSubject(&b, *observed.OIDCSubject)
 	writeRepositoryVariables(&b, *observed.RepositoryVariables)
@@ -126,8 +127,43 @@ func writeActionsAccess(b *strings.Builder, a github.ActionsAccess) {
 	}
 }
 
-// writeRetention は actions.retention を書く。
+// writeForkPullRequestApproval は actions.fork_pr_contributor_approval を書く。
+// 観測不能なら、設定のない空のマッピングを残さないよう、まとまりごとコメントにする。
+// 非公開と知らない値以外の理由はこの設定に当たらず、それらの文言で黙って示さないよう不変条件の破れとして panic する。
+func writeForkPullRequestApproval(b *strings.Builder, a github.ForkPullRequestApproval) {
+	if policy, ok := a.ApprovalPolicy.Value(); ok {
+		fmt.Fprintf(b, "      fork_pr_contributor_approval:\n        approval_policy: %s\n", policy)
+		return
+	}
+	switch reason := a.ApprovalPolicy.UnavailableReason(); reason {
+	case github.UnavailablePrivateRepository:
+		b.WriteString("      # fork_pr_contributor_approval:\n      #   approval_policy: unavailable (the repository is private)\n")
+	case github.UnavailableUnknownValue:
+		fmt.Fprintf(b, "      # fork_pr_contributor_approval:\n      #   approval_policy: %s\n", unknownValueText)
+	default:
+		panic(fmt.Sprintf("show: undefined unavailable reason %d for approval_policy", int(reason)))
+	}
+}
+
+// writePrivateForkPullRequestWorkflows は actions.fork_pr_workflows_private_repos を書く。
+// 公開以外の理由はこの設定に当たらず、その文言で黙って示さないよう不変条件の破れとして panic する。
+func writePrivateForkPullRequestWorkflows(b *strings.Builder, w github.PrivateForkPullRequestWorkflows) {
+	if conditions, ok := w.Conditions.Value(); ok {
+		fmt.Fprintf(b, "      fork_pr_workflows_private_repos:\n"+
+			"        run_workflows_from_fork_pull_requests: %t\n        send_write_tokens_to_workflows: %t\n"+
+			"        send_secrets_and_variables: %t\n        require_approval_for_fork_pr_workflows: %t\n",
+			conditions.RunWorkflowsFromForkPullRequests, conditions.SendWriteTokensToWorkflows,
+			conditions.SendSecretsAndVariables, conditions.RequireApprovalForForkPullRequestWorkflows)
+		return
+	}
+	if reason := w.Conditions.UnavailableReason(); reason != github.UnavailablePublicRepository {
+		panic(fmt.Sprintf("show: undefined unavailable reason %d for fork_pr_workflows_private_repos", int(reason)))
+	}
+	b.WriteString("      # fork_pr_workflows_private_repos: unavailable (the repository is public)\n")
+}
+
+// writeRetention は actions.artifact_and_log_retention を書く。
 // 上限は設定宣言に書けない値のため、値の位置ではなく行末のコメントに書く。
 func writeRetention(b *strings.Builder, r github.Retention) {
-	fmt.Fprintf(b, "      retention:\n        days: %d # maximum allowed: %d\n", r.Days, r.MaximumAllowedDays)
+	fmt.Fprintf(b, "      artifact_and_log_retention:\n        days: %d # maximum allowed: %d\n", r.Days, r.MaximumAllowedDays)
 }

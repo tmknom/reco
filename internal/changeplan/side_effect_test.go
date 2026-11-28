@@ -235,9 +235,9 @@ func TestSideEffects_SecretScanning(t *testing.T) {
 }
 
 //trace:checks INV-003
-func TestSideEffects_RequiredReviewers(t *testing.T) {
+func TestSideEffects_ReviewerSet(t *testing.T) {
 	production := mustEnvironmentName(t, "production")
-	unit := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: production}
+	unit := setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: production}
 	octocat := setting.Reviewer{Type: setting.ReviewerUser, ID: 583231}
 	protection := func(preventSelfReview bool, reviewers ...setting.Reviewer) github.EnvironmentProtection {
 		return protectedByRule(setting.RequiredReviewers{Reviewers: reviewers}, preventSelfReview)

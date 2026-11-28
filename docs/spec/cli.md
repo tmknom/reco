@@ -94,11 +94,11 @@ $ GH_TOKEN=$(gh auth token) reco plan
 
 照合結果と適用可能性は別に示します。不一致（Mismatch）でも適用不能な場合があり、比較不能（Not Comparable）でも条件を確認できれば適用可能な変更予定となります。観測操作そのものの失敗は比較不能に含めず、エラーとして報告します。
 
-集計では、変更予定のあるリポジトリ数と変更予定数を示します。変更予定のあるリポジトリ数は、そのすべてが適用可能であることを意味しません。変更予定数は、確認済みの差分と比較不能な設定予定を合わせて管理設定の単位で数えます。二つを区別するのは変更予定の行の現在値であり、集計では区別しません。比較不能な設定予定も、宣言した値へ変える変更として利用者が承認するものだからです。更新要求の数や論理的な設定変更の数とは同一視しません。選択方式の Actions 許可条件（Selected actions の3項目）は一つの設定グループとして集計し、上位の Actions 許可ポリシーとは区別します。非公開リポジトリの Fork Pull Request ワークフローの実行条件（`private_repositories` の4項目）と、マージメッセージ（`squash_merge_commit` と `merge_commit` のそれぞれの `title` と `message`）も、それぞれ一つの設定グループとして集計します。変更の必要がないと確認できた場合に限り `No changes.` と表示します。
+集計では、変更予定のあるリポジトリ数と変更予定数を示します。変更予定のあるリポジトリ数は、そのすべてが適用可能であることを意味しません。変更予定数は、確認済みの差分と比較不能な設定予定を合わせて管理設定の単位で数えます。二つを区別するのは変更予定の行の現在値であり、集計では区別しません。比較不能な設定予定も、宣言した値へ変える変更として利用者が承認するものだからです。更新要求の数や論理的な設定変更の数とは同一視しません。選択方式の Actions 許可条件（Selected actions の3項目）は一つの設定グループとして集計し、上位の Actions 許可ポリシーとは区別します。非公開リポジトリの Fork Pull Request ワークフローの実行条件（`fork_pr_workflows_private_repos` の4項目）と、マージメッセージ（`squash_merge_commit` と `merge_commit` のそれぞれの `title` と `message`）も、それぞれ一つの設定グループとして集計します。変更の必要がないと確認できた場合に限り `No changes.` と表示します。
 
 一つのリポジトリに複数の変更予定があるときは、[YAML 設定仕様](configuration.md) の章と表の並びで表示します。設定宣言での記述順には従いません。
 
-関連リソースの変更予定も YAML 設定仕様の章の並びに従い、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。たとえば Repository Variables（10章）の変更予定は、Environments（11章）の変更予定より前に、Environments の変更予定は Security（12章）の変更予定より前に、Ruleset（13章）の変更予定は Security の変更予定のあとに表示します。Environment Variable の変更予定は、属する Environment の存在、`deployment_branch_policy`、`required_reviewers`、`prevent_self_review`、`wait_timer` の変更予定の直後に、`variables` に書いた順で表示し、次の Environment の変更予定はそのあとに表示します（YAML 設定仕様 11章）。
+関連リソースの変更予定も YAML 設定仕様の章の並びに従い、同じ章の中では設定宣言でその関連リソースを書いた順に表示します。名前の並びは YAML 設定仕様の表から決まらないためです。たとえば Repository Variables（10章）の変更予定は、Environments（11章）の変更予定より前に、Environments の変更予定は Security（12章）の変更予定より前に、Ruleset（13章）の変更予定は Security の変更予定のあとに表示します。Environment Variable の変更予定は、属する Environment の存在、`deployment_branch_policy`、`reviewers`、`prevent_self_review`、`wait_timer` の変更予定の直後に、`variables` に書いた順で表示し、次の Environment の変更予定はそのあとに表示します（YAML 設定仕様 11章）。
 
 存在しないと確認した関連リソースの作成と、削除は、確認済みの差分として示し、集計の変更予定数に数えます。存在しないと確認できたことは、比較できる事実だからです。作成と削除は、設定の値の変更と見分けられる形で示し、削除では失われる値を示します。宣言に名前のない関連リソースは、変更計画に示しません。
 
@@ -125,25 +125,25 @@ Plan: 1 repository to update, 4 changes
 Repositories checked: 1
 ```
 
-Environment の担当者の集合は、`environments.<名前>.required_reviewers` の形で示します。値は `[User 583231 (octocat), User 1234567]` の形で、担当者を種類と ID で示し、観測した login を括弧で添えます。現在値は GitHub が返した順、期待値は設定宣言の順に並べ、担当者がいなければ `[]` と示します。期待値の担当者のうち、現在の集合にいる担当者には観測した login を添え、いない担当者は ID だけを示します。reco は ID から login を解決しないためです。担当者を並べた値は長くなるため、設定の行の下に現在値（比較不能なら現在の状態）と、`->` に続けて期待値を1行ずつ示します。
+Environment の担当者の集合は、`environments.<名前>.reviewers` の形で示します。値は `[User 583231 (octocat), User 1234567]` の形で、担当者を種類と ID で示し、観測した login を括弧で添えます。現在値は GitHub が返した順、期待値は設定宣言の順に並べ、担当者がいなければ `[]` と示します。期待値の担当者のうち、現在の集合にいる担当者には観測した login を添え、いない担当者は ID だけを示します。reco は ID から login を解決しないためです。担当者を並べた値は長くなるため、設定の行の下に現在値（比較不能なら現在の状態）と、`->` に続けて期待値を1行ずつ示します。
 
 確認済みの差分には、`->` の行の下に、なくなる担当者を `Reviewers to remove:`、加わる担当者を `Reviewers to add:` の行で、この順に添えます。どちらも値と同じ形で、なくなる担当者は現在値の順、加わる担当者は期待値の順に並べ、該当する担当者がいない行は示しません。担当者をすべて外す変更は、期待値が `[]` になり、`Reviewers to remove:` に現在の担当者の全員を示します。
 
-GitHub 上に、担当者が1人もいない `required_reviewers` の保護ルールが残っていることがあります（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 3.2）。このときの現在値は `[] (protection rule without reviewers)` と示します。`required_reviewers: []` の宣言とは一致せず、この保護ルールをなくす変更予定になります。存在しない Environment に書いた `required_reviewers` は、`deployment_branch_policy` と同じく、属する先が存在しないため比較不能な設定予定で、現在値の位置に `(environment absent)` を示し、Environment の作成とは別の変更予定として数えます。
+GitHub 上に、担当者が1人もいない `required_reviewers` の保護ルールが残っていることがあります（[GitHub デプロイ環境 API 仕様](../research/deployment-environments.md) 3.2）。このときの現在値は `[] (protection rule without reviewers)` と示します。`reviewers: []` の宣言とは一致せず、この保護ルールをなくす変更予定になります。存在しない Environment に書いた `reviewers` は、`deployment_branch_policy` と同じく、属する先が存在しないため比較不能な設定予定で、現在値の位置に `(environment absent)` を示し、Environment の作成とは別の変更予定として数えます。
 
 ```text
 Repository: example/project-a
-  environments.production.required_reviewers:
+  environments.production.reviewers:
     [User 583231 (octocat), User 1234567 (hubot)]
     -> [User 583231 (octocat), User 7654321]
     Reviewers to remove: [User 1234567 (hubot)]
     Reviewers to add: [User 7654321]
-  environments.staging.required_reviewers:
+  environments.staging.reviewers:
     [User 583231 (octocat)]
     -> []
     Reviewers to remove: [User 583231 (octocat)]
   environments.preview: absent -> present
-  environments.preview.required_reviewers:
+  environments.preview.reviewers:
     (environment absent)
     -> [User 583231]
 
@@ -155,7 +155,7 @@ Environment の自己承認の禁止は `environments.<名前>.prevent_self_revi
 
 ```text
 Repository: example/project-a
-  environments.production.required_reviewers:
+  environments.production.reviewers:
     []
     -> [User 583231]
     Reviewers to add: [User 583231]
@@ -312,7 +312,7 @@ Repositories checked: 1
 
 ```text
 Repository: example/private-project
-  actions.fork_pull_requests.private_repositories:
+  actions.fork_pr_workflows_private_repos:
     run_workflows_from_fork_pull_requests: false, send_write_tokens_to_workflows: false, send_secrets_and_variables: false, require_approval_for_fork_pr_workflows: false
     -> run_workflows_from_fork_pull_requests: true, send_write_tokens_to_workflows: true, send_secrets_and_variables: true, require_approval_for_fork_pr_workflows: true
     Note: Workflows triggered by pull requests from forks get a GITHUB_TOKEN with write permissions
@@ -423,7 +423,7 @@ Repositories checked: 1
 
 変更予定に添える行には、次の四つがあり、この順に示します。どれも変更予定の行の下に示し、変更計画の一部として stdout へ表示し、`apply` では承認プロンプトの前に表示します。どの変更予定にどの行を添えるか（適用不能になる条件、変更予定の注記、再開する設定、変更に伴う副作用）は、[設定ごとの設計](../design/settings/README.md) の各文書の「適用可能性と副作用」が定めます。
 
-- **`Applicability: not applicable (<理由>)`**：安全な変更に必要な条件を確認できない変更予定に、変更予定の行のすぐ下に添える。理由は、セミコロンの前に何が成り立っていないかを、後ろに設定ファイルの直し方を示す
+- **`Applicability: not applicable (<理由>)`**：安全な変更に必要な条件を確認できない変更予定に、変更予定の行のすぐ下に添える。理由は、セミコロンの前に何が成り立っていないかを、後ろに設定ファイルの直し方を示す。宣言を消す直し方では、消すキーを示す。マッピングの唯一のキーである設定（`access_level`、`approval_policy`）は、そのマッピングのキー（`access`、`fork_pr_contributor_approval`）を示す。設定のキーだけを消すと値のないマッピングが残り、入力検証で拒否されるため（[YAML 設定仕様](configuration.md) 14.1節）
 - **`Note:`**：変更予定の注記（[ドメインモデル](../design/domain.md) の計画）を示す。宣言した変更が GitHub 上で何を意味するかの事実を述べ、reco による設定の良し悪しの評価は含めない。適用可能性を変えず、承認とは別の確認も求めない。宣言の外で起きる変化ではないため、`Side effect:` とは別の行にする。後で示す、変更結果の末尾の注記（5.2節）とは、字下げと示す場面で区別される
 - **`Previous settings:`**：再開する設定（[ドメインモデル](../design/domain.md) の計画）を示す。値を示せないときは、残っていた値で再開することと、値を示せない理由を示す。値が失われるわけではないため、`Side effect:` とは別の行にし、`Side effect:` の前に示す
 - **`Side effect:`**：宣言した変更に伴って GitHub が管理範囲外の設定を削除するか変える場合に、その設定と、reco が観測する設定なら現在値を示す。reco が観測しない設定は、起きる変化だけを示す。値を取得できず失われるかどうかが分からないときは、失われる可能性と値を示せない理由を示す。副作用を伴う変更予定の最後の行として示す
@@ -446,7 +446,7 @@ Plan cannot be applied.
 ```text
 Repository: example/project-a
   actions.access.access_level: (public repository) -> none
-    Applicability: not applicable (the repository is public; remove access_level, which applies only to private repositories)
+    Applicability: not applicable (the repository is public; remove access, which applies only to private repositories)
 
 Plan: 1 repository to update, 1 change
 Repositories checked: 1
@@ -456,21 +456,21 @@ Plan cannot be applied.
 
 ```text
 Repository: example/project-a
-  actions.fork_pull_requests.private_repositories:
+  actions.fork_pr_workflows_private_repos:
     (public repository)
     -> run_workflows_from_fork_pull_requests: true, send_write_tokens_to_workflows: false, send_secrets_and_variables: false, require_approval_for_fork_pr_workflows: true
-    Applicability: not applicable (the repository is public; remove private_repositories, which applies only to private repositories)
+    Applicability: not applicable (the repository is public; remove fork_pr_workflows_private_repos, which applies only to private repositories)
 ```
 
 ```text
 Repository: example/private-project
-  actions.fork_pull_requests.approval_policy: (private repository) -> all_external_contributors
-    Applicability: not applicable (the repository is private; remove approval_policy, which applies only to public repositories)
+  actions.fork_pr_contributor_approval.approval_policy: (private repository) -> all_external_contributors
+    Applicability: not applicable (the repository is private; remove fork_pr_contributor_approval, which applies only to public repositories)
 ```
 
 ```text
 Repository: example/project-a
-  actions.retention.days: 90 -> 120
+  actions.artifact_and_log_retention.days: 90 -> 120
     Applicability: not applicable (120 days exceeds the maximum of 90 days that GitHub allows for this repository; declare days: 90 or less)
 ```
 
@@ -488,7 +488,7 @@ Plan cannot be applied.
 ```text
 Repository: example/project-a
   environments.production.prevent_self_review: false -> true
-    Applicability: not applicable (the environment would have no required reviewers, which GitHub requires to set prevent_self_review; declare required_reviewers with at least one reviewer or remove prevent_self_review)
+    Applicability: not applicable (the environment would have no required reviewers, which GitHub requires to set prevent_self_review; declare reviewers with at least one reviewer or remove prevent_self_review)
 
 Plan: 1 repository to update, 1 change
 Repositories checked: 1
@@ -674,7 +674,7 @@ Repository: example/project-a
 
 ```text
 Repository: example/project-a
-  environments.staging.required_reviewers:
+  environments.staging.reviewers:
     [User 583231 (octocat)]
     -> []
     Reviewers to remove: [User 583231 (octocat)]
@@ -781,7 +781,7 @@ $ reco apply
 Configuration: ./reco.yaml
 
 Repository: example/private-project
-  actions.fork_pull_requests.private_repositories:
+  actions.fork_pr_workflows_private_repos:
     run_workflows_from_fork_pull_requests: false, send_write_tokens_to_workflows: false, send_secrets_and_variables: false, require_approval_for_fork_pr_workflows: false
     -> run_workflows_from_fork_pull_requests: true, send_write_tokens_to_workflows: false, send_secrets_and_variables: true, require_approval_for_fork_pr_workflows: true
     Note: Workflows triggered by pull requests from forks can use secrets and variables
@@ -828,7 +828,7 @@ Repositories updated: 1
 
 いずれかの論理的な設定変更で更新操作を開始しており、完了しなかった論理的な設定変更があるときは、変更結果の末尾に **変更結果の注記**（`Note:`）を添えます。開始した更新操作に成否不明があれば自動で再送していないことを、なければ自動ロールバックを行っていないことを示します。どちらの変更結果の注記にも、`reco plan` で残りの変更を確かめられることを添えます（`Run reco plan to see the remaining changes.`）。一つの変更の途中で止まった場合も、`plan` は先行する更新操作のあとの現在値を変更計画に示すため、利用者は残った中間状態と残りの変更を同じ表示で確かめられます。複数の更新操作からなる論理的な設定変更では、すべての更新操作を判定に含めます。この判定は、選択したすべてのリポジトリの論理的な設定変更について行います。先に完了したリポジトリのあとで別のリポジトリが完了しなかった場合も、適用済みの変更が残るため変更結果の注記を添えます。
 
-論理的な設定変更ごとに結果を表示するときは、論理的な設定変更を、それが変える管理設定の名前で示します。二つ以上の管理設定を変える論理的な設定変更は、変更計画に示す順に ` + ` でつないで示します（`actions.permissions.allowed_actions + actions.permissions.selected_actions`、`general.allow_squash_merge + general.allow_merge_commit + general.allow_rebase_merge`、`environments.<名前> + environments.<名前>.deployment_branch_policy`、`environments.<名前>.required_reviewers + environments.<名前>.prevent_self_review`）。名前は設定宣言の綴りです。同じ管理設定を変える更新操作が複数あっても、その管理設定の名前は一度だけ示します。変更結果を一つにまとめても、承認の前に提示する変更予定は管理設定ごとの行のままです。選択方式の Actions 許可条件の3項目と、非公開リポジトリの Fork Pull Request ワークフローの実行条件の4項目は、個別の変更として示しません。
+論理的な設定変更ごとに結果を表示するときは、論理的な設定変更を、それが変える管理設定の名前で示します。二つ以上の管理設定を変える論理的な設定変更は、変更計画に示す順に ` + ` でつないで示します（`actions.permissions.allowed_actions + actions.permissions.selected_actions`、`general.allow_squash_merge + general.allow_merge_commit + general.allow_rebase_merge`、`environments.<名前> + environments.<名前>.deployment_branch_policy`、`environments.<名前>.reviewers + environments.<名前>.prevent_self_review`）。名前は設定宣言の綴りです。同じ管理設定を変える更新操作が複数あっても、その管理設定の名前は一度だけ示します。変更結果を一つにまとめても、承認の前に提示する変更予定は管理設定ごとの行のままです。選択方式の Actions 許可条件の3項目と、非公開リポジトリの Fork Pull Request ワークフローの実行条件の4項目は、個別の変更として示しません。
 
 関連リソースの作成と削除も、完了すれば `updated` と示します。何を作成し、何を削除したかは、承認の前に提示した変更予定が示します。Repository Variable と Environment Variable の変更結果と stderr のエラーは、変数の名前だけを示し、変数の値と更新要求の本文は示しません。削除でも、失われた値を示しません。Ruleset の削除の変更結果と stderr のエラーも、Ruleset の名前だけを示し、消した値を示しません。
 
@@ -854,7 +854,7 @@ Ruleset の作成か値の変更のあとに Ruleset が存在しなかった場
 
 設定の変更のあとに、GitHub がその設定に reco の知らない値を返した場合は、`not confirmed (GitHub returned a value that reco does not know)` と示します。`web_commit_signoff_required` の変更のあとに、GitHub がその値を返さなかった場合は、`not confirmed (GitHub did not return the value)` と示します。どちらも、値を期待値と比べられないためで、設定が効いていないことは意味しないため `not in effect` とは示しません。
 
-変更対象外の設定は、管理設定と同じ形の名前で示します。マージメッセージは `general.squash_merge_commit` と `general.merge_commit` の名前で、値は4章と同じ `title: <タイトル>, message: <本文>` の形で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.required_reviewers`、`environments.<名前>.prevent_self_review`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` が4章と同じ表記（`30 minutes`、保護ルールがなければ `0 minutes`）です。`required_reviewers` は担当者の集合で、4章と同じ表記（担当者がいなければ `[]`、担当者のいない保護ルールは `[] (protection rule without reviewers)`）で GitHub が返した順に示し、login は添えません。login だけの変化は予期しない変化に数えないためです。`prevent_self_review` と `can_admins_bypass` は `true` か `false` で、`prevent_self_review` は `required_reviewers` の保護ルールがなければ `false` です。Environment の `PUT` の更新操作（方式、担当者の集合、自己承認の禁止、デプロイの待機時間の変更）のあとは、同じ Environment のデプロイ元制限の方式も `environments.<名前>.deployment_branch_policy` の名前で比べ、値は方式の名前（`all`、`protected_branches`、`selected`）で示します。個別パターンは別の更新エンドポイントの設定のため、比べず、値にも含めません。複数が変わっていれば、`deployment_branch_policy`、`wait_timer`、`required_reviewers`、`prevent_self_review`、`can_admins_bypass` の順に1行ずつ示します。
+変更対象外の設定は、管理設定と同じ形の名前で示します。マージメッセージは `general.squash_merge_commit` と `general.merge_commit` の名前で、値は4章と同じ `title: <タイトル>, message: <本文>` の形で示します。Environment の保護設定は、`environments.<名前>.wait_timer`、`environments.<名前>.reviewers`、`environments.<名前>.prevent_self_review`、`environments.<名前>.can_admins_bypass` と示します。名前は設定宣言の綴りです。値は、`wait_timer` が4章と同じ表記（`30 minutes`、保護ルールがなければ `0 minutes`）です。`reviewers` は担当者の集合で、4章と同じ表記（担当者がいなければ `[]`、担当者のいない保護ルールは `[] (protection rule without reviewers)`）で GitHub が返した順に示し、login は添えません。login だけの変化は予期しない変化に数えないためです。`prevent_self_review` と `can_admins_bypass` は `true` か `false` で、`prevent_self_review` は `required_reviewers` の保護ルールがなければ `false` です。Environment の `PUT` の更新操作（方式、担当者の集合、自己承認の禁止、デプロイの待機時間の変更）のあとは、同じ Environment のデプロイ元制限の方式も `environments.<名前>.deployment_branch_policy` の名前で比べ、値は方式の名前（`all`、`protected_branches`、`selected`）で示します。個別パターンは別の更新エンドポイントの設定のため、比べず、値にも含めません。複数が変わっていれば、`deployment_branch_policy`、`wait_timer`、`reviewers`、`prevent_self_review`、`can_admins_bypass` の順に1行ずつ示します。
 
 更新直前か更新後の片方で GitHub が reco の知らない値を返し、もう片方で値を返した変更対象外の設定は、変化として示し、知らない値の側を4章と同じ `(unknown value)` と示します。知らない値は reco の知るどの値とも異なるためです。
 
@@ -1162,7 +1162,7 @@ Note: Some changes may already have been applied. No automatic rollback was perf
 
 `show` は設定宣言を使用せず、指定リポジトリについて GitHub から確認できた管理設定の値と関連リソースを表示します。認証・権限・通信による観測操作の失敗は、正常な観測結果ではなくエラーとします。GitHub の設定は変更しません。
 
-表示は、YAML 設定仕様の設定宣言と同じ構造の YAML です。ルートの `repositories` に、`name` を指定したリポジトリとする要素を一つ置き、その下に `general`、`actions`（`permissions`、`workflow`、`access`、`fork_pull_requests`、`retention`、`oidc_subject`、`variables`）、`environments`、`security`、`rulesets` の順で、確認できた値を設定宣言のキーで示します。`name` には、GitHub が返す名前ではなく、`--repo` に指定したリポジトリ指定を示します。観測操作の失敗の文言と同じ名前で対象を示すためです。設定宣言と同じ構造にするのは、表示から設定宣言のどこに何を書けばよいかを読み取れるようにし、表示をそのまま設定宣言の出発点にできるようにするためです。観測した値が設定宣言の入力検証を通る場合（この章の末尾）、表示を変えずに設定宣言として読むと、管理範囲は表示したすべての管理設定と Environment と Repository Variable と Environment Variable と Ruleset になり、期待値は観測時点の値と一致します。
+表示は、YAML 設定仕様の設定宣言と同じ構造の YAML です。ルートの `repositories` に、`name` を指定したリポジトリとする要素を一つ置き、その下に `general`、`actions`（`permissions`、`workflow`、`access`、`fork_pr_contributor_approval`、`fork_pr_workflows_private_repos`、`artifact_and_log_retention`、`oidc_subject`、`variables`）、`environments`、`security`、`rulesets` の順で、確認できた値を設定宣言のキーで示します。`name` には、GitHub が返す名前ではなく、`--repo` に指定したリポジトリ指定を示します。観測操作の失敗の文言と同じ名前で対象を示すためです。設定宣言と同じ構造にするのは、表示から設定宣言のどこに何を書けばよいかを読み取れるようにし、表示をそのまま設定宣言の出発点にできるようにするためです。観測した値が設定宣言の入力検証を通る場合（この章の末尾）、表示を変えずに設定宣言として読むと、管理範囲は表示したすべての管理設定と Environment と Repository Variable と Environment Variable と Ruleset になり、期待値は観測時点の値と一致します。
 
 ```text
 $ reco show --repo example/project-a
@@ -1195,14 +1195,14 @@ repositories:
         can_approve_pull_request_reviews: false
       access:
         access_level: none
-      fork_pull_requests:
-        # approval_policy: unavailable (the repository is private)
-        private_repositories:
-          run_workflows_from_fork_pull_requests: false
-          send_write_tokens_to_workflows: false
-          send_secrets_and_variables: false
-          require_approval_for_fork_pr_workflows: false
-      retention:
+      # fork_pr_contributor_approval:
+      #   approval_policy: unavailable (the repository is private)
+      fork_pr_workflows_private_repos:
+        run_workflows_from_fork_pull_requests: false
+        send_write_tokens_to_workflows: false
+        send_secrets_and_variables: false
+        require_approval_for_fork_pr_workflows: false
+      artifact_and_log_retention:
         days: 90 # maximum allowed: 400
       oidc_subject:
         use_default: true
@@ -1240,14 +1240,13 @@ GitHub が、タイトルか本文に reco の知らない値を返したとき�
       # web_commit_signoff_required: unavailable (GitHub did not return the value)
 ```
 
-マージメッセージのほかの列挙の設定でも、GitHub が reco の知らない値を返したときは、その設定の行を YAML のコメントとし、値の位置に `unavailable (GitHub returned a value that reco does not know)` と示します。ほかの行はいつもどおり示し、エラーにしません。知らない値そのものは示しません。当たるのは、`allowed_actions`、`default_workflow_permissions`、`access_level`、`approval_policy`、`secret_scanning`、`secret_scanning_push_protection`、Environment の `deployment_branch_policy` と `required_reviewers` です。設定ごとの形は次のとおりです。
+マージメッセージのほかの列挙の設定でも、GitHub が reco の知らない値を返したときは、その設定の行を YAML のコメントとし、値の位置に `unavailable (GitHub returned a value that reco does not know)` と示します。ほかの行はいつもどおり示し、エラーにしません。知らない値そのものは示しません。当たるのは、`allowed_actions`、`default_workflow_permissions`、`access_level`、`approval_policy`、`secret_scanning`、`secret_scanning_push_protection`、Environment の `deployment_branch_policy` と `reviewers` です。設定ごとの形は次のとおりです。
 
 - `allowed_actions`：その行だけをコメントにする。`selected_actions` の行は示さない。確認できない理由が `allowed_actions` の行から分かるため。`sha_pinning_required` はいつもどおり示す
 - `default_workflow_permissions`、`secret_scanning`、`secret_scanning_push_protection`：その行だけをコメントにする
-- `access_level`：公開リポジトリと同じく、`access` とその下の行をコメントにする
-- `approval_policy`：`fork_pull_requests` とその下の2行をコメントにする。値を持つ行が残らず、設定のない空のマッピングは設定宣言として読めないため
+- `access_level`、`approval_policy`：公開範囲で確認できないときと同じく、`access` か `fork_pr_contributor_approval` とその下の行をコメントにする
 - Environment の `deployment_branch_policy`：`mode` と `patterns` の行を示さず、`deployment_branch_policy` の値の位置に示す。方式だけを示すと、個別パターンのない宣言として読めるため
-- Environment の `required_reviewers`：その行だけをコメントにする。`prevent_self_review` と `wait_timer` はいつもどおり示す
+- Environment の `reviewers`：その行だけをコメントにする。`prevent_self_review` と `wait_timer` はいつもどおり示す
 
 ```text
       permissions:
@@ -1257,15 +1256,15 @@ GitHub が、タイトルか本文に reco の知らない値を返したとき�
 ```
 
 ```text
-      # fork_pull_requests:
+      # fork_pr_contributor_approval:
       #   approval_policy: unavailable (GitHub returned a value that reco does not know)
-      #   private_repositories: unavailable (the repository is public)
+      # fork_pr_workflows_private_repos: unavailable (the repository is public)
 ```
 
 ```text
       - name: "production"
         # deployment_branch_policy: unavailable (GitHub returned a value that reco does not know)
-        # required_reviewers: unavailable (GitHub returned a value that reco does not know)
+        # reviewers: unavailable (GitHub returned a value that reco does not know)
         prevent_self_review: true
         wait_timer: 0 # minutes
         # variables: none
@@ -1300,18 +1299,18 @@ Actions が無効のリポジトリでは、`enabled` だけを示します。
       #   access_level: unavailable (the repository is public)
 ```
 
-Fork からの Pull Request のワークフローの設定は、`fork_pull_requests` に示します。Fork Pull Request ワークフローの承認ポリシーを `approval_policy` に、GitHub が返した値（`first_time_contributors_new_to_github`、`first_time_contributors`、`all_external_contributors`）で示します。非公開リポジトリの Fork Pull Request ワークフローの実行条件を `private_repositories` に、4項目（`run_workflows_from_fork_pull_requests`、`send_write_tokens_to_workflows`、`send_secrets_and_variables`、`require_approval_for_fork_pr_workflows`）を `true` か `false` で、GitHub が返したとおりに示します。非公開リポジトリでは `approval_policy` の値の位置に `unavailable (the repository is private)` と、公開リポジトリでは `private_repositories` の値の位置に `unavailable (the repository is public)` と示します。公開リポジトリの表示は次のとおりで、`fork_pull_requests` と `approval_policy` は設定宣言として読めます。非公開リポジトリの表示は、この章の冒頭の例のとおりで、`fork_pull_requests` と `private_repositories` 以下が設定宣言として読めます。
+Fork Pull Request ワークフローの承認ポリシーは、`fork_pr_contributor_approval` の `approval_policy` に、GitHub が返した値（`first_time_contributors_new_to_github`、`first_time_contributors`、`all_external_contributors`）で示します。非公開リポジトリの Fork Pull Request ワークフローの実行条件は、`fork_pr_workflows_private_repos` に、4項目（`run_workflows_from_fork_pull_requests`、`send_write_tokens_to_workflows`、`send_secrets_and_variables`、`require_approval_for_fork_pr_workflows`）を `true` か `false` で、GitHub が返したとおりに示します。非公開リポジトリでは、`access` と同じく、`fork_pr_contributor_approval` とその下の行をコメントとし、`approval_policy` の値の位置に `unavailable (the repository is private)` と示します。表示はこの章の冒頭の例のとおりです。公開リポジトリでは、実行条件が設定グループのため、`fork_pr_workflows_private_repos` の値の位置に `unavailable (the repository is public)` と示します。
 
 ```text
-      fork_pull_requests:
+      fork_pr_contributor_approval:
         approval_policy: all_external_contributors
-        # private_repositories: unavailable (the repository is public)
+      # fork_pr_workflows_private_repos: unavailable (the repository is public)
 ```
 
-Artifact と Log などの保持期間は、`retention` の `days` に保持日数で示します。GitHub が返した、保持日数の上限を、行末の YAML のコメントで `# maximum allowed: <日数>` と示します。上限は設定宣言に書けない値であり、値の位置に書くと設定宣言の整数として読めないためです。保持日数は公開範囲によらず示し、上限を超える日数もそのまま示します。
+Artifact と Log などの保持期間は、`artifact_and_log_retention` の `days` に保持日数で示します。GitHub が返した、保持日数の上限を、行末の YAML のコメントで `# maximum allowed: <日数>` と示します。上限は設定宣言に書けない値であり、値の位置に書くと設定宣言の整数として読めないためです。保持日数は公開範囲によらず示し、上限を超える日数もそのまま示します。
 
 ```text
-      retention:
+      artifact_and_log_retention:
         days: 90 # maximum allowed: 90
 ```
 
@@ -1369,27 +1368,27 @@ Environment は `environments` に示します。Environment ごとに、`name` 
               name: "release/*"
             - type: tag
               name: "v*"
-        required_reviewers: []
+        reviewers: []
         prevent_self_review: false
         wait_timer: 0 # minutes
         # variables: none
       - name: "staging"
         deployment_branch_policy:
           mode: protected_branches
-        required_reviewers: []
+        reviewers: []
         prevent_self_review: false
         wait_timer: 0 # minutes
         # variables: none
 ```
 
-Environment ごとに、`deployment_branch_policy` のあとに、担当者を `required_reviewers` に `type` と `id` の要素として、GitHub が返した順に示します。担当者がいなければ `required_reviewers: []` と示します。種類が利用者の担当者には、`id` の行末の YAML のコメントで login を示します。設定宣言に書く ID を、login から探せるようにするためです。担当者が1人もいない `required_reviewers` の保護ルールが残っているときは、`# required_reviewers: no reviewers (a protection rule without reviewers remains)` とコメントで示します。`required_reviewers: []` と示すと、設定宣言として読んだときに観測した状態と一致しないためです。
+Environment ごとに、`deployment_branch_policy` のあとに、担当者を `reviewers` に `type` と `id` の要素として、GitHub が返した順に示します。担当者がいなければ `reviewers: []` と示します。種類が利用者の担当者には、`id` の行末の YAML のコメントで login を示します。設定宣言に書く ID を、login から探せるようにするためです。担当者が1人もいない `required_reviewers` の保護ルールが残っているときは、`# reviewers: no reviewers (a protection rule without reviewers remains)` とコメントで示します。`reviewers: []` と示すと、設定宣言として読んだときに観測した状態と一致しないためです。
 
 ```text
     environments:
       - name: "production"
         deployment_branch_policy:
           mode: protected_branches
-        required_reviewers:
+        reviewers:
           - type: User
             id: 583231 # octocat
           - type: User
@@ -1400,13 +1399,13 @@ Environment ごとに、`deployment_branch_policy` のあとに、担当者を `
       - name: "staging"
         deployment_branch_policy:
           mode: all
-        required_reviewers: []
+        reviewers: []
         prevent_self_review: false
         wait_timer: 0 # minutes
         # variables: none
 ```
 
-Environment ごとに、`required_reviewers` のあとに、自己承認の禁止を `prevent_self_review` に `true` か `false` で、デプロイの待機時間を `wait_timer` に分の整数で示します。`wait_timer` の行末には、YAML のコメントで単位を `# minutes` と示します。単位は設定宣言に書けず、値の位置に書くと設定宣言の整数として読めないためです。`required_reviewers` の保護ルールがなければ `prevent_self_review: false` と、待機時間の保護ルールがなければ `wait_timer: 0` と示します。照合と同じ読み方で、設定宣言として読んだときに観測した状態と一致するためです。担当者のいない保護ルールが残っているときも、その保護ルールが持つ `prevent_self_review` を示します。
+Environment ごとに、`reviewers` のあとに、自己承認の禁止を `prevent_self_review` に `true` か `false` で、デプロイの待機時間を `wait_timer` に分の整数で示します。`wait_timer` の行末には、YAML のコメントで単位を `# minutes` と示します。単位は設定宣言に書けず、値の位置に書くと設定宣言の整数として読めないためです。`required_reviewers` の保護ルールがなければ `prevent_self_review: false` と、待機時間の保護ルールがなければ `wait_timer: 0` と示します。照合と同じ読み方で、設定宣言として読んだときに観測した状態と一致するためです。担当者のいない保護ルールが残っているときも、その保護ルールが持つ `prevent_self_review` を示します。
 
 Environment ごとに、`wait_timer` のあとに、その Environment の Environment Variables を `variables` に示します。名前と値の示し方は Repository Variables と同じです。Repository Variable と同じ名前の変数や、別の Environment と同じ名前の変数も、それぞれの Environment の下に示します。一つもないときは `# variables: none` と示します。
 
@@ -1415,7 +1414,7 @@ Environment ごとに、`wait_timer` のあとに、その Environment の Envir
       - name: "production"
         deployment_branch_policy:
           mode: protected_branches
-        required_reviewers: []
+        reviewers: []
         prevent_self_review: false
         wait_timer: 0 # minutes
         variables:
@@ -1424,7 +1423,7 @@ Environment ごとに、`wait_timer` のあとに、その Environment の Envir
       - name: "staging"
         deployment_branch_policy:
           mode: all
-        required_reviewers: []
+        reviewers: []
         prevent_self_review: false
         wait_timer: 0 # minutes
         # variables: none

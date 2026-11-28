@@ -222,7 +222,7 @@ func TestDocumentPrivateForkPullRequestWorkflows(t *testing.T) {
 		{name: "four items are read into their own fields", src: enabled, want: setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, SendSecretsAndVariables: true}},
 		{name: "swapped bool values are read into their own fields", src: "run_workflows_from_fork_pull_requests: true\nsend_write_tokens_to_workflows: true\nsend_secrets_and_variables: false\nrequire_approval_for_fork_pr_workflows: true\n", want: setting.PrivateForkPullRequestWorkflowConditions{RunWorkflowsFromForkPullRequests: true, SendWriteTokensToWorkflows: true, RequireApprovalForForkPullRequestWorkflows: true}},
 		{name: "all false is valid", src: disabled, want: setting.PrivateForkPullRequestWorkflowConditions{}},
-		{name: "only two items are rejected naming both missing items in definition order", src: "run_workflows_from_fork_pull_requests: true\nsend_secrets_and_variables: false\n", wantReason: "missing send_write_tokens_to_workflows, require_approval_for_fork_pr_workflows; private_repositories requires all of run_workflows_from_fork_pull_requests, send_write_tokens_to_workflows, send_secrets_and_variables, require_approval_for_fork_pr_workflows"},
+		{name: "only two items are rejected naming both missing items in definition order", src: "run_workflows_from_fork_pull_requests: true\nsend_secrets_and_variables: false\n", wantReason: "missing send_write_tokens_to_workflows, require_approval_for_fork_pr_workflows; fork_pr_workflows_private_repos requires all of run_workflows_from_fork_pull_requests, send_write_tokens_to_workflows, send_secrets_and_variables, require_approval_for_fork_pr_workflows"},
 		{name: "unknown key is rejected listing the four items", src: enabled + "approval_policy: all_external_contributors\n", wantReason: `unknown key "approval_policy"; expected run_workflows_from_fork_pull_requests, send_write_tokens_to_workflows, send_secrets_and_variables, require_approval_for_fork_pr_workflows`},
 		{name: "run disabled with write tokens enabled is rejected naming it", src: strings.Replace(disabled, "send_write_tokens_to_workflows: false", "send_write_tokens_to_workflows: true", 1), wantReason: "P (line 1, column 1): run_workflows_from_fork_pull_requests false cannot be declared with send_write_tokens_to_workflows true; GitHub saves them as false"},
 		{name: "run disabled with two items enabled is rejected naming both in definition order", src: "run_workflows_from_fork_pull_requests: false\nsend_write_tokens_to_workflows: false\nsend_secrets_and_variables: true\nrequire_approval_for_fork_pr_workflows: true\n", wantReason: "cannot be declared with send_secrets_and_variables true, require_approval_for_fork_pr_workflows true;"},
@@ -644,8 +644,8 @@ func TestDocumentDeclaration(t *testing.T) {
 			}},
 		},
 		{
-			name: "fork_pull_requests alone is read into the fork pull request approval desired state",
-			src:  second + "    actions:\n      fork_pull_requests:\n        approval_policy: all_external_contributors\n",
+			name: "fork_pr_contributor_approval alone is read into the fork pull request approval desired state",
+			src:  second + "    actions:\n      fork_pr_contributor_approval:\n        approval_policy: all_external_contributors\n",
 			want: Declaration{Repositories: []RepositoryDeclaration{
 				first,
 				{
@@ -658,8 +658,8 @@ func TestDocumentDeclaration(t *testing.T) {
 			}},
 		},
 		{
-			name: "retention alone is read into the retention desired state",
-			src:  second + "    actions:\n      retention:\n        days: 30\n",
+			name: "artifact_and_log_retention alone is read into the retention desired state",
+			src:  second + "    actions:\n      artifact_and_log_retention:\n        days: 30\n",
 			want: Declaration{Repositories: []RepositoryDeclaration{
 				first,
 				{
@@ -686,8 +686,8 @@ func TestDocumentDeclaration(t *testing.T) {
 			}},
 		},
 		{
-			name: "private_repositories alone is read into the private fork pull request workflows desired state",
-			src:  second + "    actions:\n      fork_pull_requests:\n        private_repositories:\n          run_workflows_from_fork_pull_requests: true\n          send_write_tokens_to_workflows: false\n          send_secrets_and_variables: false\n          require_approval_for_fork_pr_workflows: true\n",
+			name: "fork_pr_workflows_private_repos alone is read into the private fork pull request workflows desired state",
+			src:  second + "    actions:\n      fork_pr_workflows_private_repos:\n        run_workflows_from_fork_pull_requests: true\n        send_write_tokens_to_workflows: false\n        send_secrets_and_variables: false\n        require_approval_for_fork_pr_workflows: true\n",
 			want: Declaration{Repositories: []RepositoryDeclaration{
 				first,
 				{
@@ -700,8 +700,8 @@ func TestDocumentDeclaration(t *testing.T) {
 			}},
 		},
 		{
-			name: "approval_policy and private_repositories together are read into their own desired states",
-			src:  second + "    actions:\n      access:\n        access_level: none\n      fork_pull_requests:\n        approval_policy: first_time_contributors\n        private_repositories:\n          run_workflows_from_fork_pull_requests: true\n          send_write_tokens_to_workflows: false\n          send_secrets_and_variables: false\n          require_approval_for_fork_pr_workflows: true\n",
+			name: "fork_pr_contributor_approval and fork_pr_workflows_private_repos together are read into their own desired states",
+			src:  second + "    actions:\n      access:\n        access_level: none\n      fork_pr_contributor_approval:\n        approval_policy: first_time_contributors\n      fork_pr_workflows_private_repos:\n        run_workflows_from_fork_pull_requests: true\n        send_write_tokens_to_workflows: false\n        send_secrets_and_variables: false\n        require_approval_for_fork_pr_workflows: true\n",
 			want: Declaration{Repositories: []RepositoryDeclaration{
 				first,
 				{
@@ -716,10 +716,10 @@ func TestDocumentDeclaration(t *testing.T) {
 			}},
 		},
 		{
-			name:       "unknown key in actions is rejected listing permissions, workflow, and access",
+			name:       "unknown key in actions is rejected listing every actions key in order",
 			src:        second + "    actions:\n      secrets: {}\n",
 			wantPath:   "repositories[1].actions",
-			wantReason: `unknown key "secrets"; expected permissions, workflow, access`,
+			wantReason: `unknown key "secrets"; expected permissions, workflow, access, fork_pr_contributor_approval, fork_pr_workflows_private_repos, artifact_and_log_retention, oidc_subject, variables`,
 		},
 		// Environments
 		{
@@ -831,28 +831,28 @@ func TestDocumentDeclaration(t *testing.T) {
 		},
 		// Fork pull requests
 		{
-			name:       "unknown key in fork_pull_requests is rejected",
-			src:        second + "    actions:\n      fork_pull_requests:\n        approval_policy: first_time_contributors\n        days: 30\n",
-			wantPath:   "repositories[1].actions.fork_pull_requests",
-			wantReason: `unknown key "days"; expected approval_policy, private_repositories`,
+			name:       "unknown key in fork_pr_contributor_approval is rejected listing approval_policy",
+			src:        second + "    actions:\n      fork_pr_contributor_approval:\n        approval_policy: first_time_contributors\n        days: 30\n",
+			wantPath:   "repositories[1].actions.fork_pr_contributor_approval",
+			wantReason: `unknown key "days"; expected approval_policy`,
 		},
 		{
-			name:       "invalid private_repositories is rejected at actions.fork_pull_requests.private_repositories",
-			src:        second + "    actions:\n      fork_pull_requests:\n        private_repositories:\n          run_workflows_from_fork_pull_requests: true\n",
-			wantPath:   "repositories[1].actions.fork_pull_requests.private_repositories",
+			name:       "invalid fork_pr_workflows_private_repos is rejected at actions.fork_pr_workflows_private_repos",
+			src:        second + "    actions:\n      fork_pr_workflows_private_repos:\n        run_workflows_from_fork_pull_requests: true\n",
+			wantPath:   "repositories[1].actions.fork_pr_workflows_private_repos",
 			wantReason: "missing send_write_tokens_to_workflows",
 		},
 		{
-			name:       "undefined approval_policy is rejected at actions.fork_pull_requests.approval_policy",
-			src:        second + "    actions:\n      fork_pull_requests:\n        approval_policy: everyone\n",
-			wantPath:   "repositories[1].actions.fork_pull_requests.approval_policy",
+			name:       "undefined approval_policy is rejected at actions.fork_pr_contributor_approval.approval_policy",
+			src:        second + "    actions:\n      fork_pr_contributor_approval:\n        approval_policy: everyone\n",
+			wantPath:   "repositories[1].actions.fork_pr_contributor_approval.approval_policy",
 			wantReason: "must be first_time_contributors_new_to_github",
 		},
 		// Retention
 		{
-			name:       "invalid days is rejected at actions.retention.days",
-			src:        second + "    actions:\n      retention:\n        days: 0\n",
-			wantPath:   "repositories[1].actions.retention.days",
+			name:       "invalid days is rejected at actions.artifact_and_log_retention.days",
+			src:        second + "    actions:\n      artifact_and_log_retention:\n        days: 0\n",
+			wantPath:   "repositories[1].actions.artifact_and_log_retention.days",
 			wantReason: "must be a positive integer",
 		},
 		// OIDC subject
@@ -1567,7 +1567,7 @@ func TestDocumentEnvironment(t *testing.T) {
 		{name: "missing name is rejected", src: "deployment_branch_policy:\n  mode: all\n", wantPath: "E", wantReason: `missing key "name"`},
 		{name: "non-string name is rejected", src: strings.Replace(base, "staging", "42", 1), wantPath: "E.name", wantReason: "must be a string"},
 		{name: "non-ASCII name is rejected at the name", src: strings.Replace(base, "staging", "café", 1), wantPath: "E.name", wantReason: `must consist of printable ASCII characters; got "café"`},
-		{name: "unknown key is rejected", src: base + "labels: {}\n", wantPath: "E", wantReason: `unknown key "labels"; expected name, deployment_branch_policy, required_reviewers, prevent_self_review, wait_timer, variables`},
+		{name: "unknown key is rejected", src: base + "labels: {}\n", wantPath: "E", wantReason: `unknown key "labels"; expected name, deployment_branch_policy, reviewers, prevent_self_review, wait_timer, variables`},
 		{
 			name: "prevent_self_review and wait_timer are read into pointers",
 			src:  "name: staging\nprevent_self_review: true\nwait_timer: 30\n",
@@ -1594,43 +1594,43 @@ func TestDocumentEnvironment(t *testing.T) {
 		{name: "string wait_timer is rejected", src: "name: staging\nwait_timer: \"30\"\n", wantPath: "E.wait_timer", wantReason: `must be an integer; got "30"`},
 		{name: "True prevent_self_review is rejected", src: "name: staging\nprevent_self_review: True\n", wantPath: "E.prevent_self_review", wantReason: "must be true or false"},
 		{
-			name:       "empty required_reviewers with prevent_self_review true is rejected at prevent_self_review",
-			src:        "name: staging\nrequired_reviewers: []\nprevent_self_review: true\n",
+			name:       "empty reviewers with prevent_self_review true is rejected at prevent_self_review",
+			src:        "name: staging\nreviewers: []\nprevent_self_review: true\n",
 			wantPath:   "E.prevent_self_review",
-			wantReason: "must not be true when required_reviewers is []; GitHub keeps prevent_self_review only while the environment has reviewers",
+			wantReason: "must not be true when reviewers is []; GitHub keeps prevent_self_review only while the environment has reviewers",
 		},
 		{
-			name: "empty required_reviewers with prevent_self_review false is accepted",
-			src:  "name: staging\nrequired_reviewers: []\nprevent_self_review: false\n",
-			want: EnvironmentDeclaration{Name: mustEnvironmentName(t, "staging"), RequiredReviewers: new(setting.ReviewerSetOf(nil)), PreventSelfReview: new(false)},
+			name: "empty reviewers with prevent_self_review false is accepted",
+			src:  "name: staging\nreviewers: []\nprevent_self_review: false\n",
+			want: EnvironmentDeclaration{Name: mustEnvironmentName(t, "staging"), ReviewerSet: new(setting.ReviewerSetOf(nil)), PreventSelfReview: new(false)},
 		},
 		{
-			name: "omitted required_reviewers with prevent_self_review true is accepted",
+			name: "omitted reviewers with prevent_self_review true is accepted",
 			src:  "name: staging\nprevent_self_review: true\n",
 			want: EnvironmentDeclaration{Name: mustEnvironmentName(t, "staging"), PreventSelfReview: new(true)},
 		},
 		{
 			name: "one reviewer with prevent_self_review true is accepted",
-			src:  "name: staging\nrequired_reviewers:\n  - type: User\n    id: 1\nprevent_self_review: true\n",
-			want: EnvironmentDeclaration{Name: mustEnvironmentName(t, "staging"), RequiredReviewers: new(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}})), PreventSelfReview: new(true)},
+			src:  "name: staging\nreviewers:\n  - type: User\n    id: 1\nprevent_self_review: true\n",
+			want: EnvironmentDeclaration{Name: mustEnvironmentName(t, "staging"), ReviewerSet: new(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 1}})), PreventSelfReview: new(true)},
 		},
 		{
 			name:       "invalid wait_timer is reported before the reviewers combination",
-			src:        "name: staging\nrequired_reviewers: []\nprevent_self_review: true\nwait_timer: -1\n",
+			src:        "name: staging\nreviewers: []\nprevent_self_review: true\nwait_timer: -1\n",
 			wantPath:   "E.wait_timer",
 			wantReason: `must be an integer; got "-1"`,
 		},
 		{
-			name: "required_reviewers is read into a non-nil set in the declared order",
-			src:  "name: staging\nrequired_reviewers:\n  - type: User\n    id: 2\n  - type: User\n    id: 1\n",
-			want: EnvironmentDeclaration{Name: mustEnvironmentName(t, "staging"), RequiredReviewers: new(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 2}, {Type: setting.ReviewerUser, ID: 1}}))},
+			name: "reviewers is read into a non-nil set in the declared order",
+			src:  "name: staging\nreviewers:\n  - type: User\n    id: 2\n  - type: User\n    id: 1\n",
+			want: EnvironmentDeclaration{Name: mustEnvironmentName(t, "staging"), ReviewerSet: new(setting.ReviewerSetOf([]setting.Reviewer{{Type: setting.ReviewerUser, ID: 2}, {Type: setting.ReviewerUser, ID: 1}}))},
 		},
 		{
-			name: "empty required_reviewers is read as a non-nil empty set",
-			src:  "name: staging\nrequired_reviewers: []\n",
-			want: EnvironmentDeclaration{Name: mustEnvironmentName(t, "staging"), RequiredReviewers: new(setting.ReviewerSetOf(nil))},
+			name: "empty reviewers is read as a non-nil empty set",
+			src:  "name: staging\nreviewers: []\n",
+			want: EnvironmentDeclaration{Name: mustEnvironmentName(t, "staging"), ReviewerSet: new(setting.ReviewerSetOf(nil))},
 		},
-		{name: "invalid required_reviewers is rejected at required_reviewers", src: "name: staging\nrequired_reviewers:\n  - type: User\n    id: 0\n", wantPath: "E.required_reviewers[0].id", wantReason: "must be a positive integer; got 0"},
+		{name: "invalid reviewers is rejected at reviewers", src: "name: staging\nreviewers:\n  - type: User\n    id: 0\n", wantPath: "E.reviewers[0].id", wantReason: "must be a positive integer; got 0"},
 		{
 			name: "variables are read in the declared order into Variables",
 			src:  "name: staging\nvariables:\n  - name: GO_VERSION\n    value: \"1.27\"\n  - name: GO_ARCH\n    value: amd64\n",
@@ -1812,10 +1812,10 @@ func TestDocumentDeploymentPattern(t *testing.T) {
 	}
 }
 
-// TestDocumentRequiredReviewers は、担当者の集合の宣言の件数、並び、重複、誤りを示す順を確かめる。
+// TestDocumentReviewerSet は、担当者の集合の宣言の件数、並び、重複、誤りを示す順を確かめる。
 //
 //trace:checks FR-001
-func TestDocumentRequiredReviewers(t *testing.T) {
+func TestDocumentReviewerSet(t *testing.T) {
 	user := func(id int64) setting.Reviewer { return setting.Reviewer{Type: setting.ReviewerUser, ID: id} }
 	const sixUsers = "- {type: User, id: 1}\n- {type: User, id: 2}\n- {type: User, id: 3}\n- {type: User, id: 4}\n- {type: User, id: 5}\n- {type: User, id: 6}\n"
 	cases := []struct {
@@ -1836,21 +1836,21 @@ func TestDocumentRequiredReviewers(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := decodeSnippet(t, tc.src)
-			got, err := doc.requiredReviewers(doc.root, "S")
+			got, err := doc.reviewerSet(doc.root, "S")
 			if tc.wantReason != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantReason) {
-					t.Errorf("requiredReviewers() error = %v, want it to contain %q", err, tc.wantReason)
+					t.Errorf("reviewerSet() error = %v, want it to contain %q", err, tc.wantReason)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("requiredReviewers() error = %v", err)
+				t.Fatalf("reviewerSet() error = %v", err)
 			}
 			if !slices.Equal(got.Reviewers(), tc.want) {
-				t.Errorf("requiredReviewers().Reviewers() = %v, want %v", got.Reviewers(), tc.want)
+				t.Errorf("reviewerSet().Reviewers() = %v, want %v", got.Reviewers(), tc.want)
 			}
 			if got.String() != setting.ReviewerSetOf(tc.want).String() {
-				t.Errorf("requiredReviewers().String() = %s, want %s", got, setting.ReviewerSetOf(tc.want))
+				t.Errorf("reviewerSet().String() = %s, want %s", got, setting.ReviewerSetOf(tc.want))
 			}
 		})
 	}

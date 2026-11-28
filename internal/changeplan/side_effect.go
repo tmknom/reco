@@ -69,7 +69,7 @@ func sideEffects(s SettingPlan, observed github.ObservationResult, settings []Se
 	if s.Unit.Key == setting.AllowedActions {
 		return selectedActionsSideEffects(s, observed), nil
 	}
-	if s.Unit.Key == setting.EnvironmentRequiredReviewers {
+	if s.Unit.Key == setting.EnvironmentReviewerSet {
 		return preventSelfReviewSideEffects(s, observed, settings)
 	}
 	if s.Result != Mismatch {

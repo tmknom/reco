@@ -194,7 +194,7 @@ func TestUnexpectedOutsideChanges(t *testing.T) {
 			change: modeChange(t, "staging", stagingAll, setting.DeploymentBranchPolicyProtectedBranches),
 			before: []github.ObservationResult{{Environments: environments(withReviewers(stagingAll, false, 1))}},
 			after:  github.ObservationResult{Environments: environments(withReviewers(observedEnvironment(7, "staging", setting.DeploymentBranchPolicyProtectedBranches), false, 2))},
-			want:   []unexpectedOutsideChange{{Setting: "environments.staging.required_reviewers", Before: "[User 1]", After: "[User 2]"}},
+			want:   []unexpectedOutsideChange{{Setting: "environments.staging.reviewers", Before: "[User 1]", After: "[User 2]"}},
 		},
 		{
 			name:   "pattern removal and addition do not compare the protection",
@@ -656,7 +656,7 @@ func TestEnvironmentPutOutsideChanges(t *testing.T) {
 		return observedWith(setting.DeploymentBranchPolicyAll, protection, others...)
 	}
 	base := github.EnvironmentProtection{WaitTimer: 30, ReviewerSet: github.Observed(reviewerRule(1, 2)), PreventSelfReview: true, CanAdminsBypass: true}
-	stagingReviewers := setting.Unit{Key: setting.EnvironmentRequiredReviewers, Environment: staging}
+	stagingReviewers := setting.Unit{Key: setting.EnvironmentReviewerSet, Environment: staging}
 	stagingPolicy := setting.Unit{Key: setting.EnvironmentDeploymentBranchPolicy, Environment: staging}
 	// changedReviewers は、base の担当者と can_admins_bypass を変えた保護設定
 	changedReviewers := github.EnvironmentProtection{WaitTimer: 30, ReviewerSet: github.Observed(reviewerRule(3)), PreventSelfReview: true, CanAdminsBypass: false}
@@ -667,19 +667,19 @@ func TestEnvironmentPutOutsideChanges(t *testing.T) {
 		want          []unexpectedOutsideChange
 	}{
 		{
-			name:     "required_reviewers changed by the logical change is not compared",
+			name:     "reviewers changed by the logical change is not compared",
 			excluded: []setting.Unit{stagingReviewers},
 			before:   observed(base),
 			after:    observed(changedReviewers),
 			want:     []unexpectedOutsideChange{{Setting: "environments.staging.can_admins_bypass", Before: "true", After: "false"}},
 		},
 		{
-			name:     "required_reviewers of another environment does not exclude the item",
-			excluded: []setting.Unit{{Key: setting.EnvironmentRequiredReviewers, Environment: mustEnvironmentName(t, "production")}},
+			name:     "reviewers of another environment does not exclude the item",
+			excluded: []setting.Unit{{Key: setting.EnvironmentReviewerSet, Environment: mustEnvironmentName(t, "production")}},
 			before:   observed(base),
 			after:    observed(changedReviewers),
 			want: []unexpectedOutsideChange{
-				{Setting: "environments.staging.required_reviewers", Before: "[User 1, User 2]", After: "[User 3]"},
+				{Setting: "environments.staging.reviewers", Before: "[User 1, User 2]", After: "[User 3]"},
 				{Setting: "environments.staging.can_admins_bypass", Before: "true", After: "false"},
 			},
 		},
@@ -690,7 +690,7 @@ func TestEnvironmentPutOutsideChanges(t *testing.T) {
 			before:   observed(base),
 			after:    observed(changedReviewers),
 			want: []unexpectedOutsideChange{
-				{Setting: "environments.staging.required_reviewers", Before: "[User 1, User 2]", After: "[User 3]"},
+				{Setting: "environments.staging.reviewers", Before: "[User 1, User 2]", After: "[User 3]"},
 				{Setting: "environments.staging.can_admins_bypass", Before: "true", After: "false"},
 			},
 		},
@@ -712,7 +712,7 @@ func TestEnvironmentPutOutsideChanges(t *testing.T) {
 		},
 		{
 			// 方式の単位だけを除き、保護設定の項目の単位では除かない
-			name:     "required_reviewers changed by the logical change does not exclude the mode",
+			name:     "reviewers changed by the logical change does not exclude the mode",
 			excluded: []setting.Unit{stagingReviewers},
 			before:   observed(base),
 			after:    observedWith(setting.DeploymentBranchPolicySelected, base),
@@ -809,21 +809,21 @@ func TestEnvironmentProtectionChanges(t *testing.T) {
 			after: with(func(p *github.EnvironmentProtection) {
 				p.ReviewerSet = github.Observed(reviewerSetWithLogin(2, "hubot"))
 			}),
-			want: []unexpectedOutsideChange{{Setting: "environments.staging.required_reviewers", Before: "[User 1]", After: "[User 2]"}},
+			want: []unexpectedOutsideChange{{Setting: "environments.staging.reviewers", Before: "[User 1]", After: "[User 2]"}},
 		},
 		{
 			name:   "no rule is the empty set",
 			before: base,
 			after:  with(func(p *github.EnvironmentProtection) { p.ReviewerSet = noRule }),
-			want:   []unexpectedOutsideChange{{Setting: "environments.staging.required_reviewers", Before: "[User 1, User 2]", After: "[]"}},
+			want:   []unexpectedOutsideChange{{Setting: "environments.staging.reviewers", Before: "[User 1, User 2]", After: "[]"}},
 		},
 		{
-			name:   "all four changed are four changes in the order wait_timer, required_reviewers, prevent_self_review, can_admins_bypass",
+			name:   "all four changed are four changes in the order wait_timer, reviewers, prevent_self_review, can_admins_bypass",
 			before: base,
 			after:  github.EnvironmentProtection{WaitTimer: 5, ReviewerSet: github.Observed(reviewerRule(1))},
 			want: []unexpectedOutsideChange{
 				{Setting: "environments.staging.wait_timer", Before: "30 minutes", After: "5 minutes"},
-				{Setting: "environments.staging.required_reviewers", Before: "[User 1, User 2]", After: "[User 1]"},
+				{Setting: "environments.staging.reviewers", Before: "[User 1, User 2]", After: "[User 1]"},
 				{Setting: "environments.staging.prevent_self_review", Before: "true", After: "false"},
 				{Setting: "environments.staging.can_admins_bypass", Before: "true", After: "false"},
 			},
@@ -834,7 +834,7 @@ func TestEnvironmentProtectionChanges(t *testing.T) {
 			after:  with(func(p *github.EnvironmentProtection) { p.WaitTimer = 10 }),
 			want: []unexpectedOutsideChange{
 				{Setting: "environments.staging.wait_timer", Before: "30 minutes", After: "10 minutes"},
-				{Setting: "environments.staging.required_reviewers", Before: "(unknown value)", After: "[User 1, User 2]"},
+				{Setting: "environments.staging.reviewers", Before: "(unknown value)", After: "[User 1, User 2]"},
 			},
 		},
 	}

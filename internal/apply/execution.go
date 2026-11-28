@@ -173,8 +173,8 @@ func sendUpdate(ctx context.Context, client *github.Client, target repository.Re
 	case changeplan.DeploymentPatternRemoval:
 		id := deploymentPatternIDOf(operation.Unit.Environment, operation.Pattern, observed)
 		return client.RemoveDeploymentPattern(ctx, target, environmentDestination(operation.Unit.Environment, observed), operation.Pattern, id)
-	case changeplan.RequiredReviewersUpdate:
-		return client.UpdateEnvironmentRequiredReviewers(ctx, target, environmentDestination(operation.Unit.Environment, observed), operation.Value.ReviewerSet())
+	case changeplan.ReviewerSetUpdate:
+		return client.UpdateEnvironmentReviewerSet(ctx, target, environmentDestination(operation.Unit.Environment, observed), operation.Value.ReviewerSet())
 	case changeplan.PreventSelfReviewUpdate:
 		return client.UpdateEnvironmentPreventSelfReview(ctx, target, environmentDestination(operation.Unit.Environment, observed), operation.Value.Bool())
 	case changeplan.WaitTimerUpdate:
